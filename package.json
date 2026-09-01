@@ -11,9 +11,13 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "dev:web": "pnpm --filter @pulse/web dev",
-    "dev:worker": "pnpm --filter @pulse/worker dev"
+    "dev:worker": "pnpm --filter @pulse/worker dev",
+    "seed": "tsx --env-file=.env scripts/seed.ts"
   },
   "devDependencies": {
+    "@pulse/shared": "workspace:*",
+    "@types/node": "22.10.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }
