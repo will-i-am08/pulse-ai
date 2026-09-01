@@ -1,0 +1,19 @@
+{
+  "name": "pulse-agent",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "dev:web": "pnpm --filter @pulse/web dev",
+    "dev:worker": "pnpm --filter @pulse/worker dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

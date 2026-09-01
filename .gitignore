@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# supabase local
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# vercel / railway
+.vercel/
+.railway/

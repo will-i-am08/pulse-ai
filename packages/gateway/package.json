@@ -1,0 +1,25 @@
+{
+  "name": "@pulse/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pulse/channel-twilio": "workspace:*",
+    "@pulse/orchestrator": "workspace:*",
+    "@pulse/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}

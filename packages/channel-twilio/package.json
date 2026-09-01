@@ -1,0 +1,23 @@
+{
+  "name": "@pulse/channel-twilio",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pulse/shared": "workspace:*",
+    "twilio": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4"
+  }
+}

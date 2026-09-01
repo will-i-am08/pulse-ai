@@ -1,0 +1,97 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { getBrand } from '@/lib/data/brands';
+import { listPostsByStatus } from '@/lib/data/posts';
+import { getMediaPreviews } from '@/lib/data/media';
+import { approvePostAction, editAndApprovePostAction, rejectPostAction } from '@/lib/actions/approvals';
+
+export default async function BrandDetailPage({ params }: { params: Promise<{ brandId: string }> }) {
+  const { brandId } = await params;
+  const brand = await getBrand(brandId);
+  if (!brand) notFound();
+
+  const pending = await listPostsByStatus(brandId, ['pending_approval']);
+  const pendingWithMedia = await Promise.all(
+    pending.map(async (post) => ({ post, media: await getMediaPreviews(post.media_ids) }))
+  );
+
+  return (
+    <section>
+      <div className="page-header">
+        <div>
+          <h1>{brand.name}</h1>
+          <p className="meta">
+            {brand.client_phone} · {brand.approver} approves ·{' '}
+            <span className={`badge badge-${brand.status}`}>{brand.status}</span>
+          </p>
+        </div>
+        <nav className="tabs">
+          <Link href={`/brands/${brand.id}/voice`}>Voice profile</Link>
+          <Link href={`/brands/${brand.id}/history`}>Post history</Link>
+        </nav>
+      </div>
+
+      <h2>Pending approvals</h2>
+      {pendingWithMedia.length === 0 ? (
+        <p className="empty">Nothing waiting on you right now.</p>
+      ) : (
+        <ul className="approval-list">
+          {pendingWithMedia.map(({ post, media }) => {
+            const defaultSchedule = post.scheduled_at ? post.scheduled_at.slice(0, 16) : '';
+            return (
+              <li key={post.id} className="approval-card">
+                <div className="media-row">
+                  {media.length === 0 && <span className="hint">No media attached</span>}
+                  {media.map((m) =>
+                    m.url ? (
+                      m.kind === 'video' ? (
+                        <video key={m.id} src={m.url} controls className="media-thumb" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element -- signed URLs are short-lived; no benefit from next/image optimisation here
+                        <img key={m.id} src={m.url} alt="" className="media-thumb" />
+                      )
+                    ) : (
+                      <span key={m.id} className="hint">
+                        Preview unavailable
+                      </span>
+                    )
+                  )}
+                </div>
+
+                <form className="approval-form">
+                  <input type="hidden" name="postId" value={post.id} />
+                  <input type="hidden" name="brandId" value={brand.id} />
+
+                  <label>
+                    Caption
+                    <textarea name="caption" rows={4} defaultValue={post.caption ?? ''} />
+                  </label>
+                  <label>
+                    Scheduled for
+                    <input type="datetime-local" name="scheduledAt" defaultValue={defaultSchedule} />
+                  </label>
+                  <label>
+                    Rejection note (optional)
+                    <input type="text" name="note" placeholder="Why are you rejecting this?" />
+                  </label>
+
+                  <div className="approval-actions">
+                    <button type="submit" formAction={approvePostAction} className="btn-primary">
+                      Approve
+                    </button>
+                    <button type="submit" formAction={editAndApprovePostAction} className="btn-secondary">
+                      Save edit &amp; approve
+                    </button>
+                    <button type="submit" formAction={rejectPostAction} className="btn-danger">
+                      Reject
+                    </button>
+                  </div>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}

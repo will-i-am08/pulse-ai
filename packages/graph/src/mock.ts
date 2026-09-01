@@ -1,0 +1,76 @@
+import { createHash } from "node:crypto";
+import type { Brand, Platform } from "@pulse/shared";
+import type { GraphAdapter } from "./types.js";
+import { withRetry } from "./retry.js";
+import { countPublished24h } from "./rateStore.js";
+
+function hashHex(input: string): string {
+  return createHash("sha1").update(input).digest("hex");
+}
+
+function seedFromString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
+/** Deterministic PRNG (mulberry32) so "random" engagement numbers are stable per post. */
+function mulberry32(seed: number) {
+  let a = seed;
+  return function next(): number {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Deterministic stand-in for Meta Graph calls. Used while `GRAPH_MODE=mock` (i.e. before
+ * Meta App Review clears, or in dev/CI). Never calls the network.
+ */
+export class MockGraphAdapter implements GraphAdapter {
+  async publish(input: {
+    brand: Brand;
+    platform: Platform;
+    caption: string;
+    mediaUrls: string[];
+  }): Promise<{ externalPostId: string; permalink: string | null }> {
+    const { brand, platform, caption, mediaUrls } = input;
+    return withRetry(`mock:publish:${brand.id}:${platform}`, async () => {
+      const fingerprint = `${brand.id}|${platform}|${caption}|${mediaUrls.join(",")}|${Date.now()}`;
+      const externalPostId = `mock_${hashHex(fingerprint).slice(0, 16)}`;
+      const handle = platform === "instagram" ? brand.ig_user_id : brand.fb_page_id;
+      const permalink = `https://mock.graph.local/${platform}/${handle ?? brand.id}/${externalPostId}`;
+      console.log(
+        `[graph:mock] publish brand=${brand.id} platform=${platform} media=${mediaUrls.length} -> ${externalPostId}`
+      );
+      return { externalPostId, permalink };
+    });
+  }
+
+  async fetchEngagement(
+    brand: Brand,
+    externalPostId: string,
+    platform: Platform
+  ): Promise<Record<string, number>> {
+    return withRetry(`mock:engagement:${externalPostId}`, async () => {
+      const rng = mulberry32(seedFromString(`${externalPostId}:${platform}`));
+      const reach = Math.floor(200 + rng() * 4800);
+      const likes = Math.floor(reach * (0.02 + rng() * 0.08));
+      const comments = Math.floor(likes * (0.02 + rng() * 0.1));
+      const saves = platform === "instagram" ? Math.floor(likes * (0.01 + rng() * 0.05)) : 0;
+      console.log(
+        `[graph:mock] fetchEngagement brand=${brand.id} post=${externalPostId} -> likes=${likes} comments=${comments} reach=${reach}`
+      );
+      return { likes, comments, reach, saves };
+    });
+  }
+
+  async last24hCount(brand: Brand, platform: Platform): Promise<number> {
+    return withRetry(`mock:last24h:${brand.id}:${platform}`, () => countPublished24h(brand, platform));
+  }
+}
