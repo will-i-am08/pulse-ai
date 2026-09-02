@@ -10,6 +10,10 @@ const serverEnvSchema = z.object({
   FALLBACK_MODEL: z.string().default("claude-sonnet-5"),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
+  // Preferred for sending/media (revocable API key). Signature validation still
+  // requires the account Auth Token — an API key secret cannot validate webhooks.
+  TWILIO_API_KEY_SID: z.string().optional(),
+  TWILIO_API_KEY_SECRET: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
   OPERATOR_PHONE: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),

@@ -36,6 +36,26 @@ async function graphFetch(url: string, init?: RequestInit): Promise<any> {
   return json;
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Poll an IG media container until it is publishable. Instagram is frequently not
+ * ready on the first call (verified in live testing against a real account), so
+ * publish must wait for status_code FINISHED before calling media_publish.
+ */
+async function waitForContainer(env: ServerEnv, creationId: string, accessToken: string): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const status = await graphFetch(
+      graphUrl(env, `/${creationId}?fields=status_code&access_token=${accessToken}`),
+    );
+    const code = status.status_code as string | undefined;
+    if (code === "FINISHED") return;
+    if (code === "ERROR") throw new Error("Instagram media container processing failed (status ERROR)");
+    await sleep(3000);
+  }
+  throw new Error("Instagram media container not ready after polling");
+}
+
 /**
  * Real Meta Graph API calls. Structured against the real endpoint shapes so this only
  * needs real brand tokens (post Meta App Review) to go live — flip GRAPH_MODE=live.
@@ -77,6 +97,9 @@ export class LiveGraphAdapter implements GraphAdapter {
         });
         const creationId = container.id as string | undefined;
         if (!creationId) throw new Error("Instagram media container creation returned no id");
+
+        // Wait until the container is publishable — verified necessary in live testing.
+        await waitForContainer(env, creationId, accessToken);
 
         const publishParams = new URLSearchParams({
           creation_id: creationId,
