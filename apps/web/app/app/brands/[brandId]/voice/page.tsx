@@ -17,7 +17,7 @@ export default async function BrandVoicePage({ params }: { params: Promise<{ bra
           <h1>{brand.name}</h1>
           <p className="meta">Voice profile</p>
         </div>
-        <Link href={`/brands/${brand.id}`}>Back to approvals</Link>
+        <Link href={`/app/brands/${brand.id}`}>Back to approvals</Link>
       </div>
 
       <form action={updateBrandVoiceAction} className="form">

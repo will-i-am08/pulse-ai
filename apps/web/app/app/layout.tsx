@@ -10,7 +10,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <Link href="/" className="brandmark">
+        <Link href="/app" className="brandmark">
           Pulse Operator Console
         </Link>
         <form action={signOutAction}>

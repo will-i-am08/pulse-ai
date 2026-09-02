@@ -26,7 +26,7 @@ export default async function PostHistoryPage({ params }: { params: Promise<{ br
           <h1>{brand.name}</h1>
           <p className="meta">Post history</p>
         </div>
-        <Link href={`/brands/${brand.id}`}>Back to approvals</Link>
+        <Link href={`/app/brands/${brand.id}`}>Back to approvals</Link>
       </div>
 
       {withLogs.length === 0 ? (

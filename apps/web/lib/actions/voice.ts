@@ -31,5 +31,5 @@ export async function updateBrandVoiceAction(formData: FormData): Promise<void> 
   const profile = brandVoiceProfileSchema.parse(raw);
 
   await updateBrandVoiceProfile(brandId, profile);
-  redirect(`/brands/${brandId}`);
+  redirect(`/app/brands/${brandId}`);
 }

@@ -26,8 +26,8 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ br
           </p>
         </div>
         <nav className="tabs">
-          <Link href={`/brands/${brand.id}/voice`}>Voice profile</Link>
-          <Link href={`/brands/${brand.id}/history`}>Post history</Link>
+          <Link href={`/app/brands/${brand.id}/voice`}>Voice profile</Link>
+          <Link href={`/app/brands/${brand.id}/history`}>Post history</Link>
         </nav>
       </div>
 

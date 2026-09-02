@@ -48,5 +48,5 @@ export async function createBrandAction(formData: FormData): Promise<void> {
     await seedBrandVoice(brand.id, answers);
   }
 
-  redirect(`/brands/${brand.id}`);
+  redirect(`/app/brands/${brand.id}`);
 }

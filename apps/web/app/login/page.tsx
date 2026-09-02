@@ -14,7 +14,7 @@ export default async function LoginPage({
         <p className="hint">Enter the operator password to continue.</p>
 
         <form action={loginAction} className="form">
-          <input type="hidden" name="redirectTo" value={redirectTo && redirectTo.startsWith('/') ? redirectTo : '/'} />
+          <input type="hidden" name="redirectTo" value={redirectTo && redirectTo.startsWith('/') ? redirectTo : '/app'} />
           <label>
             Password
             <input type="password" name="password" required autoFocus />

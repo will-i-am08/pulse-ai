@@ -6,7 +6,7 @@ import { getServerEnv } from '@pulse/shared';
 import { sessionCookieValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 function safeRedirectTarget(raw: FormDataEntryValue | null): string {
-  return typeof raw === 'string' && raw.startsWith('/') ? raw : '/';
+  return typeof raw === 'string' && raw.startsWith('/') ? raw : '/app';
 }
 
 /** Password form → compare to OPERATOR_PASSWORD → set the signed session cookie. */

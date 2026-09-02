@@ -1,37 +1,28 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { isValidSessionCookie, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
-// Operator-only console. Guard everything except the inbound webhook (Twilio
-// must be able to POST unauthenticated), the public media route (Meta fetches
-// image_url when publishing — no session), the privacy page (Meta App Review
-// needs to reach it without a session), and the login page itself.
-function isPublicPath(pathname: string): boolean {
-  return (
-    pathname.startsWith('/api/webhooks/') ||
-    pathname.startsWith('/api/media/') ||
-    pathname === '/privacy' ||
-    pathname === '/login'
-  );
+// Only the operator console under /app requires a session. The marketing
+// landing (/), privacy, login, and the public webhook + media routes are open.
+function isProtectedPath(pathname: string): boolean {
+  return pathname === '/app' || pathname.startsWith('/app/');
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isPublic = isPublicPath(pathname);
+  const protectedPath = isProtectedPath(pathname);
 
   // Read directly from process.env (not @pulse/shared's getServerEnv) — this
   // file runs on the Edge runtime and must not bundle `pg`.
   const authSecret = process.env.AUTH_SECRET;
   if (!authSecret) {
-    // Misconfigured deploy — fail open only for routes that must always work,
-    // fail closed everywhere else.
-    if (isPublic) return NextResponse.next();
+    if (!protectedPath) return NextResponse.next();
     throw new Error('AUTH_SECRET is not set');
   }
 
   const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const authed = await isValidSessionCookie(cookieValue, authSecret);
 
-  if (!authed && !isPublic) {
+  if (protectedPath && !authed) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.search = '';
@@ -41,7 +32,7 @@ export async function middleware(request: NextRequest) {
 
   if (authed && pathname === '/login') {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = '/app';
     url.search = '';
     return NextResponse.redirect(url);
   }

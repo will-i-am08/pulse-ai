@@ -8,7 +8,7 @@ export default async function BrandsPage() {
     <section>
       <div className="page-header">
         <h1>Brands</h1>
-        <Link href="/brands/new" className="btn-primary">
+        <Link href="/app/brands/new" className="btn-primary">
           Add brand
         </Link>
       </div>
@@ -36,7 +36,7 @@ export default async function BrandsPage() {
                 <td>{brand.approver}</td>
                 <td>{brand.client_phone}</td>
                 <td>
-                  <Link href={`/brands/${brand.id}`}>Open</Link>
+                  <Link href={`/app/brands/${brand.id}`}>Open</Link>
                 </td>
               </tr>
             ))}

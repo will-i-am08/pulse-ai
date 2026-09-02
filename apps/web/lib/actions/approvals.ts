@@ -43,7 +43,7 @@ export async function approvePostAction(formData: FormData): Promise<void> {
     after: { status: 'approved', scheduled_at: scheduledAt },
   });
 
-  revalidatePath(`/brands/${brandId}`);
+  revalidatePath(`/app/brands/${brandId}`);
 }
 
 /**
@@ -80,7 +80,7 @@ export async function editAndApprovePostAction(formData: FormData): Promise<void
     after: { status: 'approved', scheduled_at: scheduledAt, caption: afterCaption },
   });
 
-  revalidatePath(`/brands/${brandId}`);
+  revalidatePath(`/app/brands/${brandId}`);
 }
 
 /** Reject → status='rejected', log 'rejected'. */
@@ -102,5 +102,5 @@ export async function rejectPostAction(formData: FormData): Promise<void> {
     note: typeof note === 'string' && note.length > 0 ? note : undefined,
   });
 
-  revalidatePath(`/brands/${brandId}`);
+  revalidatePath(`/app/brands/${brandId}`);
 }
