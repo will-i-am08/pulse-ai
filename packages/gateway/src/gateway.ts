@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { processInbound } from "@pulse/orchestrator";
 import {
-  MEDIA_BUCKET,
-  serviceClient,
+  query,
+  queryOne,
+  putMedia,
   type Brand,
   type InboundMedia,
   type InboundMessage,
@@ -27,32 +28,25 @@ export function activeChannel(): MessageChannel {
 /** Resolve a brand by inbound sender phone (E.164). null if unknown sender. */
 export async function resolveBrandByPhone(from: string): Promise<Brand | null> {
   if (!from) return null;
-  const db = serviceClient();
-  const { data, error } = await db.from("brands").select("*").eq("client_phone", from).maybeSingle();
-  if (error) {
-    console.error(`resolveBrandByPhone: lookup failed for ${from}`, error);
+  try {
+    return await queryOne<Brand>("select * from brands where client_phone = $1", [from]);
+  } catch (err) {
+    console.error(`resolveBrandByPhone: lookup failed for ${from}`, err);
     return null;
   }
-  return (data as Brand | null) ?? null;
 }
 
 function inferMediaKind(contentType: string): MediaKind {
   return contentType.toLowerCase().startsWith("video/") ? "video" : "photo";
 }
 
-function extensionFor(contentType: string): string {
-  const subtype = contentType.split("/")[1]?.split(";")[0]?.trim();
-  return subtype && /^[a-z0-9.-]+$/i.test(subtype) ? subtype : "bin";
-}
-
-/** Download provider media and store it under `${brandId}/...` in MEDIA_BUCKET. */
+/** Download provider media and store its bytes via putMedia (Postgres media_blobs). */
 export async function captureMedia(
   brandId: string,
   channel: MessageChannel,
   media: InboundMedia[],
 ): Promise<MediaAsset[]> {
   if (media.length === 0) return [];
-  const db = serviceClient();
   const captured: MediaAsset[] = [];
 
   for (const item of media) {
@@ -63,37 +57,25 @@ export async function captureMedia(
         onRetry: (err, attempt) => console.warn(`captureMedia: fetchMedia retry ${attempt} for ${item.url}`, err),
       });
 
-      const storagePath = `${brandId}/${randomUUID()}.${extensionFor(contentType)}`;
-
-      await withBackoff(
-        async () => {
-          const { error } = await db.storage.from(MEDIA_BUCKET).upload(storagePath, bytes, {
-            contentType,
-            upsert: false,
-          });
-          if (error) throw error;
-        },
-        { onRetry: (err, attempt) => console.warn(`captureMedia: storage upload retry ${attempt} for ${storagePath}`, err) },
+      // media_assets row first — storage_path is set to the row's own id,
+      // which is also the key used to store its bytes via putMedia.
+      const mediaId = randomUUID();
+      const row = await queryOne<MediaAsset>(
+        `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+         values ($1, $2, $3, $4, $5, $6)
+         returning *`,
+        [mediaId, brandId, mediaId, inferMediaKind(contentType), "client", contentType],
       );
-
-      const { data, error } = await db
-        .from("media_assets")
-        .insert({
-          brand_id: brandId,
-          storage_path: storagePath,
-          kind: inferMediaKind(contentType),
-          source: "client",
-          content_type: contentType,
-        })
-        .select("*")
-        .single();
-
-      if (error || !data) {
-        console.error(`captureMedia: failed to insert media_assets row for ${storagePath}`, error);
+      if (!row) {
+        console.error(`captureMedia: failed to insert media_assets row for ${mediaId}`);
         continue;
       }
 
-      captured.push(data as MediaAsset);
+      await withBackoff(() => putMedia(mediaId, bytes, contentType), {
+        onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
+      });
+
+      captured.push(row);
     } catch (err) {
       // A single bad media item should never take down the whole inbound
       // message — log and move on to the rest.
@@ -106,14 +88,11 @@ export async function captureMedia(
 
 /** Send an outbound message via the active channel and log it as an outbound Message row. */
 export async function sendToBrand(brandId: string, body: string, mediaUrls?: string[]): Promise<void> {
-  const db = serviceClient();
-
-  const { data: brandRow, error: brandError } = await db.from("brands").select("*").eq("id", brandId).maybeSingle();
-  if (brandError || !brandRow) {
-    console.error(`sendToBrand: brand ${brandId} not found`, brandError);
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) {
+    console.error(`sendToBrand: brand ${brandId} not found`);
     return;
   }
-  const brand = brandRow as Brand;
   const channel = activeChannel();
 
   let providerMessageId: string;
@@ -127,21 +106,20 @@ export async function sendToBrand(brandId: string, body: string, mediaUrls?: str
     return;
   }
 
-  const { error: insertError } = await db.from("messages").insert({
-    brand_id: brandId,
-    direction: "outbound",
-    channel: channel.name,
-    body,
-    provider_message_sid: providerMessageId,
-  });
-  if (insertError) {
-    console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, insertError);
+  try {
+    await query(
+      `insert into messages (brand_id, direction, channel, body, provider_message_sid)
+       values ($1, $2, $3, $4, $5)`,
+      [brandId, "outbound", channel.name, body, providerMessageId],
+    );
+  } catch (err) {
+    console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
   }
 }
 
 /**
  * Handle a normalised inbound message end-to-end: route to brand, persist,
- * capture media to Storage, and hand off to the orchestrator. Never throws —
+ * capture media, and hand off to the orchestrator. Never throws —
  * an unknown sender or any internal failure is logged and results in a null
  * response rather than a crash.
  */
@@ -155,30 +133,31 @@ export async function handleInbound(
       return { brandId: null, messageId: null };
     }
 
-    const db = serviceClient();
     const channel = activeChannel();
 
     const newMedia = await captureMedia(brand.id, channel, inbound.media);
 
-    const { data: messageRow, error: messageError } = await db
-      .from("messages")
-      .insert({
-        brand_id: brand.id,
-        direction: "inbound",
-        channel: channel.name,
-        body: inbound.body || null,
-        media_ids: newMedia.map((m) => m.id),
-        provider_message_sid: inbound.providerMessageId || null,
-      })
-      .select("*")
-      .single();
-
-    if (messageError || !messageRow) {
-      console.error(`handleInbound: failed to persist inbound message for brand ${brand.id}`, messageError);
+    let message: Message;
+    try {
+      const row = await queryOne<Message>(
+        `insert into messages (brand_id, direction, channel, body, media_ids, provider_message_sid)
+         values ($1, $2, $3, $4, $5::uuid[], $6)
+         returning *`,
+        [
+          brand.id,
+          "inbound",
+          channel.name,
+          inbound.body || null,
+          newMedia.map((m) => m.id),
+          inbound.providerMessageId || null,
+        ],
+      );
+      if (!row) throw new Error("insert returned no row");
+      message = row;
+    } catch (err) {
+      console.error(`handleInbound: failed to persist inbound message for brand ${brand.id}`, err);
       return { brandId: brand.id, messageId: null };
     }
-
-    const message = messageRow as Message;
 
     try {
       const { reply } = await processInbound({ brand, message, newMedia });

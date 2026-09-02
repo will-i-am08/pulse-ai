@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import { logger } from "../lib/logger.js";
 import { operatorPhone } from "../config.js";
@@ -36,18 +36,15 @@ export async function runAlert(brand: Brand, trigger: ProactiveTrigger, deps: Al
   await deps.markSent(trigger.id);
 }
 
-export async function getFailuresSince(
-  supabase: SupabaseClient,
-  brandId: string,
-  since: string | null
-): Promise<FailedPostSummary[]> {
-  let query = supabase
-    .from("posts")
-    .select("id, platform, last_error, updated_at")
-    .eq("brand_id", brandId)
-    .eq("status", "failed");
-  if (since) query = query.gte("updated_at", since);
-  const { data, error } = await query;
-  if (error) throw new Error(`getFailuresSince failed: ${error.message}`);
-  return (data ?? []) as FailedPostSummary[];
+export async function getFailuresSince(brandId: string, since: string | null): Promise<FailedPostSummary[]> {
+  const conditions = ["brand_id = $1", "status = $2"];
+  const params: unknown[] = [brandId, "failed"];
+  if (since) {
+    conditions.push(`updated_at >= $${params.length + 1}`);
+    params.push(since);
+  }
+  return query<FailedPostSummary>(
+    `select id, platform, last_error from posts where ${conditions.join(" and ")}`,
+    params,
+  );
 }

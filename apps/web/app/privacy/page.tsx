@@ -41,8 +41,8 @@ export default function PrivacyPage() {
           retrieved from Meta&apos;s Graph API for reporting purposes.
         </li>
         <li>
-          <strong>Operator account:</strong> the email address of the Pulse operator who signs in to the
-          dashboard, used solely for authentication.
+          <strong>Operator authentication:</strong> a single shared operator password, used solely to
+          gate access to the dashboard.
         </li>
       </ul>
 
@@ -68,7 +68,7 @@ export default function PrivacyPage() {
           notes.
         </li>
         <li>
-          <strong>Supabase</strong> — database, authentication, and encrypted media storage.
+          <strong>Neon</strong> — database and encrypted media storage.
         </li>
         <li>
           <strong>Vercel / Railway</strong> — application hosting.
@@ -81,8 +81,8 @@ export default function PrivacyPage() {
         Messages, media, drafts, and approval history are retained for the duration of our engagement
         with a client and for a reasonable period after, to support reporting and dispute resolution.
         Platform tokens are encrypted at rest (AES-256-GCM) and are only ever decrypted server-side at
-        the point of use. Access to the operator dashboard is restricted to authorised Pulse staff via
-        single-user, passwordless (magic-link) authentication.
+        the point of use. Access to the operator dashboard is restricted to authorised Pulse staff via a
+        single-operator password gate.
       </p>
 
       <h2>Your rights</h2>

@@ -1,5 +1,5 @@
 import 'server-only';
-import { serviceClient } from '@pulse/shared';
+import { query, queryOne } from '@pulse/shared';
 import type { ApprovalAction, ApprovalLogEntry } from '@pulse/shared';
 
 export async function logApproval(entry: {
@@ -11,29 +11,24 @@ export async function logApproval(entry: {
   after?: unknown;
   note?: string;
 }): Promise<void> {
-  const { error } = await serviceClient()
-    .from('approval_log')
-    .insert({
-      post_id: entry.postId,
-      brand_id: entry.brandId,
-      action: entry.action,
-      actor: entry.actor ?? 'operator',
-      before: entry.before ?? null,
-      after: entry.after ?? null,
-      note: entry.note ?? null,
-    });
-  if (error) throw new Error(`logApproval: ${error.message}`);
+  await query(
+    `insert into approval_log (post_id, brand_id, action, actor, before, after, note)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)`,
+    [
+      entry.postId,
+      entry.brandId,
+      entry.action,
+      entry.actor ?? 'operator',
+      JSON.stringify(entry.before ?? null),
+      JSON.stringify(entry.after ?? null),
+      entry.note ?? null,
+    ]
+  );
 }
 
 export async function latestLogForPost(postId: string, action: ApprovalAction): Promise<ApprovalLogEntry | null> {
-  const { data, error } = await serviceClient()
-    .from('approval_log')
-    .select('*')
-    .eq('post_id', postId)
-    .eq('action', action)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`latestLogForPost: ${error.message}`);
-  return (data as ApprovalLogEntry | null) ?? null;
+  return queryOne<ApprovalLogEntry>(
+    `select * from approval_log where post_id = $1 and action = $2 order by created_at desc limit 1`,
+    [postId, action]
+  );
 }

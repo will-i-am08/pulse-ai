@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { query } from "@pulse/shared";
 import type { ApprovalAction } from "@pulse/shared";
 
 export interface ApprovalLogInput {
@@ -12,15 +12,18 @@ export interface ApprovalLogInput {
 }
 
 /** Every draft/approval/edit/publish/failure gets an approval_log row (auditability). */
-export async function writeApprovalLog(supabase: SupabaseClient, entry: ApprovalLogInput): Promise<void> {
-  const { error } = await supabase.from("approval_log").insert({
-    post_id: entry.postId,
-    brand_id: entry.brandId,
-    action: entry.action,
-    actor: entry.actor ?? "system",
-    before: entry.before ?? null,
-    after: entry.after ?? null,
-    note: entry.note ?? null,
-  });
-  if (error) throw new Error(`writeApprovalLog failed: ${error.message}`);
+export async function writeApprovalLog(entry: ApprovalLogInput): Promise<void> {
+  await query(
+    `insert into approval_log (post_id, brand_id, action, actor, before, after, note)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)`,
+    [
+      entry.postId,
+      entry.brandId,
+      entry.action,
+      entry.actor ?? "system",
+      entry.before !== undefined ? JSON.stringify(entry.before) : null,
+      entry.after !== undefined ? JSON.stringify(entry.after) : null,
+      entry.note ?? null,
+    ],
+  );
 }

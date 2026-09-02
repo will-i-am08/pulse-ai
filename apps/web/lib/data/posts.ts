@@ -1,25 +1,44 @@
 import 'server-only';
-import { serviceClient } from '@pulse/shared';
+import { query, queryOne } from '@pulse/shared';
 import type { Post, PostStatus } from '@pulse/shared';
 
 export async function listPostsByStatus(brandId: string, statuses: PostStatus[]): Promise<Post[]> {
-  const { data, error } = await serviceClient()
-    .from('posts')
-    .select('*')
-    .eq('brand_id', brandId)
-    .in('status', statuses)
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(`listPostsByStatus: ${error.message}`);
-  return (data ?? []) as Post[];
+  return query<Post>(
+    `select * from posts where brand_id = $1 and status = any($2::text[]) order by created_at asc`,
+    [brandId, statuses]
+  );
 }
 
 export async function getPost(postId: string): Promise<Post | null> {
-  const { data, error } = await serviceClient().from('posts').select('*').eq('id', postId).maybeSingle();
-  if (error) throw new Error(`getPost: ${error.message}`);
-  return (data as Post | null) ?? null;
+  return queryOne<Post>(`select * from posts where id = $1`, [postId]);
 }
 
+// jsonb / uuid[] columns need their SQL cast + (for jsonb) a stringified param —
+// everything else is a plain scalar `column = $n`.
+const JSONB_COLUMNS = new Set<keyof Post>(['engagement']);
+const UUID_ARRAY_COLUMNS = new Set<keyof Post>(['media_ids']);
+
 export async function updatePost(postId: string, patch: Partial<Post>): Promise<void> {
-  const { error } = await serviceClient().from('posts').update(patch).eq('id', postId);
-  if (error) throw new Error(`updatePost: ${error.message}`);
+  const entries = Object.entries(patch) as [keyof Post, unknown][];
+  if (entries.length === 0) return;
+
+  const setClauses: string[] = [];
+  const params: unknown[] = [];
+
+  entries.forEach(([column, value]) => {
+    const idx = params.length + 1;
+    if (JSONB_COLUMNS.has(column)) {
+      setClauses.push(`${column} = $${idx}::jsonb`);
+      params.push(JSON.stringify(value));
+    } else if (UUID_ARRAY_COLUMNS.has(column)) {
+      setClauses.push(`${column} = $${idx}::uuid[]`);
+      params.push(value);
+    } else {
+      setClauses.push(`${column} = $${idx}`);
+      params.push(value);
+    }
+  });
+
+  params.push(postId);
+  await query(`update posts set ${setClauses.join(', ')} where id = $${params.length}`, params);
 }

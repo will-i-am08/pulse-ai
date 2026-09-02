@@ -1,11 +1,10 @@
--- 0001_init.sql — Pulse Texting Agent core schema
--- Single-operator, multi-brand. Service role bypasses RLS; the dashboard
--- authenticates as the one operator. Brand isolation is enforced in app code
--- via brand_id; RLS here is the backstop against the anon key.
+-- 0001_init.sql — Pulse Texting Agent core schema (Neon Postgres)
+-- Single-operator, multi-brand. The app connects as the database owner and
+-- enforces brand isolation in code via brand_id. (No Supabase-style RLS: Neon
+-- has no `authenticated` role, and access is via a single trusted connection.)
 
 create extension if not exists pgcrypto;
 
--- Shared updated_at trigger
 create or replace function set_updated_at()
 returns trigger
 language plpgsql
@@ -20,11 +19,11 @@ $$;
 create table if not exists brands (
   id                        uuid primary key default gen_random_uuid(),
   name                      text not null,
-  client_phone              text not null unique,               -- E.164, identifies inbound sender
-  brand_voice_profile       jsonb not null default '{}'::jsonb, -- structured voice notes (the "learning")
+  client_phone              text not null unique,
+  brand_voice_profile       jsonb not null default '{}'::jsonb,
   ig_user_id                text,
   fb_page_id                text,
-  platform_tokens_encrypted text,                               -- AES-GCM blob, decrypted app-side only
+  platform_tokens_encrypted text,
   approver                  text not null default 'operator'
                               check (approver in ('operator','client')),
   status                    text not null default 'active'
@@ -41,7 +40,7 @@ create table if not exists messages (
   channel              text not null default 'sms',
   body                 text,
   media_ids            uuid[] not null default '{}',
-  type                 text check (type in ('media','instruction','approval','question','other')),
+  type                 text check (type in ('media','instruction','approval','question','edit','other')),
   provider_message_sid text,
   created_at           timestamptz not null default now()
 );
@@ -50,11 +49,11 @@ create table if not exists messages (
 create table if not exists media_assets (
   id               uuid primary key default gen_random_uuid(),
   brand_id         uuid not null references brands(id) on delete cascade,
-  storage_path     text not null,                    -- Supabase Storage object path, per-brand prefix
+  storage_path     text not null,
   kind             text not null check (kind in ('photo','video')),
   source           text not null check (source in ('client','operator')),
   content_type     text,
-  used_in_post_id  uuid,                             -- soft link; FK added after posts exists
+  used_in_post_id  uuid,
   created_at       timestamptz not null default now()
 );
 
@@ -69,7 +68,7 @@ create table if not exists posts (
                      check (status in ('draft','pending_approval','approved','scheduled','publishing','published','failed','rejected')),
   scheduled_at     timestamptz,
   published_at     timestamptz,
-  external_post_id text,                             -- IG/FB media id once live
+  external_post_id text,
   engagement       jsonb not null default '{}'::jsonb,
   retry_count      int not null default 0,
   last_error       text,
@@ -77,6 +76,8 @@ create table if not exists posts (
   updated_at       timestamptz not null default now()
 );
 
+alter table media_assets
+  drop constraint if exists media_assets_used_in_post_fk;
 alter table media_assets
   add constraint media_assets_used_in_post_fk
   foreign key (used_in_post_id) references posts(id) on delete set null;
@@ -97,21 +98,21 @@ create table if not exists proactive_triggers (
   id           uuid primary key default gen_random_uuid(),
   brand_id     uuid not null references brands(id) on delete cascade,
   kind         text not null check (kind in ('checkin','report','reminder','alert')),
-  schedule     text not null,                        -- cron expression
-  template_id  text,                                 -- WhatsApp template id later; null on SMS
+  schedule     text not null,
+  template_id  text,
   enabled      boolean not null default true,
   last_sent_at timestamptz,
   created_at   timestamptz not null default now()
 );
 
--- ─── approval_log (audit trail — non-functional requirement) ─
+-- ─── approval_log (audit trail) ────────────────────────────
 create table if not exists approval_log (
   id         uuid primary key default gen_random_uuid(),
   post_id    uuid references posts(id) on delete set null,
   brand_id   uuid not null references brands(id) on delete cascade,
   action     text not null check (action in
                ('draft_created','approved','edited','rejected','scheduled','published','publish_failed','send_failed')),
-  actor      text,                                   -- 'operator' | 'client' | 'system'
+  actor      text,
   before     jsonb,
   after      jsonb,
   note       text,
@@ -146,22 +147,3 @@ create index if not exists idx_media_brand on media_assets (brand_id);
 create index if not exists idx_triggers_brand_kind on proactive_triggers (brand_id, kind);
 create index if not exists idx_approval_brand_created on approval_log (brand_id, created_at desc);
 create index if not exists idx_corrections_brand_created on corrections (brand_id, created_at desc);
-
--- ─── row level security ────────────────────────────────────
--- Single operator: authenticated role gets full access; service role bypasses RLS entirely.
-do $$
-declare t text;
-begin
-  foreach t in array array[
-    'brands','messages','media_assets','posts','strategy_notes',
-    'proactive_triggers','approval_log','corrections'
-  ]
-  loop
-    execute format('alter table %I enable row level security;', t);
-    execute format('drop policy if exists %I on %I;', t || '_operator_all', t);
-    execute format(
-      'create policy %I on %I for all to authenticated using (true) with check (true);',
-      t || '_operator_all', t
-    );
-  end loop;
-end $$;

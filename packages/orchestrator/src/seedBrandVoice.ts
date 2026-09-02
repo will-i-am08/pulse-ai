@@ -1,4 +1,4 @@
-import { serviceClient, brandVoiceProfileSchema } from "@pulse/shared";
+import { query, brandVoiceProfileSchema } from "@pulse/shared";
 import type { BrandVoiceProfile } from "@pulse/shared";
 
 // Onboarding answers arrive as a loose bag of operator input (a form, a
@@ -48,13 +48,10 @@ export async function seedBrandVoice(
     notes: asStringArray(answers.notes),
   });
 
-  const db = serviceClient();
-
-  const { error: brandErr } = await db
-    .from("brands")
-    .update({ brand_voice_profile: profile })
-    .eq("id", brandId);
-  if (brandErr) throw brandErr;
+  await query(
+    `update brands set brand_voice_profile = $1::jsonb where id = $2`,
+    [JSON.stringify(profile), brandId],
+  );
 
   const strategyRow = {
     brand_id: brandId,
@@ -65,8 +62,22 @@ export async function seedBrandVoice(
     last_updated: new Date().toISOString(),
   };
 
-  const { error: notesErr } = await db
-    .from("strategy_notes")
-    .upsert(strategyRow, { onConflict: "brand_id" });
-  if (notesErr) throw notesErr;
+  await query(
+    `insert into strategy_notes (brand_id, voice_notes, posting_cadence, best_times, content_mix, last_updated)
+     values ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
+     on conflict (brand_id) do update set
+       voice_notes = excluded.voice_notes,
+       posting_cadence = excluded.posting_cadence,
+       best_times = excluded.best_times,
+       content_mix = excluded.content_mix,
+       last_updated = excluded.last_updated`,
+    [
+      strategyRow.brand_id,
+      strategyRow.voice_notes,
+      strategyRow.posting_cadence,
+      JSON.stringify(strategyRow.best_times),
+      JSON.stringify(strategyRow.content_mix),
+      strategyRow.last_updated,
+    ],
+  );
 }

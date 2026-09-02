@@ -3,8 +3,10 @@ import { z } from "zod";
 // Server-side environment. Validated lazily so importing this module in the
 // browser bundle (where only NEXT_PUBLIC_* exist) doesn't throw at import time.
 const serverEnvSchema = z.object({
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  DATABASE_URL: z.string().min(1),
+  // Operator dashboard auth (single user). AUTH_SECRET signs the session cookie.
+  OPERATOR_PASSWORD: z.string().optional(),
+  AUTH_SECRET: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().min(1),
   DRAFT_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   FALLBACK_MODEL: z.string().default("claude-sonnet-5"),

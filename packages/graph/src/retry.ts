@@ -1,4 +1,4 @@
-// Small retry-with-backoff helper. Every external call (Graph API, Supabase) in this
+// Small retry-with-backoff helper. Every external call (Graph API, Neon) in this
 // package goes through here so failures never fail silently or retry forever.
 
 export interface RetryOptions {

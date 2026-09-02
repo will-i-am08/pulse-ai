@@ -1,5 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { serviceClient } from "@pulse/shared";
+import { query } from "@pulse/shared";
 import type { Brand, Post } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import type { GraphAdapter } from "@pulse/graph";
@@ -13,7 +12,6 @@ import { writeApprovalLog } from "./approvalLog.js";
 import { MAX_PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_BASE_MINUTES, operatorPhone } from "../config.js";
 
 export interface PublishLoopDeps {
-  supabase: SupabaseClient;
   graph: GraphAdapter;
   sendToBrand: typeof sendToBrand;
   now: () => Date;
@@ -21,34 +19,39 @@ export interface PublishLoopDeps {
 
 export function defaultPublishLoopDeps(): PublishLoopDeps {
   return {
-    supabase: serviceClient(),
     graph: getGraphAdapter(),
     sendToBrand,
     now: () => new Date(),
   };
 }
 
-type PostWithBrand = Post & { brands: Brand };
+type PostWithBrand = Post & { brand: Brand | undefined };
 
-async function fetchDuePosts(supabase: SupabaseClient, now: Date): Promise<PostWithBrand[]> {
+async function fetchDuePosts(now: Date): Promise<PostWithBrand[]> {
   // status in ('approved','scheduled') and (scheduled_at is null or scheduled_at <= now())
-  const { data, error } = await supabase
-    .from("posts")
-    .select("*, brands(*)")
-    .in("status", ["approved", "scheduled"])
-    .or(`scheduled_at.is.null,scheduled_at.lte.${now.toISOString()}`)
-    .order("scheduled_at", { ascending: true, nullsFirst: true });
-  if (error) throw new Error(`fetchDuePosts failed: ${error.message}`);
-  return (data ?? []) as PostWithBrand[];
+  const posts = await query<Post>(
+    `select * from posts
+     where status in ('approved', 'scheduled')
+       and (scheduled_at is null or scheduled_at <= $1)
+     order by scheduled_at asc nulls first`,
+    [now.toISOString()],
+  );
+  if (posts.length === 0) return [];
+
+  const brandIds = [...new Set(posts.map((p) => p.brand_id))];
+  const brands = await query<Brand>(`select * from brands where id = any($1::uuid[])`, [brandIds]);
+  const brandById = new Map(brands.map((b) => [b.id, b]));
+
+  return posts.map((post) => ({ ...post, brand: brandById.get(post.brand_id) }));
 }
 
 /** Publish loop — runs every minute from src/index.ts. */
 export async function runPublishLoop(deps: PublishLoopDeps = defaultPublishLoopDeps()): Promise<void> {
-  const { supabase, now } = deps;
+  const { now } = deps;
 
   let due: PostWithBrand[];
   try {
-    due = await fetchDuePosts(supabase, now());
+    due = await fetchDuePosts(now());
   } catch (err) {
     logger.error("publish loop: failed to fetch due posts", { error: String(err) });
     return;
@@ -62,8 +65,8 @@ export async function runPublishLoop(deps: PublishLoopDeps = defaultPublishLoopD
 }
 
 async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<void> {
-  const { supabase, graph, sendToBrand: send } = deps;
-  const brand = post.brands;
+  const { graph, sendToBrand: send } = deps;
+  const brand = post.brand;
   if (!brand) {
     logger.error(`post ${post.id} has no linked brand — skipping`);
     return;
@@ -71,10 +74,10 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
 
   // Approval is absolute. This should never trip if the dashboard is behaving, but it's
   // the last line of defence before anything goes out to a real platform.
-  const approved = await hasApprovedLog(supabase, post.id);
+  const approved = await hasApprovedLog(post.id);
   if (!approved) {
     logger.error(`post ${post.id} is '${post.status}' but has no approval_log row with action='approved' — skipping`);
-    await writeApprovalLog(supabase, {
+    await writeApprovalLog({
       postId: post.id,
       brandId: brand.id,
       action: "publish_failed",
@@ -93,15 +96,18 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
 
   let mediaUrls: string[];
   try {
-    mediaUrls = await resolveMediaUrls(post.media_ids);
+    mediaUrls = await resolveMediaUrls(brand.id, post.media_ids);
   } catch (err) {
     logger.error(`post ${post.id}: failed to resolve media URLs`, { error: String(err) });
     return; // leave the post as-is; retried next tick, doesn't count against retry_count
   }
 
-  const { error: markErr } = await supabase.from("posts").update({ status: "publishing" }).eq("id", post.id);
-  if (markErr) {
-    logger.error(`post ${post.id}: failed to mark as publishing`, { error: markErr.message });
+  try {
+    await query(`update posts set status = $1 where id = $2 and brand_id = $3`, ["publishing", post.id, brand.id]);
+  } catch (err) {
+    logger.error(`post ${post.id}: failed to mark as publishing`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return;
   }
 
@@ -110,18 +116,14 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
       graph.publish({ brand, platform: post.platform, caption: post.caption ?? "", mediaUrls })
     );
 
-    const { error: updateErr } = await supabase
-      .from("posts")
-      .update({
-        status: "published",
-        published_at: deps.now().toISOString(),
-        external_post_id: result.externalPostId,
-        last_error: null,
-      })
-      .eq("id", post.id);
-    if (updateErr) throw new Error(`failed to persist published state: ${updateErr.message}`);
+    await query(
+      `update posts
+       set status = $1, published_at = $2, external_post_id = $3, last_error = null
+       where id = $4 and brand_id = $5`,
+      ["published", deps.now().toISOString(), result.externalPostId, post.id, brand.id],
+    );
 
-    await writeApprovalLog(supabase, {
+    await writeApprovalLog({
       postId: post.id,
       brandId: brand.id,
       action: "published",
@@ -141,7 +143,7 @@ async function handlePublishFailure(
   err: unknown,
   deps: PublishLoopDeps
 ): Promise<void> {
-  const { supabase, sendToBrand: send } = deps;
+  const { sendToBrand: send } = deps;
   const message = err instanceof Error ? err.message : String(err);
   const retryCount = (post.retry_count ?? 0) + 1;
   logger.error(`publish failed for post ${post.id} (attempt ${retryCount}/${MAX_PUBLISH_ATTEMPTS})`, {
@@ -149,12 +151,12 @@ async function handlePublishFailure(
   });
 
   if (retryCount >= MAX_PUBLISH_ATTEMPTS) {
-    await supabase
-      .from("posts")
-      .update({ status: "failed", retry_count: retryCount, last_error: message })
-      .eq("id", post.id);
+    await query(
+      `update posts set status = $1, retry_count = $2, last_error = $3 where id = $4 and brand_id = $5`,
+      ["failed", retryCount, message, post.id, brand.id],
+    );
 
-    await writeApprovalLog(supabase, {
+    await writeApprovalLog({
       postId: post.id,
       brandId: brand.id,
       action: "publish_failed",
@@ -171,8 +173,10 @@ async function handlePublishFailure(
   // Back off before the next attempt instead of hammering every tick: 2, 4, 8, ... minutes.
   const backoffMinutes = PUBLISH_BACKOFF_BASE_MINUTES * 2 ** (retryCount - 1);
   const nextAttemptAt = new Date(deps.now().getTime() + backoffMinutes * 60_000).toISOString();
-  await supabase
-    .from("posts")
-    .update({ status: "approved", retry_count: retryCount, last_error: message, scheduled_at: nextAttemptAt })
-    .eq("id", post.id);
+  await query(
+    `update posts
+     set status = $1, retry_count = $2, last_error = $3, scheduled_at = $4
+     where id = $5 and brand_id = $6`,
+    ["approved", retryCount, message, nextAttemptAt, post.id, brand.id],
+  );
 }

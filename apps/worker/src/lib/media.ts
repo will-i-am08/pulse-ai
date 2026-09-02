@@ -1,35 +1,27 @@
-import { serviceClient, MEDIA_BUCKET } from "@pulse/shared";
+import { query, publicMediaUrl } from "@pulse/shared";
 import { withRetry } from "./retry.js";
 
 /**
- * Resolve `media_assets.id[]` to signed, publicly-fetchable URLs Meta can pull from.
- * We never persist a provider's short-lived URL, but we also never persist ours long-lived
- * either — a fresh 1h signed URL is generated per publish attempt.
+ * Resolve `media_assets.id[]` (scoped to `brandId`) to the public URLs Meta fetches when
+ * publishing — `publicMediaUrl(id)` -> `${APP_BASE_URL}/api/media/{id}`, served by the
+ * dashboard's public media route backed by `media_blobs`. No signing needed: the route
+ * itself is public, so the URL is stable and deterministic.
  */
-export async function resolveMediaUrls(mediaIds: string[]): Promise<string[]> {
+export async function resolveMediaUrls(brandId: string, mediaIds: string[]): Promise<string[]> {
   if (mediaIds.length === 0) return [];
 
-  const supabase = serviceClient();
-  const { data, error } = await withRetry("media:lookup", async () => {
-    const res = await supabase.from("media_assets").select("id, storage_path").in("id", mediaIds);
-    if (res.error) throw new Error(res.error.message);
-    return res;
-  });
+  const rows = await withRetry("media:lookup", () =>
+    query<{ id: string }>(
+      `select id from media_assets where brand_id = $1 and id = any($2::uuid[])`,
+      [brandId, mediaIds],
+    )
+  );
 
-  const byId = new Map<string, string>((data ?? []).map((row: any) => [row.id as string, row.storage_path as string]));
-
+  const found = new Set(rows.map((row) => row.id));
   const urls: string[] = [];
   for (const id of mediaIds) {
-    const path = byId.get(id);
-    if (!path) throw new Error(`resolveMediaUrls: media asset ${id} not found`);
-    const signedUrl = await withRetry(`media:sign:${id}`, async () => {
-      const res = await supabase.storage.from(MEDIA_BUCKET).createSignedUrl(path, 3600);
-      if (res.error || !res.data?.signedUrl) {
-        throw new Error(res.error?.message ?? `failed to sign url for ${path}`);
-      }
-      return res.data.signedUrl;
-    });
-    urls.push(signedUrl);
+    if (!found.has(id)) throw new Error(`resolveMediaUrls: media asset ${id} not found`);
+    urls.push(publicMediaUrl(id));
   }
   return urls;
 }

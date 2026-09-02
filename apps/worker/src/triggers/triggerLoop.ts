@@ -1,5 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { serviceClient } from "@pulse/shared";
+import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { sendToBrand } from "@pulse/gateway";
@@ -10,37 +9,40 @@ import { runReport } from "./report.js";
 import { runReminder, getLastMediaReceivedAt } from "./reminder.js";
 import { runAlert, getFailuresSince } from "./alert.js";
 
-async function markSent(supabase: SupabaseClient, triggerId: string): Promise<void> {
-  const { error } = await supabase
-    .from("proactive_triggers")
-    .update({ last_sent_at: new Date().toISOString() })
-    .eq("id", triggerId);
-  if (error) throw new Error(`markSent failed: ${error.message}`);
+async function markSent(triggerId: string): Promise<void> {
+  await query(`update proactive_triggers set last_sent_at = $1 where id = $2`, [
+    new Date().toISOString(),
+    triggerId,
+  ]);
 }
 
-type TriggerWithBrand = ProactiveTrigger & { brands: Brand };
+type TriggerWithBrand = ProactiveTrigger & { brand: Brand | undefined };
 
-async function fetchEnabledTriggers(supabase: SupabaseClient): Promise<TriggerWithBrand[]> {
-  const { data, error } = await supabase.from("proactive_triggers").select("*, brands(*)").eq("enabled", true);
-  if (error) throw new Error(`fetchEnabledTriggers failed: ${error.message}`);
-  return (data ?? []) as TriggerWithBrand[];
+async function fetchEnabledTriggers(): Promise<TriggerWithBrand[]> {
+  const triggers = await query<ProactiveTrigger>(`select * from proactive_triggers where enabled = $1`, [true]);
+  if (triggers.length === 0) return [];
+
+  const brandIds = [...new Set(triggers.map((t) => t.brand_id))];
+  const brands = await query<Brand>(`select * from brands where id = any($1::uuid[])`, [brandIds]);
+  const brandById = new Map(brands.map((b) => [b.id, b]));
+
+  return triggers.map((t) => ({ ...t, brand: brandById.get(t.brand_id) }));
 }
 
 /** Proactive-triggers loop — runs every minute from src/index.ts. */
 export async function runTriggerLoop(now: () => Date = () => new Date()): Promise<void> {
-  const supabase = serviceClient();
   const graph = getGraphAdapter();
 
   let triggers: TriggerWithBrand[];
   try {
-    triggers = await fetchEnabledTriggers(supabase);
+    triggers = await fetchEnabledTriggers();
   } catch (err) {
     logger.error("trigger loop: failed to fetch triggers", { error: String(err) });
     return;
   }
 
   for (const trigger of triggers) {
-    const brand = trigger.brands;
+    const brand = trigger.brand;
     if (!brand || brand.status !== "active") continue;
 
     let due: boolean;
@@ -56,28 +58,28 @@ export async function runTriggerLoop(now: () => Date = () => new Date()): Promis
       switch (trigger.kind) {
         case "checkin":
           await runCheckin(brand, trigger, {
-            getLastInboundAt: (brandId) => getLastInboundAt(supabase, brandId),
+            getLastInboundAt,
             sendToBrand,
-            markSent: (id) => markSent(supabase, id),
+            markSent,
             now,
           });
           break;
         case "report":
-          await runReport(brand, trigger, { supabase, graph, sendToBrand, markSent: (id) => markSent(supabase, id), now });
+          await runReport(brand, trigger, { graph, sendToBrand, markSent, now });
           break;
         case "reminder":
           await runReminder(brand, trigger, {
-            getLastMediaReceivedAt: (brandId) => getLastMediaReceivedAt(supabase, brandId),
+            getLastMediaReceivedAt,
             sendToBrand,
-            markSent: (id) => markSent(supabase, id),
+            markSent,
             now,
           });
           break;
         case "alert":
           await runAlert(brand, trigger, {
-            getFailuresSince: (brandId, since) => getFailuresSince(supabase, brandId, since),
+            getFailuresSince,
             sendToBrand,
-            markSent: (id) => markSent(supabase, id),
+            markSent,
             now,
           });
           break;

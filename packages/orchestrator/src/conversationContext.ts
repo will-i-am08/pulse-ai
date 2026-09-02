@@ -1,4 +1,4 @@
-import { serviceClient } from "@pulse/shared";
+import { query, queryOne } from "@pulse/shared";
 import type { Message } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
@@ -14,24 +14,18 @@ function formatMessage(m: Message): string {
 }
 
 export async function buildConversationContext(brandId: string, limit = DEFAULT_LIMIT): Promise<string> {
-  const db = serviceClient();
+  const recentRows = await query<Message>(
+    `select * from messages where brand_id = $1 order by created_at desc limit $2`,
+    [brandId, limit],
+  );
+  const recent = recentRows.reverse();
 
-  const { data: recentData, error: recentErr } = await db
-    .from("messages")
-    .select("*")
-    .eq("brand_id", brandId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (recentErr) throw recentErr;
-  const recent = ((recentData as Message[] | null) ?? []).reverse();
+  const countRow = await queryOne<{ count: string }>(
+    `select count(*) as count from messages where brand_id = $1`,
+    [brandId],
+  );
 
-  const { count, error: countErr } = await db
-    .from("messages")
-    .select("id", { count: "exact", head: true })
-    .eq("brand_id", brandId);
-  if (countErr) throw countErr;
-
-  const total = count ?? recent.length;
+  const total = countRow ? Number(countRow.count) : recent.length;
   const recentText = recent.map(formatMessage).join("\n") || "(no conversation history yet)";
 
   const olderCount = total - recent.length;
@@ -39,14 +33,10 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
     return recentText;
   }
 
-  const { data: olderData, error: olderErr } = await db
-    .from("messages")
-    .select("*")
-    .eq("brand_id", brandId)
-    .order("created_at", { ascending: true })
-    .limit(olderCount);
-  if (olderErr) throw olderErr;
-  const older = (olderData as Message[] | null) ?? [];
+  const older = await query<Message>(
+    `select * from messages where brand_id = $1 order by created_at asc limit $2`,
+    [brandId, olderCount],
+  );
 
   let summary = `(${older.length} earlier messages)`;
   if (older.length > 0) {

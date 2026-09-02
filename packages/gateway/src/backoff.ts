@@ -1,5 +1,5 @@
 // Small retry-with-backoff helper for wrapping flaky external calls
-// (Twilio send, media fetch, Supabase Storage upload, ...). Exponential
+// (Twilio send, media fetch, putMedia, ...). Exponential
 // delay with jitter; never retries indefinitely.
 
 export interface BackoffOptions {

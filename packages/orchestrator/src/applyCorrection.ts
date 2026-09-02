@@ -1,14 +1,13 @@
-import { serviceClient, brandVoiceProfileSchema } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
 import type { Brand } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
 async function loadBrand(brandId: string): Promise<Brand> {
-  const db = serviceClient();
-  const { data, error } = await db.from("brands").select("*").eq("id", brandId).single();
-  if (error || !data) {
-    throw new Error(`applyCorrection: brand not found (${brandId}): ${error?.message ?? "no row"}`);
+  const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
+  if (!brand) {
+    throw new Error(`applyCorrection: brand not found (${brandId}): no row`);
   }
-  return data as Brand;
+  return brand;
 }
 
 /** One LLM call to turn a before/after caption pair into a reusable style rule. */
@@ -43,15 +42,11 @@ export async function applyCorrection(
   before: string,
   after: string,
 ): Promise<void> {
-  const db = serviceClient();
-
-  const { error: insertErr } = await db.from("corrections").insert({
-    brand_id: brandId,
-    post_id: postId,
-    before_caption: before,
-    after_caption: after,
-  });
-  if (insertErr) throw insertErr;
+  await query(
+    `insert into corrections (brand_id, post_id, before_caption, after_caption)
+     values ($1, $2, $3, $4)`,
+    [brandId, postId, before, after],
+  );
 
   if (before.trim() === after.trim()) return; // nothing to learn
 
@@ -71,9 +66,8 @@ export async function applyCorrection(
     notes: [...profile.notes, learnedNote].slice(-50), // keep the note list bounded
   });
 
-  const { error: updateErr } = await db
-    .from("brands")
-    .update({ brand_voice_profile: nextProfile })
-    .eq("id", brandId);
-  if (updateErr) throw updateErr;
+  await query(
+    `update brands set brand_voice_profile = $1::jsonb where id = $2`,
+    [JSON.stringify(nextProfile), brandId],
+  );
 }

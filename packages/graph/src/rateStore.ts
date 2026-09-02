@@ -1,4 +1,4 @@
-import { serviceClient } from "@pulse/shared";
+import { queryOne } from "@pulse/shared";
 import type { Brand, Platform } from "@pulse/shared";
 
 /**
@@ -8,19 +8,22 @@ import type { Brand, Platform } from "@pulse/shared";
  * the last N hours" endpoint, so we track it ourselves.
  */
 export async function countPublished24h(brand: Brand, platform: Platform): Promise<number> {
-  const supabase = serviceClient();
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const { count, error } = await supabase
-    .from("posts")
-    .select("id", { count: "exact", head: true })
-    .eq("brand_id", brand.id)
-    .eq("platform", platform)
-    .eq("status", "published")
-    .gte("published_at", since);
-
-  if (error) {
-    throw new Error(`countPublished24h failed for brand ${brand.id}/${platform}: ${error.message}`);
+  try {
+    const row = await queryOne<{ count: string }>(
+      `select count(*) as count
+       from posts
+       where brand_id = $1
+         and platform = $2
+         and status = $3
+         and published_at >= $4`,
+      [brand.id, platform, "published", since],
+    );
+    return Number(row?.count ?? 0);
+  } catch (err) {
+    throw new Error(
+      `countPublished24h failed for brand ${brand.id}/${platform}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
-  return count ?? 0;
 }

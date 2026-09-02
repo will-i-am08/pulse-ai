@@ -1,4 +1,4 @@
-import { serviceClient, brandVoiceProfileSchema } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post } from "@pulse/shared";
 import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
@@ -25,23 +25,17 @@ function toDbMessageType(c: InboundClassification): NonNullable<Message["type"]>
 }
 
 async function getLatestPendingPost(brandId: string): Promise<Post | null> {
-  const db = serviceClient();
-  const { data, error } = await db
-    .from("posts")
-    .select("*")
-    .eq("brand_id", brandId)
-    .eq("status", "pending_approval")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return (data as Post | null) ?? null;
+  return queryOne<Post>(
+    `select * from posts
+     where brand_id = $1 and status = 'pending_approval'
+     order by created_at desc
+     limit 1`,
+    [brandId],
+  );
 }
 
 async function updateMessageType(messageId: string, type: NonNullable<Message["type"]>): Promise<void> {
-  const db = serviceClient();
-  const { error } = await db.from("messages").update({ type }).eq("id", messageId);
-  if (error) throw error;
+  await query(`update messages set type = $1 where id = $2`, [type, messageId]);
 }
 
 async function reviseCaption(brand: Brand, currentCaption: string, instruction: string): Promise<string> {
@@ -98,7 +92,6 @@ export async function processInbound(
   ctx: InboundContext,
 ): Promise<{ reply: string; postId?: string }> {
   const { brand, message, newMedia } = ctx;
-  const db = serviceClient();
 
   const pending = await getLatestPendingPost(brand.id);
 
@@ -123,30 +116,24 @@ export async function processInbound(
       const mediaIds = newMedia.map((m) => m.id);
       const { caption, proposedTime } = await draftCaption(brand.id, mediaIds);
 
-      const { data: postRow, error: postErr } = await db
-        .from("posts")
-        .insert({
-          brand_id: brand.id,
-          caption,
-          media_ids: mediaIds,
-          platform: "instagram",
-          status: "pending_approval",
-          scheduled_at: proposedTime,
-        })
-        .select()
-        .single();
-      if (postErr || !postRow) throw postErr ?? new Error("Failed to insert post");
-      const post = postRow as Post;
+      const post = await queryOne<Post>(
+        `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at)
+         values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4)
+         returning *`,
+        [brand.id, caption, mediaIds, proposedTime],
+      );
+      if (!post) throw new Error("Failed to insert post");
 
-      const { error: logErr } = await db.from("approval_log").insert({
-        post_id: post.id,
-        brand_id: brand.id,
-        action: "draft_created",
-        actor: "system",
-        after: { caption, proposed_time: proposedTime },
-        note: "Drafted from inbound media message",
-      });
-      if (logErr) throw logErr;
+      await query(
+        `insert into approval_log (post_id, brand_id, action, actor, after, note)
+         values ($1, $2, 'draft_created', 'system', $3::jsonb, $4)`,
+        [
+          post.id,
+          brand.id,
+          JSON.stringify({ caption, proposed_time: proposedTime }),
+          "Drafted from inbound media message",
+        ],
+      );
 
       const timeLine = proposedTime ? `\nProposed time: ${proposedTime}` : "";
       return {
@@ -168,23 +155,23 @@ export async function processInbound(
       // Records the correction + folds the delta into brand_voice_profile.notes.
       await applyCorrection(brand.id, pending.id, before, after);
 
-      const { error: updateErr } = await db
-        .from("posts")
-        .update({ caption: after })
-        .eq("id", pending.id)
-        .eq("brand_id", brand.id);
-      if (updateErr) throw updateErr;
+      await query(
+        `update posts set caption = $1 where id = $2 and brand_id = $3`,
+        [after, pending.id, brand.id],
+      );
 
-      const { error: logErr } = await db.from("approval_log").insert({
-        post_id: pending.id,
-        brand_id: brand.id,
-        action: "edited",
-        actor: brand.approver,
-        before: { caption: before },
-        after: { caption: after },
-        note: "Edited via inbound correction",
-      });
-      if (logErr) throw logErr;
+      await query(
+        `insert into approval_log (post_id, brand_id, action, actor, before, after, note)
+         values ($1, $2, 'edited', $3, $4::jsonb, $5::jsonb, $6)`,
+        [
+          pending.id,
+          brand.id,
+          brand.approver,
+          JSON.stringify({ caption: before }),
+          JSON.stringify({ caption: after }),
+          "Edited via inbound correction",
+        ],
+      );
 
       return {
         reply: `Updated:\n\n"${after}"\n\nReply "yes" to approve.`,
@@ -199,21 +186,16 @@ export async function processInbound(
 
       // Approval is absolute (BUILD_CONTRACTS.md): we may set 'approved', but
       // never 'publishing'/'published' — that stays the worker's job.
-      const { error: approveErr } = await db
-        .from("posts")
-        .update({ status: "approved" })
-        .eq("id", pending.id)
-        .eq("brand_id", brand.id);
-      if (approveErr) throw approveErr;
+      await query(
+        `update posts set status = 'approved' where id = $1 and brand_id = $2`,
+        [pending.id, brand.id],
+      );
 
-      const { error: logErr } = await db.from("approval_log").insert({
-        post_id: pending.id,
-        brand_id: brand.id,
-        action: "approved",
-        actor: brand.approver,
-        note: "Approved via inbound message",
-      });
-      if (logErr) throw logErr;
+      await query(
+        `insert into approval_log (post_id, brand_id, action, actor, note)
+         values ($1, $2, 'approved', $3, $4)`,
+        [pending.id, brand.id, brand.approver, "Approved via inbound message"],
+      );
 
       return { reply: "Approved — this'll go out at the scheduled time.", postId: pending.id };
     }

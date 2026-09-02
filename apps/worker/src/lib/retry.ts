@@ -1,5 +1,5 @@
-// Retry-with-backoff for every external call the worker makes directly (Supabase reads/
-// writes, media URL signing). @pulse/graph has its own copy for its own external calls.
+// Retry-with-backoff for every external call the worker makes directly (Neon reads/
+// writes, media URL lookups). @pulse/graph has its own copy for its own external calls.
 
 export interface RetryOptions {
   attempts?: number;

@@ -1,16 +1,13 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { queryOne } from "@pulse/shared";
 
 /**
  * Approval is absolute: never publish a post without a logged `approved` action.
  * This is the runtime assertion the worker checks immediately before every publish.
  */
-export async function hasApprovedLog(supabase: SupabaseClient, postId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("approval_log")
-    .select("id")
-    .eq("post_id", postId)
-    .eq("action", "approved")
-    .limit(1);
-  if (error) throw new Error(`hasApprovedLog failed: ${error.message}`);
-  return (data?.length ?? 0) > 0;
+export async function hasApprovedLog(postId: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `select id from approval_log where post_id = $1 and action = $2 limit 1`,
+    [postId, "approved"],
+  );
+  return row !== null;
 }

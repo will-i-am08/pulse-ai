@@ -1,4 +1,4 @@
-import { serviceClient, brandVoiceProfileSchema } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
@@ -8,35 +8,23 @@ export interface DraftCaptionResult {
 }
 
 async function loadBrand(brandId: string): Promise<Brand> {
-  const db = serviceClient();
-  const { data, error } = await db.from("brands").select("*").eq("id", brandId).single();
-  if (error || !data) {
-    throw new Error(`draftCaption: brand not found (${brandId}): ${error?.message ?? "no row"}`);
+  const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
+  if (!brand) {
+    throw new Error(`draftCaption: brand not found (${brandId}): no row`);
   }
-  return data as Brand;
+  return brand;
 }
 
 async function loadStrategyNotes(brandId: string): Promise<StrategyNote | null> {
-  const db = serviceClient();
-  const { data, error } = await db
-    .from("strategy_notes")
-    .select("*")
-    .eq("brand_id", brandId)
-    .maybeSingle();
-  if (error) throw error;
-  return (data as StrategyNote | null) ?? null;
+  return queryOne<StrategyNote>(`select * from strategy_notes where brand_id = $1`, [brandId]);
 }
 
 async function loadMedia(brandId: string, mediaIds: string[]): Promise<MediaAsset[]> {
   if (mediaIds.length === 0) return [];
-  const db = serviceClient();
-  const { data, error } = await db
-    .from("media_assets")
-    .select("*")
-    .eq("brand_id", brandId)
-    .in("id", mediaIds);
-  if (error) throw error;
-  return (data as MediaAsset[] | null) ?? [];
+  return query<MediaAsset>(
+    `select * from media_assets where brand_id = $1 and id = any($2::uuid[])`,
+    [brandId, mediaIds],
+  );
 }
 
 function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {

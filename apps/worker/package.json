@@ -14,7 +14,6 @@
     "@pulse/gateway": "workspace:*",
     "@pulse/graph": "workspace:*",
     "@pulse/shared": "workspace:*",
-    "@supabase/supabase-js": "^2.45.4",
     "cron-parser": "^4.9.0",
     "node-cron": "^3.0.3"
   },

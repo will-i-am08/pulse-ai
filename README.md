@@ -22,19 +22,21 @@ pulse-agent/  (pnpm workspaces)
 ├── apps/
 │   ├── web/              @pulse/web           Next.js dashboard + inbound webhook → Vercel
 │   └── worker/           @pulse/worker        publish loop + scheduler → Railway
-└── supabase/migrations/  0001_init.sql        canonical schema
+└── db/migrations/        0001_init.sql        canonical schema (Neon Postgres)
 ```
 
 - **Vercel** hosts the dashboard + inbound webhook (serverless, takes the traffic).
 - **Railway** hosts the persistent worker (publish polling, retry/backoff, proactive triggers).
-- **Supabase** is the shared spine (Postgres, Auth, Storage).
+- **Neon** is the Postgres database; media bytes live in Postgres and are served
+  from the dashboard's public `/api/media/[id]` route. Operator auth is a
+  single-user password gate.
 
 ## Quick start
 
 ```bash
 pnpm install
 cp .env.example .env   # fill it in — see docs/RUNBOOK.md
-# apply the schema to your Supabase project (see RUNBOOK)
+# apply the schema to Neon:  pnpm exec tsx --env-file=.env scripts/migrate.ts
 pnpm typecheck
 pnpm dev:web      # dashboard on :3000
 pnpm dev:worker   # worker loop

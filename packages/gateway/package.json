@@ -14,8 +14,7 @@
   "dependencies": {
     "@pulse/channel-twilio": "workspace:*",
     "@pulse/orchestrator": "workspace:*",
-    "@pulse/shared": "workspace:*",
-    "@supabase/supabase-js": "^2.45.4"
+    "@pulse/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

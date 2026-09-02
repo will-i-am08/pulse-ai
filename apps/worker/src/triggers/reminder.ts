@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import { logger } from "../lib/logger.js";
 
@@ -41,14 +41,13 @@ export async function runReminder(brand: Brand, trigger: ProactiveTrigger, deps:
   await deps.markSent(trigger.id);
 }
 
-export async function getLastMediaReceivedAt(supabase: SupabaseClient, brandId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("media_assets")
-    .select("created_at")
-    .eq("brand_id", brandId)
-    .eq("source", "client")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (error) throw new Error(`getLastMediaReceivedAt failed: ${error.message}`);
-  return (data?.[0]?.created_at as string | undefined) ?? null;
+export async function getLastMediaReceivedAt(brandId: string): Promise<string | null> {
+  const rows = await query<{ created_at: string }>(
+    `select created_at from media_assets
+     where brand_id = $1 and source = $2
+     order by created_at desc
+     limit 1`,
+    [brandId, "client"],
+  );
+  return rows[0]?.created_at ?? null;
 }
