@@ -100,18 +100,24 @@ export async function startOnboarding(brandId: string): Promise<string> {
     if (summary) answers.website_summary = summary;
   }
 
-  const state: OnboardingState = { status: "in_progress", step: 0, answers };
-  await saveState(brand.id, state);
-
   const hello = brand.name ? `Hi ${brand.name}! ` : "Hi! ";
   const seen = answers.website_summary
     ? " I had a quick look at your website, so this'll be short."
     : "";
-  return (
+  const intro =
     `${hello}I'm your Pulse agent — I'll turn your photos into on-brand posts.` +
-    ` Let's get you set up (takes a minute).${seen}\n\n` +
-    `First: is this for a **business** or a **personal** account?`
-  );
+    ` Let's get you set up (takes a minute).${seen}`;
+
+  // account_type is captured at signup — don't ask it again; go straight to Q1.
+  if (brand.account_type) {
+    await saveState(brand.id, { status: "in_progress", type: brand.account_type, step: 1, answers });
+    const q = questionsFor(brand.account_type)[0]!;
+    return `${intro}\n\n${q.text}`;
+  }
+
+  // Fallback (no type on the brand): ask business vs personal first.
+  await saveState(brand.id, { status: "in_progress", step: 0, answers });
+  return `${intro}\n\nFirst: is this for a **business** or a **personal** account?`;
 }
 
 /** Handle one message during onboarding. Returns the reply and whether setup is complete. */
