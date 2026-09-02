@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getBrand } from '@/lib/data/brands';
+import { getBrandForUser } from '@/lib/data/brands';
+import { currentUser } from '@/lib/auth/current-user';
 import { updateBrandVoiceAction } from '@/lib/actions/voice';
 
 export default async function BrandVoicePage({ params }: { params: Promise<{ brandId: string }> }) {
   const { brandId } = await params;
-  const brand = await getBrand(brandId);
+  const user = await currentUser();
+  if (!user) notFound();
+  const brand = await getBrandForUser(brandId, user);
   if (!brand) notFound();
 
   const voice = brand.brand_voice_profile;

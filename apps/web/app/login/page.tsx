@@ -1,30 +1,34 @@
+import Link from 'next/link';
 import { loginAction } from '@/lib/actions/auth';
+import styles from '../auth.module.css';
+
+export const metadata = { title: 'Log in — Pulse' };
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; redirectTo?: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
-  const { error, redirectTo } = await searchParams;
+  const { error } = await searchParams;
 
   return (
-    <div className="auth-shell">
-      <div className="auth-card">
-        <h1>Pulse Operator Console</h1>
-        <p className="hint">Enter the operator password to continue.</p>
-
-        <form action={loginAction} className="form">
-          <input type="hidden" name="redirectTo" value={redirectTo && redirectTo.startsWith('/') ? redirectTo : '/app'} />
-          <label>
-            Password
-            <input type="password" name="password" required autoFocus />
-          </label>
-          <button type="submit" className="btn-primary">
-            Sign in
-          </button>
-          {error && <p className="error">Incorrect password.</p>}
-        </form>
-      </div>
-    </div>
+    <main className={styles.wrap}>
+      <form className={styles.card} action={loginAction}>
+        <h1 className={styles.h1}>Log in</h1>
+        {error && <p className={styles.error}>Wrong email or password.</p>}
+        <label className={styles.label}>
+          Email
+          <input className={styles.input} type="email" name="email" required autoComplete="email" />
+        </label>
+        <label className={styles.label}>
+          Password
+          <input className={styles.input} type="password" name="password" required autoComplete="current-password" />
+        </label>
+        <button className={styles.button} type="submit">Log in</button>
+        <p className={styles.alt}>
+          New here? <Link href="/signup">Create an account</Link>
+        </p>
+      </form>
+    </main>
   );
 }

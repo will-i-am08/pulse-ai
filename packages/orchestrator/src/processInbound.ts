@@ -4,6 +4,7 @@ import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
+import { onboardingTurn } from "./onboarding.js";
 import { callLLM } from "./llm.js";
 
 export type InboundContext = {
@@ -92,6 +93,12 @@ export async function processInbound(
   ctx: InboundContext,
 ): Promise<{ reply: string; postId?: string }> {
   const { brand, message, newMedia } = ctx;
+
+  // Mid-onboarding: run the setup conversation instead of the normal flow.
+  if (brand.onboarding_state?.status === "in_progress") {
+    const { reply } = await onboardingTurn(brand, message.body ?? "");
+    return { reply };
+  }
 
   const pending = await getLatestPendingPost(brand.id);
 

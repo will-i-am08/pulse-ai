@@ -1,13 +1,25 @@
 import 'server-only';
 import { query, queryOne } from '@pulse/shared';
-import type { Approver, Brand, BrandStatus, BrandVoiceProfile } from '@pulse/shared';
+import type { Approver, Brand, BrandStatus, BrandVoiceProfile, User } from '@pulse/shared';
 
 export async function listBrands(): Promise<Brand[]> {
   return query<Brand>(`select * from brands order by created_at desc`);
 }
 
+export async function listBrandsForOwner(ownerId: string): Promise<Brand[]> {
+  return query<Brand>(`select * from brands where owner_user_id = $1 order by created_at desc`, [ownerId]);
+}
+
 export async function getBrand(brandId: string): Promise<Brand | null> {
   return queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
+}
+
+/** Load a brand only if the user owns it (or is admin). Returns null otherwise. */
+export async function getBrandForUser(brandId: string, user: User): Promise<Brand | null> {
+  const brand = await getBrand(brandId);
+  if (!brand) return null;
+  if (user.is_admin || brand.owner_user_id === user.id) return brand;
+  return null;
 }
 
 export async function insertBrand(input: {

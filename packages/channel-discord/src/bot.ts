@@ -13,6 +13,7 @@ import {
   type Post,
 } from "@pulse/shared";
 import { setActiveChannel, handleInbound, sendToBrand } from "@pulse/gateway";
+import { startOnboarding } from "@pulse/orchestrator";
 import { getGraphAdapter } from "@pulse/graph";
 import { createDiscordChannel } from "./discord-channel.js";
 
@@ -98,6 +99,34 @@ async function publishApproved(): Promise<void> {
 }
 setInterval(() => {
   publishApproved().catch((err) => console.error("[discord] publish loop error", err));
+}, 5000);
+
+// Signup-driven onboarding: DM newly signed-up users first and run setup.
+async function initiatePendingOnboarding(): Promise<void> {
+  const pending = await query<Brand>(
+    "select * from brands where onboarding_state->>'status' = 'pending' and discord_user_id is not null",
+  );
+  for (const brand of pending) {
+    try {
+      const user = await client.users.fetch(brand.discord_user_id!);
+      const dm = await user.createDM();
+      // Link the DM channel so their replies route back to this brand.
+      await query("update brands set discord_channel_id = $2 where id = $1", [brand.id, dm.id]);
+      const greeting = await startOnboarding(brand.id);
+      await dm.send(greeting);
+      console.log(`[discord] started onboarding for "${brand.name}" (user ${brand.discord_user_id})`);
+    } catch (err) {
+      console.error(`[discord] failed to start onboarding for brand ${brand.id}`, err);
+      // Park it so we don't hammer a bad user id every tick.
+      await query(
+        "update brands set onboarding_state = jsonb_set(onboarding_state, '{status}', '\"none\"') where id = $1",
+        [brand.id],
+      ).catch(() => {});
+    }
+  }
+}
+setInterval(() => {
+  initiatePendingOnboarding().catch((err) => console.error("[discord] onboarding loop error", err));
 }, 5000);
 
 client.login(env.DISCORD_BOT_TOKEN);

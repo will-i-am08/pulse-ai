@@ -9,6 +9,11 @@ function fakeBrand(): Brand {
     name: "Test Brand",
     client_phone: "+61400000000",
     discord_channel_id: null,
+    discord_user_id: null,
+    owner_user_id: null,
+    account_type: null,
+    website: null,
+    onboarding_state: { status: "none" as const },
     brand_voice_profile: {
       tone: [],
       dos: [],

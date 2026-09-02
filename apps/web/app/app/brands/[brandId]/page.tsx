@@ -1,13 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getBrand } from '@/lib/data/brands';
+import { getBrandForUser } from '@/lib/data/brands';
+import { currentUser } from '@/lib/auth/current-user';
 import { listPostsByStatus } from '@/lib/data/posts';
 import { getMediaPreviews } from '@/lib/data/media';
 import { approvePostAction, editAndApprovePostAction, rejectPostAction } from '@/lib/actions/approvals';
 
 export default async function BrandDetailPage({ params }: { params: Promise<{ brandId: string }> }) {
   const { brandId } = await params;
-  const brand = await getBrand(brandId);
+  const user = await currentUser();
+  if (!user) notFound();
+  const brand = await getBrandForUser(brandId, user);
   if (!brand) notFound();
 
   const pending = await listPostsByStatus(brandId, ['pending_approval']);

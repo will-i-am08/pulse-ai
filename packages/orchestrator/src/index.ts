@@ -10,6 +10,8 @@ export { seedBrandVoice } from "./seedBrandVoice.js";
 
 export { buildConversationContext } from "./conversationContext.js";
 
+export { startOnboarding, onboardingTurn } from "./onboarding.js";
+
 export { callLLM } from "./llm.js";
 export type { CallLLMOptions } from "./llm.js";
 

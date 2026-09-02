@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isValidSessionCookie, SESSION_COOKIE_NAME } from '@/lib/auth/session';
+import { verifySessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 // Only the operator console under /app requires a session. The marketing
 // landing (/), privacy, login, and the public webhook + media routes are open.
@@ -20,7 +20,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const authed = await isValidSessionCookie(cookieValue, authSecret);
+  const authed = (await verifySessionValue(cookieValue, authSecret)) !== null;
 
   if (protectedPath && !authed) {
     const url = request.nextUrl.clone();

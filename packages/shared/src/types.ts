@@ -66,11 +66,37 @@ export const emptyBrandVoiceProfile = (): BrandVoiceProfile =>
   brandVoiceProfileSchema.parse({});
 
 // ─── Row shapes (mirror the tables in 0001_init.sql) ────────
+export type AccountType = "business" | "personal";
+
+export type OnboardingStatus = "none" | "pending" | "in_progress" | "done";
+
+export interface OnboardingState {
+  status: OnboardingStatus;
+  step?: number;
+  type?: AccountType;
+  answers?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  is_admin: boolean;
+  password_hash?: string;
+  created_at: string;
+}
+
 export interface Brand {
   id: string;
   name: string;
   client_phone: string;
   discord_channel_id: string | null;
+  discord_user_id: string | null;
+  owner_user_id: string | null;
+  account_type: AccountType | null;
+  website: string | null;
+  onboarding_state: OnboardingState;
   brand_voice_profile: BrandVoiceProfile;
   ig_user_id: string | null;
   fb_page_id: string | null;
