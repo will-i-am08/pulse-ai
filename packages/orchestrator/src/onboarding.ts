@@ -5,41 +5,39 @@ import {
   type AccountType,
   type Brand,
   type OnboardingState,
+  type OnboardingTurnMsg,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
-// Fixed, ordered question sets — deterministic and reliable. The LLM handles
-// parsing the business/personal choice, reading the website, and compiling the
-// final profile; the questions themselves are asked verbatim, one at a time.
-interface Question {
-  key: string;
-  text: string;
-}
+// Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
+// agent reads each answer, reacts, digs deeper, and decides its own next
+// question, then compiles a voice profile from the whole conversation.
 
-const BUSINESS_QUESTIONS: Question[] = [
-  { key: "what", text: "What does the business do — what do you sell or offer?" },
-  { key: "audience", text: "Who's your ideal customer or audience?" },
-  { key: "tone", text: "How should your posts *sound*? (e.g. warm, playful, professional, bold)" },
-  { key: "dos_donts", text: "Anything you always want in your posts, or never want? (do's and don'ts)" },
-  { key: "examples", text: "Paste one or two captions whose style you love — or say 'skip'." },
-  { key: "hashtags_emojis", text: "Hashtags and emojis — love them, hate them, or just a few?" },
-];
-
-const PERSONAL_QUESTIONS: Question[] = [
-  { key: "what", text: "What's your account about — your niche or what you post?" },
-  { key: "audience", text: "Who follows you, or who do you want to reach?" },
-  { key: "tone", text: "What's your vibe? (e.g. funny, aesthetic, motivational, chill)" },
-  { key: "dos_donts", text: "Anything you always want in your posts, or never want?" },
-  { key: "examples", text: "Any posts whose style you love? Paste one or two — or say 'skip'." },
-  { key: "hashtags_emojis", text: "Emojis and hashtags — how do you feel about them?" },
-];
-
-function questionsFor(type: AccountType): Question[] {
-  return type === "business" ? BUSINESS_QUESTIONS : PERSONAL_QUESTIONS;
-}
+const MAX_ANSWERS = 8; // force a wrap-up if it hasn't finished by here
 
 async function saveState(brandId: string, state: OnboardingState): Promise<void> {
   await query("update brands set onboarding_state = $2::jsonb where id = $1", [brandId, JSON.stringify(state)]);
+}
+
+function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
+  const kind = type === "personal" ? "personal social-media account" : "business";
+  return [
+    `You are Pulse — a warm, sharp onboarding interviewer setting up a social-media agent for "${brand.name}" (a ${kind}).`,
+    websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
+    "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone/voice, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
+    "RULES:",
+    "- Ask ONE question at a time.",
+    "- Actually read and build on each answer — reference what they just said, and dig deeper when something is interesting, surprising, or vague. Don't sound like a form.",
+    "- Keep every message short and human, like a text (1-3 sentences). No bullet lists.",
+    "- Never re-ask something you already know (including from the website).",
+    `- When you genuinely have enough for a strong profile, reply with a line that STARTS EXACTLY with "SETUP_COMPLETE:" followed by a short, warm sign-off (tell them to send a photo anytime).`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toMessages(transcript: OnboardingTurnMsg[]): { role: "user" | "assistant"; content: string }[] {
+  return transcript.map((t) => ({ role: t.role, content: t.content }));
 }
 
 /** Strip a web page to rough text, then summarise the brand from it (best-effort). */
@@ -68,116 +66,86 @@ async function readWebsite(url: string): Promise<string | null> {
   }
 }
 
-function parseAccountTypeKeyword(body: string): AccountType | null {
-  const b = body.toLowerCase();
-  if (/\b(business|company|shop|store|brand|cafe|café|agency|firm|studio)\b/.test(b)) return "business";
-  if (/\b(personal|myself|my own|just me|individual|creator|influencer)\b/.test(b)) return "personal";
-  return null;
-}
-
-async function parseAccountType(body: string): Promise<AccountType> {
-  const kw = parseAccountTypeKeyword(body);
-  if (kw) return kw;
-  const out = await callLLM({
-    system: 'Reply with exactly one word: "business" or "personal".',
-    messages: [{ role: "user", content: `Is this a business or personal account? Message: "${body}"` }],
-    maxTokens: 5,
-  });
-  return out.toLowerCase().includes("person") ? "personal" : "business";
-}
-
-/**
- * Begin onboarding for a pending brand: read the website if present, set state
- * in_progress, and return the greeting + first question (business vs personal).
- */
+/** Begin onboarding: read the website if present, then open the conversation (LLM-generated). */
 export async function startOnboarding(brandId: string): Promise<string> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) throw new Error(`startOnboarding: brand ${brandId} not found`);
+  const type: AccountType = brand.account_type ?? "business";
 
-  const answers: Record<string, string> = {};
+  let websiteSummary: string | undefined;
   if (brand.website) {
-    const summary = await readWebsite(brand.website);
-    if (summary) answers.website_summary = summary;
+    websiteSummary = (await readWebsite(brand.website)) ?? undefined;
   }
 
-  const hello = brand.name ? `Hi ${brand.name}! ` : "Hi! ";
-  const seen = answers.website_summary
-    ? " I had a quick look at your website, so this'll be short."
-    : "";
-  const intro =
-    `${hello}I'm your Pulse agent — I'll turn your photos into on-brand posts.` +
-    ` Let's get you set up (takes a minute).${seen}`;
+  const system = interviewerSystem(brand, type, websiteSummary);
+  const seed: OnboardingTurnMsg = {
+    role: "user",
+    content:
+      "Start the onboarding now: greet them by name, and — if you learned things from their website — briefly reflect that back before asking your first, most useful question.",
+  };
+  const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
 
-  // account_type is captured at signup — don't ask it again; go straight to Q1.
-  if (brand.account_type) {
-    await saveState(brand.id, { status: "in_progress", type: brand.account_type, step: 1, answers });
-    const q = questionsFor(brand.account_type)[0]!;
-    return `${intro}\n\n${q.text}`;
-  }
-
-  // Fallback (no type on the brand): ask business vs personal first.
-  await saveState(brand.id, { status: "in_progress", step: 0, answers });
-  return `${intro}\n\nFirst: is this for a **business** or a **personal** account?`;
+  const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];
+  const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
+  await saveState(brand.id, { status: "in_progress", type, turns: 0, transcript, answers });
+  return opening;
 }
 
-/** Handle one message during onboarding. Returns the reply and whether setup is complete. */
+/** One conversational turn. Returns the agent's reply and whether setup is complete. */
 export async function onboardingTurn(brand: Brand, body: string): Promise<{ reply: string; done: boolean }> {
   const prev = brand.onboarding_state ?? { status: "in_progress" };
+  const type: AccountType = prev.type ?? brand.account_type ?? "business";
+  const transcript: OnboardingTurnMsg[] = [...(prev.transcript ?? [])];
   const answers: Record<string, string> = { ...(prev.answers ?? {}) };
-  const step = prev.step ?? 0;
+  const turns = (prev.turns ?? 0) + 1;
 
-  // Step 0: they're telling us business vs personal.
-  if (step === 0 || !prev.type) {
-    const type = await parseAccountType(body);
-    await query("update brands set account_type = $2 where id = $1", [brand.id, type]);
-    await saveState(brand.id, { status: "in_progress", type, step: 1, answers });
-    const q = questionsFor(type)[0]!;
-    return { reply: `Great — a ${type} account.\n\n${q.text}`, done: false };
+  transcript.push({ role: "user", content: body });
+
+  const messages = toMessages(transcript);
+  if (turns >= MAX_ANSWERS) {
+    messages.push({
+      role: "user",
+      content: "(That's plenty to work with — please wrap up now with SETUP_COMPLETE and a warm sign-off.)",
+    });
   }
 
-  const type = prev.type;
-  const questions = questionsFor(type);
-  const current = questions[step - 1];
-  if (current) answers[current.key] = body;
+  const system = interviewerSystem(brand, type, answers.website_summary);
+  const raw = await callLLM({ system, messages, maxTokens: 300 });
 
-  if (step < questions.length) {
-    await saveState(brand.id, { status: "in_progress", type, step: step + 1, answers });
-    return { reply: questions[step]!.text, done: false };
+  const marker = /^\s*SETUP_COMPLETE:\s*/i;
+  const isComplete = marker.test(raw) || turns >= MAX_ANSWERS;
+
+  if (isComplete) {
+    const signoff = raw.replace(marker, "").trim();
+    transcript.push({ role: "assistant", content: signoff });
+    const recap = await compileProfile(brand, type, transcript);
+    await saveState(brand.id, { status: "done", type, turns, transcript, answers });
+    return { reply: `${signoff}\n\n${recap}`, done: true };
   }
 
-  // Final answer received — compile the profile and finish.
-  const summary = await compileProfile(brand, type, answers);
-  await saveState(brand.id, { status: "done", type, answers });
-  return {
-    reply:
-      `Perfect — you're all set! Here's what I've got:\n\n${summary}\n\n` +
-      `Send me a photo anytime and I'll draft a caption. You can also just tell me things like "less emojis" and I'll learn.`,
-    done: true,
-  };
+  transcript.push({ role: "assistant", content: raw });
+  await saveState(brand.id, { status: "in_progress", type, turns, transcript, answers });
+  return { reply: raw, done: false };
 }
 
-/** Turn the collected answers into a stored BrandVoiceProfile + strategy notes; return a short recap. */
+/** Compile the whole conversation into a stored BrandVoiceProfile + strategy notes; return a short recap. */
 async function compileProfile(
   brand: Brand,
   type: AccountType,
-  answers: Record<string, string>,
+  transcript: OnboardingTurnMsg[],
 ): Promise<string> {
+  const convo = transcript
+    .filter((t) => t.content && !t.content.startsWith("("))
+    .map((t) => `${t.role === "user" ? "Client" : "Agent"}: ${t.content}`)
+    .join("\n");
+
   const raw = await callLLM({
     system:
-      "You compile a brand-voice profile from an onboarding Q&A. Output ONLY JSON matching: " +
+      "You compile a brand-voice profile from an onboarding conversation. Output ONLY JSON matching: " +
       '{"tone":string[],"dos":string[],"donts":string[],"example_captions":string[],"banned_words":string[],' +
       '"emoji_policy":"none"|"sparing"|"liberal","hashtag_policy":string,"notes":string[],"voice_notes":string}. ' +
-      "Infer sensible values; keep arrays short and specific.",
-    messages: [
-      {
-        role: "user",
-        content:
-          `Account type: ${type}\n` +
-          Object.entries(answers)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join("\n"),
-      },
-    ],
+      "Infer sensible values from what the client actually said; keep arrays short and specific.",
+    messages: [{ role: "user", content: `Account type: ${type}\n\nConversation:\n${convo}` }],
     maxTokens: 700,
   });
 
@@ -188,7 +156,7 @@ async function compileProfile(
     voiceNotes = typeof json.voice_notes === "string" ? json.voice_notes : "";
     profile = brandVoiceProfileSchema.parse(json);
   } catch {
-    profile = brandVoiceProfileSchema.parse({ notes: Object.values(answers) });
+    profile = brandVoiceProfileSchema.parse({});
   }
 
   await query("update brands set brand_voice_profile = $2::jsonb where id = $1", [
@@ -199,10 +167,10 @@ async function compileProfile(
     `insert into strategy_notes (brand_id, voice_notes, content_mix)
      values ($1, $2, '{}'::jsonb)
      on conflict (brand_id) do update set voice_notes = excluded.voice_notes, last_updated = now()`,
-    [brand.id, voiceNotes || (answers.what ?? null)],
+    [brand.id, voiceNotes || null],
   );
 
   const tone = profile.tone.length ? profile.tone.join(", ") : "friendly";
   const donts = profile.donts.length ? profile.donts.join("; ") : "none noted";
-  return `• Tone: ${tone}\n• Emoji: ${profile.emoji_policy}\n• Don'ts: ${donts}`;
+  return `Here's what I've got: tone — ${tone}; emoji — ${profile.emoji_policy}; never — ${donts}. You can tweak any of this on your dashboard anytime.`;
 }

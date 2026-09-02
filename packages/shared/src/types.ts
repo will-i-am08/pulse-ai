@@ -70,10 +70,17 @@ export type AccountType = "business" | "personal";
 
 export type OnboardingStatus = "none" | "pending" | "in_progress" | "done";
 
+export interface OnboardingTurnMsg {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface OnboardingState {
   status: OnboardingStatus;
   step?: number;
+  turns?: number;
   type?: AccountType;
+  transcript?: OnboardingTurnMsg[];
   answers?: Record<string, string>;
   [key: string]: unknown;
 }
