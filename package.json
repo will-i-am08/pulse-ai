@@ -13,7 +13,8 @@
     "dev:web": "pnpm --filter @pulse/web dev",
     "dev:worker": "pnpm --filter @pulse/worker dev",
     "migrate": "tsx --env-file=.env scripts/migrate.ts",
-    "seed": "tsx --env-file=.env scripts/seed.ts"
+    "seed": "tsx --env-file=.env scripts/seed.ts",
+    "sim": "tsx --env-file=.env scripts/sim.ts"
   },
   "devDependencies": {
     "@pulse/shared": "workspace:*",

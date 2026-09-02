@@ -1,6 +1,16 @@
-import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
+import Anthropic from "@anthropic-ai/sdk";
+import { query, queryOne, brandVoiceProfileSchema, getMedia } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+
+// Anthropic vision accepts these image types; anything else we skip as an image.
+const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const MAX_IMAGES = 4;
+
+// Derive the content-block param type from the SDK's MessageParam so we don't
+// depend on an exported name that varies across @anthropic-ai/sdk versions.
+type ContentPart = Exclude<Anthropic.MessageParam["content"], string>[number];
+type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
 export interface DraftCaptionResult {
   caption: string;
@@ -32,6 +42,10 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
   const lines: string[] = [];
 
   lines.push(`You are drafting a social media caption for "${brand.name}".`);
+  lines.push(
+    "When photos are attached, look at what is actually in them and write a caption about that. " +
+      "Never say you cannot see the image.",
+  );
   lines.push("Output ONLY the caption text — no preamble, no surrounding quotes, no markdown.");
 
   if (profile.tone.length) lines.push(`Tone: ${profile.tone.join(", ")}.`);
@@ -114,18 +128,32 @@ export async function draftCaption(brandId: string, mediaIds: string[]): Promise
     loadMedia(brandId, mediaIds),
   ]);
 
-  const mediaDesc = media.length
-    ? media.map((m, i) => `${i + 1}. ${m.kind} (${m.content_type ?? "unknown content type"})`).join("\n")
-    : "No media metadata available — draft a generic on-brand caption.";
+  // Attach the actual photos (base64) so the model captions what's really shown.
+  const content: ContentPart[] = [];
+  let attached = 0;
+  for (const m of media.filter((x) => x.kind === "photo").slice(0, MAX_IMAGES)) {
+    const blob = await getMedia(m.id);
+    if (!blob) continue;
+    const mediaType = (VISION_TYPES.has(m.content_type ?? "") ? m.content_type! : "image/jpeg") as ImageMediaType;
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data: Buffer.from(blob.bytes).toString("base64") },
+    });
+    attached++;
+  }
+  const hasVideo = media.some((m) => m.kind === "video");
+
+  const instruction =
+    attached > 0
+      ? `Write an on-brand caption for the attached photo${attached > 1 ? "s" : ""}.${hasVideo ? " (There is also a video in this batch.)" : ""}`
+      : hasVideo
+        ? "The client sent a video (which you can't view). Draft an on-brand caption suitable for a short video clip — keep it flexible."
+        : "Draft a generic on-brand caption.";
+  content.push({ type: "text", text: instruction });
 
   const caption = await callLLM({
     system: buildSystemPrompt(brand, notes),
-    messages: [
-      {
-        role: "user",
-        content: `New media received for a post:\n${mediaDesc}\n\nWrite the caption for it.`,
-      },
-    ],
+    messages: [{ role: "user", content }],
     maxTokens: 400,
   });
 
