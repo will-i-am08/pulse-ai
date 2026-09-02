@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "start": "tsx src/bot.ts"
+    "start": "tsx --env-file=../../.env src/bot.ts"
   },
   "dependencies": {
     "@pulse/shared": "workspace:*",

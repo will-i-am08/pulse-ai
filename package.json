@@ -15,7 +15,7 @@
     "migrate": "tsx --env-file=.env scripts/migrate.ts",
     "seed": "tsx --env-file=.env scripts/seed.ts",
     "sim": "tsx --env-file=.env scripts/sim.ts",
-    "discord": "pnpm --filter @pulse/channel-discord start"
+    "discord": "tsx --env-file=.env packages/channel-discord/src/bot.ts"
   },
   "devDependencies": {
     "@pulse/shared": "workspace:*",
