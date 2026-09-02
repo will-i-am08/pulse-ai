@@ -215,8 +215,14 @@ export async function handleInbound(
         await sendToBrand(brand.id, reply);
       }
     } catch (err) {
-      // Orchestrator failures must not lose the persisted inbound message.
+      // Orchestrator failures must not lose the persisted inbound message — and
+      // the client should never be left with silence.
       console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
+      try {
+        await sendToBrand(brand.id, "Sorry — I had trouble with that one just now. Mind sending it again?");
+      } catch {
+        /* best-effort: the send itself may also be down */
+      }
     }
 
     return { brandId: brand.id, messageId: message.id };

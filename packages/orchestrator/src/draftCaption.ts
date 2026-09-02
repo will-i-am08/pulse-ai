@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import { query, queryOne, brandVoiceProfileSchema, getMedia } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
@@ -6,6 +7,8 @@ import { callLLM } from "./llm.js";
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const MAX_IMAGES = 4;
+// Stay well under Anthropic's per-image cap after downscaling.
+const MAX_IMAGE_BYTES = 4_500_000;
 
 // Derive the content-block param type from the SDK's MessageParam so we don't
 // depend on an exported name that varies across @anthropic-ai/sdk versions.
@@ -134,10 +137,31 @@ export async function draftCaption(brandId: string, mediaIds: string[]): Promise
   for (const m of media.filter((x) => x.kind === "photo").slice(0, MAX_IMAGES)) {
     const blob = await getMedia(m.id);
     if (!blob) continue;
-    const mediaType = (VISION_TYPES.has(m.content_type ?? "") ? m.content_type! : "image/jpeg") as ImageMediaType;
+
+    // Downscale for the vision API: Anthropic caps image size and prefers the
+    // long edge <= 1568px. Phone photos are often 10MB+, which 400s the call.
+    let data: Uint8Array = blob.bytes;
+    let mediaType: ImageMediaType = VISION_TYPES.has(m.content_type ?? "")
+      ? (m.content_type as ImageMediaType)
+      : "image/jpeg";
+    try {
+      const out = await sharp(Buffer.from(blob.bytes))
+        .rotate() // respect EXIF orientation
+        .resize({ width: 1568, height: 1568, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+      data = new Uint8Array(out);
+      mediaType = "image/jpeg";
+    } catch {
+      // sharp couldn't decode (unusual format) — fall back to the original bytes.
+    }
+    if (data.byteLength > MAX_IMAGE_BYTES) {
+      // Still too large to send safely — skip this image rather than crash the draft.
+      continue;
+    }
     content.push({
       type: "image",
-      source: { type: "base64", media_type: mediaType, data: Buffer.from(blob.bytes).toString("base64") },
+      source: { type: "base64", media_type: mediaType, data: Buffer.from(data).toString("base64") },
     });
     attached++;
   }
