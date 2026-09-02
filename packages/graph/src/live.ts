@@ -150,23 +150,31 @@ export class LiveGraphAdapter implements GraphAdapter {
 
     return withRetry<Record<string, number>>(`live:engagement:${externalPostId}`, async () => {
       if (platform === "instagram") {
-        // TODO(live): IG insights (`reach`, `saved`) require a Business/Creator account;
-        // metric names have shifted across Graph versions — verify against META_GRAPH_VERSION.
-        const [insights, basic] = await Promise.all([
-          graphFetch(
-            graphUrl(env, `/${externalPostId}/insights?metric=reach,saved&access_token=${accessToken}`)
-          ),
-          graphFetch(
-            graphUrl(env, `/${externalPostId}?fields=like_count,comments_count&access_token=${accessToken}`)
-          ),
-        ]);
-        const metricValue = (name: string): number =>
-          (insights.data as any[] | undefined)?.find((m) => m.name === name)?.values?.[0]?.value ?? 0;
+        // Basic counts always work with pages_read_engagement. Reach/saves need the
+        // instagram_manage_insights permission — verified in live testing that without
+        // it the insights call 400s, so it is best-effort and must never fail the report.
+        const basic = await graphFetch(
+          graphUrl(env, `/${externalPostId}?fields=like_count,comments_count&access_token=${accessToken}`),
+        );
+        let reach = 0;
+        let saves = 0;
+        try {
+          const insights = await graphFetch(
+            graphUrl(env, `/${externalPostId}/insights?metric=reach,saved&access_token=${accessToken}`),
+          );
+          const metricValue = (name: string): number =>
+            (insights.data as any[] | undefined)?.find((m) => m.name === name)?.values?.[0]?.value ?? 0;
+          reach = metricValue("reach");
+          saves = metricValue("saved");
+        } catch {
+          // Insights unavailable (missing instagram_manage_insights, or the post is too new).
+          // Degrade to the counts we do have rather than failing the whole engagement pull.
+        }
         return {
           likes: basic.like_count ?? 0,
           comments: basic.comments_count ?? 0,
-          reach: metricValue("reach"),
-          saves: metricValue("saved"),
+          reach,
+          saves,
         } as Record<string, number>;
       }
 
