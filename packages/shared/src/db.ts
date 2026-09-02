@@ -17,6 +17,12 @@ export function db(): pg.Pool {
     ssl: { rejectUnauthorized: false }, // Neon requires TLS; its cert chain is public
     max: 5,
   });
+  // An idle pooled connection dropping (network blip: ECONNRESET/ENOTFOUND) emits
+  // an 'error' on the pool. Without a handler, Node treats it as unhandled and
+  // crashes the process. Log it and let the pool discard + recreate the client.
+  pool.on("error", (err) => {
+    console.error("[db] idle pool client error (recovering):", err instanceof Error ? err.message : err);
+  });
   return pool;
 }
 
