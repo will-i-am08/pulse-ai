@@ -7,6 +7,7 @@ function fakeBrand(): Brand {
     id: "brand-1",
     name: "Test Brand",
     client_phone: "+61400000000",
+    discord_channel_id: null,
     brand_voice_profile: {
       tone: [],
       dos: [],

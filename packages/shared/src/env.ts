@@ -18,6 +18,10 @@ const serverEnvSchema = z.object({
   TWILIO_API_KEY_SECRET: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
   OPERATOR_PHONE: z.string().optional(),
+  // Messaging channel selection + Discord (interim provider)
+  MESSAGE_CHANNEL: z.enum(["twilio", "discord"]).default("twilio"),
+  DISCORD_BOT_TOKEN: z.string().optional(),
+  DISCORD_TEST_BRAND_PHONE: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),

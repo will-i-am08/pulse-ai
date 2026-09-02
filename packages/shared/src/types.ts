@@ -70,6 +70,7 @@ export interface Brand {
   id: string;
   name: string;
   client_phone: string;
+  discord_channel_id: string | null;
   brand_voice_profile: BrandVoiceProfile;
   ig_user_id: string | null;
   fb_page_id: string | null;

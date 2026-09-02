@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { processInbound } from "@pulse/orchestrator";
 import {
+  getServerEnv,
   query,
   queryOne,
   putMedia,
@@ -16,13 +17,34 @@ import { createTwilioChannel } from "@pulse/channel-twilio";
 import { withBackoff } from "./backoff.js";
 
 let channelSingleton: MessageChannel | null = null;
+let channelOverride: MessageChannel | null = null;
 
-/** The active channel singleton (Twilio for now). */
+/**
+ * Set the active channel explicitly. The Discord bot process calls this at
+ * startup with a client-bound DiscordChannel (Discord can't be built from env
+ * alone — it needs a live gateway connection).
+ */
+export function setActiveChannel(channel: MessageChannel): void {
+  channelOverride = channel;
+}
+
+/** The active messaging channel. Twilio is built from env; Discord is injected by the bot. */
 export function activeChannel(): MessageChannel {
+  if (channelOverride) return channelOverride;
   if (!channelSingleton) {
+    if (getServerEnv().MESSAGE_CHANNEL === "discord") {
+      throw new Error("MESSAGE_CHANNEL=discord but no channel injected — the Discord bot must call setActiveChannel()");
+    }
     channelSingleton = createTwilioChannel();
   }
   return channelSingleton;
+}
+
+/** Resolve a brand by the inbound sender address, using the active channel's addressing. */
+export async function resolveBrand(from: string): Promise<Brand | null> {
+  return getServerEnv().MESSAGE_CHANNEL === "discord"
+    ? resolveBrandByDiscord(from)
+    : resolveBrandByPhone(from);
 }
 
 /** Resolve a brand by inbound sender phone (E.164). null if unknown sender. */
@@ -32,6 +54,29 @@ export async function resolveBrandByPhone(from: string): Promise<Brand | null> {
     return await queryOne<Brand>("select * from brands where client_phone = $1", [from]);
   } catch (err) {
     console.error(`resolveBrandByPhone: lookup failed for ${from}`, err);
+    return null;
+  }
+}
+
+/**
+ * Resolve a brand by Discord channel/DM id. If none is linked yet, fall back to
+ * the configured test brand and stamp this channel onto it, so a first DM just
+ * works during testing.
+ */
+export async function resolveBrandByDiscord(channelId: string): Promise<Brand | null> {
+  if (!channelId) return null;
+  try {
+    const existing = await queryOne<Brand>("select * from brands where discord_channel_id = $1", [channelId]);
+    if (existing) return existing;
+
+    const fallbackPhone = getServerEnv().DISCORD_TEST_BRAND_PHONE;
+    if (!fallbackPhone) return null;
+    const fb = await queryOne<Brand>("select * from brands where client_phone = $1", [fallbackPhone]);
+    if (!fb) return null;
+    await query("update brands set discord_channel_id = $1 where id = $2", [channelId, fb.id]);
+    return { ...fb, discord_channel_id: channelId };
+  } catch (err) {
+    console.error(`resolveBrandByDiscord: lookup failed for ${channelId}`, err);
     return null;
   }
 }
@@ -94,10 +139,15 @@ export async function sendToBrand(brandId: string, body: string, mediaUrls?: str
     return;
   }
   const channel = activeChannel();
+  const to = getServerEnv().MESSAGE_CHANNEL === "discord" ? brand.discord_channel_id : brand.client_phone;
+  if (!to) {
+    console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
+    return;
+  }
 
   let providerMessageId: string;
   try {
-    const result = await withBackoff(() => channel.send({ to: brand.client_phone, body, mediaUrls }), {
+    const result = await withBackoff(() => channel.send({ to, body, mediaUrls }), {
       onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
     });
     providerMessageId = result.providerMessageId;
@@ -127,7 +177,7 @@ export async function handleInbound(
   inbound: InboundMessage,
 ): Promise<{ brandId: string | null; messageId: string | null }> {
   try {
-    const brand = await resolveBrandByPhone(inbound.from);
+    const brand = await resolveBrand(inbound.from);
     if (!brand) {
       console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
       return { brandId: null, messageId: null };
