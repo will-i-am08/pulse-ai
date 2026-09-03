@@ -29,7 +29,7 @@ async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: 
       ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
     asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
-    "CRITICAL: the image must be BRIGHT and vividly lit — even a cinematic or dramatic look must stay bright, clean and punchy. Never produce a dark, moody, murky, shadowy or underexposed image; the subject must be clearly and brightly lit with plenty of visible detail.",
+    "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
   ]
     .filter(Boolean)
@@ -90,17 +90,23 @@ async function replicateEdit(imgBytes: Uint8Array, prompt: string): Promise<Buff
   if (Array.isArray(out)) out = out[0];
   if (!out) throw new Error("replicate returned no output");
   const raw = Buffer.from(await (await fetch(out)).arrayBuffer());
-  return brightenIfDark(raw);
+  return normalizeExposure(raw);
 }
 
-/** Deterministic safety net: if the edit came back too dark, lift its brightness. */
-async function brightenIfDark(buf: Buffer): Promise<Buffer> {
+/**
+ * Gentle two-sided exposure safety net: only nudges the image when it's clearly
+ * off — lifts genuinely dark results a little, pulls back genuinely blown-out
+ * ones — aiming for a natural, balanced exposure (never pushing to extremes).
+ */
+async function normalizeExposure(buf: Buffer): Promise<Buffer> {
   try {
     const stats = await sharp(buf).stats();
     const rgb = stats.channels.slice(0, 3);
     const mean = rgb.reduce((a, c) => a + c.mean, 0) / (rgb.length || 1);
-    if (mean >= 100) return buf; // bright enough
-    const factor = Math.min(1.9, 120 / Math.max(mean, 1));
+    let factor = 1;
+    if (mean < 80) factor = Math.min(1.4, 95 / mean); // too dark → gentle lift
+    else if (mean > 180) factor = Math.max(0.72, 155 / mean); // too bright → gentle pull-down
+    if (Math.abs(factor - 1) < 0.03) return buf;
     return await sharp(buf).modulate({ brightness: factor }).jpeg({ quality: 90 }).toBuffer();
   } catch {
     return buf;
