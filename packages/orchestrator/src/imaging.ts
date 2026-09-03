@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
+import satori from "satori";
+import { Resvg } from "@resvg/resvg-js";
 import { query, getMedia, putMedia, getServerEnv, type Brand } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+
+const ANTON = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/anton.ttf"));
 
 // AI image editing via Replicate (Flux Kontext by default). The agent writes a
 // tailored edit instruction from the actual photo + brand, then runs the model.
@@ -22,6 +29,7 @@ async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: 
       ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
     asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
+    "Always keep the result well-exposed with the subject clearly visible — striking, but never so dark or blown-out that detail is lost.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
   ]
     .filter(Boolean)
@@ -106,6 +114,97 @@ export async function editImageForBrand(brand: Brand, mediaId: string, request?:
     return newId;
   } catch (err) {
     console.error(`editImageForBrand: failed for media ${mediaId}`, err);
+    return null;
+  }
+}
+
+// ─── Text tile (Satori + resvg): burn a bold headline onto the image ─────────
+
+/** Does the client's message ask for text on the image? */
+export function messageWantsText(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return /\b(text|caption on|words on|title on|headline|writing on)\b/i.test(body);
+}
+
+/** Write a short punchy ALL-CAPS overlay headline from the post caption. */
+export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
+  const out = await callLLM({
+    system:
+      "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop — just the words.",
+    messages: [{ role: "user", content: `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.` }],
+    maxTokens: 20,
+  });
+  return out.replace(/["'.]/g, "").trim().toUpperCase().slice(0, 42) || brand.name.toUpperCase();
+}
+
+async function renderTile(imgBytes: Uint8Array, headline: string): Promise<Buffer> {
+  const meta = await sharp(Buffer.from(imgBytes)).metadata();
+  const width = meta.width ?? 1080;
+  const height = meta.height ?? 1350;
+  const jpeg = await sharp(Buffer.from(imgBytes)).jpeg({ quality: 90 }).toBuffer();
+  const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+  const fontSize = Math.round(width * 0.085);
+  const pad = Math.round(width * 0.05);
+
+  const svg = await satori(
+    {
+      type: "div",
+      props: {
+        style: { display: "flex", width: `${width}px`, height: `${height}px`, position: "relative" },
+        children: [
+          {
+            type: "img",
+            props: { src: dataUri, width, height, style: { position: "absolute", top: 0, left: 0, width: `${width}px`, height: `${height}px`, objectFit: "cover" } },
+          },
+          {
+            type: "div",
+            props: {
+              style: {
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                width: `${width}px`,
+                display: "flex",
+                padding: `${pad}px`,
+                background: "linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0))",
+              },
+              children: [
+                {
+                  type: "div",
+                  props: {
+                    style: { display: "flex", color: "white", fontFamily: "Anton", fontSize: `${fontSize}px`, lineHeight: 1.02, textTransform: "uppercase" },
+                    children: headline,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof satori>[0],
+    { width, height, fonts: [{ name: "Anton", data: ANTON, weight: 400, style: "normal" }] },
+  );
+
+  const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
+  return sharp(png).jpeg({ quality: 88 }).toBuffer();
+}
+
+/** Overlay a headline on a stored image; store + return the new media id (or null). */
+export async function applyTextTile(brand: Brand, mediaId: string, headline: string): Promise<string | null> {
+  const blob = await getMedia(mediaId);
+  if (!blob) return null;
+  try {
+    const tiled = await renderTile(blob.bytes, headline);
+    const newId = randomUUID();
+    await query(
+      `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+       values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
+      [newId, brand.id, newId],
+    );
+    await putMedia(newId, new Uint8Array(tiled), "image/jpeg");
+    return newId;
+  } catch (err) {
+    console.error(`applyTextTile: failed for media ${mediaId}`, err);
     return null;
   }
 }

@@ -5,7 +5,7 @@ import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
 import { onboardingTurn } from "./onboarding.js";
-import { editImageForBrand } from "./imaging.js";
+import { editImageForBrand, messageWantsText, generateHeadline, applyTextTile } from "./imaging.js";
 import { callLLM } from "./llm.js";
 
 export type InboundContext = {
@@ -130,10 +130,18 @@ export async function processInbound(
       let postMediaIds = originalIds;
       let styledUrl: string | undefined;
       if (firstPhoto) {
+        let finalId = firstPhoto.id;
         const editedId = await editImageForBrand(brand, firstPhoto.id, message.body ?? undefined);
-        if (editedId) {
-          postMediaIds = [editedId, ...originalIds.filter((id) => id !== firstPhoto.id)];
-          styledUrl = publicMediaUrl(editedId);
+        if (editedId) finalId = editedId;
+        // If the client asked for text on the image, overlay a bold headline.
+        if (messageWantsText(message.body)) {
+          const headline = await generateHeadline(brand, caption);
+          const tiledId = await applyTextTile(brand, finalId, headline);
+          if (tiledId) finalId = tiledId;
+        }
+        if (finalId !== firstPhoto.id) {
+          postMediaIds = [finalId, ...originalIds.filter((id) => id !== firstPhoto.id)];
+          styledUrl = publicMediaUrl(finalId);
         }
       }
 
