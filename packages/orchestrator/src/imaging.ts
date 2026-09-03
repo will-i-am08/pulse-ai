@@ -12,16 +12,20 @@ type ContentPart = Exclude<Anthropic.MessageParam["content"], string>[number];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Vision LLM: given the photo + brand, write a one-line Flux Kontext edit instruction. */
-async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array): Promise<string> {
+/** Vision LLM: given the photo + brand (+ the client's own request), write a Flux Kontext edit instruction. */
+async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: string): Promise<string> {
   const business = brand.account_type !== "personal";
+  const asked = request && request.trim().length > 2 ? request.trim() : "";
   const system = [
-    "You write ONE short image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image.",
+    "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
-      ? "This is a BUSINESS account. Keep the real subject/product/place TRUTHFUL — improve lighting, colour, cleanliness, background and composition so it looks professionally shot. Never invent a different product or scene."
-      : "This is a PERSONAL/creator account. Be bolder and more stylised — vivid, high-energy, eye-catching — while keeping the person/subject recognisable.",
-    "Base it entirely on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
-  ].join("\n");
+      ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
+      : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
+    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
+    "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const small = await sharp(Buffer.from(imgBytes))
     .rotate()
@@ -85,12 +89,12 @@ async function replicateEdit(imgBytes: Uint8Array, prompt: string): Promise<Buff
  * new media id, or null if editing is disabled/unavailable (caller falls back to
  * the original photo).
  */
-export async function editImageForBrand(brand: Brand, mediaId: string): Promise<string | null> {
+export async function editImageForBrand(brand: Brand, mediaId: string, request?: string): Promise<string | null> {
   if (!getServerEnv().REPLICATE_API_TOKEN) return null;
   const blob = await getMedia(mediaId);
   if (!blob || !blob.contentType.startsWith("image/")) return null;
   try {
-    const prompt = await generateEditPrompt(brand, blob.bytes);
+    const prompt = await generateEditPrompt(brand, blob.bytes, request);
     const edited = await replicateEdit(blob.bytes, prompt);
     const newId = randomUUID();
     await query(

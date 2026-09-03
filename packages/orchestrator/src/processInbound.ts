@@ -130,7 +130,7 @@ export async function processInbound(
       let postMediaIds = originalIds;
       let styledUrl: string | undefined;
       if (firstPhoto) {
-        const editedId = await editImageForBrand(brand, firstPhoto.id);
+        const editedId = await editImageForBrand(brand, firstPhoto.id, message.body ?? undefined);
         if (editedId) {
           postMediaIds = [editedId, ...originalIds.filter((id) => id !== firstPhoto.id)];
           styledUrl = publicMediaUrl(editedId);
