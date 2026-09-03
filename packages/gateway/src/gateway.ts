@@ -209,10 +209,15 @@ export async function handleInbound(
       return { brandId: brand.id, messageId: null };
     }
 
+    // Styling a photo takes a moment — reassure the client first.
+    if (newMedia.some((m) => m.kind === "photo")) {
+      await sendToBrand(brand.id, "Got it — styling your photo and writing your caption, one sec ✨").catch(() => {});
+    }
+
     try {
-      const { reply } = await processInbound({ brand, message, newMedia });
+      const { reply, mediaUrl } = await processInbound({ brand, message, newMedia });
       if (reply) {
-        await sendToBrand(brand.id, reply);
+        await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined);
       }
     } catch (err) {
       // Orchestrator failures must not lose the persisted inbound message — and

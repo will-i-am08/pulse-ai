@@ -1,10 +1,11 @@
-import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post } from "@pulse/shared";
 import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
 import { onboardingTurn } from "./onboarding.js";
+import { editImageForBrand } from "./imaging.js";
 import { callLLM } from "./llm.js";
 
 export type InboundContext = {
@@ -91,7 +92,7 @@ async function answerQuestion(brand: Brand, context: string, question: string): 
  */
 export async function processInbound(
   ctx: InboundContext,
-): Promise<{ reply: string; postId?: string }> {
+): Promise<{ reply: string; postId?: string; mediaUrl?: string }> {
   const { brand, message, newMedia } = ctx;
 
   // Mid-onboarding: run the setup conversation instead of the normal flow.
@@ -120,14 +121,27 @@ export async function processInbound(
 
   switch (result.classification) {
     case "media": {
-      const mediaIds = newMedia.map((m) => m.id);
-      const { caption, proposedTime } = await draftCaption(brand.id, mediaIds);
+      const originalIds = newMedia.map((m) => m.id);
+      const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
+
+      // Style the first photo (truthful enhance for business, bolder for personal).
+      // If editing is unavailable, we fall back to the original photo.
+      const firstPhoto = newMedia.find((m) => m.kind === "photo");
+      let postMediaIds = originalIds;
+      let styledUrl: string | undefined;
+      if (firstPhoto) {
+        const editedId = await editImageForBrand(brand, firstPhoto.id);
+        if (editedId) {
+          postMediaIds = [editedId, ...originalIds.filter((id) => id !== firstPhoto.id)];
+          styledUrl = publicMediaUrl(editedId);
+        }
+      }
 
       const post = await queryOne<Post>(
         `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at)
          values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4)
          returning *`,
-        [brand.id, caption, mediaIds, proposedTime],
+        [brand.id, caption, postMediaIds, proposedTime],
       );
       if (!post) throw new Error("Failed to insert post");
 
@@ -137,15 +151,17 @@ export async function processInbound(
         [
           post.id,
           brand.id,
-          JSON.stringify({ caption, proposed_time: proposedTime }),
+          JSON.stringify({ caption, proposed_time: proposedTime, styled: Boolean(styledUrl) }),
           "Drafted from inbound media message",
         ],
       );
 
       const timeLine = proposedTime ? `\nProposed time: ${proposedTime}` : "";
+      const styledLine = styledUrl ? "Here's your post — I styled the photo too ✨" : "Here's your post:";
       return {
-        reply: `Here's a draft caption:\n\n"${caption}"${timeLine}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
+        reply: `${styledLine}\n\n"${caption}"${timeLine}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
         postId: post.id,
+        mediaUrl: styledUrl,
       };
     }
 
