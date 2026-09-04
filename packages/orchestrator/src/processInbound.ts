@@ -293,6 +293,12 @@ export async function processInbound(
         }
       }
 
+      // Always send the client their photo back with the caption — the styled
+      // version if we styled it, otherwise the original. (Styling can be a no-op
+      // when the image editor is unavailable or the edit fails; the client should
+      // still see their post, not a caption with no picture.)
+      const replyImageUrl = firstPhoto ? publicMediaUrl(postMediaIds[0]!) : undefined;
+
       // Sort the photo into a content pillar and find a smart slot for it.
       const pillars = await ensurePillars(brand.id);
       const firstMediaId = firstPhoto?.id ?? originalIds[0];
@@ -352,7 +358,7 @@ export async function processInbound(
         return {
           reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
           postId: post.id,
-          mediaUrl: styledUrl,
+          mediaUrl: replyImageUrl,
         };
       }
 
@@ -360,7 +366,7 @@ export async function processInbound(
       return {
         reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
         postId: post.id,
-        mediaUrl: styledUrl,
+        mediaUrl: replyImageUrl,
       };
     }
 
