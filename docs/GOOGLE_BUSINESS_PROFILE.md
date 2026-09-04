@@ -33,12 +33,26 @@ Hand me the **OAuth client ID + secret** (I'll store them encrypted, like the Me
 
 ---
 
-## What I'll build once access is granted
+## The connect flow is BUILT — it just needs your credentials
 
-- `GET /api/connect/google/start` + `/callback` — OAuth to link the owner's Google account + pick the GBP location (mirrors the Facebook linking flow).
+Already shipped (deployed, waiting on `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`):
+- `GET /api/connect/google/start` + `/callback` — OAuth to link the owner's Google account (offline access → refresh token, stored encrypted), a **location picker** (`/app/connect/google/choose`), and a **"Connect Google"** button on the dashboard. Mirrors the Facebook linking flow exactly.
+
+**To switch it on, hand me two things** from your Google Cloud OAuth client (Web application):
+1. **`GOOGLE_CLIENT_ID`**
+2. **`GOOGLE_CLIENT_SECRET`**
+
+…with this exact **Authorised redirect URI** set on that client:
+
+```
+https://web-tau-three-59.vercel.app/api/connect/google/callback
+```
+
+I'll store them encrypted in the env and the "Connect Google" button goes live.
+
+## Still to build (after connect works)
 - GBP **publisher** — posts scheduled `google` content as a local post.
 - GBP **review sync** — poll the location's reviews into `interactions`; the engagement engine drafts/handles replies; approved replies post back via the API.
-- Store the Google token encrypted alongside the Meta tokens.
 
 ---
 
