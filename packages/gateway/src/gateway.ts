@@ -14,6 +14,7 @@ import {
   type MessageChannel,
 } from "@pulse/shared";
 import { createTwilioChannel } from "@pulse/channel-twilio";
+import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
 
 let channelSingleton: MessageChannel | null = null;
@@ -32,19 +33,44 @@ export function setActiveChannel(channel: MessageChannel): void {
 export function activeChannel(): MessageChannel {
   if (channelOverride) return channelOverride;
   if (!channelSingleton) {
-    if (getServerEnv().MESSAGE_CHANNEL === "discord") {
+    const which = getServerEnv().MESSAGE_CHANNEL;
+    if (which === "discord") {
       throw new Error("MESSAGE_CHANNEL=discord but no channel injected — the Discord bot must call setActiveChannel()");
     }
-    channelSingleton = createTwilioChannel();
+    channelSingleton = which === "linq" ? createLinqChannel() : createTwilioChannel();
   }
   return channelSingleton;
 }
 
 /** Resolve a brand by the inbound sender address, using the active channel's addressing. */
 export async function resolveBrand(from: string): Promise<Brand | null> {
-  return getServerEnv().MESSAGE_CHANNEL === "discord"
-    ? resolveBrandByDiscord(from)
-    : resolveBrandByPhone(from);
+  const which = getServerEnv().MESSAGE_CHANNEL;
+  if (which === "discord") return resolveBrandByDiscord(from);
+  if (which === "linq") return resolveBrandByLinq(from);
+  return resolveBrandByPhone(from);
+}
+
+/**
+ * Resolve a brand by the Linq sender phone. If none matches and a sandbox test
+ * brand is configured, link this phone to it (first-message auto-link) so you
+ * can play immediately from your own phone.
+ */
+export async function resolveBrandByLinq(from: string): Promise<Brand | null> {
+  if (!from) return null;
+  try {
+    const existing = await queryOne<Brand>("select * from brands where client_phone = $1", [from]);
+    if (existing) return existing;
+
+    const testBrandId = getServerEnv().LINQ_TEST_BRAND_ID;
+    if (!testBrandId) return null;
+    const fb = await queryOne<Brand>("select * from brands where id = $1", [testBrandId]);
+    if (!fb) return null;
+    await query("update brands set client_phone = $1 where id = $2", [from, fb.id]);
+    return { ...fb, client_phone: from };
+  } catch (err) {
+    console.error(`resolveBrandByLinq: lookup failed for ${from}`, err);
+    return null;
+  }
 }
 
 /** Resolve a brand by inbound sender phone (E.164). null if unknown sender. */

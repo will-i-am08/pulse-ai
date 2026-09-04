@@ -17,10 +17,18 @@ import {
   type Pillar,
   type Post,
 } from "@pulse/shared";
-import { setActiveChannel, handleInbound, sendToBrand, resolveBrand } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance } from "@pulse/orchestrator";
+import {
+  setActiveChannel,
+  handleInbound,
+  sendToBrand,
+  resolveBrand,
+  resolveBrandByLinq,
+  createLinqChannel,
+  captureMedia,
+} from "@pulse/gateway";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
-import type { InteractionKind, Platform, Interaction } from "@pulse/shared";
+import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { createDiscordChannel } from "./discord-channel.js";
 
@@ -382,5 +390,56 @@ setInterval(() => {
       reviewSyncRunning = false;
     });
 }, 60 * 60 * 1000);
+
+// ─── Linq: process queued inbound (the webhook only ingests; we do the work) ─
+async function processLinqInbound(): Promise<void> {
+  const rows = await query<{
+    id: string;
+    from_handle: string;
+    body: string | null;
+    media: InboundMedia[];
+    provider_message_id: string | null;
+  }>("select * from pending_inbound where channel = 'linq' and status = 'new' order by created_at asc limit 10");
+  if (rows.length === 0) return;
+  const linq = createLinqChannel();
+  for (const row of rows) {
+    // Claim atomically so overlapping passes don't double-process.
+    const claimed = await query<{ id: string }>(
+      "update pending_inbound set status = 'done' where id = $1 and status = 'new' returning id",
+      [row.id],
+    );
+    if (claimed.length === 0) continue;
+    try {
+      const brand = await resolveBrandByLinq(row.from_handle);
+      if (!brand) continue;
+      const media = Array.isArray(row.media) ? row.media : [];
+      const newMedia = await captureMedia(brand.id, linq, media);
+      const message = await queryOne<Message>(
+        `insert into messages (brand_id, direction, channel, body, media_ids, provider_message_sid)
+         values ($1, 'inbound', 'linq', $2, $3::uuid[], $4) returning *`,
+        [brand.id, row.body ?? null, newMedia.map((m) => m.id), row.provider_message_id ?? null],
+      );
+      if (!message) continue;
+      if (newMedia.some((m) => m.kind === "photo")) {
+        await linq.send({ to: brand.client_phone, body: "Got it — styling your photo and writing your caption, one sec ✨" }).catch(() => {});
+      }
+      const { reply, mediaUrl } = await processInbound({ brand, message, newMedia });
+      if (reply) await linq.send({ to: brand.client_phone, body: reply, mediaUrls: mediaUrl ? [mediaUrl] : undefined });
+    } catch (err) {
+      console.error(`[discord] linq inbound processing failed for ${row.id}`, err);
+      await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+    }
+  }
+}
+let linqRunning = false;
+setInterval(() => {
+  if (linqRunning) return;
+  linqRunning = true;
+  processLinqInbound()
+    .catch((err) => console.error("[discord] linq loop error", err))
+    .finally(() => {
+      linqRunning = false;
+    });
+}, 3000);
 
 client.login(env.DISCORD_BOT_TOKEN);
