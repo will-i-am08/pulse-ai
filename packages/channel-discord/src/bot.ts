@@ -25,6 +25,7 @@ import {
   resolveBrandByLinq,
   createLinqChannel,
   captureMedia,
+  importFromContentSources,
 } from "@pulse/gateway";
 import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
@@ -129,6 +130,58 @@ client.on(Events.MessageCreate, async (message) => {
     } catch (err) {
       console.error("[discord] !digest error", err);
       await message.reply("Digest hit a snag — check the logs.");
+    }
+    return;
+  }
+
+  // Content sources (auto-pull): register/list a connected album/folder, or
+  // trigger an immediate sync.
+  //   !source add <drive|photos> <folderOrAlbumId>
+  //   !source list
+  //   !source sync
+  if (message.content?.startsWith("!source")) {
+    try {
+      const brand = await resolveBrand(message.channelId);
+      if (!brand) {
+        await message.reply("No brand is linked to this channel yet.");
+        return;
+      }
+      const add = message.content.match(/^!source\s+add\s+(drive|photos)\s+(\S+)/i);
+      if (add) {
+        const kind = add[1]!.toLowerCase() === "drive" ? "google_drive" : "google_photos";
+        await query(
+          `insert into content_sources (brand_id, kind, external_ref) values ($1, $2, $3)`,
+          [brand.id, kind, add[2]!],
+        );
+        await message.reply(
+          `Linked a ${kind.replace("google_", "Google ")} source. I'll pull new media on the next sweep — or run \`!source sync\` now.\n` +
+            "(Note: needs the Drive/Photos read scope on the brand's Google connection to actually fetch.)",
+        );
+        return;
+      }
+      if (message.content.trim() === "!source list") {
+        const rows = await query<{ kind: string; external_ref: string | null; last_synced_at: string | null }>(
+          "select kind, external_ref, last_synced_at from content_sources where brand_id = $1 order by created_at",
+          [brand.id],
+        );
+        if (rows.length === 0) {
+          await message.reply("No sources linked yet. Add one with `!source add <drive|photos> <id>`.");
+          return;
+        }
+        await message.reply(
+          rows.map((r) => `• ${r.kind} \`${r.external_ref}\` — last synced ${r.last_synced_at ?? "never"}`).join("\n"),
+        );
+        return;
+      }
+      if (message.content.trim() === "!source sync") {
+        const n = await importFromContentSources();
+        await message.reply(n > 0 ? `Pulled and drafted ${n} new item(s).` : "Nothing new to pull.");
+        return;
+      }
+      await message.reply("Usage: `!source add <drive|photos> <id>`, `!source list`, or `!source sync`.");
+    } catch (err) {
+      console.error("[discord] !source error", err);
+      await message.reply("Source command hit a snag — check the logs.");
     }
     return;
   }
@@ -441,5 +494,20 @@ setInterval(() => {
       linqRunning = false;
     });
 }, 3000);
+
+// ─── Content sources: poll connected albums/folders and draft new media ──────
+let contentSourceRunning = false;
+setInterval(() => {
+  if (contentSourceRunning) return;
+  contentSourceRunning = true;
+  importFromContentSources()
+    .then((n) => {
+      if (n > 0) console.log(`[discord] content-source auto-pull drafted ${n} new post(s)`);
+    })
+    .catch((err) => console.error("[discord] content-source sync error", err))
+    .finally(() => {
+      contentSourceRunning = false;
+    });
+}, 60 * 60 * 1000);
 
 client.login(env.DISCORD_BOT_TOKEN);
