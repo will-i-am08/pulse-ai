@@ -112,6 +112,11 @@ export interface Brand {
   platform_tokens_encrypted: string | null;
   platform_user_token_encrypted: string | null;
   meta_connected_at: string | null;
+  google_tokens_encrypted: string | null;
+  gbp_account: string | null;
+  gbp_location_id: string | null;
+  gbp_location_name: string | null;
+  google_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;
   approver: Approver;

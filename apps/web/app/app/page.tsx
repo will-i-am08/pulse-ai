@@ -24,6 +24,18 @@ const PHONE_MSG: Record<string, { text: string; ok: boolean }> = {
   taken: { text: 'That number is already linked to another account.', ok: false },
 };
 
+const GOOGLE_MSG: Record<string, { text: string; ok: boolean }> = {
+  success: { text: 'Google Business Profile connected 🎉', ok: true },
+  denied: { text: 'Google connection cancelled — you can try again anytime.', ok: false },
+  failed: { text: 'Something went wrong connecting Google — please try again.', ok: false },
+  invalid: { text: 'That link expired — please start the Google connection again.', ok: false },
+  expired: { text: 'Your Google session expired — please reconnect.', ok: false },
+  unconfigured: { text: 'Google connect isn’t switched on yet — hang tight.', ok: false },
+  norefresh: { text: 'Google didn’t grant lasting access — please reconnect and allow offline access.', ok: false },
+  nolocations: { text: 'No Google Business Profile locations found on that account.', ok: false },
+  nobrand: { text: 'We couldn’t find your account — please contact support.', ok: false },
+};
+
 function isConnected(b: Brand): boolean {
   // A Page + a stored publish token + a linked Instagram account (publishing runs
   // through IG today, so a Page with no IG isn't really "connected").
@@ -104,7 +116,7 @@ function setupLabel(status: OnboardingStatus | undefined): string {
 export default async function DashboardHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string; google?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -143,7 +155,7 @@ export default async function DashboardHome({
     );
   }
 
-  const { connect, phone } = await searchParams;
+  const { connect, phone, google } = await searchParams;
   const brands = await listBrandsForOwner(user!.id);
   const brand = brands[0];
 
@@ -168,6 +180,7 @@ export default async function DashboardHome({
 
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
+      <Banner msg={google ? GOOGLE_MSG[google] : undefined} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <StepCard n={1} title="Connect Instagram & Facebook" done={connected}>
@@ -215,6 +228,23 @@ export default async function DashboardHome({
         <StepCard n={3} title="Your agent takes it from here" done={brand.onboarding_state?.status === 'done'}>
           <p style={{ margin: 0, color: 'var(--muted, #667)' }}>{setupLabel(brand.onboarding_state?.status)}</p>
         </StepCard>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Google Business Profile <span style={{ fontSize: 13, color: 'var(--muted,#667)', fontWeight: 400 }}>(optional)</span></h2>
+        {brand.gbp_location_id ? (
+          <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
+            Connected to <strong>{brand.gbp_location_name ?? 'your location'}</strong> — the agent can post to Google and handle your reviews.{' '}
+            <a href="/api/connect/google/start">Reconnect</a>
+          </p>
+        ) : (
+          <>
+            <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
+              Connect your Google Business Profile so the agent posts to Google and replies to your Google reviews — big for local discovery.
+            </p>
+            <a className="btn-primary" href="/api/connect/google/start">Connect Google</a>
+          </>
+        )}
       </div>
 
       {allDone && (
