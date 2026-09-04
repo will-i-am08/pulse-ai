@@ -11,8 +11,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     <div className="shell">
       <header className="topbar">
         <Link href="/app" className="brandmark">
-          Pulse Operator Console
+          Pulse
         </Link>
+        <nav style={{ display: 'flex', gap: 16, alignItems: 'center', marginLeft: 24, flex: 1 }}>
+          <Link href="/app">Home</Link>
+          <Link href="/app/plan">Calendar</Link>
+        </nav>
         <form action={signOutAction}>
           <button type="submit" className="btn-ghost">
             Sign out

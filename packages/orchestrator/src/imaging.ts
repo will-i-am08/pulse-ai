@@ -122,6 +122,51 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
 }
 
 /**
+ * Text-to-image generation (Replicate Flux Schnell by default): produce a clean,
+ * photo-style image from a prompt when the client has no real photo for a slot.
+ * Returns JPEG bytes, or null if generation is unavailable/failed.
+ */
+export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
+  const env = getServerEnv();
+  const token = env.REPLICATE_API_TOKEN;
+  if (!token) return null;
+  const model = env.REPLICATE_TEXT_IMAGE_MODEL;
+  try {
+    let body: any;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "wait" },
+        body: JSON.stringify({
+          input: { prompt, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
+        }),
+      });
+      body = await res.json();
+      if (res.status === 429) {
+        await sleep(((body?.retry_after ?? 3) + 2) * 1000);
+        continue;
+      }
+      if (!res.ok) throw new Error(`replicate ${res.status}: ${JSON.stringify(body).slice(0, 200)}`);
+      break;
+    }
+    const getUrl = body?.urls?.get;
+    for (let i = 0; i < 40 && body.status && body.status !== "succeeded"; i++) {
+      if (body.status === "failed" || body.status === "canceled") throw new Error(`replicate ${body.status}`);
+      await sleep(2000);
+      body = await (await fetch(getUrl, { headers: { Authorization: `Bearer ${token}` } })).json();
+    }
+    let out = body.output;
+    if (Array.isArray(out)) out = out[0];
+    if (!out) throw new Error("replicate returned no output");
+    const raw = Buffer.from(await (await fetch(out)).arrayBuffer());
+    return sharp(raw).jpeg({ quality: 88 }).toBuffer();
+  } catch (err) {
+    console.error("generatePhotoImage failed", err);
+    return null;
+  }
+}
+
+/**
  * Style a client's photo and store the result as a new media asset. Returns the
  * new media id, or null if editing is disabled/unavailable (caller falls back to
  * the original photo).
@@ -153,6 +198,18 @@ export async function editImageForBrand(brand: Brand, mediaId: string, request?:
 export function messageWantsText(body: string | null | undefined): boolean {
   if (!body) return false;
   return /\b(text|caption on|words on|title on|headline|writing on)\b/i.test(body);
+}
+
+/**
+ * Does the client's follow-up ask to change the PHOTO (vs. the caption wording)?
+ * Used on a pending draft to route "make it brighter" / "change the background"
+ * to a re-edit of the image rather than a caption rewrite.
+ */
+export function messageWantsImageEdit(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return /\b(photo|image|picture|pic|background|bg|lighting|light|bright(er|en)?|dark(er|en)?|colou?r|filter|crop|contrast|saturat\w*|vibrant|warm(er)?|cool(er)?|cinematic|cine|vibe|blur|sharp(er|en)?|exposure|shadows?|highlights?|black\s*and\s*white|b&w|grade|grading|retouch|edit the (photo|image|pic|picture))\b/i.test(
+    body,
+  );
 }
 
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
@@ -231,6 +288,62 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
     },
   );
 
+  const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
+  return sharp(png).jpeg({ quality: 88 }).toBuffer();
+}
+
+/**
+ * Render a branded text card (no photo) for a generated filler post — a dark
+ * canvas with a centred serif line and the brand name beneath.
+ */
+export async function renderQuoteCard(text: string, brandName: string): Promise<Buffer> {
+  const width = 1080;
+  const height = 1080;
+  const pad = Math.round(width * 0.11);
+  const fontSize = Math.round(width * (text.length > 90 ? 0.058 : text.length > 50 ? 0.072 : 0.092));
+
+  const svg = await satori(
+    {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          width: `${width}px`,
+          height: `${height}px`,
+          background: "linear-gradient(145deg, #141414, #2a2a2a)",
+          padding: `${pad}px`,
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+        },
+        children: [
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", color: "#ffffff", fontFamily: "Playfair", fontSize: `${fontSize}px`, lineHeight: 1.2, letterSpacing: "0.01em" },
+              children: text,
+            },
+          },
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", position: "absolute", bottom: `${pad}px`, color: "rgba(255,255,255,0.75)", fontFamily: "Anton", fontSize: `${Math.round(width * 0.03)}px`, letterSpacing: "0.12em", textTransform: "uppercase" },
+              children: brandName.toUpperCase(),
+            },
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof satori>[0],
+    {
+      width,
+      height,
+      fonts: [
+        { name: "Anton", data: ANTON, weight: 400, style: "normal" },
+        { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+      ],
+    },
+  );
   const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
   return sharp(png).jpeg({ quality: 88 }).toBuffer();
 }

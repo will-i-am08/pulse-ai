@@ -13,7 +13,7 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook"] as const;
+export const Platform = ["instagram", "facebook", "google"] as const;
 export type Platform = (typeof Platform)[number];
 
 export const PostStatus = [
@@ -107,7 +107,13 @@ export interface Brand {
   brand_voice_profile: BrandVoiceProfile;
   ig_user_id: string | null;
   fb_page_id: string | null;
+  fb_page_name: string | null;
+  ig_username: string | null;
   platform_tokens_encrypted: string | null;
+  platform_user_token_encrypted: string | null;
+  meta_connected_at: string | null;
+  facts: BusinessFacts;
+  visual: VisualProfile;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
@@ -142,6 +148,16 @@ export interface Post {
   brand_id: string;
   caption: string | null;
   media_ids: string[];
+  // The client's original photo(s), kept so an image-edit request can re-style
+  // from the source rather than compounding edits on an already-styled image.
+  source_media_ids: string[] | null;
+  // How the image was styled ({ wants_text, headline }) so a re-edit re-applies it.
+  style_meta: { wants_text?: boolean; headline?: string } | null;
+  // Content pillar this post belongs to, and autopilot bookkeeping.
+  pillar_id: string | null;
+  is_auto: boolean;
+  hold_notified_at: string | null;
+  campaign_id: string | null;
   platform: Platform;
   status: PostStatus;
   scheduled_at: string | null;
@@ -152,6 +168,86 @@ export interface Post {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BusinessFacts {
+  hours?: string;
+  address?: string;
+  service_area?: string;
+  services?: Array<{ name: string; price?: string }>;
+  booking_link?: string;
+  policies?: string;
+  faqs?: Array<{ q: string; a: string }>;
+  differentiators?: string;
+}
+
+export interface VisualProfile {
+  colors?: string[];
+  fonts?: string[];
+  aspect_ratio?: string;
+  aesthetic?: string;
+}
+
+export type InteractionKind = "comment" | "dm" | "mention" | "review";
+export type InteractionBucket = "lead" | "support" | "general" | "spam";
+export type InteractionStatus = "new" | "auto_replied" | "drafted" | "escalated" | "resolved" | "hidden";
+
+export interface Interaction {
+  id: string;
+  brand_id: string;
+  platform: string;
+  kind: InteractionKind;
+  external_id: string | null;
+  author: string | null;
+  text: string | null;
+  sentiment: string | null;
+  bucket: InteractionBucket | null;
+  status: InteractionStatus;
+  created_at: string;
+}
+
+export interface InteractionReply {
+  id: string;
+  interaction_id: string;
+  brand_id: string;
+  body: string;
+  actor: "agent" | "owner";
+  status: "draft" | "sent";
+  external_reply_id: string | null;
+  created_at: string;
+}
+
+export interface CampaignPlanItem {
+  day: number; // day offset from campaign start
+  angle: string; // the theme/angle of this post
+  caption: string;
+  card: string; // punchy line for the generated card image
+}
+
+export interface Campaign {
+  id: string;
+  brand_id: string;
+  name: string;
+  goal: string | null;
+  status: "proposed" | "active" | "done" | "cancelled";
+  plan: CampaignPlanItem[];
+  pause_pillars: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+}
+
+export interface Pillar {
+  id: string;
+  brand_id: string;
+  key: string;
+  name: string;
+  description: string;
+  posts_per_week: number;
+  autopilot: boolean;
+  sort: number;
+  last_gap_ping_at: string | null;
+  created_at: string;
 }
 
 export interface StrategyNote {

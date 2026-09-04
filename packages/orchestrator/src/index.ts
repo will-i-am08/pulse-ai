@@ -17,3 +17,14 @@ export type { CallLLMOptions } from "./llm.js";
 
 export { classifyInbound, ruleBasedClassify, InboundClassification } from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
+
+export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
+export { scheduleSlot } from "./scheduler.js";
+export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
+export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
+export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
+export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
+export type { EngagementResult } from "./engagement.js";
+export { repurposeUrl } from "./repurpose.js";
+export { analyzePerformance } from "./insights.js";
+export type { PostPerf } from "./insights.js";

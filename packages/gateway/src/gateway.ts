@@ -183,6 +183,20 @@ export async function handleInbound(
       return { brandId: null, messageId: null };
     }
 
+    // Idempotency: a provider (Discord reconnect, Twilio retry) can redeliver the
+    // same message. If we've already stored this provider id, skip — otherwise we'd
+    // draft, generate, and reply twice.
+    if (inbound.providerMessageId) {
+      const seen = await queryOne<{ id: string }>(
+        "select id from messages where provider_message_sid = $1 limit 1",
+        [inbound.providerMessageId],
+      );
+      if (seen) {
+        console.warn(`handleInbound: duplicate provider message ${inbound.providerMessageId}, skipping`);
+        return { brandId: brand.id, messageId: seen.id };
+      }
+    }
+
     const channel = activeChannel();
 
     const newMedia = await captureMedia(brand.id, channel, inbound.media);
