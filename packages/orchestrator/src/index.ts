@@ -25,3 +25,4 @@ export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausin
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
 export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
+export { repurposeUrl } from "./repurpose.js";

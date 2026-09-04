@@ -25,6 +25,7 @@ const serverEnvSchema = z.object({
   // Replicate (AI image editing). If unset, image editing is skipped.
   REPLICATE_API_TOKEN: z.string().optional(),
   REPLICATE_IMAGE_MODEL: z.string().default("black-forest-labs/flux-kontext-pro"),
+  REPLICATE_TEXT_IMAGE_MODEL: z.string().default("black-forest-labs/flux-schnell"),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),

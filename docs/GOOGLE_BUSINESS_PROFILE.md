@@ -57,6 +57,16 @@ Hand me the **OAuth client ID + secret** (I'll store them encrypted, like the Me
 
 ---
 
+## Phase C — Google Photos / Drive as a content source
+
+The same Google Cloud project also powers the **content source** (Phase C): the owner drops photos in a **Google Photos album** or **Drive folder** and the agent pulls them into the queue.
+
+- Enable the **Google Photos Library API** and/or **Google Drive API** on the same project.
+- Add the read-only scopes (`photoslibrary.readonly` / `drive.readonly`) to the OAuth consent screen.
+- Connect flow: `GET /api/connect/google/start` (reuse the Google OAuth) → the owner picks an album/folder → stored in `content_sources` (table already created) → a sync loop imports new media, auto-classifies it into a pillar, and schedules it.
+
+This is groundwork + gated on the same OAuth. The **generation-to-fill** half of Phase C (AI photo-style images + quote cards) and **URL repurposing** ("turn my website into posts") are already built and testable now — no Google needed.
+
 ## Meanwhile
 
 Google **reviews** already triage through the engagement engine — try `!sim review great spot, will be back!` and `!sim review waited an hour, terrible` in the bot to see a positive review auto-handled and a negative one escalated to you. That's the Phase-B experience, minus the live pipe.

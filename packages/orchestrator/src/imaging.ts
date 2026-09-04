@@ -122,6 +122,51 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
 }
 
 /**
+ * Text-to-image generation (Replicate Flux Schnell by default): produce a clean,
+ * photo-style image from a prompt when the client has no real photo for a slot.
+ * Returns JPEG bytes, or null if generation is unavailable/failed.
+ */
+export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
+  const env = getServerEnv();
+  const token = env.REPLICATE_API_TOKEN;
+  if (!token) return null;
+  const model = env.REPLICATE_TEXT_IMAGE_MODEL;
+  try {
+    let body: any;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "wait" },
+        body: JSON.stringify({
+          input: { prompt, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
+        }),
+      });
+      body = await res.json();
+      if (res.status === 429) {
+        await sleep(((body?.retry_after ?? 3) + 2) * 1000);
+        continue;
+      }
+      if (!res.ok) throw new Error(`replicate ${res.status}: ${JSON.stringify(body).slice(0, 200)}`);
+      break;
+    }
+    const getUrl = body?.urls?.get;
+    for (let i = 0; i < 40 && body.status && body.status !== "succeeded"; i++) {
+      if (body.status === "failed" || body.status === "canceled") throw new Error(`replicate ${body.status}`);
+      await sleep(2000);
+      body = await (await fetch(getUrl, { headers: { Authorization: `Bearer ${token}` } })).json();
+    }
+    let out = body.output;
+    if (Array.isArray(out)) out = out[0];
+    if (!out) throw new Error("replicate returned no output");
+    const raw = Buffer.from(await (await fetch(out)).arrayBuffer());
+    return sharp(raw).jpeg({ quality: 88 }).toBuffer();
+  } catch (err) {
+    console.error("generatePhotoImage failed", err);
+    return null;
+  }
+}
+
+/**
  * Style a client's photo and store the result as a new media asset. Returns the
  * new media id, or null if editing is disabled/unavailable (caller falls back to
  * the original photo).

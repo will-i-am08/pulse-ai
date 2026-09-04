@@ -18,7 +18,11 @@ import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
+import { repurposeUrl } from "./repurpose.js";
 import { callLLM } from "./llm.js";
+
+const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
+const REPURPOSE_RE = /\b(repurpose|turn (my|this|the) (site|website|page|blog|menu)|make posts? (from|out of)|posts? from (my|this))\b/i;
 
 const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 
@@ -427,6 +431,21 @@ export async function processInbound(
     case "instruction":
     case "other":
     default: {
+      // "Repurpose my website" / a link with repurpose intent → atomise a page
+      // into a batch of scheduled draft posts.
+      if (message.body && REPURPOSE_RE.test(message.body)) {
+        const url = message.body.match(URL_RE)?.[0];
+        if (url) {
+          const summary = await repurposeUrl(brand, url);
+          return {
+            reply:
+              summary ??
+              "I couldn't read that page — check the link's public and try again, or send me a photo instead.",
+          };
+        }
+        return { reply: "Send me the link too and I'll turn it into a batch of posts." };
+      }
+
       // Campaign request → propose a full plan for the client to approve.
       if (message.body && CAMPAIGN_RE.test(message.body)) {
         const proposal = await proposeCampaign(brand, message.body);
