@@ -134,6 +134,12 @@ export class LiveGraphAdapter implements GraphAdapter {
         return { externalPostId, permalink: null };
       }
 
+      if (platform === "google") {
+        // Google Business Profile posting arrives with the GBP API integration
+        // (Phase B). Until a GBP connection + token exists, fail clearly.
+        throw new Error("Google Business Profile is not connected yet — pending GBP API access.");
+      }
+
       throw new Error(`Unsupported platform: ${platform satisfies never}`);
     });
   }
@@ -145,6 +151,7 @@ export class LiveGraphAdapter implements GraphAdapter {
   ): Promise<Record<string, number>> {
     const env = getServerEnv();
     const tokens = getTokens(brand);
+    if (platform === "google") return {}; // GBP metrics arrive with the GBP integration
     const accessToken = platform === "instagram" ? tokens.ig_access_token : tokens.fb_page_access_token;
     if (!accessToken) throw new Error(`Brand ${brand.id} missing ${platform} access token`);
 

@@ -4,6 +4,7 @@ import type { Platform } from "@pulse/shared";
 export const RATE_LIMITS: Record<Platform, number> = {
   instagram: 100,
   facebook: 25,
+  google: 25,
 };
 
 /** After this many failed publish attempts, a post is marked `failed` and the operator is alerted. */

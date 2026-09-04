@@ -13,7 +13,7 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook"] as const;
+export const Platform = ["instagram", "facebook", "google"] as const;
 export type Platform = (typeof Platform)[number];
 
 export const PostStatus = [

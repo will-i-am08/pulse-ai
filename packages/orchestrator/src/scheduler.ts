@@ -9,6 +9,7 @@ import { query, type Platform } from "@pulse/shared";
 const PLATFORM_WINDOWS: Record<Platform, number[]> = {
   instagram: [11, 13, 19],
   facebook: [9, 12, 17],
+  google: [9, 12, 15],
 };
 
 const DAILY_CAP = 3; // max posts per brand per day

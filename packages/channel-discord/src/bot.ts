@@ -62,7 +62,9 @@ client.on(Events.MessageCreate, async (message) => {
         await message.reply("No brand is linked to this channel yet.");
         return;
       }
-      const interaction = await createInteraction(brand, { platform: "instagram", kind, author: "@test_customer", text });
+      // Reviews come from Google (or Facebook); comments/DMs/mentions from Instagram.
+      const platform = kind === "review" ? "google" : "instagram";
+      const interaction = await createInteraction(brand, { platform, kind, author: "@test_customer", text });
       const res = await handleInteraction(brand, interaction);
       if (res.publicReply) await message.channel.send(`🟢 **[auto-replied to ${interaction.author}]** "${res.publicReply}"`);
       if (res.ownerMessage) await sendToBrand(brand.id, res.ownerMessage);
