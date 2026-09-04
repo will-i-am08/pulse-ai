@@ -10,7 +10,7 @@ export type MessageType = (typeof MessageType)[number];
 export const MediaKind = ["photo", "video"] as const;
 export type MediaKind = (typeof MediaKind)[number];
 
-export const MediaSource = ["client", "operator"] as const;
+export const MediaSource = ["client", "operator", "source"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
 export const Platform = ["instagram", "facebook", "google"] as const;
@@ -145,6 +145,23 @@ export interface MediaAsset {
   source: MediaSource;
   content_type: string | null;
   used_in_post_id: string | null;
+  // The provider's own id for the item this was pulled from (source media only).
+  source_external_id?: string | null;
+  created_at: string;
+}
+
+// A connected photo source the agent polls for new media (Phase C auto-pull).
+export const ContentSourceKind = ["google_photos", "google_drive", "dropbox"] as const;
+export type ContentSourceKind = (typeof ContentSourceKind)[number];
+
+export interface ContentSource {
+  id: string;
+  brand_id: string;
+  kind: ContentSourceKind;
+  external_ref: string | null; // album / folder id
+  encrypted_token: string | null; // OAuth token (encryptJson), if the source has its own
+  cursor: string | null; // provider pagination/sync cursor
+  last_synced_at: string | null;
   created_at: string;
 }
 

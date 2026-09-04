@@ -10,5 +10,6 @@ export {
   setActiveChannel,
 } from "./gateway.js";
 export { createLinqChannel, LinqChannel } from "./linq-channel.js";
+export { importFromContentSources } from "./content-sources.js";
 export { withBackoff } from "./backoff.js";
 export type { BackoffOptions } from "./backoff.js";
