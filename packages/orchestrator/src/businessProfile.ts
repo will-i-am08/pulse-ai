@@ -5,7 +5,7 @@ import { callLLM } from "./llm.js";
 // FAQs. Powers auto-replies to customers and (later) Google/other posts. The
 // owner edits it just by telling the agent ("we're open till 6 now").
 
-const FACT_SIGNAL = /\b(hour|open|clos|price|cost|\$|book|appointment|address|located|deliver|refund|policy|faq|menu|we (offer|sell|do)|our (hours|prices|address))\b/i;
+const FACT_SIGNAL = /\b(hour|open|clos|price|cost|\$|book|appointment|address|located|deliver|refund|policy|faq|menu|we (offer|sell|do)|our (hours|prices|address)|my name|call me|name'?s|i'?m\s+[a-z]+)\b/i;
 
 /** Does this owner message look like it's stating business facts? */
 export function looksLikeBusinessFact(body: string | null | undefined): boolean {
@@ -45,8 +45,9 @@ function mergeFacts(existing: BusinessFacts, incoming: BusinessFacts): BusinessF
 export async function updateFactsFromMessage(brand: Brand, message: string): Promise<string | null> {
   const system = [
     "Extract any concrete business facts stated in the message into JSON.",
-    'Shape: {"hours":"","address":"","service_area":"","services":[{"name":"","price":""}],"booking_link":"","policies":"","faqs":[{"q":"","a":""}],"differentiators":""}',
-    "Include ONLY fields the message actually states; omit everything else. If it states no business facts, output exactly {}.",
+    'Shape: {"owner_name":"","hours":"","address":"","service_area":"","services":[{"name":"","price":""}],"booking_link":"","policies":"","faqs":[{"q":"","a":""}],"differentiators":""}',
+    'Set "owner_name" only if the person states their OWN name (e.g. "I\'m Sarah", "my name\'s Tom") — first name only.',
+    "Include ONLY fields the message actually states; omit everything else. If it states no facts, output exactly {}.",
     'Also return a "reply" field: one short friendly sentence confirming what you saved.',
     'Wrap as {"facts":{...},"reply":"..."}.',
   ].join("\n");

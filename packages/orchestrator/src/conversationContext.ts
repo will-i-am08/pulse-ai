@@ -43,7 +43,7 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
     try {
       summary = await callLLM({
         system:
-          "Summarise this SMS conversation history between a social media agency and a client in " +
+          "Summarise this SMS conversation history between a business owner and their social media manager in " +
           "3-5 bullet points, focused on recurring brand-voice preferences, feedback, and outstanding items.",
         messages: [{ role: "user", content: older.map(formatMessage).join("\n") }],
         maxTokens: 300,

@@ -196,6 +196,8 @@ export interface Post {
 }
 
 export interface BusinessFacts {
+  // The owner's name, for personal address ("Morning, Sarah!").
+  owner_name?: string;
   hours?: string;
   address?: string;
   service_area?: string;

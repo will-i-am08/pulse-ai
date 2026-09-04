@@ -20,6 +20,7 @@ import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile
 import { sendLatestDraft } from "./engagement.js";
 import { repurposeUrl } from "./repurpose.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
+import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM } from "./llm.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
@@ -121,8 +122,9 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
 async function answerQuestion(brand: Brand, context: string, question: string): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const system = [
-    `You are Pulse, a helpful assistant texting on behalf of "${brand.name}"'s social media agency.`,
-    "Answer the client's question briefly and helpfully, in a friendly SMS tone (a few sentences max).",
+    ...personaLines(brand),
+    "Answer their question briefly and helpfully, in a friendly SMS tone (a few sentences max).",
+    `If they ask what's connected or set up, answer from this — ${connectionSummary(brand)}`,
     profile.tone.length ? `Where relevant, match this brand's tone: ${profile.tone.join(", ")}.` : "",
   ]
     .filter(Boolean)
@@ -147,8 +149,8 @@ async function converse(brand: Brand, message: string): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id);
   const system = [
-    `You are Pulse, the friendly assistant that runs "${brand.name}"'s social media over text.`,
-    "The client just sent a casual, conversational message — a greeting, a thanks, or small talk.",
+    ...personaLines(brand),
+    "They just sent a casual, conversational message — a greeting, a thanks, or small talk.",
     "Reply the way a warm, switched-on human would over text: one or two sentences, natural, no corporate tone, no bullet lists, no menus of features.",
     "Match their energy. If they only said hi, say hi back warmly — and only if it feels natural, add that you're around whenever they want to post something.",
     "Never say you're unsure what they want, and never ask them to clarify a friendly hello.",
@@ -181,8 +183,8 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id);
   const system = [
-    `You are Pulse, the friendly assistant that runs "${brand.name}"'s social media over text.`,
-    `The client has just come back after a break — you two last spoke ${phrase}.`,
+    ...personaLines(brand),
+    `They've just come back after a break — you two last spoke ${phrase}.`,
     actionable
       ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now — or start fresh if they'd rather.`
       : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,
