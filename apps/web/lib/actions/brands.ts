@@ -2,7 +2,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import type { Approver, BrandStatus } from '@pulse/shared';
-import { seedBrandVoice } from '@pulse/orchestrator';
+import { seedBrandVoice } from '@pulse/orchestrator/seedBrandVoice';
 import { insertBrand } from '@/lib/data/brands';
 
 const APPROVERS: Approver[] = ['operator', 'client'];

@@ -17,3 +17,7 @@ export type { CallLLMOptions } from "./llm.js";
 
 export { classifyInbound, ruleBasedClassify, InboundClassification } from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
+
+export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
+export { scheduleSlot } from "./scheduler.js";
+export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";

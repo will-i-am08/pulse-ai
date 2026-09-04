@@ -155,6 +155,18 @@ export function messageWantsText(body: string | null | undefined): boolean {
   return /\b(text|caption on|words on|title on|headline|writing on)\b/i.test(body);
 }
 
+/**
+ * Does the client's follow-up ask to change the PHOTO (vs. the caption wording)?
+ * Used on a pending draft to route "make it brighter" / "change the background"
+ * to a re-edit of the image rather than a caption rewrite.
+ */
+export function messageWantsImageEdit(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return /\b(photo|image|picture|pic|background|bg|lighting|light|bright(er|en)?|dark(er|en)?|colou?r|filter|crop|contrast|saturat\w*|vibrant|warm(er)?|cool(er)?|cinematic|cine|vibe|blur|sharp(er|en)?|exposure|shadows?|highlights?|black\s*and\s*white|b&w|grade|grading|retouch|edit the (photo|image|pic|picture))\b/i.test(
+    body,
+  );
+}
+
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
   const out = await callLLM({
@@ -231,6 +243,62 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
     },
   );
 
+  const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
+  return sharp(png).jpeg({ quality: 88 }).toBuffer();
+}
+
+/**
+ * Render a branded text card (no photo) for a generated filler post — a dark
+ * canvas with a centred serif line and the brand name beneath.
+ */
+export async function renderQuoteCard(text: string, brandName: string): Promise<Buffer> {
+  const width = 1080;
+  const height = 1080;
+  const pad = Math.round(width * 0.11);
+  const fontSize = Math.round(width * (text.length > 90 ? 0.058 : text.length > 50 ? 0.072 : 0.092));
+
+  const svg = await satori(
+    {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          width: `${width}px`,
+          height: `${height}px`,
+          background: "linear-gradient(145deg, #141414, #2a2a2a)",
+          padding: `${pad}px`,
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+        },
+        children: [
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", color: "#ffffff", fontFamily: "Playfair", fontSize: `${fontSize}px`, lineHeight: 1.2, letterSpacing: "0.01em" },
+              children: text,
+            },
+          },
+          {
+            type: "div",
+            props: {
+              style: { display: "flex", position: "absolute", bottom: `${pad}px`, color: "rgba(255,255,255,0.75)", fontFamily: "Anton", fontSize: `${Math.round(width * 0.03)}px`, letterSpacing: "0.12em", textTransform: "uppercase" },
+              children: brandName.toUpperCase(),
+            },
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof satori>[0],
+    {
+      width,
+      height,
+      fonts: [
+        { name: "Anton", data: ANTON, weight: 400, style: "normal" },
+        { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+      ],
+    },
+  );
   const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
   return sharp(png).jpeg({ quality: 88 }).toBuffer();
 }

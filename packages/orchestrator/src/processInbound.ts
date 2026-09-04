@@ -5,8 +5,43 @@ import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
 import { onboardingTurn } from "./onboarding.js";
-import { editImageForBrand, messageWantsText, generateHeadline, applyTextTile } from "./imaging.js";
+import {
+  editImageForBrand,
+  messageWantsText,
+  messageWantsImageEdit,
+  generateHeadline,
+  applyTextTile,
+} from "./imaging.js";
+import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
+import { scheduleSlot } from "./scheduler.js";
+import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 import { callLLM } from "./llm.js";
+
+const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
+
+/** Format a scheduled slot like "Tue 7:00pm" in the process/brand timezone. */
+function formatSlot(d: Date): string {
+  return new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
+/** The most recent autopilot post still sitting in a future slot (for HOLD). */
+async function getScheduledAutoPost(brandId: string): Promise<Post | null> {
+  return queryOne<Post>(
+    `select * from posts
+      where brand_id = $1 and is_auto = true and status = 'scheduled'
+        and (scheduled_at is null or scheduled_at > now())
+      order by scheduled_at asc
+      limit 1`,
+    [brandId],
+  );
+}
+
+const HOLD_RE = /^\s*(hold|stop|wait|pause|cancel|don'?t post)\b/i;
 
 export type InboundContext = {
   brand: Brand;
@@ -101,6 +136,24 @@ export async function processInbound(
     return { reply };
   }
 
+  // Hold-window kill switch: "HOLD" / "stop" pulls a scheduled autopilot post
+  // back into a normal draft the client can approve or discard.
+  if (message.body && HOLD_RE.test(message.body) && newMedia.length === 0) {
+    const auto = await getScheduledAutoPost(brand.id);
+    if (auto) {
+      await query(`update posts set status = 'pending_approval', is_auto = false where id = $1`, [auto.id]);
+      await query(
+        `insert into approval_log (post_id, brand_id, action, actor, note)
+         values ($1, $2, 'edited', $3, $4)`,
+        [auto.id, brand.id, brand.approver, "Held by client via HOLD"],
+      );
+      return {
+        reply: `Held — it won't go out. Reply "yes" to post it after all, or tell me what to change.`,
+        postId: auto.id,
+      };
+    }
+  }
+
   const pending = await getLatestPendingPost(brand.id);
 
   const result = await classifyInbound({
@@ -129,13 +182,15 @@ export async function processInbound(
       const firstPhoto = newMedia.find((m) => m.kind === "photo");
       let postMediaIds = originalIds;
       let styledUrl: string | undefined;
+      const wantsText = messageWantsText(message.body);
+      let headline: string | undefined;
       if (firstPhoto) {
         let finalId = firstPhoto.id;
         const editedId = await editImageForBrand(brand, firstPhoto.id, message.body ?? undefined);
         if (editedId) finalId = editedId;
         // If the client asked for text on the image, overlay a bold headline.
-        if (messageWantsText(message.body)) {
-          const headline = await generateHeadline(brand, caption);
+        if (wantsText) {
+          headline = await generateHeadline(brand, caption);
           const tiledId = await applyTextTile(brand, finalId, headline);
           if (tiledId) finalId = tiledId;
         }
@@ -145,11 +200,39 @@ export async function processInbound(
         }
       }
 
+      // Sort the photo into a content pillar and find a smart slot for it.
+      const pillars = await ensurePillars(brand.id);
+      const firstMediaId = firstPhoto?.id ?? originalIds[0];
+      const pillar = firstMediaId
+        ? await classifyPhotoPillar(brand, pillars, firstMediaId)
+        : pillars[0];
+      const slot = await scheduleSlot({
+        brandId: brand.id,
+        platform: "instagram",
+        pillarId: pillar?.id ?? null,
+        postsPerWeek: pillar?.posts_per_week ?? 0,
+      });
+      const autopilot = Boolean(pillar?.autopilot);
+
+      // Remember the source photo + styling recipe so a later "make the image
+      // brighter" re-styles from the original instead of compounding edits.
+      const styleMeta = { wants_text: wantsText, ...(headline ? { headline } : {}) };
       const post = await queryOne<Post>(
-        `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at)
-         values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4)
+        `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
+         values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, $6, $7, $8, 'instagram', $9, $10)
          returning *`,
-        [brand.id, caption, postMediaIds, proposedTime],
+        [
+          brand.id,
+          caption,
+          postMediaIds,
+          originalIds,
+          JSON.stringify(styleMeta),
+          pillar?.id ?? null,
+          autopilot,
+          autopilot ? new Date().toISOString() : null,
+          autopilot ? "scheduled" : "pending_approval",
+          slot.toISOString(),
+        ],
       );
       if (!post) throw new Error("Failed to insert post");
 
@@ -159,15 +242,30 @@ export async function processInbound(
         [
           post.id,
           brand.id,
-          JSON.stringify({ caption, proposed_time: proposedTime, styled: Boolean(styledUrl) }),
+          JSON.stringify({ caption, scheduled_at: slot.toISOString(), pillar: pillar?.key, styled: Boolean(styledUrl) }),
           "Drafted from inbound media message",
         ],
       );
 
-      const timeLine = proposedTime ? `\nProposed time: ${proposedTime}` : "";
+      // Autopilot: the pillar posts itself — no per-post approval. Give the client
+      // the hold-window heads-up (the whole gap until the slot is their window).
+      if (autopilot) {
+        await query(
+          `insert into approval_log (post_id, brand_id, action, actor, note)
+           values ($1, $2, 'approved', 'system-autopilot', $3)`,
+          [post.id, brand.id, "Auto-scheduled (pillar on autopilot)"],
+        );
+        const styledLine = styledUrl ? "Styled and scheduled ✨" : "Scheduled:";
+        return {
+          reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
+          postId: post.id,
+          mediaUrl: styledUrl,
+        };
+      }
+
       const styledLine = styledUrl ? "Here's your post — I styled the photo too ✨" : "Here's your post:";
       return {
-        reply: `${styledLine}\n\n"${caption}"${timeLine}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
+        reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
         postId: post.id,
         mediaUrl: styledUrl,
       };
@@ -180,6 +278,50 @@ export async function processInbound(
             "I don't have a pending draft to edit right now — send a photo or video and I'll draft a caption for it.",
         };
       }
+
+      // A visual instruction ("make it brighter", "change the background") re-edits
+      // the PHOTO — restyling from the original source, then re-applying the text
+      // tile — rather than rewriting the caption.
+      if (messageWantsImageEdit(message.body)) {
+        const sourceId = pending.source_media_ids?.[0] ?? pending.media_ids[0];
+        if (!sourceId) {
+          return {
+            reply: "I don't have the original photo to re-edit — send it again and I'll restyle it.",
+            postId: pending.id,
+          };
+        }
+        const editedId = await editImageForBrand(brand, sourceId, message.body ?? undefined);
+        if (!editedId) {
+          return {
+            reply: "I couldn't re-edit the image just then — mind trying that again?",
+            postId: pending.id,
+          };
+        }
+        let finalId = editedId;
+        const meta = pending.style_meta ?? {};
+        if (meta.wants_text) {
+          const headline = meta.headline ?? (await generateHeadline(brand, pending.caption ?? ""));
+          const tiledId = await applyTextTile(brand, finalId, headline);
+          if (tiledId) finalId = tiledId;
+        }
+        const newMediaIds = [finalId, ...pending.media_ids.slice(1)];
+        await query(`update posts set media_ids = $1::uuid[] where id = $2 and brand_id = $3`, [
+          newMediaIds,
+          pending.id,
+          brand.id,
+        ]);
+        await query(
+          `insert into approval_log (post_id, brand_id, action, actor, note)
+           values ($1, $2, 'edited', $3, $4)`,
+          [pending.id, brand.id, brand.approver, "Re-edited image via inbound correction"],
+        );
+        return {
+          reply: 'Here\'s the updated image ✨ — reply "yes" to approve, or tell me another change.',
+          postId: pending.id,
+          mediaUrl: publicMediaUrl(finalId),
+        };
+      }
+
       const before = pending.caption ?? "";
       const after = await reviseCaption(brand, before, message.body ?? "");
 
@@ -216,9 +358,11 @@ export async function processInbound(
       }
 
       // Approval is absolute (BUILD_CONTRACTS.md): we may set 'approved', but
-      // never 'publishing'/'published' — that stays the worker's job.
+      // never 'publishing'/'published' — that stays the worker's job. "post now"
+      // overrides the smart slot and publishes on the next tick.
+      const postNow = /\b(now|immediately|right now|asap)\b/i.test(message.body ?? "");
       await query(
-        `update posts set status = 'approved' where id = $1 and brand_id = $2`,
+        `update posts set status = 'approved'${postNow ? ", scheduled_at = now()" : ""} where id = $1 and brand_id = $2`,
         [pending.id, brand.id],
       );
 
@@ -228,7 +372,12 @@ export async function processInbound(
         [pending.id, brand.id, brand.approver, "Approved via inbound message"],
       );
 
-      return { reply: "Approved — this'll go out at the scheduled time.", postId: pending.id };
+      const when = postNow
+        ? " — going out now"
+        : pending.scheduled_at
+          ? ` — going out ${formatSlot(new Date(pending.scheduled_at))}`
+          : "";
+      return { reply: `Approved${when}.`, postId: pending.id };
     }
 
     case "question": {
@@ -240,6 +389,30 @@ export async function processInbound(
     case "instruction":
     case "other":
     default: {
+      // "Draft one" (in reply to a gap-fill nudge) → generate a held filler post.
+      if (message.body && DRAFT_FILLER_RE.test(message.body) && newMedia.length === 0) {
+        const pillars = await ensurePillars(brand.id);
+        const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
+        if (target) {
+          const filler = await generateFillerPost(brand, target);
+          if (filler) {
+            return {
+              reply: `Here's a ${target.name} post I drafted ✨\n\n"${filler.post.caption}"\n\nProposed for ${formatSlot(new Date(filler.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+              postId: filler.post.id,
+              mediaUrl: filler.mediaUrl,
+            };
+          }
+          return { reply: "I tried to draft one but hit a snag — mind asking again in a moment?" };
+        }
+      }
+
+      // A scheduling/cadence instruction ("put BTS on autopilot", "post promos
+      // twice a week") reconfigures the client's pillars.
+      if (message.body) {
+        const pillars = await ensurePillars(brand.id);
+        const configReply = await configurePillarsFromMessage(brand, pillars, message.body);
+        if (configReply) return { reply: configReply };
+      }
       return {
         reply:
           "Got it — noted. Send me a photo any time to draft a new post, or let me know specifically " +

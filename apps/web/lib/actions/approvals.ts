@@ -1,7 +1,7 @@
 'use server';
 import 'server-only';
 import { revalidatePath } from 'next/cache';
-import { applyCorrection } from '@pulse/orchestrator';
+import { applyCorrection } from '@pulse/orchestrator/applyCorrection';
 import { getPost, updatePost } from '@/lib/data/posts';
 import { logApproval } from '@/lib/data/approval-log';
 

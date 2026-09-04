@@ -107,7 +107,11 @@ export interface Brand {
   brand_voice_profile: BrandVoiceProfile;
   ig_user_id: string | null;
   fb_page_id: string | null;
+  fb_page_name: string | null;
+  ig_username: string | null;
   platform_tokens_encrypted: string | null;
+  platform_user_token_encrypted: string | null;
+  meta_connected_at: string | null;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
@@ -142,6 +146,15 @@ export interface Post {
   brand_id: string;
   caption: string | null;
   media_ids: string[];
+  // The client's original photo(s), kept so an image-edit request can re-style
+  // from the source rather than compounding edits on an already-styled image.
+  source_media_ids: string[] | null;
+  // How the image was styled ({ wants_text, headline }) so a re-edit re-applies it.
+  style_meta: { wants_text?: boolean; headline?: string } | null;
+  // Content pillar this post belongs to, and autopilot bookkeeping.
+  pillar_id: string | null;
+  is_auto: boolean;
+  hold_notified_at: string | null;
   platform: Platform;
   status: PostStatus;
   scheduled_at: string | null;
@@ -152,6 +165,19 @@ export interface Post {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Pillar {
+  id: string;
+  brand_id: string;
+  key: string;
+  name: string;
+  description: string;
+  posts_per_week: number;
+  autopilot: boolean;
+  sort: number;
+  last_gap_ping_at: string | null;
+  created_at: string;
 }
 
 export interface StrategyNote {

@@ -10,6 +10,7 @@ import {
   type Brand,
   type InboundMedia,
   type InboundMessage,
+  type Pillar,
   type Post,
 } from "@pulse/shared";
 import { setActiveChannel, handleInbound, sendToBrand } from "@pulse/gateway";
@@ -67,10 +68,17 @@ client.on(Events.MessageCreate, async (message) => {
 
 // In-process publish loop: approved → published (mock), then confirm in Discord.
 async function publishApproved(): Promise<void> {
-  const posts = await query<Post>("select * from posts where status = 'approved'");
+  // Publish approved (human) and scheduled (autopilot) posts once their slot is
+  // due. A null slot means "as soon as approved".
+  const posts = await query<Post>(
+    `select * from posts
+      where status in ('approved', 'scheduled')
+        and (scheduled_at is null or scheduled_at <= now())
+      order by scheduled_at asc nulls first`,
+  );
   for (const post of posts) {
     const gate = await queryOne("select 1 from approval_log where post_id = $1 and action = 'approved'", [post.id]);
-    if (!gate) continue; // approval is absolute
+    if (!gate) continue; // approval is absolute (autopilot posts get a system approval)
     await query("update posts set status = 'publishing' where id = $1", [post.id]);
     try {
       const brand = await queryOne<Brand>("select * from brands where id = $1", [post.brand_id]);
@@ -85,11 +93,17 @@ async function publishApproved(): Promise<void> {
         "update posts set status = 'published', published_at = now(), external_post_id = $2 where id = $1",
         [post.id, res.externalPostId],
       );
+      const live = env.GRAPH_MODE === "live";
       await query(
         `insert into approval_log (post_id, brand_id, action, actor, note) values ($1, $2, 'published', 'system', $3)`,
-        [post.id, post.brand_id, `mock publish ${res.externalPostId}`],
+        [post.id, post.brand_id, `${live ? "live" : "mock"} publish ${res.externalPostId}`],
       );
-      await sendToBrand(post.brand_id, `✅ Posted to ${post.platform}! See it on the feed: ${feedUrl}`);
+      await sendToBrand(
+        post.brand_id,
+        live
+          ? `✅ Posted live to ${post.platform} — id ${res.externalPostId}`
+          : `✅ Posted to ${post.platform}! See it on the feed: ${feedUrl}`,
+      );
       console.log(`[discord] published post ${post.id.slice(0, 8)} → ${res.externalPostId}`);
     } catch (err) {
       await query("update posts set status = 'failed', last_error = $2 where id = $1", [post.id, String(err)]);
@@ -100,6 +114,43 @@ async function publishApproved(): Promise<void> {
 setInterval(() => {
   publishApproved().catch((err) => console.error("[discord] publish loop error", err));
 }, 5000);
+
+// ─── Proactive gap-fill: nudge the client before a pillar's week runs dry ────
+const GAP_PING_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+async function gapFillCheck(): Promise<void> {
+  const brands = await query<Brand>("select * from brands where status = 'active'");
+  for (const brand of brands) {
+    const pillars = await query<Pillar>(
+      "select * from pillars where brand_id = $1 and posts_per_week > 0 order by sort, created_at",
+      [brand.id],
+    );
+    for (const pillar of pillars) {
+      if (pillar.last_gap_ping_at && Date.now() - new Date(pillar.last_gap_ping_at).getTime() < GAP_PING_THROTTLE_MS) continue;
+      const row = await queryOne<{ n: number }>(
+        `select count(*)::int as n from posts
+          where brand_id = $1 and pillar_id = $2
+            and status in ('pending_approval','approved','scheduled')
+            and scheduled_at between now() and now() + interval '7 days'`,
+        [brand.id, pillar.id],
+      );
+      const have = Number(row?.n ?? 0);
+      if (have >= pillar.posts_per_week) continue;
+      await sendToBrand(
+        brand.id,
+        `Heads up — your "${pillar.name}" content is a little light this week (${have}/${pillar.posts_per_week} planned). Send me a photo for it, or reply "draft one" and I'll write a post you can approve.`,
+      );
+      await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
+      break; // at most one nudge per brand per pass — never a barrage
+    }
+  }
+}
+
+setInterval(() => {
+  gapFillCheck().catch((err) => console.error("[discord] gap-fill error", err));
+}, 2 * 60 * 60 * 1000);
+// First pass shortly after startup so a fresh account gets a nudge.
+setTimeout(() => gapFillCheck().catch(() => {}), 20000);
 
 // Signup-driven onboarding: DM newly signed-up users first and run setup.
 async function initiatePendingOnboarding(): Promise<void> {
