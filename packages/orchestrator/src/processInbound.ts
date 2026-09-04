@@ -238,9 +238,11 @@ export async function processInbound(
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
-  // with no photo and nothing pending — just gets a warm human reply. This runs
-  // before classification so a friendly hello never trips the clarify fallback.
-  if (message.body && newMedia.length === 0 && !pending && GREETING_RE.test(message.body)) {
+  // with no photo — just gets a warm human reply. This runs before classification
+  // so a friendly hello never trips the clarify fallback. It fires even when a
+  // draft is pending: a greeting is never an approval, so GREETING_RE only matches
+  // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
+  if (message.body && newMedia.length === 0 && GREETING_RE.test(message.body)) {
     return { reply: await converse(brand, message.body) };
   }
 
