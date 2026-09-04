@@ -21,29 +21,39 @@ back half of "connect a source + auto-pull."
 Token: a source uses its own `encrypted_token` if it has one, otherwise it falls
 back to the brand's existing Google refresh token.
 
-## Operating it (sandbox)
+## Connecting a source
 
-From the brand's Discord channel:
+**Client-facing (self-serve).** The dashboard has a **Photo source** card:
+`Connect a photo source` → `/api/connect/source/start` runs a Google OAuth flow
+for read-only Photos + Drive access, then `/app/connect/source/choose` lists the
+owner's albums and folders to pick from. The chosen source is saved as a
+`content_sources` row with its own encrypted refresh token. Flow files:
+
+- `apps/web/lib/google/sources.ts` — scopes, OAuth URLs, Drive/Photos listers
+- `apps/web/app/api/connect/source/{start,callback}/route.ts`
+- `apps/web/app/app/connect/source/choose/page.tsx` + `apps/web/lib/actions/source.ts`
+
+**Operator (Discord), for the sandbox:**
 
 - `!source add <drive|photos> <folderOrAlbumId>` — link a source
 - `!source list` — show linked sources + last sync
 - `!source sync` — pull now instead of waiting for the hourly sweep
 
-## To activate live — two steps
+## To activate live — Google setup
 
-The ingestion engine is built and tested; fetching real media needs Google
-access that isn't set up yet:
+The ingestion engine and the connect flow are built and tested; the OAuth flow
+just needs Google access that isn't switched on yet:
 
-1. **Enable the API + scope.** In the Pulse Google Cloud project, enable the
-   **Google Drive API** and/or **Photos Library API**, add the read scope
-   (`https://www.googleapis.com/auth/drive.readonly` /
-   `.../auth/photoslibrary.readonly`) to the OAuth consent screen, and have the
-   brand re-consent so the stored token carries it. (Today the token only has
-   `business.manage`, so Drive/Photos calls will 403.)
-2. **A first-class connect flow.** The `!source` command is the operator path;
-   a client-facing "connect your album" flow (like the GBP connect) can create
-   the `content_sources` row with its own scoped token.
+1. **Enable the APIs.** In the Pulse Google Cloud project, enable the **Google
+   Drive API** and the **Photos Library API**.
+2. **Add the scopes.** Add `drive.readonly` and `photoslibrary.readonly` to the
+   OAuth consent screen's Data access. (Today the consent screen only carries
+   `business.manage`, so these calls would 403.)
+3. **Register the redirect URI.** Add
+   `https://<app-domain>/api/connect/source/callback` to the OAuth client's
+   authorised redirect URIs (alongside the existing Business Profile one), or
+   the flow returns `redirect_uri_mismatch`.
 
-The provider endpoints in `packages/gateway/src/content-sources.ts` use the
-documented request/response shapes — verify field names against live access
-once the scopes above are granted.
+The provider endpoints in `packages/gateway/src/content-sources.ts` and
+`apps/web/lib/google/sources.ts` use the documented request/response shapes —
+verify field names against live access once the scopes above are granted.
