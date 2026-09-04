@@ -26,3 +26,5 @@ export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from ".
 export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";
+export { analyzePerformance } from "./insights.js";
+export type { PostPerf } from "./insights.js";
