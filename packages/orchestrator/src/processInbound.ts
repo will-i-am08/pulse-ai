@@ -30,6 +30,12 @@ const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|somethin
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
 
+// Pure greetings / pleasantries / small talk — the WHOLE message is just this,
+// nothing actionable trailing it (the `$` anchor keeps "hey can you post this"
+// out). These get a warm human reply, never the clarify fallback.
+const GREETING_RE =
+  /^\s*(?:hi+|hey+|hello+|yo+|hiya|heya|howdy|hallo|sup|wassup|g'?day|good\s*(?:morning|afternoon|evening|day)|morning|afternoon|evening|thanks?(?:\s*(?:you|a lot|so much|heaps|mate))?|thank\s*you|cheers|ta|nice\s*one|good\s*stuff|lol|haha+|how(?:'?s| is| are| ya| you)?\s*(?:it|things|you|ya|everything|life)?(?:\s*(?:going|doing|been))?)\b[\s!.?,]*$/i;
+
 /** Format a scheduled slot like "Tue 7:00pm" in the process/brand timezone. */
 function formatSlot(d: Date): string {
   return new Intl.DateTimeFormat("en-AU", {
@@ -132,6 +138,39 @@ async function answerQuestion(brand: Brand, context: string, question: string): 
 }
 
 /**
+ * Chat back like a switched-on human — for greetings, thanks, and small talk,
+ * or when a message carries no actionable intent. Warm and brief; never recites
+ * a feature menu and never says "I'm not sure what you want".
+ */
+async function converse(brand: Brand, message: string): Promise<string> {
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const context = await buildConversationContext(brand.id);
+  const system = [
+    `You are Pulse, the friendly assistant that runs "${brand.name}"'s social media over text.`,
+    "The client just sent a casual, conversational message — a greeting, a thanks, or small talk.",
+    "Reply the way a warm, switched-on human would over text: one or two sentences, natural, no corporate tone, no bullet lists, no menus of features.",
+    "Match their energy. If they only said hi, say hi back warmly — and only if it feels natural, add that you're around whenever they want to post something.",
+    "Never say you're unsure what they want, and never ask them to clarify a friendly hello.",
+    profile.tone.length ? `Lean on this brand's tone where it fits: ${profile.tone.join(", ")}.` : "",
+    `Emoji policy: ${profile.emoji_policy}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const text = await callLLM({
+    system,
+    messages: [
+      {
+        role: "user",
+        content: context ? `Recent conversation:\n${context}\n\nTheir latest message:\n${message}` : message,
+      },
+    ],
+    maxTokens: 200,
+  });
+  return text.trim();
+}
+
+/**
  * Decide + act on an inbound message. Frozen signature per
  * BUILD_CONTRACTS.md — called by @pulse/gateway's handleInbound after the
  * inbound message + media are persisted.
@@ -198,6 +237,13 @@ export async function processInbound(
     if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
   }
 
+  // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
+  // with no photo and nothing pending — just gets a warm human reply. This runs
+  // before classification so a friendly hello never trips the clarify fallback.
+  if (message.body && newMedia.length === 0 && !pending && GREETING_RE.test(message.body)) {
+    return { reply: await converse(brand, message.body) };
+  }
+
   const result = await classifyInbound({
     body: message.body,
     hasMedia: newMedia.length > 0,
@@ -207,11 +253,16 @@ export async function processInbound(
   await updateMessageType(message.id, toDbMessageType(result.classification));
 
   if (result.confidence < LOW_CONFIDENCE_THRESHOLD) {
-    return {
-      reply:
-        "Sorry, I'm not quite sure what you'd like me to do with that — could you clarify? " +
-        "(Send a photo/video to draft a post, reply \"yes\" to approve, or tell me exactly what to change.)",
-    };
+    // With a draft awaiting the client, an unclear message is most likely a fuzzy
+    // edit or approval — ask to clarify rather than guess-and-act (BUILD_CONTRACTS).
+    // With nothing pending, it's just conversation — reply like a human.
+    if (pending) {
+      return {
+        reply:
+          'Not quite sure what you\'d like there — reply "yes" to approve, tell me what to change, or "no" to discard.',
+      };
+    }
+    return { reply: await converse(brand, message.body ?? "") };
   }
 
   switch (result.classification) {
