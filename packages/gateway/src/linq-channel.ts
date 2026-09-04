@@ -17,17 +17,32 @@ export class LinqChannel implements MessageChannel {
   constructor(private apiKey: string) {}
 
   async send(msg: OutboundMessage): Promise<SendResult> {
-    // Text is reliable; media part shapes for outbound aren't documented in the
-    // guide, so we send text only for now (the styled image is on the feed).
-    const res = await fetch(`${API}/messages`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: [msg.to],
-        message: { parts: [{ type: "text", value: msg.body }] },
-      }),
-    });
-    const body = (await res.json().catch(() => ({}))) as any;
+    const post = (parts: Array<Record<string, unknown>>) =>
+      fetch(`${API}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ to: [msg.to], message: { parts } }),
+      });
+
+    // Caption first, then an image part per media URL (mirrors the inbound part
+    // shape: type + value URL). The media route is public, so Linq can fetch it.
+    const textParts: Array<Record<string, unknown>> = msg.body ? [{ type: "text", value: msg.body }] : [];
+    const mediaParts = (msg.mediaUrls ?? []).map((url) => ({ type: "image", value: url }));
+    const parts = [...textParts, ...mediaParts];
+    if (parts.length === 0) parts.push({ type: "text", value: "" });
+
+    let res = await post(parts);
+    let body = (await res.json().catch(() => ({}))) as any;
+
+    // If a send WITH media fails, the outbound image-part shape may be wrong —
+    // never lose the caption over it. Retry text-only so the client still gets it.
+    if ((!res.ok || body.error) && mediaParts.length > 0) {
+      console.warn(`linq send with media failed (${res.status}); retrying text-only`, JSON.stringify(body).slice(0, 200));
+      const fallback = textParts.length > 0 ? textParts : [{ type: "text", value: msg.body ?? "" }];
+      res = await post(fallback);
+      body = (await res.json().catch(() => ({}))) as any;
+    }
+
     if (!res.ok || body.error) {
       throw new Error(`linq send ${res.status}: ${JSON.stringify(body).slice(0, 200)}`);
     }
