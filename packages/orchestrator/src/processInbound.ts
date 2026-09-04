@@ -15,9 +15,12 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
+import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { callLLM } from "./llm.js";
 
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
+const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
+const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
 
 /** Format a scheduled slot like "Tue 7:00pm" in the process/brand timezone. */
 function formatSlot(d: Date): string {
@@ -151,6 +154,30 @@ export async function processInbound(
         reply: `Held — it won't go out. Reply "yes" to post it after all, or tell me what to change.`,
         postId: auto.id,
       };
+    }
+  }
+
+  // A campaign proposal is awaiting the client's go-ahead: handle approve/cancel
+  // before anything else (a plain "yes" here means "run the campaign").
+  if (message.body && newMedia.length === 0) {
+    const proposed = await getProposedCampaign(brand.id);
+    if (proposed) {
+      if (CANCEL_RE.test(message.body)) {
+        await query(`update campaigns set status = 'cancelled' where id = $1`, [proposed.id]);
+        return { reply: "No worries — I've scrapped that campaign. Nothing scheduled." };
+      }
+      const wantsPause = /\b(pause|hold|stop|just the campaign|only the campaign|instead)\b/i.test(message.body);
+      const affirmed = /\b(yes|yep|yeah|go|run it|do it|approve|let'?s go|sounds good|blend|keep|alongside|pause)\b/i.test(message.body);
+      if (affirmed) {
+        const reply = await activateCampaign(brand, proposed, wantsPause);
+        return { reply };
+      }
+      // Anything else while a campaign is pending: treat as a tweak to re-plan.
+      const reproposed = await proposeCampaign(brand, message.body);
+      if (reproposed) {
+        await query(`update campaigns set status = 'cancelled' where id = $1`, [proposed.id]);
+        return { reply: reproposed.summary, postId: undefined };
+      }
     }
   }
 
@@ -389,6 +416,12 @@ export async function processInbound(
     case "instruction":
     case "other":
     default: {
+      // Campaign request → propose a full plan for the client to approve.
+      if (message.body && CAMPAIGN_RE.test(message.body)) {
+        const proposal = await proposeCampaign(brand, message.body);
+        if (proposal) return { reply: proposal.summary };
+      }
+
       // "Draft one" (in reply to a gap-fill nudge) → generate a held filler post.
       if (message.body && DRAFT_FILLER_RE.test(message.body) && newMedia.length === 0) {
         const pillars = await ensurePillars(brand.id);

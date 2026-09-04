@@ -155,6 +155,7 @@ export interface Post {
   pillar_id: string | null;
   is_auto: boolean;
   hold_notified_at: string | null;
+  campaign_id: string | null;
   platform: Platform;
   status: PostStatus;
   scheduled_at: string | null;
@@ -165,6 +166,26 @@ export interface Post {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CampaignPlanItem {
+  day: number; // day offset from campaign start
+  angle: string; // the theme/angle of this post
+  caption: string;
+  card: string; // punchy line for the generated card image
+}
+
+export interface Campaign {
+  id: string;
+  brand_id: string;
+  name: string;
+  goal: string | null;
+  status: "proposed" | "active" | "done" | "cancelled";
+  plan: CampaignPlanItem[];
+  pause_pillars: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
 }
 
 export interface Pillar {

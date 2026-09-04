@@ -1,7 +1,11 @@
 import 'server-only';
 import { query, queryOne, type Pillar, type Post } from '@pulse/shared';
 
-export type PlanPost = Post & { pillar_key: string | null; pillar_name: string | null };
+export type PlanPost = Post & {
+  pillar_key: string | null;
+  pillar_name: string | null;
+  campaign_name: string | null;
+};
 
 /** The user's brand (oldest), or null. */
 export async function ownerBrandId(userId: string): Promise<string | null> {
@@ -15,9 +19,10 @@ export async function ownerBrandId(userId: string): Promise<string | null> {
 /** Upcoming + recently-published posts for the calendar (next ~28 days + last 7). */
 export async function listPlanPosts(brandId: string): Promise<PlanPost[]> {
   return query<PlanPost>(
-    `select p.*, pl.key as pillar_key, pl.name as pillar_name
+    `select p.*, pl.key as pillar_key, pl.name as pillar_name, c.name as campaign_name
        from posts p
        left join pillars pl on pl.id = p.pillar_id
+       left join campaigns c on c.id = p.campaign_id
       where p.brand_id = $1
         and p.status in ('pending_approval','approved','scheduled','published')
         and (p.scheduled_at is null or p.scheduled_at between now() - interval '7 days' and now() + interval '28 days')

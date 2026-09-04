@@ -63,7 +63,13 @@ function PostCard({ post }: { post: PlanPost }) {
           <div style={{ color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
             {post.caption ?? '(no caption)'}
           </div>
-          <div style={{ color: pillarColor(post.pillar_key), fontSize: 11, marginTop: 2 }}>{post.pillar_name ?? 'Unsorted'}</div>
+          <div style={{ fontSize: 11, marginTop: 2 }}>
+            {post.campaign_name ? (
+              <span style={{ color: '#7c3aed' }}>🚀 {post.campaign_name}</span>
+            ) : (
+              <span style={{ color: pillarColor(post.pillar_key) }}>{post.pillar_name ?? 'Unsorted'}</span>
+            )}
+          </div>
         </div>
       </div>
       {editable && (

@@ -121,6 +121,13 @@ const GAP_PING_THROTTLE_MS = 24 * 60 * 60 * 1000;
 async function gapFillCheck(): Promise<void> {
   const brands = await query<Brand>("select * from brands where status = 'active'");
   for (const brand of brands) {
+    // Skip nudges while a pillar-pausing campaign is running.
+    const paused = await queryOne(
+      `select 1 from campaigns where brand_id = $1 and status = 'active' and pause_pillars = true
+        and (starts_at is null or starts_at <= now()) and (ends_at is null or ends_at >= now()) limit 1`,
+      [brand.id],
+    );
+    if (paused) continue;
     const pillars = await query<Pillar>(
       "select * from pillars where brand_id = $1 and posts_per_week > 0 order by sort, created_at",
       [brand.id],
