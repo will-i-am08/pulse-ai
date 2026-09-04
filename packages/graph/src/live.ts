@@ -1,5 +1,5 @@
 import type { Brand, Platform, ServerEnv } from "@pulse/shared";
-import { decryptJson, getServerEnv } from "@pulse/shared";
+import { decryptJson, getServerEnv, googleAccessToken, gbpCreatePost } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -135,9 +135,14 @@ export class LiveGraphAdapter implements GraphAdapter {
       }
 
       if (platform === "google") {
-        // Google Business Profile posting arrives with the GBP API integration
-        // (Phase B). Until a GBP connection + token exists, fail clearly.
-        throw new Error("Google Business Profile is not connected yet — pending GBP API access.");
+        if (!brand.google_tokens_encrypted || !brand.gbp_account || !brand.gbp_location_id) {
+          throw new Error(`Brand ${brand.id} has no Google Business Profile connected`);
+        }
+        const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted);
+        const accessToken = await googleAccessToken(refresh_token);
+        const locationName = `${brand.gbp_account}/${brand.gbp_location_id}`;
+        const postId = await gbpCreatePost(accessToken, locationName, { summary: caption, mediaUrl: mediaUrls[0] });
+        return { externalPostId: postId, permalink: null };
       }
 
       throw new Error(`Unsupported platform: ${platform satisfies never}`);

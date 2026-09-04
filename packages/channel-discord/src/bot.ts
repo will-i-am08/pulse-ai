@@ -7,6 +7,10 @@ import {
   query,
   queryOne,
   publicMediaUrl,
+  decryptJson,
+  googleAccessToken,
+  gbpListReviews,
+  gbpReplyReview,
   type Brand,
   type InboundMedia,
   type InboundMessage,
@@ -307,9 +311,20 @@ async function processNewInteractions(): Promise<void> {
       const res = await handleInteraction(brand, it);
       if (res.ownerMessage) await sendToBrand(brand.id, res.ownerMessage);
       if (res.publicReply) {
-        // Posting the reply back to IG/FB needs the messaging/comment permission
-        // (App Review). Until that's live, record + log rather than post.
-        console.log(`[discord] engagement reply (would post to ${it.platform}): ${res.publicReply.slice(0, 120)}`);
+        if (it.platform === "google" && it.kind === "review" && it.external_id && brand.google_tokens_encrypted) {
+          // Google review replies CAN post back once Google is connected.
+          try {
+            const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted);
+            const token = await googleAccessToken(refresh_token);
+            await gbpReplyReview(token, it.external_id, res.publicReply);
+            console.log(`[discord] replied to Google review ${it.external_id.slice(-12)}`);
+          } catch (err) {
+            console.error(`[discord] gbp review reply failed for ${it.id}`, err);
+          }
+        } else {
+          // IG/FB replies need the messaging/comment permission (App Review).
+          console.log(`[discord] engagement reply (would post to ${it.platform}): ${res.publicReply.slice(0, 120)}`);
+        }
       }
     } catch (err) {
       console.error(`[discord] engagement processing failed for interaction ${it.id}`, err);
@@ -327,5 +342,45 @@ setInterval(() => {
       engagementRunning = false;
     });
 }, 5000);
+
+// ─── Google Business Profile: pull new reviews into the engagement engine ────
+const STAR_NUM: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+async function syncGoogleReviews(): Promise<void> {
+  const brands = await query<Brand>(
+    "select * from brands where status = 'active' and google_tokens_encrypted is not null and gbp_location_id is not null",
+  );
+  for (const brand of brands) {
+    try {
+      const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted!);
+      const token = await googleAccessToken(refresh_token);
+      const locationName = `${brand.gbp_account}/${brand.gbp_location_id}`;
+      const reviews = await gbpListReviews(token, locationName);
+      for (const r of reviews) {
+        const seen = await queryOne("select 1 from interactions where external_id = $1 limit 1", [r.name]);
+        if (seen) continue;
+        const stars = STAR_NUM[r.starRating] ?? 3;
+        await createInteraction(brand, {
+          platform: "google",
+          kind: "review",
+          author: r.reviewer,
+          text: `(${stars}★) ${r.comment}`,
+          external_id: r.name,
+        });
+      }
+    } catch (err) {
+      console.error(`[discord] gbp review sync failed for ${brand.id}`, err);
+    }
+  }
+}
+let reviewSyncRunning = false;
+setInterval(() => {
+  if (reviewSyncRunning) return;
+  reviewSyncRunning = true;
+  syncGoogleReviews()
+    .catch((err) => console.error("[discord] review sync error", err))
+    .finally(() => {
+      reviewSyncRunning = false;
+    });
+}, 60 * 60 * 1000);
 
 client.login(env.DISCORD_BOT_TOKEN);
