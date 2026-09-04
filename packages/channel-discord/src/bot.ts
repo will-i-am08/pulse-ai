@@ -27,7 +27,7 @@ import {
   captureMedia,
   importFromContentSources,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -507,6 +507,46 @@ setInterval(() => {
     .catch((err) => console.error("[discord] content-source sync error", err))
     .finally(() => {
       contentSourceRunning = false;
+    });
+}, 60 * 60 * 1000);
+
+// ─── Chase: nudge once about a draft left waiting ~24h (daytime only) ────────
+async function chasePendingDrafts(): Promise<void> {
+  if (!isDaytime(new Date())) return; // never nudge overnight
+  const rows = await query<{ id: string; brand_id: string; pillar_name: string | null }>(
+    `select p.id, p.brand_id, pl.name as pillar_name
+       from posts p
+       join brands b on b.id = p.brand_id and b.status = 'active'
+       left join pillars pl on pl.id = p.pillar_id
+      where p.status = 'pending_approval'
+        and p.chased_at is null
+        and p.created_at <= now() - interval '24 hours'
+        and p.created_at >= now() - interval '7 days'
+      order by p.created_at asc
+      limit 20`,
+  );
+  for (const row of rows) {
+    // Claim atomically so overlapping passes never double-nudge, and it stays once-only.
+    const claimed = await query<{ id: string }>(
+      "update posts set chased_at = now() where id = $1 and chased_at is null returning id",
+      [row.id],
+    );
+    if (claimed.length === 0) continue;
+    const what = row.pillar_name ? `your ${row.pillar_name} post` : "the post I drafted";
+    await sendToBrand(
+      row.brand_id,
+      `Quick nudge — ${what} is still waiting your yes 🙂 Want it to go out, or shall I tweak it? (Reply "no" to bin it.)`,
+    ).catch((err) => console.error(`[discord] chase send failed for post ${row.id}`, err));
+  }
+}
+let chaseRunning = false;
+setInterval(() => {
+  if (chaseRunning) return;
+  chaseRunning = true;
+  chasePendingDrafts()
+    .catch((err) => console.error("[discord] chase loop error", err))
+    .finally(() => {
+      chaseRunning = false;
     });
 }, 60 * 60 * 1000);
 

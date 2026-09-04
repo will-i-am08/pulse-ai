@@ -74,39 +74,85 @@ describe("isWithinLast24h", () => {
 });
 
 describe("runCheckin", () => {
+  // Daytime is injected, so tests are independent of the real clock/timezone.
+  const daytime = () => true;
+  const noActionable = vi.fn().mockResolvedValue(null);
+
   it("skips sending when the brand already messaged in the last 24h", async () => {
     const now = new Date("2026-01-08T12:00:00Z");
     const sendToBrand = vi.fn().mockResolvedValue(undefined);
     const markSent = vi.fn().mockResolvedValue(undefined);
     const getLastInboundAt = vi.fn().mockResolvedValue(new Date("2026-01-08T02:00:00Z").toISOString());
 
-    await runCheckin(fakeBrand(), fakeTrigger(), { getLastInboundAt, sendToBrand, markSent, now: () => now });
+    await runCheckin(fakeBrand(), fakeTrigger(), {
+      getLastInboundAt,
+      getActionable: noActionable,
+      isDaytime: daytime,
+      sendToBrand,
+      markSent,
+      now: () => now,
+    });
 
     expect(sendToBrand).not.toHaveBeenCalled();
     expect(markSent).not.toHaveBeenCalled();
   });
 
-  it("sends the weekly nudge when there's been no inbound message in the last 24h", async () => {
-    const now = new Date("2026-01-08T12:00:00Z");
-    const sendToBrand = vi.fn().mockResolvedValue(undefined);
-    const markSent = vi.fn().mockResolvedValue(undefined);
-    const getLastInboundAt = vi.fn().mockResolvedValue(new Date("2026-01-05T00:00:00Z").toISOString());
-
-    await runCheckin(fakeBrand(), fakeTrigger(), { getLastInboundAt, sendToBrand, markSent, now: () => now });
-
-    expect(sendToBrand).toHaveBeenCalledWith("brand-1", "Anything to send me this week?");
-    expect(markSent).toHaveBeenCalledWith("trigger-1");
-  });
-
-  it("sends when there has never been an inbound message", async () => {
+  it("skips sending outside daytime hours (retries later, no markSent)", async () => {
     const now = new Date("2026-01-08T12:00:00Z");
     const sendToBrand = vi.fn().mockResolvedValue(undefined);
     const markSent = vi.fn().mockResolvedValue(undefined);
     const getLastInboundAt = vi.fn().mockResolvedValue(null);
 
-    await runCheckin(fakeBrand(), fakeTrigger(), { getLastInboundAt, sendToBrand, markSent, now: () => now });
+    await runCheckin(fakeBrand(), fakeTrigger(), {
+      getLastInboundAt,
+      getActionable: noActionable,
+      isDaytime: () => false,
+      sendToBrand,
+      markSent,
+      now: () => now,
+    });
 
-    expect(sendToBrand).toHaveBeenCalled();
-    expect(markSent).toHaveBeenCalled();
+    expect(sendToBrand).not.toHaveBeenCalled();
+    expect(markSent).not.toHaveBeenCalled();
+  });
+
+  it("sends the generic weekly nudge when nothing is pending", async () => {
+    const now = new Date("2026-01-08T12:00:00Z");
+    const sendToBrand = vi.fn().mockResolvedValue(undefined);
+    const markSent = vi.fn().mockResolvedValue(undefined);
+    const getLastInboundAt = vi.fn().mockResolvedValue(new Date("2026-01-05T00:00:00Z").toISOString());
+
+    await runCheckin(fakeBrand(), fakeTrigger(), {
+      getLastInboundAt,
+      getActionable: noActionable,
+      isDaytime: daytime,
+      sendToBrand,
+      markSent,
+      now: () => now,
+    });
+
+    expect(sendToBrand).toHaveBeenCalledWith("brand-1", "Anything to send me this week?");
+    expect(markSent).toHaveBeenCalledWith("trigger-1");
+  });
+
+  it("names the unfinished thing when something's pending", async () => {
+    const now = new Date("2026-01-08T12:00:00Z");
+    const sendToBrand = vi.fn().mockResolvedValue(undefined);
+    const markSent = vi.fn().mockResolvedValue(undefined);
+    const getLastInboundAt = vi.fn().mockResolvedValue(null);
+    const getActionable = vi.fn().mockResolvedValue({ kind: "draft", summary: "your BTS post" });
+
+    await runCheckin(fakeBrand(), fakeTrigger(), {
+      getLastInboundAt,
+      getActionable,
+      isDaytime: daytime,
+      sendToBrand,
+      markSent,
+      now: () => now,
+    });
+
+    expect(sendToBrand).toHaveBeenCalledTimes(1);
+    expect(sendToBrand.mock.calls[0]![1]).toContain("your BTS post");
+    expect(markSent).toHaveBeenCalledWith("trigger-1");
   });
 });

@@ -19,6 +19,7 @@ import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campai
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
 import { repurposeUrl } from "./repurpose.js";
+import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { callLLM } from "./llm.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
@@ -171,6 +172,38 @@ async function converse(brand: Brand, message: string): Promise<string> {
 }
 
 /**
+ * Warmly re-orient a client who's come back after a gap: acknowledge how long
+ * it's been ("this morning" / "last night" / "the other day"), and either offer
+ * to pick up the unfinished thing or, if nothing's pending, greet + lightly offer.
+ * Never assumes seamless continuity, never recites a feature menu.
+ */
+async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const context = await buildConversationContext(brand.id);
+  const system = [
+    `You are Pulse, the friendly assistant that runs "${brand.name}"'s social media over text.`,
+    `The client has just come back after a break — you two last spoke ${phrase}.`,
+    actionable
+      ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now — or start fresh if they'd rather.`
+      : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,
+    "One or two sentences, natural SMS tone. No bullet lists, no menus, never say you're unsure what they want.",
+    profile.tone.length ? `Lean on this brand's tone where it fits: ${profile.tone.join(", ")}.` : "",
+    `Emoji policy: ${profile.emoji_policy}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const text = await callLLM({
+    system,
+    messages: [
+      { role: "user", content: context ? `Recent conversation:\n${context}\n\nTheir latest message:\n${message}` : message },
+    ],
+    maxTokens: 220,
+  });
+  return text.trim();
+}
+
+/**
  * Decide + act on an inbound message. Frozen signature per
  * BUILD_CONTRACTS.md — called by @pulse/gateway's handleInbound after the
  * inbound message + media are persisted.
@@ -205,6 +238,13 @@ export async function processInbound(
   }
 
   const pending = await getLatestPendingPost(brand.id);
+
+  // How long since we last spoke (either direction) — drives time-aware
+  // re-engagement. Under 4h is "seamless"; above that we re-orient rather than
+  // assume the client is jumping straight back in. Because this looks at the most
+  // recent prior message, a burst of messages after a return only re-orients on
+  // the first (the rest are seconds apart → seamless).
+  const gap = gapInfo(await lastInteractionAt(brand.id, message.id), new Date());
 
   // A campaign proposal is awaiting the client's go-ahead — but a pending post
   // takes precedence (there, "yes" means approve the post, not run a campaign).
@@ -243,6 +283,9 @@ export async function processInbound(
   // draft is pending: a greeting is never an approval, so GREETING_RE only matches
   // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
   if (message.body && newMedia.length === 0 && GREETING_RE.test(message.body)) {
+    if (gap.bucket !== "seamless") {
+      return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
+    }
     return { reply: await converse(brand, message.body) };
   }
 
@@ -255,9 +298,14 @@ export async function processInbound(
   await updateMessageType(message.id, toDbMessageType(result.classification));
 
   if (result.confidence < LOW_CONFIDENCE_THRESHOLD) {
-    // With a draft awaiting the client, an unclear message is most likely a fuzzy
-    // edit or approval — ask to clarify rather than guess-and-act (BUILD_CONTRACTS).
-    // With nothing pending, it's just conversation — reply like a human.
+    // Coming back after a gap with something vague → re-orient (and name the
+    // unfinished thing) rather than either guessing or asking a cold "huh?".
+    if (gap.bucket !== "seamless") {
+      return { reply: await reengage(brand, message.body ?? "", gap.phrase, await mostRecentActionable(brand.id)) };
+    }
+    // Mid-conversation: with a draft awaiting the client, an unclear message is
+    // most likely a fuzzy edit or approval — ask to clarify rather than
+    // guess-and-act (BUILD_CONTRACTS). With nothing pending, it's just chat.
     if (pending) {
       return {
         reply:
@@ -271,6 +319,13 @@ export async function processInbound(
     case "media": {
       const originalIds = newMedia.map((m) => m.id);
       const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
+
+      // Clear task after a real gap (≥ ~18h): just do it, with a light welcome-back
+      // — never hijack a photo with "want to pick up where we left off?".
+      const welcomeBack =
+        gap.bucket === "yesterday" || gap.bucket === "recent" || gap.bucket === "long"
+          ? "Good to have you back! "
+          : "";
 
       // Style the first photo (truthful enhance for business, bolder for personal).
       // If editing is unavailable, we fall back to the original photo.
@@ -358,7 +413,7 @@ export async function processInbound(
         );
         const styledLine = styledUrl ? "Styled and scheduled ✨" : "Scheduled:";
         return {
-          reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
+          reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
           postId: post.id,
           mediaUrl: replyImageUrl,
         };
@@ -366,7 +421,7 @@ export async function processInbound(
 
       const styledLine = styledUrl ? "Here's your post — I styled the photo too ✨" : "Here's your post:";
       return {
-        reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
+        reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
         postId: post.id,
         mediaUrl: replyImageUrl,
       };
