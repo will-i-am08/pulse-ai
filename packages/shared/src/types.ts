@@ -112,6 +112,8 @@ export interface Brand {
   platform_tokens_encrypted: string | null;
   platform_user_token_encrypted: string | null;
   meta_connected_at: string | null;
+  facts: BusinessFacts;
+  visual: VisualProfile;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
@@ -166,6 +168,53 @@ export interface Post {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BusinessFacts {
+  hours?: string;
+  address?: string;
+  service_area?: string;
+  services?: Array<{ name: string; price?: string }>;
+  booking_link?: string;
+  policies?: string;
+  faqs?: Array<{ q: string; a: string }>;
+  differentiators?: string;
+}
+
+export interface VisualProfile {
+  colors?: string[];
+  fonts?: string[];
+  aspect_ratio?: string;
+  aesthetic?: string;
+}
+
+export type InteractionKind = "comment" | "dm" | "mention" | "review";
+export type InteractionBucket = "lead" | "support" | "general" | "spam";
+export type InteractionStatus = "new" | "auto_replied" | "drafted" | "escalated" | "resolved" | "hidden";
+
+export interface Interaction {
+  id: string;
+  brand_id: string;
+  platform: string;
+  kind: InteractionKind;
+  external_id: string | null;
+  author: string | null;
+  text: string | null;
+  sentiment: string | null;
+  bucket: InteractionBucket | null;
+  status: InteractionStatus;
+  created_at: string;
+}
+
+export interface InteractionReply {
+  id: string;
+  interaction_id: string;
+  brand_id: string;
+  body: string;
+  actor: "agent" | "owner";
+  status: "draft" | "sent";
+  external_reply_id: string | null;
+  created_at: string;
 }
 
 export interface CampaignPlanItem {

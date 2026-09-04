@@ -22,3 +22,6 @@ export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMe
 export { scheduleSlot } from "./scheduler.js";
 export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
+export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
+export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
+export type { EngagementResult } from "./engagement.js";

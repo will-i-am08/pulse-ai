@@ -30,6 +30,8 @@ function fakeBrand(): Brand {
     platform_tokens_encrypted: null,
     platform_user_token_encrypted: null,
     meta_connected_at: null,
+    facts: {},
+    visual: {},
     approver: "operator",
     status: "active",
     created_at: new Date().toISOString(),

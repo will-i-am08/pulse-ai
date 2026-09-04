@@ -16,7 +16,11 @@ import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMe
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
+import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
+import { sendLatestDraft } from "./engagement.js";
 import { callLLM } from "./llm.js";
+
+const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
@@ -182,6 +186,13 @@ export async function processInbound(
   }
 
   const pending = await getLatestPendingPost(brand.id);
+
+  // "send" approves the most recent drafted reply to a customer interaction —
+  // but only when there's no pending post (there, "send" would be ambiguous).
+  if (message.body && SEND_DRAFT_RE.test(message.body) && newMedia.length === 0 && !pending) {
+    const sent = await sendLatestDraft(brand);
+    if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+  }
 
   const result = await classifyInbound({
     body: message.body,
@@ -437,6 +448,13 @@ export async function processInbound(
           }
           return { reply: "I tried to draft one but hit a snag — mind asking again in a moment?" };
         }
+      }
+
+      // Business facts stated by the owner ("we're open till 6 now", "coffee's $5")
+      // update the living profile the reply engine answers customers from.
+      if (message.body && looksLikeBusinessFact(message.body)) {
+        const factReply = await updateFactsFromMessage(brand, message.body);
+        if (factReply) return { reply: factReply };
       }
 
       // A scheduling/cadence instruction ("put BTS on autopilot", "post promos

@@ -13,8 +13,9 @@ import {
   type Pillar,
   type Post,
 } from "@pulse/shared";
-import { setActiveChannel, handleInbound, sendToBrand } from "@pulse/gateway";
-import { startOnboarding } from "@pulse/orchestrator";
+import { setActiveChannel, handleInbound, sendToBrand, resolveBrand } from "@pulse/gateway";
+import { startOnboarding, createInteraction, handleInteraction } from "@pulse/orchestrator";
+import type { InteractionKind } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { createDiscordChannel } from "./discord-channel.js";
 
@@ -44,6 +45,35 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  // Engagement simulator (test triage before live Meta webhooks exist):
+  //   !sim <comment|dm|mention|review> <text>
+  if (message.content?.startsWith("!sim")) {
+    const m = message.content.match(/^!sim\s+(comment|dm|mention|review)\s+([\s\S]+)/i);
+    if (!m) {
+      await message.reply('Usage: `!sim <comment|dm|mention|review> <text>` — e.g. `!sim dm what time do you open?`');
+      return;
+    }
+    const kind = m[1]!.toLowerCase() as InteractionKind;
+    const text = m[2]!.trim();
+    try {
+      const brand = await resolveBrand(message.channelId);
+      if (!brand) {
+        await message.reply("No brand is linked to this channel yet.");
+        return;
+      }
+      const interaction = await createInteraction(brand, { platform: "instagram", kind, author: "@test_customer", text });
+      const res = await handleInteraction(brand, interaction);
+      if (res.publicReply) await message.channel.send(`🟢 **[auto-replied to ${interaction.author}]** "${res.publicReply}"`);
+      if (res.ownerMessage) await sendToBrand(brand.id, res.ownerMessage);
+      if (!res.publicReply && !res.ownerMessage) await message.channel.send("🔇 **[hidden as spam — nothing sent to you]**");
+    } catch (err) {
+      console.error("[discord] !sim error", err);
+      await message.reply("Simulation hit a snag — check the logs.");
+    }
+    return;
+  }
+
   const media: InboundMedia[] = [...message.attachments.values()].map((a) => ({
     url: a.url,
     contentType: a.contentType ?? "application/octet-stream",
