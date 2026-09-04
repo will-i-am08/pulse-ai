@@ -13,10 +13,13 @@ import { renderQuoteCard } from "./imaging.js";
 
 const WINDOW_HOURS = [11, 13, 19]; // spread campaign posts across the day
 
-/** Latest campaign still awaiting the client's go-ahead. */
+/** The most-recent campaign still awaiting go-ahead — only if proposed recently,
+ * so a forgotten proposal can't hijack a later "yes". */
 export async function getProposedCampaign(brandId: string): Promise<Campaign | null> {
   return queryOne<Campaign>(
-    `select * from campaigns where brand_id = $1 and status = 'proposed' order by created_at desc limit 1`,
+    `select * from campaigns
+      where brand_id = $1 and status = 'proposed' and created_at > now() - interval '20 minutes'
+      order by created_at desc limit 1`,
     [brandId],
   );
 }
@@ -135,6 +138,11 @@ export async function activateCampaign(
       [post.id, brand.id, `Campaign "${campaign.name}" post`],
     );
     created++;
+  }
+
+  if (created === 0) {
+    // Every render failed — don't flip a hollow campaign to active.
+    return "I couldn't build the campaign posts just then — mind trying that again?";
   }
 
   await query(`update campaigns set status = 'active', pause_pillars = $1 where id = $2`, [pausePillars, campaign.id]);

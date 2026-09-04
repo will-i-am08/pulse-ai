@@ -156,7 +156,13 @@ async function publishApproved(): Promise<void> {
   for (const post of posts) {
     const gate = await queryOne("select 1 from approval_log where post_id = $1 and action = 'approved'", [post.id]);
     if (!gate) continue; // approval is absolute (autopilot posts get a system approval)
-    await query("update posts set status = 'publishing' where id = $1", [post.id]);
+    // Atomically claim the post — an overlapping tick that re-selected the same
+    // row gets 0 rows back here and skips, so nothing publishes twice.
+    const claimed = await query<{ id: string }>(
+      "update posts set status = 'publishing' where id = $1 and status in ('approved','scheduled') returning id",
+      [post.id],
+    );
+    if (claimed.length === 0) continue;
     try {
       const brand = await queryOne<Brand>("select * from brands where id = $1", [post.brand_id]);
       const mediaUrls = post.media_ids.map((id) => publicMediaUrl(id));
@@ -188,8 +194,15 @@ async function publishApproved(): Promise<void> {
     }
   }
 }
+let publishRunning = false;
 setInterval(() => {
-  publishApproved().catch((err) => console.error("[discord] publish loop error", err));
+  if (publishRunning) return; // don't let a slow pass overlap the next tick
+  publishRunning = true;
+  publishApproved()
+    .catch((err) => console.error("[discord] publish loop error", err))
+    .finally(() => {
+      publishRunning = false;
+    });
 }, 5000);
 
 // ─── Proactive gap-fill: nudge the client before a pillar's week runs dry ────
@@ -230,11 +243,19 @@ async function gapFillCheck(): Promise<void> {
   }
 }
 
-setInterval(() => {
-  gapFillCheck().catch((err) => console.error("[discord] gap-fill error", err));
-}, 2 * 60 * 60 * 1000);
+let gapFillRunning = false;
+function runGapFill() {
+  if (gapFillRunning) return;
+  gapFillRunning = true;
+  gapFillCheck()
+    .catch((err) => console.error("[discord] gap-fill error", err))
+    .finally(() => {
+      gapFillRunning = false;
+    });
+}
+setInterval(runGapFill, 2 * 60 * 60 * 1000);
 // First pass shortly after startup so a fresh account gets a nudge.
-setTimeout(() => gapFillCheck().catch(() => {}), 20000);
+setTimeout(runGapFill, 20000);
 
 // Signup-driven onboarding: DM newly signed-up users first and run setup.
 async function initiatePendingOnboarding(): Promise<void> {
@@ -260,8 +281,15 @@ async function initiatePendingOnboarding(): Promise<void> {
     }
   }
 }
+let onboardingRunning = false;
 setInterval(() => {
-  initiatePendingOnboarding().catch((err) => console.error("[discord] onboarding loop error", err));
+  if (onboardingRunning) return; // avoid overlapping passes double-greeting a signup
+  onboardingRunning = true;
+  initiatePendingOnboarding()
+    .catch((err) => console.error("[discord] onboarding loop error", err))
+    .finally(() => {
+      onboardingRunning = false;
+    });
 }, 5000);
 
 client.login(env.DISCORD_BOT_TOKEN);

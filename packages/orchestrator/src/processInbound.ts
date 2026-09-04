@@ -165,9 +165,11 @@ export async function processInbound(
     }
   }
 
-  // A campaign proposal is awaiting the client's go-ahead: handle approve/cancel
-  // before anything else (a plain "yes" here means "run the campaign").
-  if (message.body && newMedia.length === 0) {
+  const pending = await getLatestPendingPost(brand.id);
+
+  // A campaign proposal is awaiting the client's go-ahead — but a pending post
+  // takes precedence (there, "yes" means approve the post, not run a campaign).
+  if (message.body && newMedia.length === 0 && !pending) {
     const proposed = await getProposedCampaign(brand.id);
     if (proposed) {
       if (CANCEL_RE.test(message.body)) {
@@ -188,8 +190,6 @@ export async function processInbound(
       }
     }
   }
-
-  const pending = await getLatestPendingPost(brand.id);
 
   // "send" approves the most recent drafted reply to a customer interaction —
   // but only when there's no pending post (there, "send" would be ambiguous).
@@ -402,7 +402,8 @@ export async function processInbound(
       // Approval is absolute (BUILD_CONTRACTS.md): we may set 'approved', but
       // never 'publishing'/'published' — that stays the worker's job. "post now"
       // overrides the smart slot and publishes on the next tick.
-      const postNow = /\b(now|immediately|right now|asap)\b/i.test(message.body ?? "");
+      const body = message.body ?? "";
+      const postNow = /\b(now|immediately|right now|asap|straight away)\b/i.test(body) && !/\b(not|later|don'?t|dont)\b/i.test(body);
       await query(
         `update posts set status = 'approved'${postNow ? ", scheduled_at = now()" : ""} where id = $1 and brand_id = $2`,
         [pending.id, brand.id],

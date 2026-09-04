@@ -14,12 +14,22 @@ export function looksLikeBusinessFact(body: string | null | undefined): boolean 
 
 function mergeFacts(existing: BusinessFacts, incoming: BusinessFacts): BusinessFacts {
   const out: BusinessFacts = { ...existing };
+  const keyOf = (field: string, item: unknown): string => {
+    const rec = (item ?? {}) as Record<string, unknown>;
+    if (field === "services") return String(rec.name ?? "").toLowerCase().trim();
+    if (field === "faqs") return String(rec.q ?? "").toLowerCase().trim();
+    return JSON.stringify(item);
+  };
   for (const [k, v] of Object.entries(incoming) as Array<[keyof BusinessFacts, unknown]>) {
     if (v == null || v === "") continue;
     if (Array.isArray(v)) {
-      // Append new services/faqs rather than clobbering the list.
+      // Merge by key so an updated service/FAQ REPLACES the old one (a price change
+      // must not leave two contradictory entries for the reply engine).
       const prev = Array.isArray(out[k]) ? (out[k] as unknown[]) : [];
-      (out as Record<string, unknown>)[k] = [...prev, ...v];
+      const map = new Map<string, unknown>();
+      for (const item of prev) map.set(keyOf(k, item), item);
+      for (const item of v) map.set(keyOf(k, item), item);
+      (out as Record<string, unknown>)[k] = [...map.values()];
     } else {
       (out as Record<string, unknown>)[k] = v;
     }

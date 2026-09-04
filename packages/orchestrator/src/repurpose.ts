@@ -16,12 +16,28 @@ type PlanItem = {
   photo_prompt?: string;
 };
 
+function isBlockedHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h)) return true; // loopback / private / link-local (incl. cloud metadata)
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (h === "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")) return true;
+  return false;
+}
+
 async function fetchPage(url: string): Promise<string | null> {
   try {
     const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    const res = await fetch(withProto, { headers: { "User-Agent": "PulseBot/1.0" } });
+    const u = new URL(withProto);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (isBlockedHost(u.hostname)) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(withProto, { headers: { "User-Agent": "PulseBot/1.0" }, signal: ctrl.signal }).finally(() =>
+      clearTimeout(timer),
+    );
     if (!res.ok) return null;
-    const html = await res.text();
+    const html = (await res.text()).slice(0, 1_000_000); // cap the download
     return html
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -58,9 +74,10 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
   let items: PlanItem[];
   try {
     const raw = await callLLM({ system, messages: [{ role: "user", content: text }], maxTokens: 1400 });
-    items = (JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)).posts ?? []).filter(
-      (i: PlanItem) => i && i.caption,
-    );
+    items = (JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)).posts ?? [])
+      .filter((i: PlanItem) => i && i.caption)
+      .slice(0, 6); // cap generated images per call — never a runaway
+
   } catch (err) {
     console.error("repurposeUrl: LLM/parse failed", err);
     return null;
