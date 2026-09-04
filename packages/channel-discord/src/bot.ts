@@ -16,7 +16,7 @@ import {
 import { setActiveChannel, handleInbound, sendToBrand, resolveBrand } from "@pulse/gateway";
 import { startOnboarding, createInteraction, handleInteraction, analyzePerformance } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
-import type { InteractionKind, Platform } from "@pulse/shared";
+import type { InteractionKind, Platform, Interaction } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { createDiscordChannel } from "./discord-channel.js";
 
@@ -289,6 +289,42 @@ setInterval(() => {
     .catch((err) => console.error("[discord] onboarding loop error", err))
     .finally(() => {
       onboardingRunning = false;
+    });
+}, 5000);
+
+// ─── Engagement: triage inbound interactions ingested by the Meta webhook ────
+async function processNewInteractions(): Promise<void> {
+  const news = await query<Interaction>(
+    "select * from interactions where status = 'new' order by created_at asc limit 20",
+  );
+  for (const it of news) {
+    const brand = await queryOne<Brand>("select * from brands where id = $1", [it.brand_id]);
+    if (!brand) {
+      await query("update interactions set status = 'resolved' where id = $1", [it.id]);
+      continue;
+    }
+    try {
+      const res = await handleInteraction(brand, it);
+      if (res.ownerMessage) await sendToBrand(brand.id, res.ownerMessage);
+      if (res.publicReply) {
+        // Posting the reply back to IG/FB needs the messaging/comment permission
+        // (App Review). Until that's live, record + log rather than post.
+        console.log(`[discord] engagement reply (would post to ${it.platform}): ${res.publicReply.slice(0, 120)}`);
+      }
+    } catch (err) {
+      console.error(`[discord] engagement processing failed for interaction ${it.id}`, err);
+      await query("update interactions set status = 'resolved' where id = $1", [it.id]).catch(() => {});
+    }
+  }
+}
+let engagementRunning = false;
+setInterval(() => {
+  if (engagementRunning) return;
+  engagementRunning = true;
+  processNewInteractions()
+    .catch((err) => console.error("[discord] engagement loop error", err))
+    .finally(() => {
+      engagementRunning = false;
     });
 }, 5000);
 
