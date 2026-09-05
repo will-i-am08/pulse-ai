@@ -20,6 +20,12 @@ export interface CallLLMOptions {
   messages: Anthropic.MessageParam[];
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Let the model search the web (Claude's server-side web_search tool). Pass a
+   * number to cap searches per call. Web content is UNTRUSTED — it's data to
+   * summarise, never instructions to follow.
+   */
+  webSearch?: boolean | number;
 }
 
 const PRIMARY_RETRIES = 2;
@@ -30,18 +36,27 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function attempt(model: string, opts: CallLLMOptions): Promise<string> {
-  const res = await getClient().messages.create({
+  const req: Record<string, unknown> = {
     model,
     max_tokens: opts.maxTokens ?? 1024,
     temperature: opts.temperature,
     system: opts.system,
     messages: opts.messages,
-  });
+  };
+  if (opts.webSearch) {
+    const maxUses = typeof opts.webSearch === "number" ? opts.webSearch : 4;
+    // Cast: the web_search server tool isn't in this SDK version's types, but the
+    // API executes it server-side and returns the final text with citations.
+    req.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: maxUses }];
+  }
+  const res = await getClient().messages.create(req as unknown as Anthropic.MessageCreateParamsNonStreaming);
 
-  const textBlock = res.content.find(
-    (block): block is Anthropic.TextBlock => block.type === "text",
-  );
-  const text = textBlock?.text?.trim();
+  // Join every text block — with web search the answer can span more than one.
+  const text = res.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
   if (!text) {
     throw new Error("LLM response contained no text content");
   }
