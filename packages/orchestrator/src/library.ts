@@ -4,58 +4,78 @@ import { editImageForBrand } from "./imaging.js";
 import { scheduleSlot } from "./scheduler.js";
 
 // The photo library: every photo the client texts in is banked as a media_asset,
-// forever. The whole history is reusable — a photo is only off-limits while it's
-// actively "in flight" in a post awaiting or heading to publish. We prefer
-// never-used shots, then recycle the least-recently-used, so the bank never runs
-// dry and we don't repeat a recent photo.
+// forever. Two pools:
+//   • FRESH  — never posted. The bot reuses these on its own (gap-fills, "draft one").
+//   • USED   — already posted. Kept forever, but only reused when the client asks
+//              ("use an old one"), and always available as reference for AI images.
+// A photo "in flight" (in a post awaiting or heading to publish) is off-limits.
 const IN_FLIGHT_STATUSES = "('pending_approval','approved','scheduled','publishing')";
-
-// Client photos not currently in flight, ranked never-used first (nulls first),
-// then by how long since we last used them.
-const REUSABLE_ORDERED = `
-  select m.* from media_assets m
-   where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
-     and not exists (
+const NOT_IN_FLIGHT = `not exists (
        select 1 from posts p
         where p.brand_id = $1
           and p.status in ${IN_FLIGHT_STATUSES}
-          and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
-     )
-   order by (
-     select max(coalesce(p.published_at, p.scheduled_at, p.created_at)) from posts p
-      where p.brand_id = $1 and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
-   ) asc nulls first, m.created_at asc`;
+          and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids)))`;
+const EVER_POSTED = `exists (
+       select 1 from posts p
+        where p.brand_id = $1 and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids)))`;
 
 /**
- * The next library photo to reuse: a never-posted shot if there is one, otherwise
- * the least-recently-used from the whole saved history. null only when the client
- * has never sent a photo, and never a photo that's currently in a live draft.
+ * A FRESH photo — never posted — for the bot to reuse on its own. Oldest first
+ * (FIFO). null when there are no unused photos.
  */
-export async function pickLibraryPhoto(brandId: string): Promise<MediaAsset | null> {
-  return queryOne<MediaAsset>(`${REUSABLE_ORDERED} limit 1`, [brandId]);
+export async function pickFreshPhoto(brandId: string): Promise<MediaAsset | null> {
+  return queryOne<MediaAsset>(
+    `select m.* from media_assets m
+      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
+        and ${NOT_IN_FLIGHT} and not ${EVER_POSTED}
+      order by m.created_at asc
+      limit 1`,
+    [brandId],
+  );
 }
 
 /**
- * A short style cue drawn from the brand's real visual profile, to ground any
- * AI image generation in their actual look rather than generic stock. Empty when
- * we've nothing on file yet.
+ * A previously-posted photo to reuse ON THE CLIENT'S REQUEST — least-recently-used
+ * first. Falls back to any not-in-flight photo if none have been posted yet. null
+ * only when the client has never sent a photo.
  */
-export function visualReference(brand: Brand): string {
+export async function pickReusablePhoto(brandId: string): Promise<MediaAsset | null> {
+  return queryOne<MediaAsset>(
+    `select m.* from media_assets m
+      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client' and ${NOT_IN_FLIGHT}
+      order by (
+        select max(coalesce(p.published_at, p.scheduled_at, p.created_at)) from posts p
+         where p.brand_id = $1 and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
+      ) asc nulls last, m.created_at asc
+      limit 1`,
+    [brandId],
+  );
+}
+
+/** How many FRESH (never-posted) photos the bot can reuse on its own right now. */
+export async function bankedPhotoCount(brandId: string): Promise<number> {
+  const row = await queryOne<{ n: number }>(
+    `select count(*)::int as n from media_assets m
+      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
+        and ${NOT_IN_FLIGHT} and not ${EVER_POSTED}`,
+    [brandId],
+  );
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * A short style cue for grounding AI image generation in the brand's REAL photos.
+ * Uses the derived visual aesthetic/colours if we have them; otherwise, when the
+ * brand has real photos on file, still nudges the model toward their own look.
+ */
+export function visualReference(brand: Brand, hasRealPhotos = false): string {
   const v = brand.visual ?? {};
   const bits: string[] = [];
   if (v.aesthetic) bits.push(v.aesthetic);
   if (v.colors?.length) bits.push(`colours ${v.colors.join(", ")}`);
-  if (!bits.length) return "";
-  return `Match the brand's real aesthetic — ${bits.join("; ")}.`;
-}
-
-/** How many client photos are available to reuse right now (not in a live draft). */
-export async function bankedPhotoCount(brandId: string): Promise<number> {
-  const row = await queryOne<{ n: number }>(
-    `select count(*)::int as n from (${REUSABLE_ORDERED}) reusable`,
-    [brandId],
-  );
-  return Number(row?.n ?? 0);
+  if (bits.length) return `Match the brand's real aesthetic — ${bits.join("; ")}.`;
+  if (hasRealPhotos) return "Match the natural look and feel of the brand's own photography — real, unstocky.";
+  return "";
 }
 
 /**

@@ -85,12 +85,17 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
   }
   if (items.length === 0) return null;
 
+  // Does the brand have real photos on file? If so, ground AI generation in their look.
+  const hasRealPhotos = Boolean(
+    await queryOne(`select 1 from media_assets where brand_id = $1 and source = 'client' and kind = 'photo' limit 1`, [brand.id]),
+  );
+
   let created = 0;
   for (const item of items) {
     const pillar: Pillar | undefined = pillars.find((p) => p.key === item.pillar_key) ?? pillars[0];
     const mediaId = randomUUID();
     try {
-      const ref = visualReference(brand);
+      const ref = visualReference(brand, hasRealPhotos);
       const img =
         item.visual === "photo" && item.photo_prompt
           ? await generatePhotoImage(ref ? `${item.photo_prompt}. ${ref}` : item.photo_prompt)

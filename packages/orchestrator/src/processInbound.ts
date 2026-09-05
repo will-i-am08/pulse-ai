@@ -15,7 +15,7 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-import { pickLibraryPhoto, draftPostFromPhoto } from "./library.js";
+import { pickFreshPhoto, pickReusablePhoto, draftPostFromPhoto } from "./library.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
@@ -32,6 +32,11 @@ const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
+
+// The client explicitly asking to reuse an OLD/previously-posted photo. Used
+// photos are only pulled back out on request like this — never automatically.
+const REUSE_RE =
+  /\b(re-?use|re-?post|repost|old (photo|pic|shot|one|image)|previous (photo|pic|post|one)|use (an?\s+|one\s+of\s+)?(old|previous|existing|earlier)|(from|one i sent) (before|last week|last month|the other (day|week))|from the archive|use something old)\b/i;
 
 // Pure greetings / pleasantries / small talk — the WHOLE message is just this,
 // nothing actionable trailing it (the `$` anchor keeps "hey can you post this"
@@ -570,13 +575,35 @@ export async function processInbound(
         if (proposal) return { reply: proposal.summary };
       }
 
+      // Explicit "use an old photo" → pull a previously-posted shot back out (only
+      // ever on request — the bot never recycles used photos on its own).
+      if (message.body && REUSE_RE.test(message.body) && newMedia.length === 0) {
+        const photo = await pickReusablePhoto(brand.id);
+        if (!photo) {
+          return { reply: "You've not sent me any photos yet to pull from — send one over and I'll get it into the mix." };
+        }
+        const pillars = await ensurePillars(brand.id);
+        const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
+        if (target) {
+          const fromLib = await draftPostFromPhoto(brand, photo, target);
+          if (fromLib) {
+            return {
+              reply: `Pulled one of your older photos back out for a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+              postId: fromLib.post.id,
+              mediaUrl: fromLib.mediaUrl ?? undefined,
+            };
+          }
+        }
+        return { reply: "I tried to pull an old photo but hit a snag — mind asking again in a moment?" };
+      }
+
       // "Draft one" (in reply to a gap-fill nudge) → generate a held filler post.
       if (message.body && DRAFT_FILLER_RE.test(message.body) && newMedia.length === 0) {
         const pillars = await ensurePillars(brand.id);
         const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
         if (target) {
           // Prefer a real banked photo over a generated card — reuse what they've sent.
-          const banked = await pickLibraryPhoto(brand.id);
+          const banked = await pickFreshPhoto(brand.id);
           if (banked) {
             const fromLib = await draftPostFromPhoto(brand, banked, target);
             if (fromLib) {
