@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { query, queryOne, putMedia, brandVoiceProfileSchema, type Brand, type Pillar } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { renderQuoteCard, generatePhotoImage } from "./imaging.js";
+import { visualReference } from "./library.js";
 import { ensurePillars } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 
@@ -89,9 +90,10 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
     const pillar: Pillar | undefined = pillars.find((p) => p.key === item.pillar_key) ?? pillars[0];
     const mediaId = randomUUID();
     try {
+      const ref = visualReference(brand);
       const img =
         item.visual === "photo" && item.photo_prompt
-          ? await generatePhotoImage(item.photo_prompt)
+          ? await generatePhotoImage(ref ? `${item.photo_prompt}. ${ref}` : item.photo_prompt)
           : await renderQuoteCard(item.card ?? item.caption.slice(0, 60), brand.name);
       if (!img) continue;
       await query(

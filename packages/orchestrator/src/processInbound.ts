@@ -15,6 +15,7 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
+import { pickUnusedClientPhoto, draftPostFromPhoto } from "./library.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
@@ -574,6 +575,18 @@ export async function processInbound(
         const pillars = await ensurePillars(brand.id);
         const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
         if (target) {
+          // Prefer a real banked photo over a generated card — reuse what they've sent.
+          const banked = await pickUnusedClientPhoto(brand.id);
+          if (banked) {
+            const fromLib = await draftPostFromPhoto(brand, banked, target);
+            if (fromLib) {
+              return {
+                reply: `Pulled one of your photos into a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+                postId: fromLib.post.id,
+                mediaUrl: fromLib.mediaUrl ?? undefined,
+              };
+            }
+          }
           const filler = await generateFillerPost(brand, target);
           if (filler) {
             return {

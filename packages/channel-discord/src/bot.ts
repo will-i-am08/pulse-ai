@@ -25,9 +25,8 @@ import {
   resolveBrandByLinq,
   createLinqChannel,
   captureMedia,
-  importFromContentSources,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickUnusedClientPhoto, draftPostFromPhoto } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -130,58 +129,6 @@ client.on(Events.MessageCreate, async (message) => {
     } catch (err) {
       console.error("[discord] !digest error", err);
       await message.reply("Digest hit a snag — check the logs.");
-    }
-    return;
-  }
-
-  // Content sources (auto-pull): register/list a connected album/folder, or
-  // trigger an immediate sync.
-  //   !source add <drive|photos> <folderOrAlbumId>
-  //   !source list
-  //   !source sync
-  if (message.content?.startsWith("!source")) {
-    try {
-      const brand = await resolveBrand(message.channelId);
-      if (!brand) {
-        await message.reply("No brand is linked to this channel yet.");
-        return;
-      }
-      const add = message.content.match(/^!source\s+add\s+(drive|photos)\s+(\S+)/i);
-      if (add) {
-        const kind = add[1]!.toLowerCase() === "drive" ? "google_drive" : "google_photos";
-        await query(
-          `insert into content_sources (brand_id, kind, external_ref) values ($1, $2, $3)`,
-          [brand.id, kind, add[2]!],
-        );
-        await message.reply(
-          `Linked a ${kind.replace("google_", "Google ")} source. I'll pull new media on the next sweep — or run \`!source sync\` now.\n` +
-            "(Note: needs the Drive/Photos read scope on the brand's Google connection to actually fetch.)",
-        );
-        return;
-      }
-      if (message.content.trim() === "!source list") {
-        const rows = await query<{ kind: string; external_ref: string | null; last_synced_at: string | null }>(
-          "select kind, external_ref, last_synced_at from content_sources where brand_id = $1 order by created_at",
-          [brand.id],
-        );
-        if (rows.length === 0) {
-          await message.reply("No sources linked yet. Add one with `!source add <drive|photos> <id>`.");
-          return;
-        }
-        await message.reply(
-          rows.map((r) => `• ${r.kind} \`${r.external_ref}\` — last synced ${r.last_synced_at ?? "never"}`).join("\n"),
-        );
-        return;
-      }
-      if (message.content.trim() === "!source sync") {
-        const n = await importFromContentSources();
-        await message.reply(n > 0 ? `Pulled and drafted ${n} new item(s).` : "Nothing new to pull.");
-        return;
-      }
-      await message.reply("Usage: `!source add <drive|photos> <id>`, `!source list`, or `!source sync`.");
-    } catch (err) {
-      console.error("[discord] !source error", err);
-      await message.reply("Source command hit a snag — check the logs.");
     }
     return;
   }
@@ -298,6 +245,28 @@ async function gapFillCheck(): Promise<void> {
       );
       const have = Number(row?.n ?? 0);
       if (have >= pillar.posts_per_week) continue;
+
+      // Library first: if the client has banked a photo, fill the gap from it
+      // rather than bothering them. Only nudge when the bank is empty.
+      const banked = await pickUnusedClientPhoto(brand.id);
+      if (banked) {
+        const drafted = await draftPostFromPhoto(brand, banked, pillar).catch((err) => {
+          console.error(`[discord] library gap-fill failed for ${brand.id}`, err);
+          return null;
+        });
+        if (drafted) {
+          const when = drafted.post.scheduled_at
+            ? new Date(drafted.post.scheduled_at).toLocaleString("en-AU", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true })
+            : "soon";
+          const lead = drafted.post.is_auto
+            ? `Your "${pillar.name}" slot was looking light, so I pulled one of your photos in and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
+            : `Your "${pillar.name}" slot was looking light, so I pulled one of your photos in:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
+          await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
+          await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
+          break;
+        }
+      }
+
       await sendToBrand(
         brand.id,
         `Heads up — your "${pillar.name}" content is a little light this week (${have}/${pillar.posts_per_week} planned). Send me a photo for it, or reply "draft one" and I'll write a post you can approve.`,
@@ -494,21 +463,6 @@ setInterval(() => {
       linqRunning = false;
     });
 }, 3000);
-
-// ─── Content sources: poll connected albums/folders and draft new media ──────
-let contentSourceRunning = false;
-setInterval(() => {
-  if (contentSourceRunning) return;
-  contentSourceRunning = true;
-  importFromContentSources()
-    .then((n) => {
-      if (n > 0) console.log(`[discord] content-source auto-pull drafted ${n} new post(s)`);
-    })
-    .catch((err) => console.error("[discord] content-source sync error", err))
-    .finally(() => {
-      contentSourceRunning = false;
-    });
-}, 60 * 60 * 1000);
 
 // ─── Chase: nudge once about a draft left waiting ~24h (daytime only) ────────
 async function chasePendingDrafts(): Promise<void> {
