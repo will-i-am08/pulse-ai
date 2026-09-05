@@ -21,7 +21,7 @@ export type { ClassifyResult } from "./classify.js";
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
 export { scheduleSlot } from "./scheduler.js";
 export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-export { pickUnusedClientPhoto, bankedPhotoCount, draftPostFromPhoto } from "./library.js";
+export { pickLibraryPhoto, bankedPhotoCount, draftPostFromPhoto } from "./library.js";
 export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
 export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";

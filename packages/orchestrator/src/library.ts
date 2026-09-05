@@ -3,33 +3,36 @@ import { draftCaption } from "./draftCaption.js";
 import { editImageForBrand } from "./imaging.js";
 import { scheduleSlot } from "./scheduler.js";
 
-// The photo library: every photo the client texts in is already banked as a
-// media_asset. "Available" = a client photo not currently committed to a live
-// post — so a discarded draft returns its photo to the bank automatically, and
-// we never repost the same shot. The gap-filler draws from here before nudging
-// the client or falling back to a generated card.
+// The photo library: every photo the client texts in is banked as a media_asset,
+// forever. The whole history is reusable — a photo is only off-limits while it's
+// actively "in flight" in a post awaiting or heading to publish. We prefer
+// never-used shots, then recycle the least-recently-used, so the bank never runs
+// dry and we don't repeat a recent photo.
+const IN_FLIGHT_STATUSES = "('pending_approval','approved','scheduled','publishing')";
 
-const LIVE_STATUSES = "('pending_approval','approved','scheduled','publishing','published')";
+// Client photos not currently in flight, ranked never-used first (nulls first),
+// then by how long since we last used them.
+const REUSABLE_ORDERED = `
+  select m.* from media_assets m
+   where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
+     and not exists (
+       select 1 from posts p
+        where p.brand_id = $1
+          and p.status in ${IN_FLIGHT_STATUSES}
+          and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
+     )
+   order by (
+     select max(coalesce(p.published_at, p.scheduled_at, p.created_at)) from posts p
+      where p.brand_id = $1 and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
+   ) asc nulls first, m.created_at asc`;
 
 /**
- * The oldest client photo not tied to any live post — the next one to reuse.
- * FIFO so photos go out roughly in the order they were sent. null when the bank
- * is empty.
+ * The next library photo to reuse: a never-posted shot if there is one, otherwise
+ * the least-recently-used from the whole saved history. null only when the client
+ * has never sent a photo, and never a photo that's currently in a live draft.
  */
-export async function pickUnusedClientPhoto(brandId: string): Promise<MediaAsset | null> {
-  return queryOne<MediaAsset>(
-    `select m.* from media_assets m
-      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
-        and not exists (
-          select 1 from posts p
-           where p.brand_id = $1
-             and p.status in ${LIVE_STATUSES}
-             and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
-        )
-      order by m.created_at asc
-      limit 1`,
-    [brandId],
-  );
+export async function pickLibraryPhoto(brandId: string): Promise<MediaAsset | null> {
+  return queryOne<MediaAsset>(`${REUSABLE_ORDERED} limit 1`, [brandId]);
 }
 
 /**
@@ -46,17 +49,10 @@ export function visualReference(brand: Brand): string {
   return `Match the brand's real aesthetic — ${bits.join("; ")}.`;
 }
 
-/** How many client photos are sitting in the bank, ready to reuse. */
+/** How many client photos are available to reuse right now (not in a live draft). */
 export async function bankedPhotoCount(brandId: string): Promise<number> {
   const row = await queryOne<{ n: number }>(
-    `select count(*)::int as n from media_assets m
-      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
-        and not exists (
-          select 1 from posts p
-           where p.brand_id = $1
-             and p.status in ${LIVE_STATUSES}
-             and (m.id = any(p.source_media_ids) or m.id = any(p.media_ids))
-        )`,
+    `select count(*)::int as n from (${REUSABLE_ORDERED}) reusable`,
     [brandId],
   );
   return Number(row?.n ?? 0);

@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickUnusedClientPhoto, draftPostFromPhoto } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickLibraryPhoto, draftPostFromPhoto } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -248,7 +248,7 @@ async function gapFillCheck(): Promise<void> {
 
       // Library first: if the client has banked a photo, fill the gap from it
       // rather than bothering them. Only nudge when the bank is empty.
-      const banked = await pickUnusedClientPhoto(brand.id);
+      const banked = await pickLibraryPhoto(brand.id);
       if (banked) {
         const drafted = await draftPostFromPhoto(brand, banked, pillar).catch((err) => {
           console.error(`[discord] library gap-fill failed for ${brand.id}`, err);
