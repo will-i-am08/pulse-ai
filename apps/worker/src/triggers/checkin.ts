@@ -1,5 +1,6 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
+import type { Actionable } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -11,22 +12,35 @@ export function isWithinLast24h(timestamp: string | null, now: Date = new Date()
 
 export interface CheckinDeps {
   getLastInboundAt: (brandId: string) => Promise<string | null>;
+  getActionable: (brandId: string) => Promise<Actionable | null>;
+  isDaytime: (now: Date) => boolean;
   sendToBrand: (brandId: string, body: string) => Promise<void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }
 
 /**
- * `checkin` trigger: weekly "anything to send me this week?" nudge — but SKIP if the brand
- * already messaged in the last 24h (no point asking someone who's already talking to us).
+ * `checkin` trigger: weekly nudge. Time-aware:
+ *  - never fires outside sociable hours (retries when daytime comes round);
+ *  - SKIPS if the brand already messaged in the last 24h;
+ *  - when something's unfinished (a pending draft/campaign/question) it NAMES it
+ *    instead of the generic "anything to send me?".
  */
 export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: CheckinDeps): Promise<void> {
+  if (!deps.isDaytime(deps.now())) {
+    logger.info(`skip checkin for brand ${brand.id}: outside daytime hours`);
+    return; // no markSent — retry when it's a sociable hour
+  }
   const lastInboundAt = await deps.getLastInboundAt(brand.id);
   if (isWithinLast24h(lastInboundAt, deps.now())) {
     logger.info(`skip checkin for brand ${brand.id}: messaged within last 24h`);
     return;
   }
-  await deps.sendToBrand(brand.id, "Anything to send me this week?");
+  const actionable = await deps.getActionable(brand.id);
+  const body = actionable
+    ? `Just checking in 🙂 ${actionable.summary} is still waiting on you — want it sorted, or anything new to send me?`
+    : "Anything to send me this week?";
+  await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);
 }
 

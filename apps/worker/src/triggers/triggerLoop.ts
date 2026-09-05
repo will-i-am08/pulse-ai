@@ -1,7 +1,7 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
-import { sendToBrand } from "@pulse/gateway";
+import { sendToBrand, mostRecentActionable, isDaytime } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
 import { isTriggerDue } from "./scheduleCheck.js";
 import { runCheckin, getLastInboundAt } from "./checkin.js";
@@ -59,6 +59,8 @@ export async function runTriggerLoop(now: () => Date = () => new Date()): Promis
         case "checkin":
           await runCheckin(brand, trigger, {
             getLastInboundAt,
+            getActionable: mostRecentActionable,
+            isDaytime,
             sendToBrand,
             markSent,
             now,

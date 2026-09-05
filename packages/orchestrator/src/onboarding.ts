@@ -19,12 +19,34 @@ async function saveState(brandId: string, state: OnboardingState): Promise<void>
   await query("update brands set onboarding_state = $2::jsonb where id = $1", [brandId, JSON.stringify(state)]);
 }
 
+/** Pull the owner's first name from the onboarding chat and store it for personal address. */
+async function captureOwnerName(brand: Brand, transcript: OnboardingTurnMsg[]): Promise<void> {
+  try {
+    const convo = transcript.map((t) => `${t.role}: ${t.content}`).join("\n");
+    const raw = await callLLM({
+      system:
+        'From this onboarding chat, extract the business owner\'s OWN first name if they gave it. ' +
+        'Output JSON {"first_name":""} — empty string if they never said it.',
+      messages: [{ role: "user", content: convo }],
+      maxTokens: 30,
+    });
+    const name = (JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { first_name?: string })?.first_name;
+    if (typeof name === "string" && name.trim()) {
+      const facts = { ...(brand.facts ?? {}), owner_name: name.trim().split(/\s+/)[0] };
+      await query("update brands set facts = $1::jsonb where id = $2", [JSON.stringify(facts), brand.id]);
+    }
+  } catch {
+    /* best-effort — a missing name just means we address them as "you" */
+  }
+}
+
 function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
   return [
-    `You are Pulse — a warm, sharp onboarding interviewer setting up a social-media agent for "${brand.name}" (a ${kind}).`,
+    `You are Pulse — "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You'll run their social media end to end; there's no agency or anyone behind you. Warm, sharp, human.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone/voice, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
+    "Early on, warmly get their first name so you can address them personally from here on.",
     "RULES:",
     "- Ask ONE question at a time.",
     "- Actually read and build on each answer — reference what they just said, and dig deeper when something is interesting, surprising, or vague. Don't sound like a form.",
@@ -120,6 +142,7 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
     transcript.push({ role: "assistant", content: signoff });
     const recap = await compileProfile(brand, type, transcript);
     await saveState(brand.id, { status: "done", type, turns, transcript, answers });
+    await captureOwnerName(brand, transcript);
     return { reply: `${signoff}\n\n${recap}`, done: true };
   }
 

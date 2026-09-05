@@ -179,6 +179,9 @@ export interface Post {
   pillar_id: string | null;
   is_auto: boolean;
   hold_notified_at: string | null;
+  // When we last nudged the client that this draft is still awaiting their yes
+  // (the ~24h chase fires once per post).
+  chased_at: string | null;
   campaign_id: string | null;
   platform: Platform;
   status: PostStatus;
@@ -193,6 +196,8 @@ export interface Post {
 }
 
 export interface BusinessFacts {
+  // The owner's name, for personal address ("Morning, Sarah!").
+  owner_name?: string;
   hours?: string;
   address?: string;
   service_area?: string;

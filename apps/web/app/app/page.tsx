@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrands, listBrandsForOwner } from '@/lib/data/brands';
 import { setPhoneAction } from '@/lib/actions/connect';
-import { queryOne, type Brand, type OnboardingStatus } from '@pulse/shared';
+import type { Brand, OnboardingStatus } from '@pulse/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,18 +33,6 @@ const GOOGLE_MSG: Record<string, { text: string; ok: boolean }> = {
   unconfigured: { text: 'Google connect isn’t switched on yet — hang tight.', ok: false },
   norefresh: { text: 'Google didn’t grant lasting access — please reconnect and allow offline access.', ok: false },
   nolocations: { text: 'No Google Business Profile locations found on that account.', ok: false },
-  nobrand: { text: 'We couldn’t find your account — please contact support.', ok: false },
-};
-
-const SOURCE_MSG: Record<string, { text: string; ok: boolean }> = {
-  success: { text: 'Photo source connected 🎉 — new photos will be drafted into posts automatically.', ok: true },
-  denied: { text: 'Source connection cancelled — you can try again anytime.', ok: false },
-  failed: { text: 'Something went wrong connecting your photos — please try again.', ok: false },
-  invalid: { text: 'That link expired — please start the connection again.', ok: false },
-  expired: { text: 'Your connection session expired — please reconnect.', ok: false },
-  unconfigured: { text: 'Photo-source connect isn’t switched on yet — hang tight.', ok: false },
-  norefresh: { text: 'Google didn’t grant lasting access — please reconnect and allow offline access.', ok: false },
-  noitems: { text: 'No albums or folders found on that Google account.', ok: false },
   nobrand: { text: 'We couldn’t find your account — please contact support.', ok: false },
 };
 
@@ -128,7 +116,7 @@ function setupLabel(status: OnboardingStatus | undefined): string {
 export default async function DashboardHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string; google?: string; source?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string; google?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -167,7 +155,7 @@ export default async function DashboardHome({
     );
   }
 
-  const { connect, phone, google, source } = await searchParams;
+  const { connect, phone, google } = await searchParams;
   const brands = await listBrandsForOwner(user!.id);
   const brand = brands[0];
 
@@ -184,12 +172,6 @@ export default async function DashboardHome({
   const phoneSet = hasRealPhone(brand);
   const allDone = connected && phoneSet;
 
-  // A connected photo source (Google Photos album / Drive folder) the agent auto-pulls from.
-  const connectedSource = await queryOne<{ kind: string }>(
-    'select kind from content_sources where brand_id = $1 order by created_at asc limit 1',
-    [brand.id],
-  );
-
   return (
     <section>
       <div className="page-header">
@@ -199,7 +181,6 @@ export default async function DashboardHome({
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
       <Banner msg={google ? GOOGLE_MSG[google] : undefined} />
-      <Banner msg={source ? SOURCE_MSG[source] : undefined} />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <StepCard n={1} title="Connect Instagram & Facebook" done={connected}>
@@ -262,23 +243,6 @@ export default async function DashboardHome({
               Connect your Google Business Profile so the agent posts to Google and replies to your Google reviews — big for local discovery.
             </p>
             <a className="btn-primary" href="/api/connect/google/start">Connect Google</a>
-          </>
-        )}
-      </div>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Photo source <span style={{ fontSize: 13, color: 'var(--muted,#667)', fontWeight: 400 }}>(optional)</span></h2>
-        {connectedSource ? (
-          <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-            Watching your {connectedSource.kind === 'google_drive' ? 'Google Drive folder' : 'Google Photos album'} — new photos get drafted into posts automatically.{' '}
-            <a href="/api/connect/source/start">Change source</a>
-          </p>
-        ) : (
-          <>
-            <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-              Connect a Google Photos album or Drive folder and the agent will draft a post from every new photo you add — no need to send them in.
-            </p>
-            <a className="btn-primary" href="/api/connect/source/start">Connect a photo source</a>
           </>
         )}
       </div>

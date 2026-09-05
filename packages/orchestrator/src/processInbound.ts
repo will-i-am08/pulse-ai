@@ -15,10 +15,13 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
+import { pickFreshPhoto, pickReusablePhoto, draftPostFromPhoto } from "./library.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
 import { repurposeUrl } from "./repurpose.js";
+import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
+import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM } from "./llm.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
@@ -29,6 +32,11 @@ const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
+
+// The client explicitly asking to reuse an OLD/previously-posted photo. Used
+// photos are only pulled back out on request like this — never automatically.
+const REUSE_RE =
+  /\b(re-?use|re-?post|repost|old (photo|pic|shot|one|image)|previous (photo|pic|post|one)|use (an?\s+|one\s+of\s+)?(old|previous|existing|earlier)|(from|one i sent) (before|last week|last month|the other (day|week))|from the archive|use something old)\b/i;
 
 // Pure greetings / pleasantries / small talk — the WHOLE message is just this,
 // nothing actionable trailing it (the `$` anchor keeps "hey can you post this"
@@ -120,8 +128,9 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
 async function answerQuestion(brand: Brand, context: string, question: string): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const system = [
-    `You are Pulse, a helpful assistant texting on behalf of "${brand.name}"'s social media agency.`,
-    "Answer the client's question briefly and helpfully, in a friendly SMS tone (a few sentences max).",
+    ...personaLines(brand),
+    "Answer their question briefly and helpfully, in a friendly SMS tone (a few sentences max).",
+    `If they ask what's connected or set up, answer from this — ${connectionSummary(brand)}`,
     profile.tone.length ? `Where relevant, match this brand's tone: ${profile.tone.join(", ")}.` : "",
   ]
     .filter(Boolean)
@@ -146,8 +155,8 @@ async function converse(brand: Brand, message: string): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id);
   const system = [
-    `You are Pulse, the friendly assistant that runs "${brand.name}"'s social media over text.`,
-    "The client just sent a casual, conversational message — a greeting, a thanks, or small talk.",
+    ...personaLines(brand),
+    "They just sent a casual, conversational message — a greeting, a thanks, or small talk.",
     "Reply the way a warm, switched-on human would over text: one or two sentences, natural, no corporate tone, no bullet lists, no menus of features.",
     "Match their energy. If they only said hi, say hi back warmly — and only if it feels natural, add that you're around whenever they want to post something.",
     "Never say you're unsure what they want, and never ask them to clarify a friendly hello.",
@@ -166,6 +175,38 @@ async function converse(brand: Brand, message: string): Promise<string> {
       },
     ],
     maxTokens: 200,
+  });
+  return text.trim();
+}
+
+/**
+ * Warmly re-orient a client who's come back after a gap: acknowledge how long
+ * it's been ("this morning" / "last night" / "the other day"), and either offer
+ * to pick up the unfinished thing or, if nothing's pending, greet + lightly offer.
+ * Never assumes seamless continuity, never recites a feature menu.
+ */
+async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const context = await buildConversationContext(brand.id);
+  const system = [
+    ...personaLines(brand),
+    `They've just come back after a break — you two last spoke ${phrase}.`,
+    actionable
+      ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now — or start fresh if they'd rather.`
+      : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,
+    "One or two sentences, natural SMS tone. No bullet lists, no menus, never say you're unsure what they want.",
+    profile.tone.length ? `Lean on this brand's tone where it fits: ${profile.tone.join(", ")}.` : "",
+    `Emoji policy: ${profile.emoji_policy}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const text = await callLLM({
+    system,
+    messages: [
+      { role: "user", content: context ? `Recent conversation:\n${context}\n\nTheir latest message:\n${message}` : message },
+    ],
+    maxTokens: 220,
   });
   return text.trim();
 }
@@ -206,6 +247,13 @@ export async function processInbound(
 
   const pending = await getLatestPendingPost(brand.id);
 
+  // How long since we last spoke (either direction) — drives time-aware
+  // re-engagement. Under 4h is "seamless"; above that we re-orient rather than
+  // assume the client is jumping straight back in. Because this looks at the most
+  // recent prior message, a burst of messages after a return only re-orients on
+  // the first (the rest are seconds apart → seamless).
+  const gap = gapInfo(await lastInteractionAt(brand.id, message.id), new Date());
+
   // A campaign proposal is awaiting the client's go-ahead — but a pending post
   // takes precedence (there, "yes" means approve the post, not run a campaign).
   if (message.body && newMedia.length === 0 && !pending) {
@@ -238,9 +286,14 @@ export async function processInbound(
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
-  // with no photo and nothing pending — just gets a warm human reply. This runs
-  // before classification so a friendly hello never trips the clarify fallback.
-  if (message.body && newMedia.length === 0 && !pending && GREETING_RE.test(message.body)) {
+  // with no photo — just gets a warm human reply. This runs before classification
+  // so a friendly hello never trips the clarify fallback. It fires even when a
+  // draft is pending: a greeting is never an approval, so GREETING_RE only matches
+  // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
+  if (message.body && newMedia.length === 0 && GREETING_RE.test(message.body)) {
+    if (gap.bucket !== "seamless") {
+      return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
+    }
     return { reply: await converse(brand, message.body) };
   }
 
@@ -253,9 +306,14 @@ export async function processInbound(
   await updateMessageType(message.id, toDbMessageType(result.classification));
 
   if (result.confidence < LOW_CONFIDENCE_THRESHOLD) {
-    // With a draft awaiting the client, an unclear message is most likely a fuzzy
-    // edit or approval — ask to clarify rather than guess-and-act (BUILD_CONTRACTS).
-    // With nothing pending, it's just conversation — reply like a human.
+    // Coming back after a gap with something vague → re-orient (and name the
+    // unfinished thing) rather than either guessing or asking a cold "huh?".
+    if (gap.bucket !== "seamless") {
+      return { reply: await reengage(brand, message.body ?? "", gap.phrase, await mostRecentActionable(brand.id)) };
+    }
+    // Mid-conversation: with a draft awaiting the client, an unclear message is
+    // most likely a fuzzy edit or approval — ask to clarify rather than
+    // guess-and-act (BUILD_CONTRACTS). With nothing pending, it's just chat.
     if (pending) {
       return {
         reply:
@@ -269,6 +327,13 @@ export async function processInbound(
     case "media": {
       const originalIds = newMedia.map((m) => m.id);
       const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
+
+      // Clear task after a real gap (≥ ~18h): just do it, with a light welcome-back
+      // — never hijack a photo with "want to pick up where we left off?".
+      const welcomeBack =
+        gap.bucket === "yesterday" || gap.bucket === "recent" || gap.bucket === "long"
+          ? "Good to have you back! "
+          : "";
 
       // Style the first photo (truthful enhance for business, bolder for personal).
       // If editing is unavailable, we fall back to the original photo.
@@ -292,6 +357,12 @@ export async function processInbound(
           styledUrl = publicMediaUrl(finalId);
         }
       }
+
+      // Always send the client their photo back with the caption — the styled
+      // version if we styled it, otherwise the original. (Styling can be a no-op
+      // when the image editor is unavailable or the edit fails; the client should
+      // still see their post, not a caption with no picture.)
+      const replyImageUrl = firstPhoto ? publicMediaUrl(postMediaIds[0]!) : undefined;
 
       // Sort the photo into a content pillar and find a smart slot for it.
       const pillars = await ensurePillars(brand.id);
@@ -350,17 +421,17 @@ export async function processInbound(
         );
         const styledLine = styledUrl ? "Styled and scheduled ✨" : "Scheduled:";
         return {
-          reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
+          reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
           postId: post.id,
-          mediaUrl: styledUrl,
+          mediaUrl: replyImageUrl,
         };
       }
 
       const styledLine = styledUrl ? "Here's your post — I styled the photo too ✨" : "Here's your post:";
       return {
-        reply: `${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
+        reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
         postId: post.id,
-        mediaUrl: styledUrl,
+        mediaUrl: replyImageUrl,
       };
     }
 
@@ -504,11 +575,45 @@ export async function processInbound(
         if (proposal) return { reply: proposal.summary };
       }
 
+      // Explicit "use an old photo" → pull a previously-posted shot back out (only
+      // ever on request — the bot never recycles used photos on its own).
+      if (message.body && REUSE_RE.test(message.body) && newMedia.length === 0) {
+        const photo = await pickReusablePhoto(brand.id);
+        if (!photo) {
+          return { reply: "You've not sent me any photos yet to pull from — send one over and I'll get it into the mix." };
+        }
+        const pillars = await ensurePillars(brand.id);
+        const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
+        if (target) {
+          const fromLib = await draftPostFromPhoto(brand, photo, target);
+          if (fromLib) {
+            return {
+              reply: `Pulled one of your older photos back out for a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+              postId: fromLib.post.id,
+              mediaUrl: fromLib.mediaUrl ?? undefined,
+            };
+          }
+        }
+        return { reply: "I tried to pull an old photo but hit a snag — mind asking again in a moment?" };
+      }
+
       // "Draft one" (in reply to a gap-fill nudge) → generate a held filler post.
       if (message.body && DRAFT_FILLER_RE.test(message.body) && newMedia.length === 0) {
         const pillars = await ensurePillars(brand.id);
         const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
         if (target) {
+          // Prefer a real banked photo over a generated card — reuse what they've sent.
+          const banked = await pickFreshPhoto(brand.id);
+          if (banked) {
+            const fromLib = await draftPostFromPhoto(brand, banked, target);
+            if (fromLib) {
+              return {
+                reply: `Pulled one of your photos into a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+                postId: fromLib.post.id,
+                mediaUrl: fromLib.mediaUrl ?? undefined,
+              };
+            }
+          }
           const filler = await generateFillerPost(brand, target);
           if (filler) {
             return {
