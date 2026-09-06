@@ -150,6 +150,17 @@ export interface MediaAsset {
   created_at: string;
 }
 
+// A competitor the owner asked us to watch; a weekly sweep diffs it and reports.
+export interface CompetitorWatch {
+  id: string;
+  brand_id: string;
+  name: string;
+  handles: string | null;
+  last_snapshot: string | null;
+  last_watched_at: string | null;
+  created_at: string;
+}
+
 // A connected photo source the agent polls for new media (Phase C auto-pull).
 export const ContentSourceKind = ["google_photos", "google_drive", "dropbox"] as const;
 export type ContentSourceKind = (typeof ContentSourceKind)[number];

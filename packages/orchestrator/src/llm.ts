@@ -51,16 +51,32 @@ async function attempt(model: string, opts: CallLLMOptions): Promise<string> {
   }
   const res = await getClient().messages.create(req as unknown as Anthropic.MessageCreateParamsNonStreaming);
 
-  // Join every text block — with web search the answer can span more than one.
-  const text = res.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
+  // With web search the model may emit a pre-search "I'll look into…" text block
+  // before the tool runs. Take only the text AFTER the last tool block — the real
+  // answer — falling back to all text if there were no tools.
+  const lastToolIdx = res.content.reduce((acc, b, i) => (b.type !== "text" ? i : acc), -1);
+  const finalBlocks = res.content.filter((b, i): b is Anthropic.TextBlock => b.type === "text" && i > lastToolIdx);
+  const blocks = finalBlocks.length
+    ? finalBlocks
+    : res.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
+  const text = blocks.map((b) => b.text).join("").trim();
   if (!text) {
     throw new Error("LLM response contained no text content");
   }
   return text;
+}
+
+/**
+ * Strip markdown that renders as literal characters over SMS/iMessage: bold/italic
+ * asterisks, headers, inline-code backticks. Keeps plain prose intact.
+ */
+export function stripMarkdown(s: string): string {
+  return s
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
 }
 
 /**
