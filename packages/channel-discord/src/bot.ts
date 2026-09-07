@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, draftPostFromPhoto } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -503,5 +503,32 @@ setInterval(() => {
       chaseRunning = false;
     });
 }, 60 * 60 * 1000);
+
+// ─── Competitor watch: weekly sweep of watched competitors (daytime only) ────
+async function sweepCompetitorWatches(): Promise<void> {
+  if (!isDaytime(new Date())) return;
+  const due = await dueCompetitorWatches();
+  for (const watch of due) {
+    try {
+      const brand = await queryOne<Brand>("select * from brands where id = $1 and status = 'active'", [watch.brand_id]);
+      if (!brand) continue;
+      const { digest, snapshot } = await competitorWeeklyUpdate(brand, watch);
+      await markWatchSwept(watch.id, snapshot);
+      if (digest) await sendToBrand(brand.id, `👀 Weekly on ${watch.name}:\n\n${digest}`);
+    } catch (err) {
+      console.error(`[discord] competitor watch failed for ${watch.id}`, err);
+    }
+  }
+}
+let watchRunning = false;
+setInterval(() => {
+  if (watchRunning) return;
+  watchRunning = true;
+  sweepCompetitorWatches()
+    .catch((err) => console.error("[discord] competitor watch loop error", err))
+    .finally(() => {
+      watchRunning = false;
+    });
+}, 6 * 60 * 60 * 1000);
 
 client.login(env.DISCORD_BOT_TOKEN);
