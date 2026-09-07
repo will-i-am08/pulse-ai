@@ -22,6 +22,8 @@ import {
   parkCarouselChoice,
   resolveAsCarousel,
   resolveAsSeparate,
+  draftCarouselFromPhotos,
+  draftStoryFromPhoto,
 } from "./formats.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
@@ -48,6 +50,13 @@ const COMPETITOR_RE =
 
 // "Keep an eye on X" / "watch X" — also registers a weekly competitor watch.
 const WATCH_ADD_RE = /\b(keep (?:an eye|tabs) on|start watching|watch|monitor|track)\s+\S/i;
+
+// Explicit format commands: "put this on my story", "make it a carousel".
+const STORY_CMD_RE =
+  /\b(?:(?:make|turn|put)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?stor(?:y|ies)|as\s+(?:a\s+)?stor(?:y|ies)|on\s+(?:my\s+)?stor(?:y|ies)|stor(?:y|ies)\s+this)\b|^\s*stor(?:y|ies)\s*[!.?]*$/i;
+const CAROUSEL_CMD_RE =
+  /\b(?:(?:make|turn)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
+const SEPARATE_CMD_RE = /\b(separate|separately|individually|split (?:them|up)|different posts?)\b/i;
 
 // The client explicitly asking to reuse an OLD/previously-posted photo. Used
 // photos are only pulled back out on request like this — never automatically.
@@ -296,6 +305,20 @@ export async function processInbound(
     }
   }
 
+  // "Make it a story / carousel" about the current pending draft (no new photo).
+  if (message.body && newMedia.length === 0 && pending && (STORY_CMD_RE.test(message.body) || CAROUSEL_CMD_RE.test(message.body))) {
+    if (STORY_CMD_RE.test(message.body)) {
+      await query("update posts set format = 'story' where id = $1 and brand_id = $2", [pending.id, brand.id]);
+      return { reply: `Done — switched it to a story. Reply "yes" to approve.`, postId: pending.id };
+    }
+    // carousel needs at least two images
+    if (pending.media_ids.length >= 2) {
+      await query("update posts set format = 'carousel' where id = $1 and brand_id = $2", [pending.id, brand.id]);
+      return { reply: `Done — made it a carousel (${pending.media_ids.length} slides). Reply "yes" to approve.`, postId: pending.id };
+    }
+    return { reply: "A carousel needs a few photos — send me a couple more and I'll bundle them into one." };
+  }
+
   // A campaign proposal is awaiting the client's go-ahead — but a pending post
   // takes precedence (there, "yes" means approve the post, not run a campaign).
   if (message.body && newMedia.length === 0 && !pending) {
@@ -388,8 +411,58 @@ export async function processInbound(
 
   switch (result.classification) {
     case "media": {
-      // Several photos at once → don't guess. Park them and ask carousel-or-separate.
       const photos = newMedia.filter((m) => m.kind === "photo");
+      const body = message.body ?? "";
+      const cmdStory = STORY_CMD_RE.test(body);
+      const cmdCarousel = CAROUSEL_CMD_RE.test(body);
+      const cmdSeparate = SEPARATE_CMD_RE.test(body);
+
+      // Explicit "put this on my story" → draft the photo(s) as stories.
+      if (cmdStory && photos.length >= 1) {
+        const pillars = await ensurePillars(brand.id);
+        const results: Array<{ post: Post; mediaUrl: string | null; auto: boolean }> = [];
+        for (const p of photos.slice(0, 5)) {
+          const pillar = (await classifyPhotoPillar(brand, pillars, p.id)) ?? pillars[0];
+          if (!pillar) continue;
+          const s = await draftStoryFromPhoto(brand, p, pillar);
+          if (s) results.push(s);
+        }
+        if (results.length) {
+          const first = results[0]!;
+          const auto = results.some((r) => r.auto);
+          const n = results.length;
+          const noun = n === 1 ? "story" : `${n} stories`;
+          const reply = auto
+            ? `Popped ${n === 1 ? "it" : "them"} on your story ✨ (casual, so I went ahead — reply "HOLD" to pull ${n === 1 ? "it" : "them"}).`
+            : `Here's your ${noun}:\n\n"${first.post.caption}"\n\nReply "yes" to put ${n === 1 ? "it" : "them"} on your story, or tell me a change.`;
+          return { reply, postId: first.post.id, mediaUrl: first.mediaUrl ?? undefined };
+        }
+      }
+
+      // Several photos + explicit "carousel" → straight to a carousel (skip the ask).
+      if (photos.length >= 2 && cmdCarousel) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = (await classifyPhotoPillar(brand, pillars, photos[0]!.id)) ?? pillars[0];
+        const res = pillar ? await draftCarouselFromPhotos(brand, photos.map((m) => m.id), pillar) : null;
+        if (res) {
+          const when = res.post.scheduled_at ? formatSlot(new Date(res.post.scheduled_at)) : "soon";
+          return {
+            reply: `Bundled into a carousel ✨\n\n"${res.post.caption}"\n\n${res.post.media_ids.length} slides · proposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+            postId: res.post.id,
+            mediaUrl: res.mediaUrl ?? undefined,
+          };
+        }
+      }
+
+      // Several photos + explicit "separate" → individual posts (skip the ask).
+      if (photos.length >= 2 && cmdSeparate) {
+        await parkCarouselChoice(brand.id, photos.map((m) => m.id));
+        const parked = await getPendingCarouselChoice(brand.id);
+        const n = parked ? await resolveAsSeparate(brand, parked) : 0;
+        return { reply: `Done — drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve.` };
+      }
+
+      // Several photos, no explicit format → don't guess; ask carousel-or-separate.
       if (photos.length >= 2) {
         await parkCarouselChoice(brand.id, photos.map((m) => m.id));
         return {
