@@ -34,6 +34,18 @@ export async function pickFreshPhoto(brandId: string): Promise<MediaAsset | null
   );
 }
 
+/** Several fresh photos (oldest first) — for bundling into a library carousel. */
+export async function pickFreshPhotos(brandId: string, n: number): Promise<MediaAsset[]> {
+  return query<MediaAsset>(
+    `select m.* from media_assets m
+      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
+        and ${NOT_IN_FLIGHT} and not ${EVER_POSTED}
+      order by m.created_at asc
+      limit $2`,
+    [brandId, Math.max(1, Math.min(n, 10))],
+  );
+}
+
 /**
  * A previously-posted photo to reuse ON THE CLIENT'S REQUEST — least-recently-used
  * first. Falls back to any not-in-flight photo if none have been posted yet. null

@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -183,6 +183,7 @@ async function publishApproved(): Promise<void> {
         platform: post.platform,
         caption: post.caption ?? "",
         mediaUrls,
+        format: post.format,
       });
       await query(
         "update posts set status = 'published', published_at = now(), external_post_id = $2 where id = $1",
@@ -246,25 +247,49 @@ async function gapFillCheck(): Promise<void> {
       const have = Number(row?.n ?? 0);
       if (have >= pillar.posts_per_week) continue;
 
-      // Library first: if the client has banked a photo, fill the gap from it
-      // rather than bothering them. Only nudge when the bank is empty.
-      const banked = await pickFreshPhoto(brand.id);
-      if (banked) {
-        const drafted = await draftPostFromPhoto(brand, banked, pillar).catch((err) => {
-          console.error(`[discord] library gap-fill failed for ${brand.id}`, err);
-          return null;
-        });
-        if (drafted) {
-          const when = drafted.post.scheduled_at
-            ? new Date(drafted.post.scheduled_at).toLocaleString("en-AU", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true })
-            : "soon";
-          const lead = drafted.post.is_auto
-            ? `Your "${pillar.name}" slot was looking light, so I pulled one of your photos in and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
-            : `Your "${pillar.name}" slot was looking light, so I pulled one of your photos in:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
-          await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
-          await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
-          break;
+      // Fill the gap ourselves, VARYING the format (carousel-leaning) so the feed
+      // isn't monotonous — only nudge the client when we've no material.
+      const fmt = await chooseNextFormat(brand.id);
+      let drafted: { post: Post; mediaUrl: string | null } | null = null;
+      let kind = "post";
+      let auto = false;
+      try {
+        if (fmt === "carousel") {
+          const photos = await pickFreshPhotos(brand.id, 4);
+          if (photos.length >= 2) {
+            drafted = await draftCarouselFromPhotos(brand, photos.map((p) => p.id), pillar);
+            kind = "carousel from your photos";
+          } else {
+            drafted = await generateTipCarousel(brand, pillar);
+            kind = "tip carousel";
+          }
+        } else if (fmt === "story") {
+          const p = await pickFreshPhoto(brand.id);
+          if (p) {
+            const s = await draftStoryFromPhoto(brand, p, pillar);
+            if (s) { drafted = { post: s.post, mediaUrl: s.mediaUrl }; auto = s.auto; kind = "story"; }
+          }
         }
+        if (!drafted) {
+          // feed fallback (also covers carousel/story with no material)
+          const p = await pickFreshPhoto(brand.id);
+          if (p) { drafted = await draftPostFromPhoto(brand, p, pillar); kind = "post"; }
+        }
+      } catch (err) {
+        console.error(`[discord] format gap-fill failed for ${brand.id}`, err);
+      }
+
+      if (drafted) {
+        auto = auto || drafted.post.is_auto;
+        const when = drafted.post.scheduled_at
+          ? new Date(drafted.post.scheduled_at).toLocaleString("en-AU", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true })
+          : "soon";
+        const lead = auto
+          ? `Your "${pillar.name}" was looking light, so I put together a ${kind} and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
+          : `Your "${pillar.name}" was looking light, so I put together a ${kind}:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
+        await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
+        await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
+        break;
       }
 
       await sendToBrand(

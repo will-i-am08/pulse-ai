@@ -1,4 +1,4 @@
-import type { Brand, Platform, ServerEnv } from "@pulse/shared";
+import type { Brand, Platform, PostFormat, ServerEnv } from "@pulse/shared";
 import { decryptJson, getServerEnv, googleAccessToken, gbpCreatePost } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
@@ -68,8 +68,10 @@ export class LiveGraphAdapter implements GraphAdapter {
     platform: Platform;
     caption: string;
     mediaUrls: string[];
+    format?: PostFormat;
   }): Promise<{ externalPostId: string; permalink: string | null }> {
     const { brand, platform, caption, mediaUrls } = input;
+    const format: PostFormat = input.format ?? "feed";
     const env = getServerEnv();
     const tokens = getTokens(brand);
 
@@ -78,36 +80,58 @@ export class LiveGraphAdapter implements GraphAdapter {
         if (!brand.ig_user_id) throw new Error(`Brand ${brand.id} missing ig_user_id`);
         const accessToken = tokens.ig_access_token;
         if (!accessToken) throw new Error(`Brand ${brand.id} missing ig_access_token`);
+        const igUser = brand.ig_user_id;
         const mediaUrl = mediaUrls[0];
         if (!mediaUrl) throw new Error("Instagram publish requires at least one media URL");
+        const isVideo = (u: string) => /\.(mp4|mov|m4v)(\?|$)/i.test(u);
 
-        // IG content publishing is two calls: create a media container, then publish it.
-        // TODO(live): confirm video vs image container fields (video_url + media_type:
-        // REELS/VIDEO vs image_url) once a real IG Business account + token is wired up,
-        // and confirm carousel handling for multi-image posts.
-        const isVideo = /\.(mp4|mov|m4v)(\?|$)/i.test(mediaUrl);
-        const containerParams = new URLSearchParams({
-          caption,
-          access_token: accessToken,
-          ...(isVideo ? { video_url: mediaUrl, media_type: "REELS" } : { image_url: mediaUrl }),
-        });
-        const container = await graphFetch(graphUrl(env, `/${brand.ig_user_id}/media`), {
+        // Create a media container, wait until it's publishable, return its id.
+        const createContainer = async (params: URLSearchParams): Promise<string> => {
+          const container = await graphFetch(graphUrl(env, `/${igUser}/media`), { method: "POST", body: params });
+          const id = container.id as string | undefined;
+          if (!id) throw new Error("Instagram media container creation returned no id");
+          await waitForContainer(env, id, accessToken);
+          return id;
+        };
+
+        let creationId: string;
+        if (format === "carousel" && mediaUrls.length > 1) {
+          // Carousel: a child container per item, then a parent CAROUSEL container.
+          const childIds: string[] = [];
+          for (const url of mediaUrls.slice(0, 10)) {
+            const childParams = new URLSearchParams({
+              access_token: accessToken,
+              is_carousel_item: "true",
+              ...(isVideo(url) ? { video_url: url, media_type: "VIDEO" } : { image_url: url }),
+            });
+            childIds.push(await createContainer(childParams));
+          }
+          creationId = await createContainer(
+            new URLSearchParams({ caption, access_token: accessToken, media_type: "CAROUSEL", children: childIds.join(",") }),
+          );
+        } else if (format === "story") {
+          // Story: a STORIES-type container (no caption on stories).
+          creationId = await createContainer(
+            new URLSearchParams({
+              access_token: accessToken,
+              media_type: "STORIES",
+              ...(isVideo(mediaUrl) ? { video_url: mediaUrl } : { image_url: mediaUrl }),
+            }),
+          );
+        } else {
+          // Single feed post (image or reel-style video).
+          creationId = await createContainer(
+            new URLSearchParams({
+              caption,
+              access_token: accessToken,
+              ...(isVideo(mediaUrl) ? { video_url: mediaUrl, media_type: "REELS" } : { image_url: mediaUrl }),
+            }),
+          );
+        }
+
+        const published = await graphFetch(graphUrl(env, `/${igUser}/media_publish`), {
           method: "POST",
-          body: containerParams,
-        });
-        const creationId = container.id as string | undefined;
-        if (!creationId) throw new Error("Instagram media container creation returned no id");
-
-        // Wait until the container is publishable — verified necessary in live testing.
-        await waitForContainer(env, creationId, accessToken);
-
-        const publishParams = new URLSearchParams({
-          creation_id: creationId,
-          access_token: accessToken,
-        });
-        const published = await graphFetch(graphUrl(env, `/${brand.ig_user_id}/media_publish`), {
-          method: "POST",
-          body: publishParams,
+          body: new URLSearchParams({ creation_id: creationId, access_token: accessToken }),
         });
         const externalPostId = published.id as string;
 
