@@ -113,7 +113,7 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
 
   try {
     const result = await withRetry(`publish:${post.id}`, () =>
-      graph.publish({ brand, platform: post.platform, caption: post.caption ?? "", mediaUrls })
+      graph.publish({ brand, platform: post.platform, caption: post.caption ?? "", mediaUrls, format: post.format })
     );
 
     await query(

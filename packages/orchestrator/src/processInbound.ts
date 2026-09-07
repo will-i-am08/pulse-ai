@@ -16,6 +16,13 @@ import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMe
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 import { pickFreshPhoto, pickReusablePhoto, draftPostFromPhoto } from "./library.js";
+import {
+  carouselDecision,
+  getPendingCarouselChoice,
+  parkCarouselChoice,
+  resolveAsCarousel,
+  resolveAsSeparate,
+} from "./formats.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
@@ -265,6 +272,30 @@ export async function processInbound(
   // the first (the rest are seconds apart → seamless).
   const gap = gapInfo(await lastInteractionAt(brand.id, message.id), new Date());
 
+  // Answering a "carousel or separate?" question about photos they just sent.
+  if (message.body && newMedia.length === 0) {
+    const choice = carouselDecision(message.body);
+    if (choice) {
+      const parked = await getPendingCarouselChoice(brand.id);
+      if (parked) {
+        if (choice === "carousel") {
+          const res = await resolveAsCarousel(brand, parked);
+          if (res) {
+            const when = res.post.scheduled_at ? formatSlot(new Date(res.post.scheduled_at)) : "soon";
+            return {
+              reply: `Bundled into a carousel ✨\n\n"${res.post.caption}"\n\n${res.post.media_ids.length} slides · proposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+              postId: res.post.id,
+              mediaUrl: res.mediaUrl ?? undefined,
+            };
+          }
+          return { reply: "I tried to bundle those into a carousel but hit a snag — mind sending them again?" };
+        }
+        const n = await resolveAsSeparate(brand, parked);
+        return { reply: `Done — drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve. Reply "yes" to the first, or tell me a change.` };
+      }
+    }
+  }
+
   // A campaign proposal is awaiting the client's go-ahead — but a pending post
   // takes precedence (there, "yes" means approve the post, not run a campaign).
   if (message.body && newMedia.length === 0 && !pending) {
@@ -357,6 +388,15 @@ export async function processInbound(
 
   switch (result.classification) {
     case "media": {
+      // Several photos at once → don't guess. Park them and ask carousel-or-separate.
+      const photos = newMedia.filter((m) => m.kind === "photo");
+      if (photos.length >= 2) {
+        await parkCarouselChoice(brand.id, photos.map((m) => m.id));
+        return {
+          reply: `Nice — ${photos.length} photos. Want them as one swipeable carousel, or separate posts? Reply "carousel" or "separate".`,
+        };
+      }
+
       const originalIds = newMedia.map((m) => m.id);
       const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
 

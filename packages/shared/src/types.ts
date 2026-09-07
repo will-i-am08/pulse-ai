@@ -16,6 +16,10 @@ export type MediaSource = (typeof MediaSource)[number];
 export const Platform = ["instagram", "facebook", "google"] as const;
 export type Platform = (typeof Platform)[number];
 
+// The post format the bot varies across. Reels (video) parked for later.
+export const PostFormat = ["feed", "carousel", "story"] as const;
+export type PostFormat = (typeof PostFormat)[number];
+
 export const PostStatus = [
   "draft",
   "pending_approval",
@@ -188,6 +192,8 @@ export interface Post {
   style_meta: { wants_text?: boolean; headline?: string } | null;
   // Content pillar this post belongs to, and autopilot bookkeeping.
   pillar_id: string | null;
+  // feed (single) / carousel (multi-image) / story (24h). Drives how it publishes.
+  format: PostFormat;
   is_auto: boolean;
   hold_notified_at: string | null;
   // When we last nudged the client that this draft is still awaiting their yes

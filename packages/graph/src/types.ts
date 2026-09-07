@@ -1,8 +1,9 @@
-import type { Brand, Platform } from "@pulse/shared";
+import type { Brand, Platform, PostFormat } from "@pulse/shared";
 
 /**
  * Frozen interface — see docs/BUILD_CONTRACTS.md § C · @pulse/graph.
- * Do not change these signatures; other workstreams code against them.
+ * `format` is an additive, optional field (defaults to 'feed'); existing callers
+ * are unaffected.
  */
 export interface GraphAdapter {
   publish(input: {
@@ -10,6 +11,7 @@ export interface GraphAdapter {
     platform: Platform;
     caption: string;
     mediaUrls: string[];
+    format?: PostFormat;
   }): Promise<{ externalPostId: string; permalink: string | null }>;
 
   fetchEngagement(

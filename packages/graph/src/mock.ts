@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Brand, Platform } from "@pulse/shared";
+import type { Brand, Platform, PostFormat } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -38,15 +38,17 @@ export class MockGraphAdapter implements GraphAdapter {
     platform: Platform;
     caption: string;
     mediaUrls: string[];
+    format?: PostFormat;
   }): Promise<{ externalPostId: string; permalink: string | null }> {
     const { brand, platform, caption, mediaUrls } = input;
+    const format: PostFormat = input.format ?? "feed";
     return withRetry(`mock:publish:${brand.id}:${platform}`, async () => {
-      const fingerprint = `${brand.id}|${platform}|${caption}|${mediaUrls.join(",")}|${Date.now()}`;
+      const fingerprint = `${brand.id}|${platform}|${format}|${caption}|${mediaUrls.join(",")}|${Date.now()}`;
       const externalPostId = `mock_${hashHex(fingerprint).slice(0, 16)}`;
       const handle = platform === "instagram" ? brand.ig_user_id : brand.fb_page_id;
       const permalink = `https://mock.graph.local/${platform}/${handle ?? brand.id}/${externalPostId}`;
       console.log(
-        `[graph:mock] publish brand=${brand.id} platform=${platform} media=${mediaUrls.length} -> ${externalPostId}`
+        `[graph:mock] publish brand=${brand.id} platform=${platform} format=${format} media=${mediaUrls.length} -> ${externalPostId}`
       );
       return { externalPostId, permalink };
     });

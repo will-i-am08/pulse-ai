@@ -183,6 +183,7 @@ async function publishApproved(): Promise<void> {
         platform: post.platform,
         caption: post.caption ?? "",
         mediaUrls,
+        format: post.format,
       });
       await query(
         "update posts set status = 'published', published_at = now(), external_post_id = $2 where id = $1",
