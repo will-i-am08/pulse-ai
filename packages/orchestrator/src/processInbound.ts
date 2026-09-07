@@ -30,6 +30,7 @@ import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile
 import { sendLatestDraft } from "./engagement.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
+import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
@@ -302,6 +303,17 @@ export async function processInbound(
         const n = await resolveAsSeparate(brand, parked);
         return { reply: `Done — drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve. Reply "yes" to the first, or tell me a change.` };
       }
+    }
+  }
+
+  // Accepting the proposed niche plan — "yes" sets up the pillars + schedule.
+  if (message.body && newMedia.length === 0 && !pending && /^\s*(yes|yep|yeah|yup|love it|looks good|perfect|do it|go for it|sounds good|let'?s go|accept|set it up|run it)\b/i.test(message.body)) {
+    const proposedPlan = await getProposedPlan(brand.id);
+    if (proposedPlan) {
+      await applyNichePlan(brand, proposedPlan);
+      return {
+        reply: "Love it — your plan's live 🎉 Pillars and posting schedule are set. Send me photos any time and I'll start filling your slots.",
+      };
     }
   }
 

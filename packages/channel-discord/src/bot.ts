@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, researchNichePlan, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -555,5 +555,37 @@ setInterval(() => {
       watchRunning = false;
     });
 }, 6 * 60 * 60 * 1000);
+
+// ─── Niche plan: research pending plans and deliver them to the owner ────────
+async function buildNichePlans(): Promise<void> {
+  const plans = await pendingPlans();
+  for (const row of plans) {
+    try {
+      const brand = await queryOne<Brand>("select * from brands where id = $1", [row.brand_id]);
+      if (!brand) { await markPlanFailed(row.id); continue; }
+      const plan = await researchNichePlan(brand, row.niche ?? brand.name, row.exemplars ?? null);
+      if (!plan) { await markPlanFailed(row.id); continue; }
+      await markPlanProposed(row.id, plan);
+      const link = `${env.APP_BASE_URL.replace(/\/$/, "")}/app/content-plan`;
+      await sendToBrand(
+        brand.id,
+        `${planTextSummary(plan)}\n\nFull plan → ${link}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`,
+      );
+    } catch (err) {
+      console.error(`[discord] niche plan build failed for ${row.id}`, err);
+      await markPlanFailed(row.id).catch(() => {});
+    }
+  }
+}
+let planBuildRunning = false;
+setInterval(() => {
+  if (planBuildRunning) return;
+  planBuildRunning = true;
+  buildNichePlans()
+    .catch((err) => console.error("[discord] niche plan loop error", err))
+    .finally(() => {
+      planBuildRunning = false;
+    });
+}, 30 * 1000);
 
 client.login(env.DISCORD_BOT_TOKEN);

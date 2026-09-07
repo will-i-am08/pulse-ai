@@ -35,6 +35,16 @@ export { createInteraction, handleInteraction, sendLatestDraft } from "./engagem
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";
 export {
+  seedPendingPlan,
+  pendingPlans,
+  getProposedPlan,
+  researchNichePlan,
+  markPlanProposed,
+  markPlanFailed,
+  planTextSummary,
+  applyNichePlan,
+} from "./nichePlan.js";
+export {
   competitorIntel,
   extractCompetitorName,
   addCompetitorWatch,

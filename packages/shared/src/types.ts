@@ -154,6 +154,32 @@ export interface MediaAsset {
   created_at: string;
 }
 
+// The niche-research custom plan proposed at onboarding.
+export interface PlanPillar {
+  key: string;
+  name: string;
+  description: string;
+  posts_per_week: number;
+  format_bias?: PostFormat;
+}
+export interface NichePlan {
+  summary: string; // one punchy line for the SMS
+  pillars: PlanPillar[];
+  format_mix: string; // e.g. "carousel-heavy — ~50% carousel, 30% feed, 20% story"
+  best_times: string; // e.g. "Tue & Thu 6–8pm, Sat mornings"
+  starter_ideas: string[];
+}
+export interface ContentPlan {
+  id: string;
+  brand_id: string;
+  niche: string | null;
+  exemplars: string | null;
+  plan: NichePlan | null;
+  status: "pending" | "proposed" | "accepted" | "failed";
+  created_at: string;
+  updated_at: string;
+}
+
 // A competitor the owner asked us to watch; a weekly sweep diffs it and reports.
 export interface CompetitorWatch {
   id: string;

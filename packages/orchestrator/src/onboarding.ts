@@ -8,6 +8,7 @@ import {
   type OnboardingTurnMsg,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { seedPendingPlan } from "./nichePlan.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -40,6 +41,25 @@ async function captureOwnerName(brand: Brand, transcript: OnboardingTurnMsg[]): 
   }
 }
 
+/** Extract the niche + admired accounts and seed a pending plan (kicks off research). */
+async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnMsg[]): Promise<void> {
+  try {
+    const convo = transcript.map((t) => `${t.role}: ${t.content}`).join("\n");
+    const raw = await callLLM({
+      system:
+        "From this onboarding chat, extract the business's niche/industry (a short phrase) and any 1–2 accounts/competitors the owner said they admire. " +
+        'Output JSON {"niche":"","exemplars":""} — empty strings if not stated.',
+      messages: [{ role: "user", content: convo }],
+      maxTokens: 80,
+    });
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { niche?: string; exemplars?: string };
+    const niche = parsed.niche?.trim();
+    if (niche) await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
+  } catch {
+    /* best-effort — no plan seeded just means no custom plan this run */
+  }
+}
+
 function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
   return [
@@ -47,6 +67,7 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone/voice, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
     "Early on, warmly get their first name so you can address them personally from here on.",
+    "Make sure you learn their business/niche clearly, and ask for 1–2 accounts in their space they admire (so you can study what's working before building their plan).",
     "RULES:",
     "- Ask ONE question at a time.",
     "- Actually read and build on each answer — reference what they just said, and dig deeper when something is interesting, surprising, or vague. Don't sound like a form.",
@@ -143,7 +164,11 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
     const recap = await compileProfile(brand, type, transcript);
     await saveState(brand.id, { status: "done", type, turns, transcript, answers });
     await captureOwnerName(brand, transcript);
-    return { reply: `${signoff}\n\n${recap}`, done: true };
+    await captureNicheAndSeedPlan(brand, transcript);
+    return {
+      reply: `${signoff}\n\n${recap}\n\nOne more thing — I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`,
+      done: true,
+    };
   }
 
   transcript.push({ role: "assistant", content: raw });
