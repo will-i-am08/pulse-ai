@@ -2,6 +2,7 @@ import {
   query,
   queryOne,
   brandVoiceProfileSchema,
+  sanitizeChatText,
   type AccountType,
   type Brand,
   type OnboardingState,
@@ -69,8 +70,8 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
     "Early on, warmly get their first name so you can address them personally from here on.",
     "Make sure you learn their business/niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "HOW YOU TALK (absolute rules):",
-    "- ONE question per message. Never two, never three.",
-    "- Short. Questions stay under 25 words. Most messages are 1-2 sentences.",
+    "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
+    "- Short. Your question stays under 25 words. Most messages are 1-2 sentences.",
     "- Plain words. No jargon like POV, format, cadence, or leverage.",
     "- When they are vague, venture a concrete guess for them to react to. Never hand their fog back with a list of options.",
     "- React specifically to what they just said before you ask. Prove you listened.",
@@ -136,11 +137,39 @@ export async function startOnboarding(brandId: string): Promise<string> {
   const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];
   const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
   await saveState(brand.id, { status: "in_progress", type, turns: 0, transcript, answers });
-  return opening;
+  return sanitizeChatText(await enforceOneQuestion(opening));
 }
 
 /** Instant acknowledgement sent the moment the last answer lands, while the wrap-up compiles. */
 export const WRAP_ACK = "Awesome, got everything. Writing your voice up now, one sec.";
+
+/** Count the questions in a message. */
+function questionCount(text: string): number {
+  return (text.match(/\?/g) ?? []).length;
+}
+
+/**
+ * Backstop for the one-question rule: prompts ask, but the model still slips.
+ * If a reply asks more than one question, have the model keep only the most
+ * important one. One repair attempt, then accept (never loop forever).
+ */
+async function enforceOneQuestion(reply: string): Promise<string> {
+  if (questionCount(reply) <= 1) return reply;
+  try {
+    const fixed = await callLLM({
+      system:
+        "Rewrite the message below as ONE short question (under 25 words). " +
+        "Keep the reaction to what they said, keep only the single most important question, delete the rest. " +
+        "Plain SMS text. No em dashes, no markdown. Output ONLY the rewritten message.",
+      messages: [{ role: "user", content: reply }],
+      maxTokens: 120,
+    });
+    const clean = fixed.trim();
+    return questionCount(clean) >= questionCount(reply) ? reply : clean;
+  } catch {
+    return reply;
+  }
+}
 
 /**
  * One conversational turn: runs the interview only (fast). Returns the reply
@@ -184,7 +213,7 @@ export async function onboardingNext(
 
   transcript.push({ role: "assistant", content: raw });
   await saveState(brand.id, { status: "in_progress", type, turns, transcript, answers });
-  return { reply: raw, complete: false };
+  return { reply: sanitizeChatText(await enforceOneQuestion(raw)), complete: false };
 }
 
 /** One conversational turn. Returns the agent's reply and whether setup is complete. */
