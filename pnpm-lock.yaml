@@ -32,6 +32,9 @@ importers:
       '@pulse/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
+      '@pulse/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
       '@pulse/orchestrator':
         specifier: workspace:*
         version: link:../../packages/orchestrator

@@ -77,6 +77,20 @@ async function recordReply(interaction: Interaction, body: string, status: "draf
   );
 }
 
+/**
+ * Atomically claim a 'new' interaction for triage by moving it to 'triaging'.
+ * Returns the claimed row, or null if another consumer got there first (or it
+ * is no longer new). Both the worker engagement loop and the Discord bot
+ * poller must claim before calling handleInteraction — never triage a row
+ * you haven't claimed, or the owner gets double replies.
+ */
+export async function claimInteraction(id: string): Promise<Interaction | null> {
+  return queryOne<Interaction>(
+    `update interactions set status = 'triaging' where id = $1 and status = 'new' returning *`,
+    [id],
+  );
+}
+
 /** Run the triage policy on an interaction and return what to post / tell the owner. */
 export async function handleInteraction(brand: Brand, interaction: Interaction): Promise<EngagementResult> {
   const d = await decide(brand, interaction);

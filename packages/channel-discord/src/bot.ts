@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, researchNichePlan, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -357,13 +357,18 @@ async function processNewInteractions(): Promise<void> {
     "select * from interactions where status = 'new' order by created_at asc limit 20",
   );
   for (const it of news) {
+    // Claim first: the worker engagement loop polls the same rows in
+    // production. claimInteraction returns null when the worker (or a
+    // previous tick) got there first — skip, never double-triage.
+    const claimed = await claimInteraction(it.id).catch(() => null);
+    if (!claimed) continue;
     const brand = await queryOne<Brand>("select * from brands where id = $1", [it.brand_id]);
     if (!brand) {
       await query("update interactions set status = 'resolved' where id = $1", [it.id]);
       continue;
     }
     try {
-      const res = await handleInteraction(brand, it);
+      const res = await handleInteraction(brand, claimed);
       if (res.ownerMessage) await sendToBrand(brand.id, res.ownerMessage);
       if (res.publicReply) {
         if (it.platform === "google" && it.kind === "review" && it.external_id && brand.google_tokens_encrypted) {
@@ -383,7 +388,9 @@ async function processNewInteractions(): Promise<void> {
       }
     } catch (err) {
       console.error(`[discord] engagement processing failed for interaction ${it.id}`, err);
-      await query("update interactions set status = 'resolved' where id = $1", [it.id]).catch(() => {});
+      // Release the claim so the worker (or next tick) retries instead of
+      // stranding the row in 'triaging'.
+      await query("update interactions set status = 'new' where id = $1", [it.id]).catch(() => {});
     }
   }
 }
@@ -555,5 +562,37 @@ setInterval(() => {
       watchRunning = false;
     });
 }, 6 * 60 * 60 * 1000);
+
+// ─── Niche plan: research pending plans and deliver them to the owner ────────
+async function buildNichePlans(): Promise<void> {
+  const plans = await pendingPlans();
+  for (const row of plans) {
+    try {
+      const brand = await queryOne<Brand>("select * from brands where id = $1", [row.brand_id]);
+      if (!brand) { await markPlanFailed(row.id); continue; }
+      const plan = await researchNichePlan(brand, row.niche ?? brand.name, row.exemplars ?? null);
+      if (!plan) { await markPlanFailed(row.id); continue; }
+      await markPlanProposed(row.id, plan);
+      const link = `${env.APP_BASE_URL.replace(/\/$/, "")}/app/content-plan`;
+      await sendToBrand(
+        brand.id,
+        `${planTextSummary(plan)}\n\nFull plan → ${link}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`,
+      );
+    } catch (err) {
+      console.error(`[discord] niche plan build failed for ${row.id}`, err);
+      await markPlanFailed(row.id).catch(() => {});
+    }
+  }
+}
+let planBuildRunning = false;
+setInterval(() => {
+  if (planBuildRunning) return;
+  planBuildRunning = true;
+  buildNichePlans()
+    .catch((err) => console.error("[discord] niche plan loop error", err))
+    .finally(() => {
+      planBuildRunning = false;
+    });
+}, 30 * 1000);
 
 client.login(env.DISCORD_BOT_TOKEN);

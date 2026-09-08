@@ -16,6 +16,7 @@
     "react-dom": "^19.0.0",
     "@pulse/shared": "workspace:*",
     "@pulse/gateway": "workspace:*",
+    "@pulse/graph": "workspace:*",
     "@pulse/orchestrator": "workspace:*",
     "zod": "^3.23.8"
   },
