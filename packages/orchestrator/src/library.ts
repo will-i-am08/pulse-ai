@@ -1,6 +1,7 @@
-import { query, queryOne, publicMediaUrl, type Brand, type MediaAsset, type Pillar, type Post } from "@pulse/shared";
+import { query, queryOne, type Brand, type MediaAsset, type Pillar, type Post } from "@pulse/shared";
 import { draftCaption } from "./draftCaption.js";
 import { editImageForBrand } from "./imaging.js";
+import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 
 // The photo library: every photo the client texts in is banked as a media_asset,
@@ -106,7 +107,6 @@ export async function draftPostFromPhoto(
   let finalId = photo.id;
   const editedId = await editImageForBrand(brand, photo.id).catch(() => null);
   if (editedId) finalId = editedId;
-  const styledUrl = finalId !== photo.id ? publicMediaUrl(finalId) : null;
   const postMediaIds = finalId !== photo.id ? [finalId, photo.id] : [photo.id];
 
   const slot = await scheduleSlot({
@@ -154,5 +154,5 @@ export async function draftPostFromPhoto(
     ).catch(() => {});
   }
 
-  return { post, mediaUrl: styledUrl ?? publicMediaUrl(postMediaIds[0]!) };
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
 }

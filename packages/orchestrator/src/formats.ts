@@ -3,7 +3,6 @@ import {
   query,
   queryOne,
   putMedia,
-  publicMediaUrl,
   brandVoiceProfileSchema,
   type Brand,
   type Pillar,
@@ -12,6 +11,7 @@ import {
 } from "@pulse/shared";
 import { draftCaption } from "./draftCaption.js";
 import { editImageForBrand, renderQuoteCard } from "./imaging.js";
+import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
 import { callLLM } from "./llm.js";
@@ -93,7 +93,7 @@ export async function resolveAsCarousel(brand: Brand, draft: Post): Promise<{ po
      values ($1, $2, 'draft_created', 'system', $3::jsonb, $4)`,
     [post.id, brand.id, JSON.stringify({ caption, format: "carousel", slides: mediaIds.length }), "Carousel drafted from multiple photos"],
   ).catch(() => {});
-  return { post, mediaUrl: coverId !== ids[0] ? publicMediaUrl(coverId) : publicMediaUrl(ids[0]!) };
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
 }
 
 // ─── Format variety ─────────────────────────────────────────────────────────
@@ -210,7 +210,7 @@ export async function generateTipCarousel(
      values ($1, $2, 'draft_created', 'system', $3::jsonb, $4)`,
     [post.id, brand.id, JSON.stringify({ caption, format: "carousel", slides: mediaIds.length }), "AI tip carousel"],
   ).catch(() => {});
-  return { post, mediaUrl: publicMediaUrl(mediaIds[0]!) };
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
 }
 
 /** Draft a carousel from specific library photos (bot-assembled). Cover styled. */
@@ -250,7 +250,7 @@ export async function draftCarouselFromPhotos(
       [post.id, brand.id, "Auto-scheduled carousel from library"],
     ).catch(() => {});
   }
-  return { post, mediaUrl: publicMediaUrl(mediaIds[0]!) };
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
 }
 
 /**
@@ -293,7 +293,7 @@ export async function draftStoryFromPhoto(
       [post.id, brand.id, "Auto-posted candid story"],
     ).catch(() => {});
   }
-  return { post, mediaUrl: coverId !== photo.id ? publicMediaUrl(coverId) : publicMediaUrl(photo.id), auto };
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!), auto };
 }
 
 /** Turn the parked photos into SEPARATE feed posts; drop the holding draft. */

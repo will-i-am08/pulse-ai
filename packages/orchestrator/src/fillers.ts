@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { query, queryOne, putMedia, publicMediaUrl, brandVoiceProfileSchema, type Brand, type Pillar, type Post } from "@pulse/shared";
+import { query, queryOne, putMedia, brandVoiceProfileSchema, type Brand, type Pillar, type Post } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { renderQuoteCard } from "./imaging.js";
+import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 
 /**
@@ -70,7 +71,9 @@ export async function generateFillerPost(
     [post.id, brand.id, JSON.stringify({ caption, pillar: pillar.key, generated: true }), "Generated filler post"],
   );
 
-  return { post, mediaUrl: publicMediaUrl(mediaId) };
+  // The quote card IS the visual — frame it in the IG mockup for the preview.
+  // The mockup id stays out of posts.media_ids; publishing still sends the card.
+  return { post, mediaUrl: await previewUrlForPost(brand, post, mediaId) };
 }
 
 /** The pillar most recently nudged about a gap (within 48h), for "draft one". */
