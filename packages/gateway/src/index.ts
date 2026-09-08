@@ -8,7 +8,10 @@ export {
   sendToBrand,
   activeChannel,
   setActiveChannel,
+  startTypingKeeper,
+  splitIntoBubbles,
 } from "./gateway.js";
+export type { TypingKeeper } from "./gateway.js";
 export { createLinqChannel, LinqChannel } from "./linq-channel.js";
 // Re-exported from orchestrator so the worker (which depends on gateway, not
 // orchestrator directly) can reach the re-engagement helpers.

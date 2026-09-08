@@ -19,12 +19,14 @@ import {
 } from "@pulse/shared";
 import {
   setActiveChannel,
+  activeChannel,
   handleInbound,
   sendToBrand,
   resolveBrand,
   resolveBrandByLinq,
   createLinqChannel,
   captureMedia,
+  startTypingKeeper,
 } from "@pulse/gateway";
 import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
@@ -58,6 +60,17 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  // "... is typing" while any slow path below runs (!sim / !digest /
+  // handleInbound). handleInbound also arms its own keeper — stopping twice is
+  // safe. Best-effort: never let typing break message handling.
+  let keeper: { stop(): void } | null = null;
+  try {
+    keeper = startTypingKeeper(activeChannel(), message.channelId);
+  } catch {
+    keeper = null;
+  }
+  try {
 
   // Engagement simulator (test triage before live Meta webhooks exist):
   //   !sim <comment|dm|mention|review> <text>
@@ -152,6 +165,9 @@ client.on(Events.MessageCreate, async (message) => {
     await handleInbound(inbound);
   } catch (err) {
     console.error("[discord] handleInbound error", err);
+  }
+  } finally {
+    keeper?.stop();
   }
 });
 
@@ -453,6 +469,7 @@ async function processLinqInbound(): Promise<void> {
     body: string | null;
     media: InboundMedia[];
     provider_message_id: string | null;
+    chat_id: string | null;
   }>("select * from pending_inbound where channel = 'linq' and status = 'new' order by created_at asc limit 10");
   if (rows.length === 0) return;
   const linq = createLinqChannel();
@@ -463,6 +480,11 @@ async function processLinqInbound(): Promise<void> {
       [row.id],
     );
     if (claimed.length === 0) continue;
+    // Seed the chat mapping from the webhook payload so typing indicators can
+    // target this chat, then show "... is typing" while the slow work runs.
+    // iMessage-only per Linq (RCS/SMS accept-but-drop); failures are silent.
+    if (row.chat_id) linq.noteChat(row.from_handle, row.chat_id);
+    const keeper = startTypingKeeper(linq, row.from_handle);
     try {
       const brand = await resolveBrandByLinq(row.from_handle);
       if (!brand) continue;
@@ -482,6 +504,8 @@ async function processLinqInbound(): Promise<void> {
     } catch (err) {
       console.error(`[discord] linq inbound processing failed for ${row.id}`, err);
       await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+    } finally {
+      keeper.stop();
     }
   }
 }
