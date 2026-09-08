@@ -1,9 +1,15 @@
-import { query, type Platform } from "@pulse/shared";
+import { query, schedulePinSchema, type Platform, type SchedulePin } from "@pulse/shared";
 
 // Smart scheduler: slot a post into the next good time window that respects the
 // autopilot guardrails. Times are computed in the process's local timezone
 // (TZ from env — Australia/Sydney by default), which stands in for the brand's
 // timezone for now.
+//
+// Variation by default: the window order is shuffled per day and each candidate
+// gets a random minute, so repeated weekly cadences don't land at the exact
+// same time every week. A pillar with a pinned slot (schedule_pin — set when
+// the client asks for e.g. "BTS every Tuesday at 6pm") always posts at that
+// exact day+time instead.
 
 // Good posting hours per platform (local time, 24h).
 const PLATFORM_WINDOWS: Record<Platform, number[]> = {
@@ -33,6 +39,20 @@ function weekKey(d: Date): string {
   return `${t.getUTCFullYear()}-W${week}`;
 }
 
+/**
+ * Fisher-Yates shuffle using an injectable random source (defaults to
+ * Math.random). Shuffling the window order per day stops every pillar landing
+ * in the same hour every week while still filling the earliest open day first.
+ */
+function shuffled<T>(arr: T[], rand: () => number): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
 /** All future-ish committed posts for a brand (things already holding a slot). */
 async function committedPosts(brandId: string, now: Date): Promise<Committed[]> {
   const since = new Date(now.getTime() - MIN_SPACING_HOURS * 3600_000).toISOString();
@@ -48,9 +68,89 @@ async function committedPosts(brandId: string, now: Date): Promise<Committed[]> 
 }
 
 /**
+ * Normalise a raw schedule_pin value into a usable pin, or null when there is
+ * no pin (flex / empty / malformed). A pin is only valid with at least one
+ * matching day plus a concrete hour/minute.
+ */
+export function normalizePin(raw: unknown): SchedulePin | null {
+  const parsed = schedulePinSchema.safeParse(raw ?? {});
+  if (!parsed.success) return null;
+  const pin = parsed.data;
+  if (pin.mode === "weekly" && pin.weekdays.length === 0) return null;
+  if (pin.mode === "monthly" && pin.monthDays.length === 0) return null;
+  if (pin.mode === "flex") return null;
+  return pin;
+}
+
+/** Does this calendar date match the pin's day rule (ignoring time)? */
+function pinDayMatches(pin: SchedulePin, d: Date): boolean {
+  if (pin.mode === "weekly") return pin.weekdays.includes(d.getDay());
+  if (pin.mode === "monthly") return pin.monthDays.includes(d.getDate());
+  return false;
+}
+
+/**
+ * Load a pillar's pin from the DB. Tolerant of a DB that hasn't run migration
+ * 0021 yet (missing column) — treats it as "no pin" rather than failing.
+ */
+async function loadPin(pillarId: string): Promise<SchedulePin | null> {
+  try {
+    const rows = await query<{ schedule_pin: unknown }>(
+      `select schedule_pin from pillars where id = $1 limit 1`,
+      [pillarId],
+    );
+    return normalizePin(rows[0]?.schedule_pin);
+  } catch (err) {
+    console.error("scheduleSlot: pin lookup failed (treating as flex)", err);
+    return null;
+  }
+}
+
+type SlotTime = { t: Date; pillar: string | null };
+
+/** Shared guardrail check: may `cand` hold a post for this pillar? */
+function slotIsFree(
+  cand: Date,
+  times: SlotTime[],
+  opts: { pillarId: string | null; postsPerWeek: number },
+): boolean {
+  // Daily cap
+  const sameDay = times.filter((x) => dayKey(x.t) === dayKey(cand)).length;
+  if (sameDay >= DAILY_CAP) return false;
+
+  // Minimum spacing
+  const tooClose = times.some(
+    (x) => Math.abs(x.t.getTime() - cand.getTime()) < MIN_SPACING_HOURS * 3600_000,
+  );
+  if (tooClose) return false;
+
+  // Weekly cadence for this pillar
+  if (opts.postsPerWeek > 0 && opts.pillarId) {
+    const sameWeekSamePillar = times.filter(
+      (x) => x.pillar === opts.pillarId && weekKey(x.t) === weekKey(cand),
+    ).length;
+    if (sameWeekSamePillar >= opts.postsPerWeek) return false;
+  }
+
+  // No back-to-back same pillar (immediate neighbours by time)
+  if (opts.pillarId) {
+    const before = times.filter((x) => x.t < cand).at(-1);
+    const after = times.find((x) => x.t > cand);
+    if (before?.pillar === opts.pillarId || after?.pillar === opts.pillarId) return false;
+  }
+
+  return true;
+}
+
+/**
  * Find the next open slot for a post in this pillar. Honours: platform windows,
  * daily cap, minimum spacing, per-pillar weekly cadence, and no two of the same
- * pillar back-to-back. Falls back to now+1h if nothing fits within the horizon.
+ * pillar back-to-back.
+ *
+ * Pinned pillars (the client asked for a fixed day+time) post at that exact
+ * slot — no jitter. Everything else shuffles windows per day with a random
+ * minute so the schedule varies week to week. Falls back to now+1h-ish if
+ * nothing fits within the horizon.
  */
 export async function scheduleSlot(opts: {
   brandId: string;
@@ -58,50 +158,48 @@ export async function scheduleSlot(opts: {
   pillarId: string | null;
   postsPerWeek: number; // this pillar's weekly cap (0 = no cap)
   now?: Date;
+  random?: () => number; // injectable source for tests; defaults to Math.random
+  pin?: SchedulePin | null; // explicit pin; looked up from the pillar when omitted
 }): Promise<Date> {
   const now = opts.now ?? new Date();
+  const rand = opts.random ?? Math.random;
   const windows = PLATFORM_WINDOWS[opts.platform] ?? PLATFORM_WINDOWS.instagram;
   const hours = [...windows].sort((a, b) => a - b);
   const committed = await committedPosts(opts.brandId, now);
-  const times = committed.map((c) => ({ t: new Date(c.scheduled_at), pillar: c.pillar_id }));
+  const times: SlotTime[] = committed.map((c) => ({ t: new Date(c.scheduled_at), pillar: c.pillar_id }));
+  const guard = { pillarId: opts.pillarId, postsPerWeek: opts.postsPerWeek };
 
   const earliest = new Date(now.getTime() + LEAD_MINUTES * 60_000);
+
+  // Pinned slot first: exact day+time the client asked for, earliest match that
+  // passes the guardrails. Strictly pin-matching days only, so "every Tuesday
+  // at 6pm" really means Tuesdays at 6pm.
+  const pin = opts.pin !== undefined ? normalizePin(opts.pin) : opts.pillarId ? await loadPin(opts.pillarId) : null;
+  if (pin) {
+    for (let dayOffset = 0; dayOffset <= HORIZON_DAYS; dayOffset++) {
+      const base = new Date(now);
+      base.setDate(base.getDate() + dayOffset);
+      if (!pinDayMatches(pin, base)) continue;
+      const cand = new Date(base);
+      cand.setHours(pin.hour, pin.minute, 0, 0);
+      if (cand < earliest) continue;
+      if (slotIsFree(cand, times, guard)) return cand;
+    }
+    // No pinned slot fit (blocked weeks) — fall through to shuffled windows
+    // rather than dropping the post.
+  }
 
   for (let dayOffset = 0; dayOffset <= HORIZON_DAYS; dayOffset++) {
     const base = new Date(now);
     base.setDate(base.getDate() + dayOffset);
-    for (const hour of hours) {
+    for (const hour of shuffled(hours, rand)) {
       const cand = new Date(base);
-      cand.setHours(hour, 0, 0, 0);
+      cand.setHours(hour, Math.floor(rand() * 60), 0, 0);
       if (cand < earliest) continue;
-
-      // Daily cap
-      const sameDay = times.filter((x) => dayKey(x.t) === dayKey(cand)).length;
-      if (sameDay >= DAILY_CAP) continue;
-
-      // Minimum spacing
-      const tooClose = times.some((x) => Math.abs(x.t.getTime() - cand.getTime()) < MIN_SPACING_HOURS * 3600_000);
-      if (tooClose) continue;
-
-      // Weekly cadence for this pillar
-      if (opts.postsPerWeek > 0 && opts.pillarId) {
-        const sameWeekSamePillar = times.filter(
-          (x) => x.pillar === opts.pillarId && weekKey(x.t) === weekKey(cand),
-        ).length;
-        if (sameWeekSamePillar >= opts.postsPerWeek) continue;
-      }
-
-      // No back-to-back same pillar (immediate neighbours by time)
-      if (opts.pillarId) {
-        const before = times.filter((x) => x.t < cand).at(-1);
-        const after = times.find((x) => x.t > cand);
-        if (before?.pillar === opts.pillarId || after?.pillar === opts.pillarId) continue;
-      }
-
-      return cand;
+      if (slotIsFree(cand, times, guard)) return cand;
     }
   }
 
-  // Nothing fit — post in an hour rather than dropping it.
-  return new Date(now.getTime() + 3600_000);
+  // Nothing fit — post in about an hour rather than dropping it.
+  return new Date(now.getTime() + 3600_000 + Math.floor(rand() * 21) * 60_000);
 }

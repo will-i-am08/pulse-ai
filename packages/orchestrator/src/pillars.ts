@@ -1,7 +1,23 @@
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
-import { query, getMedia, type Brand, type Pillar } from "@pulse/shared";
+import { query, getMedia, schedulePinSchema, type Brand, type Pillar, type SchedulePin } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Human words for a pillar's pin, for prompts and confirmations. */
+export function describePin(pin: unknown): string {
+  const parsed = schedulePinSchema.safeParse(pin ?? {});
+  if (!parsed.success || parsed.data.mode === "flex") return "flexible timing";
+  const p = parsed.data;
+  const time = `${p.hour % 12 === 0 ? 12 : p.hour % 12}:${String(p.minute).padStart(2, "0")}${p.hour < 12 ? "am" : "pm"}`;
+  if (p.mode === "weekly") {
+    const days = [...p.weekdays].sort((a, b) => a - b).map((d) => DAY_NAMES[d]!);
+    return `pinned ${days.join(" & ")} ${time}`;
+  }
+  const dates = [...p.monthDays].sort((a, b) => a - b).join(" & ");
+  return `pinned monthly on the ${dates} at ${time}`;
+}
 
 // Content pillars are the varied "portfolio" backbone: every brand gets a
 // starter set (editable later), incoming photos are auto-classified into one,
@@ -9,7 +25,7 @@ import { callLLM } from "./llm.js";
 
 type ContentPart = Exclude<Anthropic.MessageParam["content"], string>[number];
 
-export const DEFAULT_PILLARS: Array<Omit<Pillar, "id" | "brand_id" | "created_at" | "last_gap_ping_at">> = [
+export const DEFAULT_PILLARS: Array<Omit<Pillar, "id" | "brand_id" | "created_at" | "last_gap_ping_at" | "schedule_pin">> = [
   { key: "behind_the_scenes", name: "Behind the scenes", description: "Process, day-in-the-life, how the work gets made, the team at work.", posts_per_week: 2, autopilot: false, sort: 0 },
   { key: "product", name: "Product & offers", description: "What you sell — products, services, menu items, promotions and offers.", posts_per_week: 2, autopilot: false, sort: 1 },
   { key: "social_proof", name: "Social proof", description: "Testimonials, reviews, results, happy customers, press and wins.", posts_per_week: 1, autopilot: false, sort: 2 },
@@ -84,17 +100,35 @@ export async function configurePillarsFromMessage(
   pillars: Pillar[],
   message: string,
 ): Promise<string | null> {
-  const list = pillars.map((p) => `- ${p.key} (${p.name}): ${p.posts_per_week}/week, autopilot ${p.autopilot ? "on" : "off"}`).join("\n");
+  const list = pillars
+    .map((p) => `- ${p.key} (${p.name}): ${p.posts_per_week}/week, autopilot ${p.autopilot ? "on" : "off"}, ${describePin((p as { schedule_pin?: unknown }).schedule_pin)}`)
+    .join("\n");
   const system = [
     "You turn a client's scheduling instruction into structured updates to their content pillars.",
     `Their pillars:\n${list}`,
-    'Output ONLY JSON: {"updates":[{"key":"<pillar key>","posts_per_week":<int optional>,"autopilot":<bool optional>}],"reply":"<one friendly sentence confirming>"}',
-    'If the message is NOT about scheduling/cadence/autopilot for these pillars, output {"updates":[],"reply":""} exactly.',
+    'Output ONLY JSON: {"updates":[{"key":"<pillar key>","posts_per_week":<int optional>,"autopilot":<bool optional>,"schedule_pin":<pin object, null to clear, or omitted to leave unchanged>}],"reply":"<one friendly sentence confirming>"}',
+    'If the message is NOT about scheduling/cadence/autopilot/timing for these pillars, output {"updates":[],"reply":""} exactly.',
     'Interpret phrases: "every weekday"=5, "daily"=7, "a few times a week"=3, "once a week"=1. "on autopilot"/"post automatically"=autopilot true. "always ask me"/"check with me"=autopilot false.',
+    "Fixed day/time requests pin that pillar to an exact slot:",
+    '  "every Tuesday at 6pm" → {"mode":"weekly","weekdays":[2],"hour":18,"minute":0}.',
+    '  "Mondays and Thursdays at 5:30pm" → {"mode":"weekly","weekdays":[1,4],"hour":17,"minute":30}.',
+    '  "on the 1st at 9am" / "first of every month" → {"mode":"monthly","monthDays":[1],"hour":9,"minute":0}.',
+    "  Weekdays are Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6. Hours are 24h (6pm=18). Default minute 0; 'half past'=30.",
+    "  When the client pins N days and states no other cadence, set posts_per_week to N.",
+    '  "mix it up" / "anytime" / "vary it" / "no fixed time" clears the pin → schedule_pin null.',
+    "  The reply must name the pinned day(s) and time when a pin is set or cleared.",
   ].join("\n");
-  let parsed: { updates?: Array<{ key: string; posts_per_week?: number; autopilot?: boolean }>; reply?: string };
+  let parsed: {
+    updates?: Array<{
+      key: string;
+      posts_per_week?: number;
+      autopilot?: boolean;
+      schedule_pin?: SchedulePin | null;
+    }>;
+    reply?: string;
+  };
   try {
-    const raw = await callLLM({ system, messages: [{ role: "user", content: message }], maxTokens: 300 });
+    const raw = await callLLM({ system, messages: [{ role: "user", content: message }], maxTokens: 400 });
     const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
     parsed = JSON.parse(json);
   } catch {
@@ -114,9 +148,36 @@ export async function configurePillarsFromMessage(
       vals.push(u.autopilot);
       sets.push(`autopilot = $${vals.length}`);
     }
+    if ("schedule_pin" in u) {
+      if (u.schedule_pin === null) {
+        vals.push("{}");
+        sets.push(`schedule_pin = $${vals.length}::jsonb`);
+      } else {
+        const pin = schedulePinSchema.safeParse(u.schedule_pin);
+        if (pin.success && pin.data.mode !== "flex") {
+          vals.push(JSON.stringify(pin.data));
+          sets.push(`schedule_pin = $${vals.length}::jsonb`);
+        }
+      }
+    }
     if (sets.length === 0) continue;
     vals.push(brand.id, u.key);
-    await query(`update pillars set ${sets.join(", ")} where brand_id = $${vals.length - 1} and key = $${vals.length}`, vals);
+    try {
+      await query(`update pillars set ${sets.join(", ")} where brand_id = $${vals.length - 1} and key = $${vals.length}`, vals);
+    } catch (err) {
+      // A DB without migration 0021 has no schedule_pin column — persist the
+      // non-pin fields so a fixed-time request still updates cadence.
+      if (sets.some((s) => s.startsWith("schedule_pin")) && sets.length > 1) {
+        const keptSets = sets.filter((s) => !s.startsWith("schedule_pin"));
+        const keptVals = vals.slice(0, vals.length - 2);
+        keptVals.push(brand.id, u.key);
+        const remapped = keptSets.map((s, i) => s.replace(/\$\d+/, `$${i + 1}`));
+        await query(
+          `update pillars set ${remapped.join(", ")} where brand_id = $${keptVals.length - 1} and key = $${keptVals.length}`,
+          keptVals,
+        );
+      } else throw err;
+    }
   }
   return parsed.reply && parsed.reply.trim().length > 0
     ? parsed.reply.trim()

@@ -307,6 +307,21 @@ export interface Campaign {
   created_at: string;
 }
 
+// Optional pinned posting slot on a pillar. {} / mode 'flex' means no pin —
+// the scheduler shuffles windows. A weekly/monthly pin holds an exact day+time.
+export const schedulePinSchema = z.object({
+  mode: z.enum(["flex", "weekly", "monthly"]).default("flex"),
+  // JS getDay() numbering: 0=Sunday … 6=Saturday.
+  weekdays: z.array(z.number().int().min(0).max(6)).default([]),
+  // Days of month: 1–31.
+  monthDays: z.array(z.number().int().min(1).max(31)).default([]),
+  hour: z.number().int().min(0).max(23).default(11),
+  minute: z.number().int().min(0).max(59).default(0),
+});
+export type SchedulePin = z.infer<typeof schedulePinSchema>;
+
+export const emptySchedulePin = (): SchedulePin => schedulePinSchema.parse({});
+
 export interface Pillar {
   id: string;
   brand_id: string;
@@ -316,6 +331,7 @@ export interface Pillar {
   posts_per_week: number;
   autopilot: boolean;
   sort: number;
+  schedule_pin: SchedulePin;
   last_gap_ping_at: string | null;
   created_at: string;
 }
