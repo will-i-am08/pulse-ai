@@ -14,5 +14,9 @@ export { createLinqChannel, LinqChannel } from "./linq-channel.js";
 // orchestrator directly) can reach the re-engagement helpers.
 export { mostRecentActionable, isDaytime } from "@pulse/orchestrator";
 export type { Actionable } from "@pulse/orchestrator";
+// Re-exported for the worker engagement loop: claim + triage inbound
+// interactions. The worker must claim a row before triaging it.
+export { claimInteraction, handleInteraction } from "@pulse/orchestrator";
+export type { EngagementResult } from "@pulse/orchestrator";
 export { withBackoff } from "./backoff.js";
 export type { BackoffOptions } from "./backoff.js";

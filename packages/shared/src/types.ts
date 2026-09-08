@@ -260,7 +260,7 @@ export interface VisualProfile {
 
 export type InteractionKind = "comment" | "dm" | "mention" | "review";
 export type InteractionBucket = "lead" | "support" | "general" | "spam";
-export type InteractionStatus = "new" | "auto_replied" | "drafted" | "escalated" | "resolved" | "hidden";
+export type InteractionStatus = "new" | "triaging" | "auto_replied" | "drafted" | "escalated" | "resolved" | "hidden";
 
 export interface Interaction {
   id: string;

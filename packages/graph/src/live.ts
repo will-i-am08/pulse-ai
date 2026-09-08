@@ -1,4 +1,4 @@
-import type { Brand, Platform, PostFormat, ServerEnv } from "@pulse/shared";
+import type { Brand, Interaction, Platform, PostFormat, ServerEnv } from "@pulse/shared";
 import { decryptJson, getServerEnv, googleAccessToken, gbpCreatePost } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
@@ -235,5 +235,107 @@ export class LiveGraphAdapter implements GraphAdapter {
     // Meta doesn't expose a "posts published in the last N hours" endpoint — our own
     // publish ledger (posts table) is authoritative for rate limiting in both modes.
     return withRetry(`live:last24h:${brand.id}:${platform}`, () => countPublished24h(brand, platform));
+  }
+
+  /**
+   * Post an auto-approved reply (or qualified lead answer) back to the platform.
+   * Google reviews are NOT handled here — the worker routes those through the
+   * GBP API helpers in @pulse/shared.
+   */
+  async reply(input: {
+    brand: Brand;
+    interaction: Interaction;
+    body: string;
+  }): Promise<{ externalReplyId: string | null }> {
+    const { brand, interaction, body } = input;
+    const env = getServerEnv();
+    const tokens = getTokens(brand);
+
+    return withRetry(`live:reply:${interaction.id}`, async () => {
+      if (interaction.platform === "instagram") {
+        const accessToken = tokens.ig_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing ig_access_token`);
+        if (interaction.kind === "dm") {
+          if (!brand.ig_user_id) throw new Error(`Brand ${brand.id} missing ig_user_id`);
+          if (!interaction.author) throw new Error(`DM interaction ${interaction.id} has no sender id to reply to`);
+          const json = await graphFetch(graphUrl(env, `/${brand.ig_user_id}/messages`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: interaction.author },
+              messaging_type: "RESPONSE",
+              message: { text: body },
+              access_token: accessToken,
+            }),
+          });
+          return { externalReplyId: (json.message_id as string | undefined) ?? null };
+        }
+        if (!interaction.external_id) throw new Error(`Interaction ${interaction.id} has no comment id to reply to`);
+        const json = await graphFetch(graphUrl(env, `/${interaction.external_id}/replies`), {
+          method: "POST",
+          body: new URLSearchParams({ message: body, access_token: accessToken }),
+        });
+        return { externalReplyId: (json.id as string | undefined) ?? null };
+      }
+
+      if (interaction.platform === "facebook") {
+        const accessToken = tokens.fb_page_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing fb_page_access_token`);
+        if (interaction.kind === "dm") {
+          if (!brand.fb_page_id) throw new Error(`Brand ${brand.id} missing fb_page_id`);
+          if (!interaction.author) throw new Error(`DM interaction ${interaction.id} has no sender id to reply to`);
+          const json = await graphFetch(graphUrl(env, `/${brand.fb_page_id}/messages`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              recipient: { id: interaction.author },
+              messaging_type: "RESPONSE",
+              message: { text: body },
+              access_token: accessToken,
+            }),
+          });
+          return { externalReplyId: (json.message_id as string | undefined) ?? null };
+        }
+        if (!interaction.external_id) throw new Error(`Interaction ${interaction.id} has no comment id to reply to`);
+        const json = await graphFetch(graphUrl(env, `/${interaction.external_id}/comments`), {
+          method: "POST",
+          body: new URLSearchParams({ message: body, access_token: accessToken }),
+        });
+        return { externalReplyId: (json.id as string | undefined) ?? null };
+      }
+
+      throw new Error(`live:reply — platform '${interaction.platform}' goes via its own API (Google reviews use the GBP helpers)`);
+    });
+  }
+
+  /** Hide obvious spam from public view. DMs and reviews have nothing to hide — no-op. */
+  async hide(input: { brand: Brand; interaction: Interaction }): Promise<void> {
+    const { brand, interaction } = input;
+    if (interaction.kind !== "comment" && interaction.kind !== "mention") return;
+    if (!interaction.external_id) throw new Error(`Interaction ${interaction.id} has no comment id to hide`);
+    const env = getServerEnv();
+    const tokens = getTokens(brand);
+
+    return withRetry(`live:hide:${interaction.id}`, async () => {
+      if (interaction.platform === "instagram") {
+        const accessToken = tokens.ig_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing ig_access_token`);
+        await graphFetch(graphUrl(env, `/${interaction.external_id}/hide`), {
+          method: "POST",
+          body: new URLSearchParams({ hide: "true", access_token: accessToken }),
+        });
+        return;
+      }
+      if (interaction.platform === "facebook") {
+        const accessToken = tokens.fb_page_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing fb_page_access_token`);
+        await graphFetch(graphUrl(env, `/${interaction.external_id}`), {
+          method: "POST",
+          body: new URLSearchParams({ is_hidden: "true", access_token: accessToken }),
+        });
+        return;
+      }
+      // Google reviews cannot be hidden — negative ones escalate instead.
+    });
   }
 }

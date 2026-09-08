@@ -31,7 +31,7 @@ export {
 } from "./formats.js";
 export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
-export { createInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
+export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";
 export {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Brand, Platform, PostFormat } from "@pulse/shared";
+import type { Brand, Interaction, Platform, PostFormat } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -74,5 +74,29 @@ export class MockGraphAdapter implements GraphAdapter {
 
   async last24hCount(brand: Brand, platform: Platform): Promise<number> {
     return withRetry(`mock:last24h:${brand.id}:${platform}`, () => countPublished24h(brand, platform));
+  }
+
+  async reply(input: {
+    brand: Brand;
+    interaction: Interaction;
+    body: string;
+  }): Promise<{ externalReplyId: string | null }> {
+    const { brand, interaction, body } = input;
+    return withRetry(`mock:reply:${interaction.id}`, async () => {
+      const externalReplyId = `mock_reply_${hashHex(`${interaction.id}|${body}|${Date.now()}`).slice(0, 12)}`;
+      console.log(
+        `[graph:mock] reply brand=${brand.id} platform=${interaction.platform} kind=${interaction.kind} -> ${externalReplyId}`
+      );
+      return { externalReplyId };
+    });
+  }
+
+  async hide(input: { brand: Brand; interaction: Interaction }): Promise<void> {
+    const { brand, interaction } = input;
+    return withRetry(`mock:hide:${interaction.id}`, async () => {
+      console.log(
+        `[graph:mock] hide brand=${brand.id} platform=${interaction.platform} kind=${interaction.kind} id=${interaction.external_id ?? interaction.id}`
+      );
+    });
   }
 }
