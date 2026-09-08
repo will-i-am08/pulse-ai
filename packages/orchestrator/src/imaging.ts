@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
-import { query, getMedia, putMedia, getServerEnv, type Brand } from "@pulse/shared";
+import { query, getMedia, putMedia, getServerEnv, sanitizeChatText, type Brand } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
 const ANTON = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/anton.ttf"));
@@ -216,11 +216,11 @@ export function messageWantsImageEdit(body: string | null | undefined): boolean 
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
   const out = await callLLM({
     system:
-      "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop — just the words.",
+      "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Just the words.",
     messages: [{ role: "user", content: `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.` }],
     maxTokens: 20,
   });
-  return out.replace(/["'.]/g, "").trim().toUpperCase().slice(0, 42) || brand.name.toUpperCase();
+  return sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42) || brand.name.toUpperCase();
 }
 
 async function renderTile(imgBytes: Uint8Array, headline: string, masthead: string): Promise<Buffer> {

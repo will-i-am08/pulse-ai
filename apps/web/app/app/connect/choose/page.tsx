@@ -6,7 +6,7 @@ import { selectPageAction } from '@/lib/actions/connect';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: 'Choose a page — Pulse' };
+export const metadata = { title: 'Choose a page | Pulse' };
 
 const ERRORS: Record<string, string> = {
   nopage: 'Please choose a page to continue.',
@@ -85,7 +85,7 @@ export default async function ChoosePage({
                       {p.igUsername ? (
                         <span style={{ color: 'var(--muted, #667)' }}>Instagram: @{p.igUsername}</span>
                       ) : (
-                        <span style={{ color: '#b9770e' }}>No Instagram linked — can’t post to this one yet</span>
+                        <span style={{ color: '#b9770e' }}>No Instagram linked. Can’t post to this one yet</span>
                       )}
                     </span>
                   </label>

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { loginAction } from '@/lib/actions/auth';
 import styles from '../auth.module.css';
 
-export const metadata = { title: 'Log in — Pulse' };
+export const metadata = { title: 'Log in | Pulse' };
 
 export default async function LoginPage({
   searchParams,

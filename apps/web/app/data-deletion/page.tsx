@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Data Deletion — Pulse Social Media',
+  title: 'Data Deletion | Pulse Social Media',
 };
 
 export default function DataDeletionPage() {
@@ -31,7 +31,7 @@ export default function DataDeletionPage() {
       </ul>
       <p>
         This stops all future access and publishing. It does not, on its own, delete the data already
-        stored with us — request that below.
+        stored with us. Request that below.
       </p>
 
       <h2>Request deletion of your data</h2>
@@ -49,7 +49,7 @@ export default function DataDeletionPage() {
         <li>Message history and the approval/edit audit trail.</li>
       </ul>
       <p>
-        Content already published to your own Instagram or Facebook is not affected — you control that
+        Content already published to your own Instagram or Facebook is not affected. You control that
         from those platforms directly. We may retain minimal records where required by law.
       </p>
 

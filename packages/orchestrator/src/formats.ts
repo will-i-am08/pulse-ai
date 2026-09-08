@@ -4,6 +4,7 @@ import {
   queryOne,
   putMedia,
   brandVoiceProfileSchema,
+  sanitizeChatText,
   type Brand,
   type Pillar,
   type Post,
@@ -161,7 +162,7 @@ export async function generateTipCarousel(
     `You write a value-packed tip CAROUSEL for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     'Output ONLY JSON: {"caption":"<the post caption>","slides":["<hook line>","<tip 1>","<tip 2>","<tip 3>","<CTA line>"]}',
-    "3–5 slides. Each slide is ONE short punchy line (max ~10 words) that reads big on a card — no numbering, no emoji, no quotes.",
+    "3 to 5 slides. Each slide is ONE short punchy line (max about 10 words) that reads big on a card. No numbering, no emoji, no quotes, no dashes of any kind.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -171,8 +172,8 @@ export async function generateTipCarousel(
   try {
     const raw = await callLLM({ system, messages: [{ role: "user", content: `Write today's ${pillar.name} tip carousel.` }], maxTokens: 400 });
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-    caption = String(parsed.caption ?? "").trim();
-    slides = Array.isArray(parsed.slides) ? parsed.slides.map((s: unknown) => String(s).trim()).filter(Boolean).slice(0, 8) : [];
+    caption = sanitizeChatText(String(parsed.caption ?? ""));
+    slides = Array.isArray(parsed.slides) ? parsed.slides.map((s: unknown) => sanitizeChatText(String(s))).filter(Boolean).slice(0, 8) : [];
     if (!caption || slides.length < 2) return null;
   } catch (err) {
     console.error("generateTipCarousel: LLM/parse failed", err);

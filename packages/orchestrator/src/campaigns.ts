@@ -83,9 +83,9 @@ export async function proposeCampaign(
     .map((i) => `• Day ${i.day + 1}: ${i.angle}`)
     .join("\n");
   const summary =
-    `Here's a ${duration}-day campaign — "${campaign.name}"` +
+    `Here's a ${duration}-day campaign: "${campaign.name}"` +
     (plan.goal ? ` (${plan.goal})` : "") +
-    `:\n\n${lines}\n\n${items.length} posts. Reply "yes" to run it — and tell me whether to **pause** your everyday posts during it or **blend** them in.`;
+    `:\n\n${lines}\n\n${items.length} posts. Reply "yes" to run it, and tell me whether to pause your everyday posts during it or blend them in.`;
   return { campaign, summary };
 }
 
@@ -142,7 +142,7 @@ export async function activateCampaign(
 
   if (created === 0) {
     // Every render failed — don't flip a hollow campaign to active.
-    return "I couldn't build the campaign posts just then — mind trying that again?";
+    return "I couldn't build the campaign posts just then. Mind trying that again?";
   }
 
   await query(`update campaigns set status = 'active', pause_pillars = $1 where id = $2`, [pausePillars, campaign.id]);
@@ -151,7 +151,7 @@ export async function activateCampaign(
     ? new Intl.DateTimeFormat("en-AU", { day: "numeric", month: "short" }).format(new Date(campaign.ends_at))
     : "";
   return (
-    `🚀 "${campaign.name}" is live — ${created} posts scheduled${endStr ? ` through ${endStr}` : ""}. ` +
+    `🚀 "${campaign.name}" is live. ${created} posts scheduled${endStr ? ` through ${endStr}` : ""}. ` +
     (pausePillars ? "Your everyday posts are paused for the run." : "Your everyday posts keep running alongside it.") +
     " See it all on your calendar."
   );

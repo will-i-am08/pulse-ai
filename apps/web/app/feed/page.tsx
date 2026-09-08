@@ -3,7 +3,7 @@ import { query } from '@pulse/shared';
 import styles from './feed.module.css';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Feed — Pulse (demo)' };
+export const metadata = { title: 'Feed | Pulse (demo)' };
 
 type Row = {
   id: string;

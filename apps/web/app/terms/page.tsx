@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Pulse Social Media',
+  title: 'Terms of Service | Pulse Social Media',
 };
 
 export default function TermsPage() {
@@ -19,7 +19,7 @@ export default function TermsPage() {
       <h2>The service</h2>
       <p>
         Pulse helps you create and publish social media content. You send us a photo, we draft an
-        on-brand caption, you approve it, and — for accounts you have connected — we publish it to your
+        on-brand caption, you approve it, and (for accounts you have connected) we publish it to your
         Instagram and/or Facebook Page on your behalf. You approve content before it is published,
         except where you have explicitly enabled automatic (&ldquo;autopilot&rdquo;) posting for a
         content type, which you can pause at any time.
@@ -72,7 +72,7 @@ export default function TermsPage() {
       <p>
         You may stop using Pulse and disconnect your accounts at any time. You can revoke Pulse&apos;s
         access to your Meta accounts from your Facebook settings (Settings &rarr; Business Integrations).
-        On request we will delete the data we hold about you — see our{' '}
+        On request we will delete the data we hold about you. See our{' '}
         <a href="/data-deletion">Data Deletion</a> page.
       </p>
 

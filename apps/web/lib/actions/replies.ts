@@ -1,7 +1,7 @@
 'use server';
 import 'server-only';
 import { revalidatePath } from 'next/cache';
-import { decryptJson, googleAccessToken, gbpReplyReview, query, queryOne } from '@pulse/shared';
+import { decryptJson, googleAccessToken, gbpReplyReview, query, queryOne, sanitizeChatText } from '@pulse/shared';
 import type { Interaction } from '@pulse/shared';
 import { getGraphAdapter } from '@pulse/graph';
 import { currentUser } from '@/lib/auth/current-user';
@@ -38,7 +38,7 @@ async function requireInteraction(interactionId: string, brandId: string): Promi
 export async function sendReplyAction(formData: FormData): Promise<void> {
   const interactionId = requireString(formData, 'interactionId');
   const brandId = requireString(formData, 'brandId');
-  const body = requireString(formData, 'body');
+  const body = sanitizeChatText(requireString(formData, 'body'));
 
   const user = await currentUser();
   if (!user) throw new Error('sendReplyAction: not signed in');

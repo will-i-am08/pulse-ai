@@ -120,5 +120,5 @@ export async function configurePillarsFromMessage(
   }
   return parsed.reply && parsed.reply.trim().length > 0
     ? parsed.reply.trim()
-    : "Done — I've updated your posting schedule.";
+    : "Done, I've updated your posting schedule.";
 }

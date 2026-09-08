@@ -36,7 +36,7 @@ export async function runReminder(brand: Brand, trigger: ProactiveTrigger, deps:
   logger.info(`sending reminder nudge to brand ${brand.id} (no media since ${lastMediaAt ?? "ever"})`);
   await deps.sendToBrand(
     brand.id,
-    "Haven't heard from you in a while — anything to post this week? Send me a pic or video anytime."
+      "Haven't heard from you in a while. Anything to post this week? Send me a pic or video anytime."
   );
   await deps.markSent(trigger.id);
 }

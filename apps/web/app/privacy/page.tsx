@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Pulse Social Media',
+  title: 'Privacy Policy | Pulse Social Media',
 };
 
 export default function PrivacyPage() {
@@ -14,7 +14,7 @@ export default function PrivacyPage() {
         Pulse Social Media ("Pulse", "we", "us") operates a social media management service for our
         clients. This policy explains what data our texting-based content workflow tool collects, how
         it is used, and how it is protected. This tool is operated internally by Pulse on behalf of our
-        clients — it is not a public consumer application.
+        clients. It is not a public consumer application.
       </p>
 
       <h2>What we collect</h2>
@@ -58,20 +58,20 @@ export default function PrivacyPage() {
       <p>We rely on the following providers to deliver the service:</p>
       <ul>
         <li>
-          <strong>Twilio</strong> — SMS/MMS delivery.
+          <strong>Twilio</strong>: SMS/MMS delivery.
         </li>
         <li>
-          <strong>Meta Platforms</strong> — publishing to Instagram and Facebook via the Graph API.
+          <strong>Meta Platforms</strong>: publishing to Instagram and Facebook via the Graph API.
         </li>
         <li>
-          <strong>Anthropic</strong> — drafting caption suggestions from provided media and brand voice
+          <strong>Anthropic</strong>: drafting caption suggestions from provided media and brand voice
           notes.
         </li>
         <li>
-          <strong>Neon</strong> — database and encrypted media storage.
+          <strong>Neon</strong>: database and encrypted media storage.
         </li>
         <li>
-          <strong>Vercel / Railway</strong> — application hosting.
+          <strong>Vercel / Railway</strong>: application hosting.
         </li>
       </ul>
       <p>Each provider processes data only as needed to perform its function for us.</p>

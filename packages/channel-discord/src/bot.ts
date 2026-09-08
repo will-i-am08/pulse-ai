@@ -26,7 +26,7 @@ import {
   createLinqChannel,
   captureMedia,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, researchNichePlan, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
@@ -84,7 +84,7 @@ client.on(Events.MessageCreate, async (message) => {
       if (!res.publicReply && !res.ownerMessage) await message.channel.send("🔇 **[hidden as spam — nothing sent to you]**");
     } catch (err) {
       console.error("[discord] !sim error", err);
-      await message.reply("Simulation hit a snag — check the logs.");
+      await message.reply("Simulation hit a snag. Check the logs.");
     }
     return;
   }
@@ -128,7 +128,7 @@ client.on(Events.MessageCreate, async (message) => {
       await message.channel.send(text);
     } catch (err) {
       console.error("[discord] !digest error", err);
-      await message.reply("Digest hit a snag — check the logs.");
+      await message.reply("Digest hit a snag. Check the logs.");
     }
     return;
   }
@@ -294,7 +294,7 @@ async function gapFillCheck(): Promise<void> {
 
       await sendToBrand(
         brand.id,
-        `Heads up — your "${pillar.name}" content is a little light this week (${have}/${pillar.posts_per_week} planned). Send me a photo for it, or reply "draft one" and I'll write a post you can approve.`,
+        `Heads up, your "${pillar.name}" content is a little light this week (${have}/${pillar.posts_per_week} planned). Send me a photo for it, or reply "draft one" and I'll write a post you can approve.`,
       );
       await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
       break; // at most one nudge per brand per pass — never a barrage
@@ -475,7 +475,7 @@ async function processLinqInbound(): Promise<void> {
       );
       if (!message) continue;
       if (newMedia.some((m) => m.kind === "photo")) {
-        await linq.send({ to: brand.client_phone, body: "Got it — styling your photo and writing your caption, one sec ✨" }).catch(() => {});
+        await linq.send({ to: brand.client_phone, body: "Got it, styling your photo and writing your caption, one sec ✨" }).catch(() => {});
       }
       const { reply, mediaUrl } = await processInbound({ brand, message, newMedia });
       if (reply) await linq.send({ to: brand.client_phone, body: reply, mediaUrls: mediaUrl ? [mediaUrl] : undefined });
@@ -521,7 +521,7 @@ async function chasePendingDrafts(): Promise<void> {
     const what = row.pillar_name ? `your ${row.pillar_name} post` : "the post I drafted";
     await sendToBrand(
       row.brand_id,
-      `Quick nudge — ${what} is still waiting your yes 🙂 Want it to go out, or shall I tweak it? (Reply "no" to bin it.)`,
+      `Quick nudge, ${what} is still waiting your yes 🙂 Want it to go out, or shall I tweak it? (Reply "no" to bin it.)`,
     ).catch((err) => console.error(`[discord] chase send failed for post ${row.id}`, err));
   }
 }
@@ -564,14 +564,40 @@ setInterval(() => {
 }, 6 * 60 * 60 * 1000);
 
 // ─── Niche plan: research pending plans and deliver them to the owner ────────
+// The rundown promises a plan "in a couple of minutes", so failure is never
+// silent: research retries, falls back to no-search, and if everything fails
+// the owner gets an honest holding message (once a day max) while the row
+// stays pending for the next attempt.
+const PLAN_HOLDING_PREFIX = "Still working on your content plan";
+async function holdingRecentlySent(brandId: string): Promise<boolean> {
+  const row = await queryOne<{ created_at: string }>(
+    `select created_at from messages
+      where brand_id = $1 and direction = 'outbound' and body like $2
+        and created_at > now() - interval '24 hours'
+      order by created_at desc limit 1`,
+    [brandId, `${PLAN_HOLDING_PREFIX}%`],
+  );
+  return !!row;
+}
 async function buildNichePlans(): Promise<void> {
   const plans = await pendingPlans();
   for (const row of plans) {
     try {
       const brand = await queryOne<Brand>("select * from brands where id = $1", [row.brand_id]);
       if (!brand) { await markPlanFailed(row.id); continue; }
-      const plan = await researchNichePlan(brand, row.niche ?? brand.name, row.exemplars ?? null);
-      if (!plan) { await markPlanFailed(row.id); continue; }
+      const plan = await buildPlanWithFallback(brand, row.niche ?? brand.name, row.exemplars ?? null);
+      if (!plan) {
+        // Everything failed: stay pending for the next attempt (the pending
+        // query gates retries to every 15 min), but tell the owner honestly.
+        await query("update content_plans set updated_at = now() where id = $1", [row.id]);
+        if (!(await holdingRecentlySent(brand.id))) {
+          await sendToBrand(
+            brand.id,
+            `${PLAN_HOLDING_PREFIX}. The research is being stubborn, but I'm still on it and I'll send it the moment it lands.`,
+          );
+        }
+        continue;
+      }
       await markPlanProposed(row.id, plan);
       const link = `${env.APP_BASE_URL.replace(/\/$/, "")}/app/content-plan`;
       await sendToBrand(
@@ -580,7 +606,7 @@ async function buildNichePlans(): Promise<void> {
       );
     } catch (err) {
       console.error(`[discord] niche plan build failed for ${row.id}`, err);
-      await markPlanFailed(row.id).catch(() => {});
+      await query("update content_plans set updated_at = now() where id = $1", [row.id]).catch(() => {});
     }
   }
 }
