@@ -4,6 +4,7 @@ import { logger } from "./lib/logger.js";
 import { runPublishLoop } from "./publish/publishLoop.js";
 import { runTriggerLoop } from "./triggers/triggerLoop.js";
 import { runEngagementLoop } from "./engagement/engagementLoop.js";
+import { runReviewSync } from "./engagement/reviewSync.js";
 
 async function main(): Promise<void> {
   const env = getServerEnv(); // fail fast on missing/invalid config
@@ -59,6 +60,11 @@ async function main(): Promise<void> {
       }
       engaging = true;
       try {
+        // Reviews poll slowly (hourly-grade data): fold the sync into every
+        // 15th engagement tick so it shares the cron and the shutdown path.
+        if (new Date().getMinutes() % 15 === 0) {
+          await runReviewSync();
+        }
         await runEngagementLoop();
       } catch (err) {
         logger.error("engagement loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
