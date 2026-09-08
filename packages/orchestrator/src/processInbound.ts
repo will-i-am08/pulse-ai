@@ -28,6 +28,7 @@ import {
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import { sendLatestDraft } from "./engagement.js";
+import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
 import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
@@ -515,11 +516,9 @@ export async function processInbound(
         }
       }
 
-      // Always send the client their photo back with the caption — the styled
-      // version if we styled it, otherwise the original. (Styling can be a no-op
-      // when the image editor is unavailable or the edit fails; the client should
-      // still see their post, not a caption with no picture.)
-      const replyImageUrl = firstPhoto ? publicMediaUrl(postMediaIds[0]!) : undefined;
+      // The approval preview is rendered below, after the post row exists (the
+      // mockup needs the final caption + format). Video-only messages have no
+      // photo to frame, so they keep no mediaUrl — unchanged behaviour.
 
       // Sort the photo into a content pillar and find a smart slot for it.
       const pillars = await ensurePillars(brand.id);
@@ -567,6 +566,13 @@ export async function processInbound(
           "Drafted from inbound media message",
         ],
       );
+
+      // Frame the draft in the IG mockup for the approval preview. The mockup id
+      // is returned only as a URL — never added to posts.media_ids, so the
+      // publish loop still sends the real photo(s). Falls back to the plain
+      // photo URL if rendering fails.
+      const displayId = firstPhoto ? post.media_ids[0] : undefined;
+      const replyImageUrl = displayId ? await previewUrlForPost(brand, post, displayId) : undefined;
 
       // Autopilot: the pillar posts itself — no per-post approval. Give the client
       // the hold-window heads-up (the whole gap until the slot is their window).
@@ -636,10 +642,15 @@ export async function processInbound(
            values ($1, $2, 'edited', $3, $4)`,
           [pending.id, brand.id, brand.approver, "Re-edited image via inbound correction"],
         );
+        const mediaUrl = await previewUrlForPost(
+          brand,
+          { caption: pending.caption, format: pending.format, media_ids: newMediaIds },
+          finalId,
+        );
         return {
           reply: 'Here\'s the updated image ✨ — reply "yes" to approve, or tell me another change.',
           postId: pending.id,
-          mediaUrl: publicMediaUrl(finalId),
+          mediaUrl,
         };
       }
 
@@ -667,9 +678,27 @@ export async function processInbound(
         ],
       );
 
+      // Re-render the frame so the client sees the new caption in situ.
+      // Video/Reels drafts keep their existing behaviour (no mockup URL).
+      let mediaUrl: string | undefined;
+      const displayId = pending.media_ids[0];
+      if (displayId) {
+        const asset = await queryOne<{ kind: string }>(`select kind from media_assets where id = $1`, [
+          displayId,
+        ]).catch(() => null);
+        if (!asset || asset.kind === "photo") {
+          mediaUrl = await previewUrlForPost(
+            brand,
+            { caption: after, format: pending.format, media_ids: pending.media_ids },
+            displayId,
+          );
+        }
+      }
+
       return {
         reply: `Updated:\n\n"${after}"\n\nReply "yes" to approve.`,
         postId: pending.id,
+        mediaUrl,
       };
     }
 
