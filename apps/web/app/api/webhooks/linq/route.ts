@@ -49,6 +49,10 @@ export async function POST(request: NextRequest) {
     const parts: any[] = Array.isArray(data.parts) ? data.parts : [];
     const from = String(data?.sender_handle?.handle ?? '');
     const providerId = String(data?.id ?? '');
+    // Chat id for typing indicators (POST /v3/chats/{chatId}/typing). Field
+    // shape varies by payload version — check the likely spots.
+    const chatId =
+      String(data?.chat_id ?? data?.chatId ?? data?.chat?.id ?? '') || null;
     const body = parts.filter((p) => p?.type === 'text' && p?.value).map((p) => p.value).join(' ').trim();
     const media = parts
       .filter((p) => p?.type !== 'text')
@@ -63,9 +67,9 @@ export async function POST(request: NextRequest) {
           : null;
         if (!seen) {
           await query(
-            `insert into pending_inbound (channel, from_handle, body, media, provider_message_id)
-             values ('linq', $1, $2, $3::jsonb, $4)`,
-            [from, body || null, JSON.stringify(media), providerId || null],
+            `insert into pending_inbound (channel, from_handle, body, media, provider_message_id, chat_id)
+             values ('linq', $1, $2, $3::jsonb, $4, $5)`,
+            [from, body || null, JSON.stringify(media), providerId || null, chatId],
           );
         }
       } catch (err) {
