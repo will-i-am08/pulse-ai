@@ -3,7 +3,7 @@ import Link from 'next/link';
 import styles from './page.module.css';
 
 export const metadata: Metadata = {
-  title: 'Pulse — your social media, handled',
+  title: 'Pulse | Your social media, handled',
   description:
     "Text a photo. Pulse writes the caption in your brand's voice, you approve it with a tap, and it posts to Instagram and Facebook. No apps, no scheduling tools, nothing to learn.",
 };
@@ -12,7 +12,7 @@ const steps = [
   {
     n: '01',
     t: 'Text a photo',
-    d: 'To one number, like texting a friend. No app to download, no login, no portal — just your phone.',
+    d: 'To one number, like texting a friend. No app to download, no login, no portal. Just your phone.',
   },
   {
     n: '02',
@@ -22,7 +22,7 @@ const steps = [
   {
     n: '03',
     t: 'Reply “yes”',
-    d: 'Or tweak the wording. You approve every post before it goes anywhere — you’re always in control.',
+    d: 'Or tweak the wording. You approve every post before it goes anywhere. You’re always in control.',
   },
   {
     n: '04',
@@ -38,7 +38,7 @@ const features = [
   },
   {
     t: 'Your feed never goes quiet',
-    d: 'It checks in each week — “anything to post?” — and sends you a simple recap of how your posts did. It does the remembering.',
+    d: 'It checks in each week ("anything to post?") and sends you a simple recap of how your posts did. It does the remembering.',
   },
   {
     t: 'You approve everything',
@@ -46,7 +46,7 @@ const features = [
   },
   {
     t: 'Instagram + Facebook',
-    d: 'Posts to both, at the right time, reliably — and tells you the moment it’s live. No scheduling apps to wrestle with.',
+    d: 'Posts to both, at the right time, reliably. Tells you the moment it’s live. No scheduling apps to wrestle with.',
   },
 ];
 
@@ -73,7 +73,7 @@ export default function LandingPage() {
         <p className={styles.eyebrow}>Your social media, on autopilot</p>
         <h1 className={styles.h1}>
           Text a photo.<br />
-          It’s posted — <span className={styles.accentText}>on brand</span>.
+          It’s posted. <span className={styles.accentText}>On brand</span>.
         </h1>
         <p className={styles.lede}>
           Pulse turns a text into a scheduled, on-brand Instagram and Facebook post. Send a photo,
@@ -110,7 +110,7 @@ export default function LandingPage() {
         <h2 className={styles.h2}>The part that actually saves you time</h2>
         <p className={styles.sectionLede}>
           Scheduling apps still make you write the captions, pick the times, and remember to post.
-          Pulse just does it — you only ever tap yes.
+          Pulse just does it. You only ever tap yes.
         </p>
         <div className={styles.grid}>
           {features.map((f) => (
@@ -125,7 +125,7 @@ export default function LandingPage() {
       <section className={styles.closer}>
         <h2 className={styles.closerTitle}>Never stare at a blank caption box again.</h2>
         <p className={styles.closerLede}>
-          Your feed, kept alive and on brand — you just tap yes.
+          Your feed, kept alive and on brand. You just tap yes.
         </p>
         <a href="mailto:will@jmcalder.com?subject=Pulse" className={styles.ctaPrimary}>
           Get started

@@ -38,7 +38,7 @@ export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: 
   }
   const actionable = await deps.getActionable(brand.id);
   const body = actionable
-    ? `Just checking in 🙂 ${actionable.summary} is still waiting on you — want it sorted, or anything new to send me?`
+    ? `Just checking in 🙂 ${actionable.summary} is still waiting on you. Want it sorted, or anything new to send me?`
     : "Anything to send me this week?";
   await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);

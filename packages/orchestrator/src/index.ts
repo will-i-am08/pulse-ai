@@ -10,7 +10,7 @@ export { seedBrandVoice } from "./seedBrandVoice.js";
 
 export { buildConversationContext } from "./conversationContext.js";
 
-export { startOnboarding, onboardingTurn } from "./onboarding.js";
+export { startOnboarding, onboardingTurn, onboardingNext, finishOnboarding, WRAP_ACK } from "./onboarding.js";
 
 export { callLLM } from "./llm.js";
 export type { CallLLMOptions } from "./llm.js";
@@ -39,6 +39,8 @@ export {
   pendingPlans,
   getProposedPlan,
   researchNichePlan,
+  researchNichePlanFallback,
+  buildPlanWithFallback,
   markPlanProposed,
   markPlanFailed,
   planTextSummary,

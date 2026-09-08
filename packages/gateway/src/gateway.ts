@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { processInbound } from "@pulse/orchestrator";
+import { processInbound, finishOnboarding } from "@pulse/orchestrator";
 import {
   getServerEnv,
   query,
   queryOne,
   putMedia,
+  sanitizeChatText,
   type Brand,
   type InboundMedia,
   type InboundMessage,
@@ -172,8 +173,9 @@ export async function sendToBrand(brandId: string, body: string, mediaUrls?: str
   }
 
   let providerMessageId: string;
+  const text = sanitizeChatText(body);
   try {
-    const result = await withBackoff(() => channel.send({ to, body, mediaUrls }), {
+    const result = await withBackoff(() => channel.send({ to, body: text, mediaUrls }), {
       onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
     });
     providerMessageId = result.providerMessageId;
@@ -186,7 +188,7 @@ export async function sendToBrand(brandId: string, body: string, mediaUrls?: str
     await query(
       `insert into messages (brand_id, direction, channel, body, provider_message_sid)
        values ($1, $2, $3, $4, $5)`,
-      [brandId, "outbound", channel.name, body, providerMessageId],
+      [brandId, "outbound", channel.name, text, providerMessageId],
     );
   } catch (err) {
     console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
@@ -251,20 +253,34 @@ export async function handleInbound(
 
     // Styling a photo takes a moment — reassure the client first.
     if (newMedia.some((m) => m.kind === "photo")) {
-      await sendToBrand(brand.id, "Got it — styling your photo and writing your caption, one sec ✨").catch(() => {});
+      await sendToBrand(brand.id, "Got it, styling your photo and writing your caption, one sec ✨").catch(() => {});
     }
 
     try {
-      const { reply, mediaUrl } = await processInbound({ brand, message, newMedia });
+      const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({ brand, message, newMedia });
       if (reply) {
         await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined);
+      }
+      // Onboarding just completed: the ack is already with the owner. Now do
+      // the slow compile and deliver the rundown as a second message.
+      if (finishOnboardingBrandId) {
+        try {
+          const rundown = await finishOnboarding(finishOnboardingBrandId);
+          await sendToBrand(finishOnboardingBrandId, rundown);
+        } catch (err) {
+          console.error(`handleInbound: finishOnboarding failed for brand ${finishOnboardingBrandId}`, err);
+          await sendToBrand(
+            finishOnboardingBrandId,
+            "Writing your voice up hit a snag on my end. Your answers are saved, I'll have the rundown to you shortly.",
+          ).catch(() => {});
+        }
       }
     } catch (err) {
       // Orchestrator failures must not lose the persisted inbound message — and
       // the client should never be left with silence.
       console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
       try {
-        await sendToBrand(brand.id, "Sorry — I had trouble with that one just now. Mind sending it again?");
+        await sendToBrand(brand.id, "Sorry, I had trouble with that one just now. Mind sending it again?");
       } catch {
         /* best-effort: the send itself may also be down */
       }

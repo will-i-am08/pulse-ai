@@ -131,5 +131,5 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
     created++;
   }
   if (created === 0) return null;
-  return `Turned that page into ${created} draft posts — spread across your pillars and on the calendar. Open the calendar to review and approve them.`;
+  return `Turned that page into ${created} draft posts. They're spread across your pillars and on the calendar. Open the calendar to review and approve them.`;
 }

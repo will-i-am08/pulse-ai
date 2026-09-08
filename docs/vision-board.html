@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse AI — Agent Architecture &amp; Flow</title>
+<style>
+  :root {
+    --bg: #0b0e17; --panel: #131827; --panel2: #0f1422; --line: #26314d;
+    --ink: #e8ecf6; --mut: #93a0bb; --dim: #5d6a89;
+    --green: #3ddc84; --amber: #ffb224; --grey: #6b7690; --blue: #5aa9ff; --violet: #b28bff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif; padding: 40px 28px 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 10px; }
+  header .kicker { color: var(--violet); letter-spacing: 3px; font-size: 12px; font-weight: 700; }
+  header h1 { font-size: 40px; margin: 8px 0 6px; }
+  header p { color: var(--mut); font-size: 16px; max-width: 760px; margin: 0 auto; }
+  .meta { text-align: center; color: var(--dim); font-size: 13px; margin: 14px 0 34px; }
+  h2 { font-size: 15px; letter-spacing: 2px; color: var(--mut); text-transform: uppercase; margin: 38px 0 14px; display: flex; align-items: center; gap: 10px; }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
+  .stage { background: var(--panel); border: 1px solid var(--line); padding: 18px 16px; position: relative; }
+  .stage:first-child { border-radius: 14px 0 0 14px; }
+  .stage:last-child { border-radius: 0 14px 14px 0; }
+  .stage + .stage { border-left: none; }
+  .stage::after { content: "›"; position: absolute; right: -11px; top: 50%; transform: translateY(-50%); background: var(--violet); color: #0b0e17; width: 22px; height: 22px; border-radius: 50%; font-weight: 800; font-size: 15px; line-height: 22px; text-align: center; z-index: 2; }
+  .stage:last-child::after { display: none; }
+  .stage .n { font-size: 12px; font-weight: 800; color: var(--violet); letter-spacing: 1px; }
+  .stage h3 { font-size: 17px; margin: 4px 0 8px; }
+  .stage ul { list-style: none; }
+  .stage li { font-size: 13px; color: var(--mut); padding: 4px 0 4px 16px; position: relative; line-height: 1.45; }
+  .stage li::before { content: "•"; color: var(--violet); position: absolute; left: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+  .card h3 { font-size: 16px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card .sub { font-size: 12px; color: var(--dim); font-family: ui-monospace, monospace; margin-bottom: 10px; }
+  .card ul { list-style: none; }
+  .card li { font-size: 13.5px; color: var(--mut); padding: 3px 0 3px 16px; position: relative; line-height: 1.5; }
+  .card li::before { content: "–"; color: var(--dim); position: absolute; left: 2px; }
+  .card li b, .stage li b { color: var(--ink); font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .dot.g { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.a { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .dot.x { background: var(--grey); }
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; letter-spacing: .4px; }
+  .tag.g { background: rgba(61,220,132,.14); color: var(--green); border: 1px solid rgba(61,220,132,.4); }
+  .tag.a { background: rgba(255,178,36,.12); color: var(--amber); border: 1px solid rgba(255,178,36,.4); }
+  .tag.x { background: rgba(107,118,144,.14); color: var(--grey); border: 1px solid rgba(107,118,144,.4); }
+  .rule { background: linear-gradient(135deg, #171d33, #12172a); border: 1px solid var(--violet); border-radius: 14px; padding: 18px 22px; text-align: center; font-size: 15px; }
+  .rule b { color: var(--violet); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; color: var(--dim); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--mut); vertical-align: top; }
+  td:first-child { color: var(--ink); font-family: ui-monospace, monospace; font-size: 12.5px; white-space: nowrap; }
+  footer { text-align: center; color: var(--dim); font-size: 12.5px; margin-top: 44px; }
+  @media (max-width: 900px) { .flow { grid-template-columns: 1fr; } .stage { border-radius: 14px !important; } .stage + .stage { border-left: 1px solid var(--line); margin-top: 14px; } .stage::after { display: none; } .grid2, .grid3 { grid-template-columns: 1fr; } }
+  @media print { body { background: #fff; color: #111; padding: 10px; } .card, .stage, .rule { background: #fff; color: #111; border-color: #ccc; } .card li, .stage li, td, header p { color: #333; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">PULSE AI · VISION BOARD</div>
+    <h1>The Agent, On One Page</h1>
+    <p>A small business owner sends a photo — or nothing at all — and never thinks about social media again. Pulse runs the whole presence: posting, replies, reviews and leads, on brand, in one text thread.</p>
+  </header>
+  <div class="meta">Architecture &amp; flow · current as of 08/09/2026 · branch <b>main</b> + PR #13</div>
+
+  <h2>The Loop — how it works</h2>
+  <div class="flow">
+    <div class="stage">
+      <div class="n">01 · CAPTURE</div>
+      <h3>Listen everywhere</h3>
+      <ul>
+        <li><b>Owner texts</b> a photo/video via Discord, SMS, Linq</li>
+        <li><b>Meta webhooks</b> catch IG/FB comments, DMs, mentions</li>
+        <li><b>GBP sync</b> pulls Google reviews hourly</li>
+        <li>Media bytes stored instantly — never a temp URL</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">02 · THINK</div>
+      <h3>Draft &amp; triage</h3>
+      <ul>
+        <li>Claude drafts <b>on-brand captions</b> in the client's voice</li>
+        <li>Inbound sorted: <b>auto</b> safe replies · <b>draft</b> judgment calls · <b>escalate</b> complaints &amp; hot leads</li>
+        <li><b>Spam hidden</b>, never shown to the owner</li>
+        <li>Every edit teaches the <b>voice profile</b></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">03 · APPROVE</div>
+      <h3>Owner taps once</h3>
+      <ul>
+        <li>Drafts land in the <b>single chat thread</b></li>
+        <li>Dashboard <b>inbox</b> for replies, calendar for posts</li>
+        <li>Approve, edit, or dismiss — <b>nothing publishes without a tap</b></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">04 · PUBLISH</div>
+      <h3>Post &amp; reply</h3>
+      <ul>
+        <li>Worker publishes on <b>schedule</b> — smart windows, caps, spacing</li>
+        <li><b>Instagram live</b> · Facebook &amp; Google as approvals land</li>
+        <li>Replies posted back; failures <b>surface loudly</b>, never silent</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="n">05 · LEARN &amp; NUDGE</div>
+      <h3>Compounds weekly</h3>
+      <ul>
+        <li>Corrections fold into <b>brand voice</b></li>
+        <li>Check-ins, <b>performance reports</b>, gap-fill content</li>
+        <li><b>Sentiment-spike</b> alarm on negativity surges</li>
+        <li>Competitor watch + content plans</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="rule" style="margin-top:16px">⛔ <b>Approval is absolute.</b> No code path publishes or replies without a logged approval — every draft, edit, send and failure is audited.</div>
+
+  <h2>What it does — capability map</h2>
+  <div class="grid3">
+    <div class="card">
+      <h3><span class="dot g"></span> Outbound engine <span class="tag g">LIVE</span></h3>
+      <div class="sub">orchestrator · worker publish loop</div>
+      <ul>
+        <li>Photo → caption → approve → scheduled post</li>
+        <li>Content <b>pillars</b> + photo auto-classification</li>
+        <li><b>Smart scheduler</b>: windows, caps, spacing, cadence</li>
+        <li>Hold-window autopilot + <b>gap-fill</b> generation</li>
+        <li>AI restyle, carousels, stories, quote cards</li>
+        <li>Campaigns, URL repurposing, niche content plans</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="dot g"></span> Inbound engagement <span class="tag g">LIVE*</span></h3>
+      <div class="sub">meta webhook → interactions → engagement loop</div>
+      <ul>
+        <li>Comments, DMs, mentions, reviews in <b>near-real-time</b></li>
+        <li><b>Auto</b> FAQs &amp; praise · <b>draft</b> the tricky · <b>escalate</b> complaints &amp; leads</li>
+        <li>Lead hand-off with a one-liner in your thread</li>
+        <li>Spam auto-hidden · negativity-surge alarm</li>
+        <li><i>*platform replies go live with App Review</i></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="dot a"></span> Google channel <span class="tag a">CONNECTING</span></h3>
+      <div class="sub">OAuth live 08/09 · GBP API approval pending</div>
+      <ul>
+        <li><b>Connect Google</b> button wired, credentials stored</li>
+        <li>Review sync built — triages like any comment</li>
+        <li>Post-to-Google + review replies flip on with API access</li>
+        <li>Photos/Drive auto-pull spec'd (Phase C)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid2" style="margin-top:14px">
+    <div class="card">
+      <h3><span class="dot g"></span> Owner experience <span class="tag g">LIVE</span></h3>
+      <div class="sub">one thread · dashboard optional</div>
+      <ul>
+        <li>Everything in <b>one chat</b>: drafts, escalations, leads, recaps</li>
+        <li>Dashboard: approvals, <b>replies inbox</b>, calendar, voice editor</li>
+        <li>Self-serve <b>Facebook + Google linking</b></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3><span class="dot x"></span> Growth &amp; learning <span class="tag x">NEXT</span></h3>
+      <div class="sub">Phase D · after A–C proven</div>
+      <ul>
+        <li>Boost top posts on an owner-set budget</li>
+        <li><b>Closed-loop learning</b>: winners vs losers → timing/format shifts</li>
+        <li>Actionable digests — one insight + one ask</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Under the bonnet — where things live</h2>
+  <div class="card">
+    <table>
+      <tr><th>Piece</th><th>Lives in</th><th>Does</th><th>State</th></tr>
+      <tr><td>Dashboard + webhooks</td><td>apps/web → Vercel</td><td>Approvals, inbox, calendar, Meta/Twilio/Linq webhooks, media serving</td><td><span class="tag g">LIVE</span></td></tr>
+      <tr><td>Worker</td><td>apps/worker → Railway</td><td>Publish loop, engagement loop, review sync, check-ins, reports — every minute</td><td><span class="tag g">LIVE</span></td></tr>
+      <tr><td>Brain</td><td>packages/orchestrator</td><td>Classify, draft, triage, voice learning, pillars, campaigns, competitors</td><td><span class="tag g">LIVE</span></td></tr>
+      <tr><td>Channels</td><td>channel-twilio · channel-discord · gateway linq</td><td>SMS/MMS, Discord (now), Linq sandbox (end-state)</td><td><span class="tag g">LIVE</span></td></tr>
+      <tr><td>Publishers</td><td>packages/graph (mock|live)</td><td>Instagram live · Facebook + Google flip on with approvals</td><td><span class="tag a">MIXED</span></td></tr>
+      <tr><td>Database</td><td>Neon Postgres · 20 migrations</td><td>Brands, posts, media bytes, interactions, replies, audit log</td><td><span class="tag g">LIVE</span></td></tr>
+    </table>
+  </div>
+
+  <h2>Gates — what unlocks what</h2>
+  <div class="grid3">
+    <div class="card"><h3><span class="dot a"></span> Meta App Review</h3><ul><li>Business verification + 7 permissions + screencast</li><li>Unlocks: <b>FB posting, live IG/FB replies, comment hiding</b></li></ul></div>
+    <div class="card"><h3><span class="dot a"></span> Google GBP access</h3><ul><li>OAuth client minted 08/09 ✅ · consent + API approval to go</li><li>Unlocks: <b>Google posts, review replies, Photos pull</b></li></ul></div>
+    <div class="card"><h3><span class="dot a"></span> Messaging end-state</h3><ul><li>Discord now · Twilio interim · <b>Linq sandbox live</b></li><li>Unlocks: the single owner thread at scale</li></ul></div>
+  </div>
+
+  <footer>Pulse AI · generated from the repo state · print this page for the wall</footer>
+</div>
+</body>
+</html>

@@ -72,7 +72,7 @@ export const emptyBrandVoiceProfile = (): BrandVoiceProfile =>
 // ─── Row shapes (mirror the tables in 0001_init.sql) ────────
 export type AccountType = "business" | "personal";
 
-export type OnboardingStatus = "none" | "pending" | "in_progress" | "done";
+export type OnboardingStatus = "none" | "pending" | "in_progress" | "wrapping_up" | "done";
 
 export interface OnboardingTurnMsg {
   role: "user" | "assistant";

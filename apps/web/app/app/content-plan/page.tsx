@@ -4,7 +4,7 @@ import { queryOne, type Brand, type ContentPlan } from '@pulse/shared';
 import { listBrandsForOwner } from '@/lib/data/brands';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Your content plan — Pulse' };
+export const metadata = { title: 'Your content plan | Pulse' };
 
 export default async function ContentPlanPage() {
   const user = await currentUser();
@@ -36,7 +36,7 @@ export default async function ContentPlanPage() {
       {!plan ? (
         <div className="card">
           <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-            Your tailored plan isn’t ready yet — I’m still studying your niche. It’ll arrive in your chat shortly.
+            Your tailored plan isn’t ready yet. I’m still studying your niche. It’ll arrive in your chat shortly.
           </p>
         </div>
       ) : (
@@ -44,7 +44,7 @@ export default async function ContentPlanPage() {
           <div className="card" style={{ marginBottom: 16 }}>
             <p style={{ marginTop: 0, fontSize: 16, fontWeight: 600 }}>{plan.summary}</p>
             {row?.status === 'accepted' ? (
-              <p style={{ margin: 0, color: '#1e7e46' }}>✓ Active — your pillars and schedule are set to this.</p>
+              <p style={{ margin: 0, color: '#1e7e46' }}>✓ Active. Your pillars and schedule are set to this.</p>
             ) : (
               <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
                 Reply <strong>“yes”</strong> in your chat to set this up, or tell me what to tweak.

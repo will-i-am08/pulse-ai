@@ -2,13 +2,13 @@ import Link from 'next/link';
 import { signupAction } from '@/lib/actions/auth';
 import styles from '../auth.module.css';
 
-export const metadata = { title: 'Sign up — Pulse' };
+export const metadata = { title: 'Sign up | Pulse' };
 
 const ERRORS: Record<string, string> = {
-  exists: 'That email is already registered — try logging in.',
+  exists: 'That email is already registered. Try logging in.',
   short: 'Password must be at least 8 characters.',
   missing: 'Please fill in your name, email and password.',
-  failed: 'Something went wrong — please try again.',
+  failed: 'Something went wrong. Please try again.',
 };
 
 export default async function SignupPage({
@@ -17,7 +17,7 @@ export default async function SignupPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const msg = error ? (ERRORS[error] ?? 'Something went wrong — please try again.') : null;
+  const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
 
   return (
     <main className={styles.wrap}>

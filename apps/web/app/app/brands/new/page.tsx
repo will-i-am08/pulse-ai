@@ -36,7 +36,7 @@ export default function NewBrandPage() {
         <fieldset>
           <legend>Brand voice onboarding</legend>
           <p className="hint">
-            One item per line. All optional here — you can fill these in later from the voice profile
+            One item per line. All optional here. You can fill these in later from the voice profile
             editor instead.
           </p>
           <label>

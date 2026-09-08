@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
-import { query, queryOne, brandVoiceProfileSchema, getMedia } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, getMedia, sanitizeChatText } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
@@ -181,5 +181,5 @@ export async function draftCaption(brandId: string, mediaIds: string[]): Promise
     maxTokens: 400,
   });
 
-  return { caption: caption.trim(), proposedTime: heuristicProposedTime(notes) };
+  return { caption: sanitizeChatText(caption), proposedTime: heuristicProposedTime(notes) };
 }

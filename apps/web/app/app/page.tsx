@@ -10,30 +10,30 @@ export const dynamic = 'force-dynamic';
 
 const CONNECT_MSG: Record<string, { text: string; ok: boolean }> = {
   success: { text: 'Instagram & Facebook connected 🎉', ok: true },
-  denied: { text: 'Connection cancelled — you can try again anytime.', ok: false },
-  failed: { text: 'Something went wrong connecting — please try again.', ok: false },
-  invalid: { text: 'That link expired — please start the connection again.', ok: false },
-  expired: { text: 'Your connection session expired — please reconnect.', ok: false },
+  denied: { text: 'Connection cancelled. You can try again anytime.', ok: false },
+  failed: { text: 'Something went wrong connecting. Please try again.', ok: false },
+  invalid: { text: 'That link expired. Please start the connection again.', ok: false },
+  expired: { text: 'Your connection session expired. Please reconnect.', ok: false },
   nopages: { text: 'No Facebook Pages found on that account. You need a Page (with a linked Instagram) to post.', ok: false },
-  nobrand: { text: 'We couldn’t find your account — please contact support.', ok: false },
+  nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
 };
 
 const PHONE_MSG: Record<string, { text: string; ok: boolean }> = {
-  saved: { text: 'Phone number saved — your agent will be in touch.', ok: true },
-  invalid: { text: 'That doesn’t look like a valid mobile number — try again (e.g. 04xx xxx xxx).', ok: false },
+  saved: { text: 'Phone number saved. Your agent will be in touch.', ok: true },
+  invalid: { text: 'That doesn’t look like a valid mobile number. Try again (e.g. 04xx xxx xxx).', ok: false },
   taken: { text: 'That number is already linked to another account.', ok: false },
 };
 
 const GOOGLE_MSG: Record<string, { text: string; ok: boolean }> = {
   success: { text: 'Google Business Profile connected 🎉', ok: true },
-  denied: { text: 'Google connection cancelled — you can try again anytime.', ok: false },
-  failed: { text: 'Something went wrong connecting Google — please try again.', ok: false },
-  invalid: { text: 'That link expired — please start the Google connection again.', ok: false },
-  expired: { text: 'Your Google session expired — please reconnect.', ok: false },
-  unconfigured: { text: 'Google connect isn’t switched on yet — hang tight.', ok: false },
-  norefresh: { text: 'Google didn’t grant lasting access — please reconnect and allow offline access.', ok: false },
+  denied: { text: 'Google connection cancelled. You can try again anytime.', ok: false },
+  failed: { text: 'Something went wrong connecting Google. Please try again.', ok: false },
+  invalid: { text: 'That link expired. Please start the Google connection again.', ok: false },
+  expired: { text: 'Your Google session expired. Please reconnect.', ok: false },
+  unconfigured: { text: 'Google connect isn’t switched on yet. Hang tight.', ok: false },
+  norefresh: { text: 'Google didn’t grant lasting access. Please reconnect and allow offline access.', ok: false },
   nolocations: { text: 'No Google Business Profile locations found on that account.', ok: false },
-  nobrand: { text: 'We couldn’t find your account — please contact support.', ok: false },
+  nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
 };
 
 function isConnected(b: Brand): boolean {
@@ -105,7 +105,7 @@ function setupLabel(status: OnboardingStatus | undefined): string {
     case 'pending':
       return 'Your agent is about to message you to finish setup.';
     case 'in_progress':
-      return 'Setup in progress — reply to the agent to finish.';
+      return 'Setup in progress. Reply to the agent to finish.';
     case 'done':
       return 'All set. Send a photo anytime and your agent drafts a post.';
     default:
@@ -141,8 +141,8 @@ export default async function DashboardHome({
               {brands.map((b) => (
                 <tr key={b.id}>
                   <td>{b.name}</td>
-                  <td>{b.owner_user_id ? 'user' : '—'}</td>
-                  <td>{b.fb_page_id ? (b.ig_username ? `@${b.ig_username}` : 'FB page') : '—'}</td>
+                  <td>{b.owner_user_id ? 'user' : '-'}</td>
+                  <td>{b.fb_page_id ? (b.ig_username ? `@${b.ig_username}` : 'FB page') : '-'}</td>
                   <td>{b.onboarding_state?.status ?? 'none'}</td>
                   <td><span className={`badge badge-${b.status}`}>{b.status}</span></td>
                   <td><Link href={`/app/brands/${b.id}`}>Open</Link></td>
@@ -209,7 +209,7 @@ export default async function DashboardHome({
             </p>
           ) : (
             <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-              This is how your agent works — you text it a photo, it drafts the post, you reply “yes”.
+              This is how your agent works. You text it a photo, it drafts the post, you reply “yes”.
             </p>
           )}
           <form action={setPhoneAction} style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -234,13 +234,13 @@ export default async function DashboardHome({
         <h2 style={{ marginTop: 0, fontSize: 18 }}>Google Business Profile <span style={{ fontSize: 13, color: 'var(--muted,#667)', fontWeight: 400 }}>(optional)</span></h2>
         {brand.gbp_location_id ? (
           <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-            Connected to <strong>{brand.gbp_location_name ?? 'your location'}</strong> — the agent can post to Google and handle your reviews.{' '}
+            Connected to <strong>{brand.gbp_location_name ?? 'your location'}</strong>. The agent can post to Google and handle your reviews.{' '}
             <a href="/api/connect/google/start">Reconnect</a>
           </p>
         ) : (
           <>
             <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-              Connect your Google Business Profile so the agent posts to Google and replies to your Google reviews — big for local discovery.
+              Connect your Google Business Profile so the agent posts to Google and replies to your Google reviews. Big for local discovery.
             </p>
             <a className="btn-primary" href="/api/connect/google/start">Connect Google</a>
           </>

@@ -139,7 +139,7 @@ export async function routeEngagementResult(
 export function buildSpikeAlert(brandName: string, count: number): string {
   return (
     `${SPIKE_PREFIX} on "${brandName}": ${count} negative comments/reviews in the last hour. ` +
-    `This looks like more than one grumpy customer — possible PR issue. ` +
+    `This looks like more than one grumpy customer. Possible PR issue. ` +
     `Say the word and I'll pull the full list.`
   );
 }

@@ -14,7 +14,7 @@ import { seedPendingPlan } from "./nichePlan.js";
 // agent reads each answer, reacts, digs deeper, and decides its own next
 // question, then compiles a voice profile from the whole conversation.
 
-const MAX_ANSWERS = 8; // force a wrap-up if it hasn't finished by here
+const MAX_ANSWERS = 10; // backstop: the model should finish on confidence at 5-8
 
 async function saveState(brandId: string, state: OnboardingState): Promise<void> {
   await query("update brands set onboarding_state = $2::jsonb where id = $1", [brandId, JSON.stringify(state)]);
@@ -63,17 +63,22 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
 function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
   return [
-    `You are Pulse — "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You'll run their social media end to end; there's no agency or anyone behind you. Warm, sharp, human.`,
+    `You are Pulse, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Warm, sharp, human, like texting a switched-on mate.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
-    "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone/voice, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
+    "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
     "Early on, warmly get their first name so you can address them personally from here on.",
-    "Make sure you learn their business/niche clearly, and ask for 1–2 accounts in their space they admire (so you can study what's working before building their plan).",
-    "RULES:",
-    "- Ask ONE question at a time.",
-    "- Actually read and build on each answer — reference what they just said, and dig deeper when something is interesting, surprising, or vague. Don't sound like a form.",
-    "- Keep every message short and human, like a text (1-3 sentences). No bullet lists.",
+    "Make sure you learn their business/niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
+    "HOW YOU TALK (absolute rules):",
+    "- ONE question per message. Never two, never three.",
+    "- Short. Questions stay under 25 words. Most messages are 1-2 sentences.",
+    "- Plain words. No jargon like POV, format, cadence, or leverage.",
+    "- When they are vague, venture a concrete guess for them to react to. Never hand their fog back with a list of options.",
+    "- React specifically to what they just said before you ask. Prove you listened.",
+    "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
     "- Never re-ask something you already know (including from the website).",
-    `- When you genuinely have enough for a strong profile, reply with a line that STARTS EXACTLY with "SETUP_COMPLETE:" followed by a short, warm sign-off (tell them to send a photo anytime).`,
+    "FINISH:",
+    "- Wrap up the moment you have enough for a strong profile: niche, audience, angle, tone, one never-do, content they like. Usually 5 to 8 turns. Never pad to fill turns, never rush.",
+    `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short, warm sign-off. Tailor the next step: personal accounts get the photo ask, business or faceless accounts are told their first ideas are coming.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -124,7 +129,7 @@ export async function startOnboarding(brandId: string): Promise<string> {
   const seed: OnboardingTurnMsg = {
     role: "user",
     content:
-      "Start the onboarding now: greet them by name, and — if you learned things from their website — briefly reflect that back before asking your first, most useful question.",
+      "Start the onboarding now: greet them by name, and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.",
   };
   const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
 
@@ -134,8 +139,20 @@ export async function startOnboarding(brandId: string): Promise<string> {
   return opening;
 }
 
-/** One conversational turn. Returns the agent's reply and whether setup is complete. */
-export async function onboardingTurn(brand: Brand, body: string): Promise<{ reply: string; done: boolean }> {
+/** Instant acknowledgement sent the moment the last answer lands, while the wrap-up compiles. */
+export const WRAP_ACK = "Awesome, got everything. Writing your voice up now, one sec.";
+
+/**
+ * One conversational turn: runs the interview only (fast). Returns the reply
+ * and whether the interview is complete. When complete, the caller must send
+ * WRAP_ACK first, then run finishOnboarding in the background and deliver its
+ * rundown as a second message. Never bundle the ack with the rundown: the
+ * compile takes 30s+ and the owner should never stare at dead air.
+ */
+export async function onboardingNext(
+  brand: Brand,
+  body: string,
+): Promise<{ reply: string; complete: boolean }> {
   const prev = brand.onboarding_state ?? { status: "in_progress" };
   const type: AccountType = prev.type ?? brand.account_type ?? "business";
   const transcript: OnboardingTurnMsg[] = [...(prev.transcript ?? [])];
@@ -148,7 +165,7 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
   if (turns >= MAX_ANSWERS) {
     messages.push({
       role: "user",
-      content: "(That's plenty to work with — please wrap up now with SETUP_COMPLETE and a warm sign-off.)",
+      content: "(That's plenty to work with, please wrap up now with SETUP_COMPLETE and a warm sign-off.)",
     });
   }
 
@@ -156,24 +173,61 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
   const raw = await callLLM({ system, messages, maxTokens: 300 });
 
   const marker = /^\s*SETUP_COMPLETE:\s*/i;
-  const isComplete = marker.test(raw) || turns >= MAX_ANSWERS;
+  const complete = marker.test(raw) || turns >= MAX_ANSWERS;
 
-  if (isComplete) {
-    const signoff = raw.replace(marker, "").trim();
-    transcript.push({ role: "assistant", content: signoff });
-    const recap = await compileProfile(brand, type, transcript);
-    await saveState(brand.id, { status: "done", type, turns, transcript, answers });
-    await captureOwnerName(brand, transcript);
-    await captureNicheAndSeedPlan(brand, transcript);
-    return {
-      reply: `${signoff}\n\n${recap}\n\nOne more thing — I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`,
-      done: true,
-    };
+  if (complete) {
+    // Park the sign-off; the rundown is built by finishOnboarding.
+    transcript.push({ role: "assistant", content: raw.replace(marker, "").trim() });
+    await saveState(brand.id, { status: "wrapping_up", type, turns, transcript, answers });
+    return { reply: WRAP_ACK, complete: true };
   }
 
   transcript.push({ role: "assistant", content: raw });
   await saveState(brand.id, { status: "in_progress", type, turns, transcript, answers });
-  return { reply: raw, done: false };
+  return { reply: raw, complete: false };
+}
+
+/** One conversational turn. Returns the agent's reply and whether setup is complete. */
+export async function onboardingTurn(brand: Brand, body: string): Promise<{ reply: string; done: boolean }> {
+  const step = await onboardingNext(brand, body);
+  if (!step.complete) return { reply: step.reply, done: false };
+  const rundown = await finishOnboarding(brand.id);
+  return { reply: `${step.reply}\n\n${rundown}`, done: true };
+}
+
+/** Next step tailored to the account: personal brands send a photo, everyone else gets ideas first. */
+function nextStepFor(type: AccountType, transcript: OnboardingTurnMsg[]): string {
+  const faceless = transcript.some((t) => /faceless/i.test(t.content));
+  if (type === "personal" && !faceless) return "Send me a photo anytime and we'll get rolling.";
+  return "I'll send your first ideas shortly. Anything you want to add before I start, just say.";
+}
+
+/**
+ * Heavy wrap-up: compile the voice profile, capture name/niche, seed the plan
+ * research, and build the rundown message (sign-off + recap + plan promise).
+ * Runs AFTER the instant ack, so it can take its time.
+ */
+export async function finishOnboarding(brandId: string): Promise<string> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`finishOnboarding: brand ${brandId} not found`);
+  const state = brand.onboarding_state ?? { status: "wrapping_up" };
+  const type: AccountType = state.type ?? brand.account_type ?? "business";
+  const transcript: OnboardingTurnMsg[] = [...(state.transcript ?? [])];
+  const answers: Record<string, string> = { ...(state.answers ?? {}) };
+  const turns = state.turns ?? 0;
+
+  const signoff =
+    transcript.length > 0 && transcript[transcript.length - 1]?.role === "assistant"
+      ? (transcript.pop() as OnboardingTurnMsg).content
+      : "You're all set.";
+  const recap = await compileProfile(brand, type, transcript);
+  await saveState(brand.id, { status: "done", type, turns, transcript, answers });
+  await captureOwnerName(brand, transcript);
+  await captureNicheAndSeedPlan(brand, transcript);
+  return (
+    `${signoff}\n\n${recap}\n\n${nextStepFor(type, transcript)}\n\n` +
+    `One more thing: I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`
+  );
 }
 
 /** Compile the whole conversation into a stored BrandVoiceProfile + strategy notes; return a short recap. */
@@ -220,5 +274,5 @@ async function compileProfile(
 
   const tone = profile.tone.length ? profile.tone.join(", ") : "friendly";
   const donts = profile.donts.length ? profile.donts.join("; ") : "none noted";
-  return `Here's what I've got: tone — ${tone}; emoji — ${profile.emoji_policy}; never — ${donts}. You can tweak any of this on your dashboard anytime.`;
+  return `Here's what I've got: tone is ${tone}; emoji ${profile.emoji_policy}; never: ${donts}. You can tweak any of this on your dashboard anytime.`;
 }

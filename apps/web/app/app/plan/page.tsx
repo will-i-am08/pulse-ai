@@ -6,7 +6,7 @@ import { ownerBrandId, listPlanPosts, listPillars, type PlanPost } from '@/lib/d
 import { reschedulePostAction, removePostAction, approvePostAction, setPillarAction } from '@/lib/actions/plan';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Content calendar — Pulse' };
+export const metadata = { title: 'Content calendar | Pulse' };
 
 const PILLAR_COLORS: Record<string, string> = {
   behind_the_scenes: '#6366f1',
@@ -57,7 +57,7 @@ function PostCard({ post }: { post: PlanPost }) {
         )}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
-            <strong style={{ fontSize: 12 }}>{post.scheduled_at ? fmtTime(post.scheduled_at) : '—'}</strong>
+            <strong style={{ fontSize: 12 }}>{post.scheduled_at ? fmtTime(post.scheduled_at) : '-'}</strong>
             <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 999, background: st.bg, color: st.fg, whiteSpace: 'nowrap' }}>{st.label}</span>
           </div>
           <div style={{ color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
@@ -142,7 +142,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
                 <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#1d4ed8' : '#475569', marginBottom: 8 }}>{dayFmt.format(day)}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {dayPosts.length === 0 ? (
-                    <span style={{ color: '#aab', fontSize: 12 }}>—</span>
+                    <span style={{ color: '#aab', fontSize: 12 }}>-</span>
                   ) : (
                     dayPosts.map((p) => <PostCard key={p.id} post={p} />)
                   )}

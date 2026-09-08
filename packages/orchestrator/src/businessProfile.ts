@@ -46,7 +46,7 @@ export async function updateFactsFromMessage(brand: Brand, message: string): Pro
   const system = [
     "Extract any concrete business facts stated in the message into JSON.",
     'Shape: {"owner_name":"","hours":"","address":"","service_area":"","services":[{"name":"","price":""}],"booking_link":"","policies":"","faqs":[{"q":"","a":""}],"differentiators":""}',
-    'Set "owner_name" only if the person states their OWN name (e.g. "I\'m Sarah", "my name\'s Tom") — first name only.',
+    'Set "owner_name" only if the person states their OWN name (e.g. "I\'m Sarah", "my name\'s Tom"). First name only.',
     "Include ONLY fields the message actually states; omit everything else. If it states no facts, output exactly {}.",
     'Also return a "reply" field: one short friendly sentence confirming what you saved.',
     'Wrap as {"facts":{...},"reply":"..."}.',
@@ -63,7 +63,7 @@ export async function updateFactsFromMessage(brand: Brand, message: string): Pro
 
   const merged = mergeFacts(brand.facts ?? {}, incoming);
   await query(`update brands set facts = $1::jsonb where id = $2`, [JSON.stringify(merged), brand.id]);
-  return parsed.reply?.trim() || "Got it — I've updated your business details.";
+  return parsed.reply?.trim() || "Got it, I've updated your business details.";
 }
 
 /** A compact, readable summary of the profile for prompting the reply engine. */
