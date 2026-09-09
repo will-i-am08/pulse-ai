@@ -50,13 +50,11 @@ export class MockGraphAdapter implements GraphAdapter {
           ? brand.ig_user_id
           : platform === "facebook"
             ? brand.fb_page_id
-            : platform === "google"
-              ? brand.gbp_location_id
-              : platform === "x"
-                ? "x"
-                : platform === "threads"
-                  ? "threads"
-                  : brand.id;
+            : platform === "x"
+              ? "x"
+              : platform === "threads"
+                ? "threads"
+                : brand.id;
       const permalink = `https://mock.graph.local/${platform}/${handle ?? brand.id}/${externalPostId}`;
       console.log(
         `[graph:mock] publish brand=${brand.id} platform=${platform} format=${format} media=${mediaUrls.length} -> ${externalPostId}`

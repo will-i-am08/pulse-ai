@@ -2,7 +2,7 @@ import { query, type Brand, type BusinessFacts } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 
 // The living business-facts profile: hours, prices, booking link, policies,
-// FAQs. Powers auto-replies to customers and (later) Google/other posts. The
+// FAQs. Powers auto-replies to customers and post generation. The
 // owner edits it just by telling the agent ("we're open till 6 now").
 
 const FACT_SIGNAL = /\b(hour|open|clos|price|cost|\$|book|appointment|address|located|deliver|refund|policy|faq|menu|we (offer|sell|do)|our (hours|prices|address)|my name|call me|name'?s|i'?m\s+[a-z]+)\b/i;

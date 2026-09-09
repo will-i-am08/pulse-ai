@@ -46,10 +46,6 @@ export function connectionSummary(brand: Brand): string {
   else if (brand.fb_page_id) connected.push("Facebook");
   else missing.push("Facebook");
 
-  if (brand.gbp_location_name) connected.push(`Google Business Profile (${brand.gbp_location_name})`);
-  else if (brand.gbp_location_id) connected.push("Google Business Profile");
-  else missing.push("Google Business Profile");
-
   const parts = [connected.length ? `Connected and live: ${connected.join(", ")}.` : "Nothing is connected yet."];
   if (missing.length) parts.push(`Not set up yet (offer to connect if it's relevant): ${missing.join(", ")}.`);
   parts.push("X and Threads can be posted to the fake feed only — no live account and no API key.");

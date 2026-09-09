@@ -13,10 +13,10 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator", "source"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook", "google", "x", "threads"] as const;
+export const Platform = ["instagram", "facebook", "x", "threads"] as const;
 export type Platform = (typeof Platform)[number];
 
-/** Chat-pickable publish destinations. Google is scheduled separately, not via this picker. */
+/** Chat-pickable publish destinations. */
 export const PublishDestination = ["instagram", "facebook", "x", "threads"] as const;
 export type PublishDestination = (typeof PublishDestination)[number];
 
@@ -41,8 +41,6 @@ export function platformLabel(platform: string): string {
       return "Instagram";
     case "facebook":
       return "Facebook";
-    case "google":
-      return "Google";
     default:
       return platform;
   }
@@ -148,11 +146,6 @@ export interface Brand {
   platform_tokens_encrypted: string | null;
   platform_user_token_encrypted: string | null;
   meta_connected_at: string | null;
-  google_tokens_encrypted: string | null;
-  gbp_account: string | null;
-  gbp_location_id: string | null;
-  gbp_location_name: string | null;
-  google_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;
   approver: Approver;
@@ -224,7 +217,7 @@ export interface CompetitorWatch {
 }
 
 // A connected photo source the agent polls for new media (Phase C auto-pull).
-export const ContentSourceKind = ["google_photos", "google_drive", "dropbox"] as const;
+export const ContentSourceKind = ["dropbox"] as const;
 export type ContentSourceKind = (typeof ContentSourceKind)[number];
 
 export interface ContentSource {

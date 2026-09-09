@@ -4,7 +4,6 @@ import type { Platform } from "@pulse/shared";
 export const RATE_LIMITS: Record<Platform, number> = {
   instagram: 100,
   facebook: 25,
-  google: 25,
   x: 50,
   threads: 100,
 };

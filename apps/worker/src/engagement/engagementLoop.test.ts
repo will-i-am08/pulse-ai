@@ -35,11 +35,6 @@ function fakeBrand(): Brand {
     platform_tokens_encrypted: null,
     platform_user_token_encrypted: null,
     meta_connected_at: null,
-    google_tokens_encrypted: null,
-    gbp_account: null,
-    gbp_location_id: null,
-    gbp_location_name: null,
-    google_connected_at: null,
     facts: {},
     visual: {},
     approver: "operator",
@@ -68,7 +63,6 @@ function fakeInteraction(overrides: Partial<Interaction> = {}): Interaction {
 
 function fakeDeps(overrides: Partial<RouteDeps> = {}) {
   const sendToBrand = vi.fn().mockResolvedValue(undefined);
-  const replyGoogleReview = vi.fn().mockResolvedValue(undefined);
   const graph = {
     publish: vi.fn(),
     fetchEngagement: vi.fn(),
@@ -76,8 +70,8 @@ function fakeDeps(overrides: Partial<RouteDeps> = {}) {
     reply: vi.fn().mockResolvedValue({ externalReplyId: "reply-1" }),
     hide: vi.fn().mockResolvedValue(undefined),
   };
-  const deps: RouteDeps = { graph, sendToBrand, replyGoogleReview, ...overrides };
-  return { deps, sendToBrand, replyGoogleReview, graph };
+  const deps: RouteDeps = { graph, sendToBrand, ...overrides };
+  return { deps, sendToBrand, graph };
 }
 
 async function route(
@@ -120,13 +114,6 @@ describe("routeEngagementResult", () => {
     const d = await route("hidden", { interaction: fakeInteraction() });
     expect(d.graph.hide).toHaveBeenCalledOnce();
     expect(d.sendToBrand).not.toHaveBeenCalled();
-  });
-
-  it("routes Google review replies through the GBP helper, not the graph adapter", async () => {
-    const it = fakeInteraction({ platform: "google", kind: "review", external_id: "accounts/1/locations/2/reviews/3" });
-    const d = await route("auto_replied", { interaction: it, publicReply: "Thanks for visiting!" }, it);
-    expect(d.replyGoogleReview).toHaveBeenCalledOnce();
-    expect(d.graph.reply).not.toHaveBeenCalled();
   });
 
   it("surfaces a failed platform reply in the owner thread with the intended text", async () => {

@@ -15,7 +15,6 @@ import { query, schedulePinSchema, type Platform, type SchedulePin } from "@puls
 const PLATFORM_WINDOWS: Record<Platform, number[]> = {
   instagram: [11, 13, 19],
   facebook: [9, 12, 17],
-  google: [9, 12, 15],
   x: [9, 12, 18],
   threads: [11, 13, 19],
 };
