@@ -6,7 +6,7 @@ import { ownerBrandId, listPlanPosts, listPillars, type PlanPost } from '@/lib/d
 import { reschedulePostAction, removePostAction, setPillarAction } from '@/lib/actions/plan';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Content calendar | Pulse' };
+export const metadata = { title: 'Content calendar | Kip' };
 
 const PILLAR_COLORS: Record<string, string> = {
   behind_the_scenes: '#6366f1',

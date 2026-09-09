@@ -9,7 +9,7 @@ if (!token) {
 }
 
 const MESSAGE =
-  "👋 Hey Will — it's your Pulse agent. Anything to post this week? " +
+  "👋 Hey Will — it's your Kip agent. Anything to post this week? " +
   "Send me a photo and I'll draft a caption in your brand's voice; reply “yes” and it goes live.";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });

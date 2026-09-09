@@ -45,7 +45,7 @@ export async function getProposedPlan(brandId: string): Promise<ContentPlan | nu
  */
 export async function researchNichePlan(brand: Brand, niche: string, exemplars: string | null): Promise<NichePlan | null> {
   const system = [
-    `You are Pulse, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
+    `You are Kip, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
     exemplars ? `Accounts the owner admires (study these first): ${exemplars}.` : "",
     "Use web search to study what's working in this niche RIGHT NOW: strong accounts, the content types and formats getting engagement, how often top players post, the hooks/angles that land, and good posting times for this audience.",
     "Then design a tailored plan. The only formats available are feed posts, carousels and stories. Do NOT recommend Reels or video. Favour carousels (best saves/reach), with feed posts and stories mixed in.",
@@ -107,7 +107,7 @@ export async function researchNichePlanFallback(
   exemplars: string | null,
 ): Promise<NichePlan | null> {
   const system = [
-    `You are Pulse, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
+    `You are Kip, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
     exemplars ? `Accounts the owner admires (match their vibe): ${exemplars}.` : "",
     "No web research is available, so build from what works generally in this niche. The only formats available are feed posts, carousels and stories. Do NOT recommend Reels or video. Favour carousels (best saves/reach), with feed posts and stories mixed in.",
     'Output ONLY JSON: {"summary":"<one punchy SMS line, e.g. \'3 pillars, 5 posts/wk, carousel-heavy, best Tue/Thu evenings\'>","pillars":[{"key":"<snake_case>","name":"<short>","description":"<one line: what goes here>","posts_per_week":<int>,"format_bias":"feed|carousel|story"}],"format_mix":"<one line>","best_times":"<one line, days + times>","starter_ideas":["<idea>","<idea>","<idea>"]}',

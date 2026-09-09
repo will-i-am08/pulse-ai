@@ -8,16 +8,16 @@ export default function DataDeletionPage() {
   return (
     <div className="content doc">
       <h1>Data Deletion</h1>
-      <p className="meta">How to delete your data from Pulse</p>
+      <p className="meta">How to delete your data from Kip</p>
 
       <p>
-        You can have the data Pulse holds about you deleted at any time. This page explains what we
+        You can have the data Kip holds about you deleted at any time. This page explains what we
         store and how to request its removal.
       </p>
 
-      <h2>Disconnect Pulse from Meta</h2>
+      <h2>Disconnect Kip from Meta</h2>
       <p>
-        To immediately revoke Pulse&apos;s access to your Instagram and Facebook accounts, remove the
+        To immediately revoke Kip&apos;s access to your Instagram and Facebook accounts, remove the
         integration from your Facebook settings:
       </p>
       <ul>

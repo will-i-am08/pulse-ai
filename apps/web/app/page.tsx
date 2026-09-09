@@ -4,9 +4,9 @@ import { BrandLockup } from './components/BrandLockup';
 import styles from './page.module.css';
 
 export const metadata: Metadata = {
-  title: 'Pulse | Your social media, handled',
+  title: 'Kip | Your social media, handled',
   description:
-    "Text a photo. Pulse writes the caption in your brand's voice, you approve it with a tap, and it posts to Instagram and Facebook. No apps, no scheduling tools, nothing to learn.",
+    "Text a photo. Kip writes the caption in your brand's voice, you approve it with a tap, and it posts to Instagram and Facebook. No apps, no scheduling tools, nothing to learn.",
 };
 
 const steps = [
@@ -57,7 +57,7 @@ export default function LandingPage() {
           Facebook.
         </p>
         <div className={styles.ctaRow}>
-          <a href="mailto:will@jmcalder.com?subject=Pulse" className={styles.ctaPrimary}>
+          <a href="mailto:will@jmcalder.com?subject=Kip" className={styles.ctaPrimary}>
             Get started
           </a>
           <a href="#how" className={styles.ctaLink}>
@@ -107,7 +107,7 @@ export default function LandingPage() {
 
       <section className={styles.closer}>
         <h2 className={styles.closerTitle}>Never stare at a blank caption box again.</h2>
-        <a href="mailto:will@jmcalder.com?subject=Pulse" className={styles.ctaPrimary}>
+        <a href="mailto:will@jmcalder.com?subject=Kip" className={styles.ctaPrimary}>
           Get started
         </a>
       </section>

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { signupAction } from '@/lib/actions/auth';
 import styles from '../auth.module.css';
 
-export const metadata = { title: 'Sign up | Pulse' };
+export const metadata = { title: 'Sign up | Kip' };
 
 const ERRORS: Record<string, string> = {
   exists: 'That email is already registered. Try logging in.',
@@ -23,7 +23,7 @@ export default async function SignupPage({
     <main className={styles.wrap}>
       <form className={styles.card} action={signupAction}>
         <h1 className={styles.h1}>Create your account</h1>
-        <p className={styles.sub}>Sign up and your Pulse agent will message you to get set up.</p>
+        <p className={styles.sub}>Sign up and your Kip agent will message you to get set up.</p>
         {msg && <p className={styles.error}>{msg}</p>}
 
         <label className={styles.label}>

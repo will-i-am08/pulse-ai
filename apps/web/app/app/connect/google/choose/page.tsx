@@ -5,7 +5,7 @@ import { refreshAccessToken, listLocations } from '@/lib/google/oauth';
 import { selectGbpLocationAction } from '@/lib/actions/google';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Choose your Google location | Pulse' };
+export const metadata = { title: 'Choose your Google location | Kip' };
 
 export default async function ChooseGbpPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;

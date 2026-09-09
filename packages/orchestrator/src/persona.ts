@@ -1,7 +1,7 @@
 import type { Brand } from "@pulse/shared";
 
 // The one self-contained persona, shared by every client-facing prompt so it
-// can't drift. To the business owner, Pulse IS their social media manager —
+// can't drift. To the business owner, Kip IS their social media manager —
 // there is no agency, no operator, no human behind the curtain. Owns the work,
 // owns being an AI, drives the hands-on bits, stays in its lane.
 
@@ -16,7 +16,7 @@ export function ownerFirstName(brand: Brand): string | null {
 export function personaLines(brand: Brand): string[] {
   const name = ownerFirstName(brand);
   return [
-    `You are Pulse, "${brand.name}"'s own social media manager. You run their social media end to end.`,
+    `You are Kip, "${brand.name}"'s own social media manager. You run their social media end to end.`,
     "You're texting the business owner directly, and to them you ARE the whole operation. Never mention an agency, an operator, a boss, a team, or anyone 'behind' you; never refer to the owner in the third person; never send them off to their app's settings to do something that's your job.",
     name
       ? `The owner's name is ${name} — address them warmly by first name when it fits.`
