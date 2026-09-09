@@ -1,5 +1,5 @@
-import type { Brand, Interaction, Platform, PostFormat, ServerEnv, XStoredTokens } from "@pulse/shared";
-import { decryptJson, encryptJson, getServerEnv, query, xEnsureToken, xPostTweet } from "@pulse/shared";
+import type { Brand, Interaction, Platform, PostFormat, ServerEnv, XStoredTokens, ThreadsStoredTokens } from "@pulse/shared";
+import { decryptJson, encryptJson, getServerEnv, query, xEnsureToken, xPostTweet, threadsEnsureToken, threadsPublish } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -73,10 +73,23 @@ export class LiveGraphAdapter implements GraphAdapter {
     const { brand, platform, caption, mediaUrls } = input;
     const format: PostFormat = input.format ?? "feed";
 
-    // Threads is still mock/fake-feed only (rides Meta's Graph API — next up).
+    // Threads: live once the app is configured (THREADS_APP_ID) and the brand has
+    // connected an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "threads") {
-      const { MockGraphAdapter } = await import("./mock.js");
-      return new MockGraphAdapter().publish(input);
+      if (!getServerEnv().THREADS_APP_ID || !brand.threads_tokens_encrypted || !brand.threads_user_id) {
+        const { MockGraphAdapter } = await import("./mock.js");
+        return new MockGraphAdapter().publish(input);
+      }
+      return withRetry(`live:publish:${brand.id}:threads`, async () => {
+        const stored = decryptJson<ThreadsStoredTokens>(brand.threads_tokens_encrypted!);
+        const { accessToken, refreshed } = await threadsEnsureToken(stored);
+        if (refreshed) {
+          await query("update brands set threads_tokens_encrypted = $1 where id = $2", [encryptJson(refreshed), brand.id]);
+        }
+        // Text, plus a single image when we have one; carousels/video are a flagged follow-on.
+        const { id, permalink } = await threadsPublish(brand.threads_user_id!, accessToken, caption, mediaUrls[0]);
+        return { externalPostId: id, permalink };
+      });
     }
 
     // X: live once the app is configured (X_CLIENT_ID) and the brand has connected

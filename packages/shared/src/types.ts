@@ -149,6 +149,10 @@ export interface Brand {
   x_user_id: string | null;
   x_username: string | null;
   x_tokens_encrypted: string | null;
+  // Threads: the connected account and its long-lived token ({access_token,expires_at}).
+  threads_user_id: string | null;
+  threads_username: string | null;
+  threads_tokens_encrypted: string | null;
   meta_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;

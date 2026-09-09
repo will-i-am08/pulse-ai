@@ -36,6 +36,15 @@ const X_MSG: Record<string, { text: string; ok: boolean }> = {
   nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
 };
 
+const THREADS_MSG: Record<string, { text: string; ok: boolean }> = {
+  success: { text: 'Threads connected 🎉 Your agent can post to Threads now.', ok: true },
+  denied: { text: 'Threads connection cancelled. You can try again anytime.', ok: false },
+  failed: { text: 'Something went wrong connecting Threads. Please try again.', ok: false },
+  invalid: { text: 'That link expired. Please start the Threads connection again.', ok: false },
+  unconfigured: { text: 'Threads connect isn’t switched on yet. Hang tight.', ok: false },
+  nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
+};
+
 function isConnected(b: Brand): boolean {
   // A Page + a stored publish token + a linked Instagram account (publishing runs
   // through IG today, so a Page with no IG isn't really "connected").
@@ -95,7 +104,7 @@ function PostRows({ posts, empty }: { posts: Post[]; empty: string }) {
 export default async function DashboardHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string; x?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string; x?: string; threads?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -147,7 +156,7 @@ export default async function DashboardHome({
     );
   }
 
-  const { connect, phone, x } = await searchParams;
+  const { connect, phone, x, threads } = await searchParams;
   const brands = await listBrandsForOwner(user!.id);
   const brand = brands[0];
 
@@ -185,6 +194,7 @@ export default async function DashboardHome({
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
       <Banner msg={x ? X_MSG[x] : undefined} />
+      <Banner msg={threads ? THREADS_MSG[threads] : undefined} />
 
       <article className={styles.row}>
         <h2>Status</h2>
@@ -284,6 +294,20 @@ export default async function DashboardHome({
           <>
             <p className={styles.empty}>Link your X account so your agent can post there too.</p>
             <a className="btn-primary" href="/api/connect/x/start">Connect X</a>
+          </>
+        )}
+      </article>
+
+      <article className={styles.panel}>
+        <h2>Connect Threads (optional)</h2>
+        {brand.threads_username ? (
+          <p className={styles.empty}>
+            Posting to @{brand.threads_username}. <a href="/api/connect/threads/start">Reconnect</a>
+          </p>
+        ) : (
+          <>
+            <p className={styles.empty}>Link your Threads account so your agent can post there too.</p>
+            <a className="btn-primary" href="/api/connect/threads/start">Connect Threads</a>
           </>
         )}
       </article>
