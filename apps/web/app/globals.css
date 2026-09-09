@@ -1,10 +1,13 @@
 :root {
   --bg: #f6f7f9;
   --surface: #ffffff;
-  --border: #e2e5ea;
-  --text: #16181d;
-  --text-muted: #64707d;
-  --accent: #2f6feb;
+  --border: #e4e8ee;
+  --line: #e4e8ee;
+  --text: #14171d;
+  --ink: #14171d;
+  --text-muted: #565f6b;
+  --muted: #565f6b;
+  --accent: #f5482a;
   --accent-contrast: #ffffff;
   --danger: #d1453b;
   --danger-contrast: #ffffff;
@@ -22,19 +25,24 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--accent);
+  color: var(--ink);
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   margin: 0 0 0.25rem;
 }
 
 h2 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 1.5rem 0 0.75rem;
 }
 
@@ -50,7 +58,7 @@ h2 {
   justify-content: space-between;
   padding: 0.85rem 1.5rem;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 .topbar nav {
@@ -58,8 +66,31 @@ h2 {
   gap: 1rem;
 }
 
+.topbar nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 15px;
+}
+
+.topbar nav a:hover {
+  color: var(--ink);
+}
+
 .brandmark {
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brandmark img {
+  display: block;
+  width: 28px;
+  height: 28px;
 }
 
 .content {
@@ -110,13 +141,20 @@ h2 {
   color: var(--success);
 }
 
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
 /* ─── table ─────────────────────────────────────── */
 
 .table {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -124,21 +162,29 @@ h2 {
 .table th,
 .table td {
   text-align: left;
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.92rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
 }
 
 .table th {
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 0.8rem;
-  text-transform: uppercase;
+  font-size: 0.78rem;
   letter-spacing: 0.02em;
 }
 
 .table tr:last-child td {
   border-bottom: none;
+}
+
+.table a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.table a:hover {
+  color: var(--ink);
 }
 
 /* ─── badges ────────────────────────────────────── */
@@ -163,8 +209,8 @@ h2 {
 
 .badge-paused,
 .badge-pending_approval {
-  background: #fdf3e2;
-  color: #a6690a;
+  background: #fdecea;
+  color: var(--accent);
 }
 
 .badge-archived,
@@ -247,9 +293,12 @@ a.btn-primary {
   display: inline-block;
 }
 
-.btn-secondary {
+.btn-secondary,
+a.btn-secondary {
   background: #eef1f5;
   color: var(--text);
+  text-decoration: none;
+  display: inline-block;
 }
 
 .btn-danger {
@@ -349,12 +398,39 @@ button:disabled {
   font-size: 1.2rem;
 }
 
-/* ─── privacy ───────────────────────────────────── */
+/* ─── privacy / terms / data-deletion (unchanged look) ─── */
 
 .doc {
+  --accent: #2f6feb;
+  --text: #16181d;
+  --text-muted: #64707d;
+  --border: #e2e5ea;
   max-width: 760px;
+  color: #16181d;
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.doc h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 0.25rem;
 }
 
 .doc h2 {
-  margin-top: 1.75rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 1.75rem 0 0.75rem;
+}
+
+.doc a {
+  color: #2f6feb;
+}
+
+.doc .meta {
+  color: #64707d;
 }

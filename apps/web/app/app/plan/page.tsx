@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { publicMediaUrl } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { ownerBrandId, listPlanPosts, listPillars, type PlanPost } from '@/lib/data/plan';
-import { reschedulePostAction, removePostAction, approvePostAction, setPillarAction } from '@/lib/actions/plan';
+import { reschedulePostAction, removePostAction, setPillarAction } from '@/lib/actions/plan';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Content calendar | Pulse' };
@@ -19,12 +19,12 @@ const pillarColor = (key: string | null) => (key && PILLAR_COLORS[key]) || '#647
 
 type StatusStyle = { label: string; bg: string; fg: string };
 const STATUS: Record<string, StatusStyle> = {
-  pending_approval: { label: 'Needs approval', bg: '#fff4e5', fg: '#b9770e' },
-  approved: { label: 'Approved', bg: '#e8f1ff', fg: '#1d4ed8' },
-  scheduled: { label: 'Autopilot', bg: '#eafaf0', fg: '#1e7e46' },
-  published: { label: 'Published', bg: '#eef0f3', fg: '#475569' },
+  pending_approval: { label: 'Needs a yes', bg: '#fdecea', fg: '#f5482a' },
+  approved: { label: 'Approved', bg: '#eef1f5', fg: '#565f6b' },
+  scheduled: { label: 'Autopilot', bg: '#eafaf0', fg: '#1a7f4e' },
+  published: { label: 'Published', bg: '#eef1f5', fg: '#565f6b' },
 };
-const FALLBACK_STATUS: StatusStyle = { label: 'Scheduled', bg: '#e8f1ff', fg: '#1d4ed8' };
+const FALLBACK_STATUS: StatusStyle = { label: 'Scheduled', bg: '#eef1f5', fg: '#565f6b' };
 
 function startOfWeek(base: Date, weekOffset: number): Date {
   const d = new Date(base);
@@ -79,12 +79,6 @@ function PostCard({ post }: { post: PlanPost }) {
             <input type="datetime-local" name="scheduledAt" defaultValue={post.scheduled_at ? toLocalInput(post.scheduled_at) : ''} style={{ fontSize: 11, padding: '2px 4px', border: '1px solid var(--border,#d9d9e0)', borderRadius: 6 }} />
             <button type="submit" style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid var(--border,#d9d9e0)', background: '#f7f7fa', cursor: 'pointer' }}>Move</button>
           </form>
-          {post.status === 'pending_approval' && (
-            <form action={approvePostAction}>
-              <input type="hidden" name="postId" value={post.id} />
-              <button type="submit" style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: 'none', background: '#1e7e46', color: '#fff', cursor: 'pointer' }}>Approve</button>
-            </form>
-          )}
           <form action={removePostAction}>
             <input type="hidden" name="postId" value={post.id} />
             <button type="submit" style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #f2c4bd', background: '#fff', color: '#c0392b', cursor: 'pointer' }}>Remove</button>
@@ -126,9 +120,9 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h1>Content calendar</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Link href={`/app/plan?w=${weekOffset - 1}`} className="btn-primary" style={{ padding: '6px 12px' }}>← Prev</Link>
+          <Link href={`/app/plan?w=${weekOffset - 1}`} className="btn-secondary" style={{ padding: '6px 12px', textDecoration: 'none' }}>← Prev</Link>
           {weekOffset !== 0 && <Link href="/app/plan" style={{ alignSelf: 'center' }}>This week</Link>}
-          <Link href={`/app/plan?w=${weekOffset + 1}`} className="btn-primary" style={{ padding: '6px 12px' }}>Next →</Link>
+          <Link href={`/app/plan?w=${weekOffset + 1}`} className="btn-secondary" style={{ padding: '6px 12px', textDecoration: 'none' }}>Next →</Link>
         </div>
       </div>
 
@@ -138,8 +132,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             const dayPosts = posts.filter((p) => p.scheduled_at && sameDay(new Date(p.scheduled_at), day));
             const isToday = sameDay(day, today);
             return (
-              <div key={day.toISOString()} style={{ background: isToday ? '#f5f8ff' : '#fafafc', borderRadius: 10, padding: 8, minHeight: 120, border: isToday ? '1px solid #cdddff' : '1px solid var(--border,#eee)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#1d4ed8' : '#475569', marginBottom: 8 }}>{dayFmt.format(day)}</div>
+              <div key={day.toISOString()} style={{ background: isToday ? '#fff' : '#f6f7f9', borderRadius: 10, padding: 8, minHeight: 120, border: isToday ? '1px solid #14171d' : '1px solid var(--line,#e4e8ee)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? '#14171d' : '#565f6b', marginBottom: 8 }}>{dayFmt.format(day)}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {dayPosts.length === 0 ? (
                     <span style={{ color: '#aab', fontSize: 12 }}>-</span>

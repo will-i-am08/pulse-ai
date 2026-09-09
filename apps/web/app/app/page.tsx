@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrands, listBrandsForOwner } from '@/lib/data/brands';
+import { listPostsByStatus, listUpcomingPosts } from '@/lib/data/posts';
 import { setPhoneAction } from '@/lib/actions/connect';
-import type { Brand, OnboardingStatus } from '@pulse/shared';
+import type { Brand, OnboardingStatus, Post } from '@pulse/shared';
+import styles from './dash.module.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,55 +49,7 @@ function hasRealPhone(b: Brand): boolean {
 function Banner({ msg }: { msg?: { text: string; ok: boolean } }) {
   if (!msg) return null;
   return (
-    <p
-      style={{
-        padding: '10px 14px',
-        borderRadius: 8,
-        marginBottom: 16,
-        background: msg.ok ? '#e8f8ef' : '#fdecea',
-        color: msg.ok ? '#1e7e46' : '#c0392b',
-        border: `1px solid ${msg.ok ? '#bfe8cf' : '#f5c6c0'}`,
-      }}
-    >
-      {msg.text}
-    </p>
-  );
-}
-
-function StepCard({
-  n,
-  title,
-  done,
-  children,
-}: {
-  n: number;
-  title: string;
-  done: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="card" style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-      <div
-        aria-hidden
-        style={{
-          flex: '0 0 auto',
-          width: 30,
-          height: 30,
-          borderRadius: '50%',
-          display: 'grid',
-          placeItems: 'center',
-          fontWeight: 700,
-          color: done ? '#fff' : '#555',
-          background: done ? '#1e7e46' : '#ececf1',
-        }}
-      >
-        {done ? '✓' : n}
-      </div>
-      <div style={{ flex: 1 }}>
-        <h2 style={{ margin: '2px 0 8px', fontSize: 18 }}>{title}</h2>
-        {children}
-      </div>
-    </div>
+    <p className={`${styles.banner} ${msg.ok ? styles.bannerOk : styles.bannerBad}`}>{msg.text}</p>
   );
 }
 
@@ -113,6 +66,33 @@ function setupLabel(status: OnboardingStatus | undefined): string {
   }
 }
 
+function formatWhen(iso: string | null): string {
+  if (!iso) return 'Unscheduled';
+  return new Intl.DateTimeFormat('en-AU', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
+function PostRows({ posts, empty }: { posts: Post[]; empty: string }) {
+  if (posts.length === 0) {
+    return <p className={styles.empty}>{empty}</p>;
+  }
+  return (
+    <ul className={styles.list}>
+      {posts.map((post) => (
+        <li key={post.id} className={styles.row}>
+          <span className={styles.when}>{formatWhen(post.scheduled_at)}</span>
+          <p className={styles.caption}>{post.caption ?? '(no caption yet)'}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default async function DashboardHome({
   searchParams,
 }: {
@@ -126,16 +106,25 @@ export default async function DashboardHome({
     const brands = await listBrands();
     return (
       <section>
-        <div className="page-header">
+        <div className={styles.operatorHead}>
           <h1>All brands</h1>
-          <Link href="/app/brands/new" className="btn-primary">Add brand</Link>
+          <Link href="/app/brands/new" className="btn-primary">
+            Add brand
+          </Link>
         </div>
         {brands.length === 0 ? (
           <p className="empty">No brands yet.</p>
         ) : (
           <table className="table">
             <thead>
-              <tr><th>Name</th><th>Owner</th><th>Connected</th><th>Setup</th><th>Status</th><th /></tr>
+              <tr>
+                <th>Name</th>
+                <th>Owner</th>
+                <th>Connected</th>
+                <th>Setup</th>
+                <th>Status</th>
+                <th />
+              </tr>
             </thead>
             <tbody>
               {brands.map((b) => (
@@ -144,8 +133,12 @@ export default async function DashboardHome({
                   <td>{b.owner_user_id ? 'user' : '-'}</td>
                   <td>{b.fb_page_id ? (b.ig_username ? `@${b.ig_username}` : 'FB page') : '-'}</td>
                   <td>{b.onboarding_state?.status ?? 'none'}</td>
-                  <td><span className={`badge badge-${b.status}`}>{b.status}</span></td>
-                  <td><Link href={`/app/brands/${b.id}`}>Open</Link></td>
+                  <td>
+                    <span className={`badge badge-${b.status}`}>{b.status}</span>
+                  </td>
+                  <td>
+                    <Link href={`/app/brands/${b.id}`}>Open</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -161,9 +154,12 @@ export default async function DashboardHome({
 
   if (!brand) {
     return (
-      <section>
-        <div className="page-header"><h1>Your agent</h1></div>
-        <p className="empty">We’re setting up your account…</p>
+      <section className={styles.home}>
+        <article className={styles.panel}>
+          <h2>Status</h2>
+          <p className={styles.status}>Still setting up</p>
+          <p className={styles.statusDetail}>We’re setting up your account…</p>
+        </article>
       </section>
     );
   }
@@ -171,91 +167,112 @@ export default async function DashboardHome({
   const connected = isConnected(brand);
   const phoneSet = hasRealPhone(brand);
   const allDone = connected && phoneSet;
+  const [upcoming, waiting] = await Promise.all([
+    listUpcomingPosts(brand.id),
+    listPostsByStatus(brand.id, ['pending_approval']),
+  ]);
 
   return (
-    <section>
-      <div className="page-header">
-        <h1>{allDone ? 'Your agent' : 'Finish setting up'}</h1>
-      </div>
-
+    <section className={styles.home}>
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
       <Banner msg={google ? GOOGLE_MSG[google] : undefined} />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <StepCard n={1} title="Connect Instagram & Facebook" done={connected}>
-          {connected ? (
-            <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-              Connected to <strong>{brand.fb_page_name ?? 'your Page'}</strong>
-              {brand.ig_username ? <> · Instagram <strong>@{brand.ig_username}</strong></> : null}.{' '}
-              <a href="/api/connect/facebook/start">Reconnect</a>
+      <article className={styles.panel}>
+        <h2>Status</h2>
+        {connected ? (
+          <>
+            <p className={styles.status}>Connected</p>
+            <p className={styles.statusDetail}>
+              {brand.fb_page_name ?? 'your Page'}
+              {brand.ig_username ? ` · @${brand.ig_username}` : ''}
             </p>
-          ) : (
-            <>
-              <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-                Sign in with Facebook and choose the Page your agent should post to. Your Instagram
-                links automatically if it’s connected to that Page.
-              </p>
-              <a className="btn-primary" href="/api/connect/facebook/start">Connect with Facebook</a>
-            </>
-          )}
-        </StepCard>
-
-        <StepCard n={2} title="Add your mobile number" done={phoneSet}>
-          {phoneSet ? (
-            <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-              We’ll reach you on <strong>{brand.client_phone}</strong>.{' '}
-              <span style={{ fontSize: 13 }}>Wrong number? Update it below.</span>
-            </p>
-          ) : (
-            <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-              This is how your agent works. You text it a photo, it drafts the post, you reply “yes”.
-            </p>
-          )}
-          <form action={setPhoneAction} style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            <input
-              name="phone"
-              inputMode="tel"
-              placeholder="04xx xxx xxx"
-              defaultValue={phoneSet ? brand.client_phone : ''}
-              required
-              style={{ flex: '1 1 220px', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border,#d9d9e0)' }}
-            />
-            <button className="btn-primary" type="submit">{phoneSet ? 'Update' : 'Save number'}</button>
-          </form>
-        </StepCard>
-
-        <StepCard n={3} title="Your agent takes it from here" done={brand.onboarding_state?.status === 'done'}>
-          <p style={{ margin: 0, color: 'var(--muted, #667)' }}>{setupLabel(brand.onboarding_state?.status)}</p>
-        </StepCard>
-      </div>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <h2 style={{ marginTop: 0, fontSize: 18 }}>Google Business Profile <span style={{ fontSize: 13, color: 'var(--muted,#667)', fontWeight: 400 }}>(optional)</span></h2>
-        {brand.gbp_location_id ? (
-          <p style={{ margin: 0, color: 'var(--muted, #667)' }}>
-            Connected to <strong>{brand.gbp_location_name ?? 'your location'}</strong>. The agent can post to Google and handle your reviews.{' '}
-            <a href="/api/connect/google/start">Reconnect</a>
-          </p>
+          </>
         ) : (
           <>
-            <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-              Connect your Google Business Profile so the agent posts to Google and replies to your Google reviews. Big for local discovery.
-            </p>
-            <a className="btn-primary" href="/api/connect/google/start">Connect Google</a>
+            <p className={styles.status}>Still setting up</p>
+            <p className={styles.statusDetail}>{setupLabel(brand.onboarding_state?.status)}</p>
           </>
         )}
-      </div>
+      </article>
 
-      {allDone && (
-        <div className="card" style={{ marginTop: 14 }}>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            <Link href={`/app/brands/${brand.id}/voice`}>Edit brand voice</Link>
-            <Link href={`/app/brands/${brand.id}`}>Approvals</Link>
-            <Link href={`/app/brands/${brand.id}/history`}>Post history</Link>
-          </div>
-        </div>
+      {!allDone && (
+        <article className={styles.panel}>
+          <h2>Setup</h2>
+          <ul className={styles.setupList}>
+            <li className={styles.setupItem}>
+              <div className={styles.setupHead}>
+                <span>Connect Facebook</span>
+                <span className={connected ? styles.done : styles.need}>
+                  {connected ? 'Done' : 'Needs you'}
+                </span>
+              </div>
+              {connected ? (
+                <p className={styles.empty}>
+                  {brand.fb_page_name ?? 'your Page'}
+                  {brand.ig_username ? ` · @${brand.ig_username}` : ''}.{' '}
+                  <a href="/api/connect/facebook/start">Reconnect</a>
+                </p>
+              ) : (
+                <>
+                  <p className={styles.empty}>
+                    Sign in with Facebook and choose the Page your agent should post to.
+                  </p>
+                  <a className="btn-primary" href="/api/connect/facebook/start">
+                    Connect with Facebook
+                  </a>
+                </>
+              )}
+            </li>
+            <li className={styles.setupItem}>
+              <div className={styles.setupHead}>
+                <span>Add your phone</span>
+                <span className={phoneSet ? styles.done : styles.need}>
+                  {phoneSet ? 'Done' : 'Needs you'}
+                </span>
+              </div>
+              {phoneSet ? (
+                <p className={styles.empty}>We’ll reach you on {brand.client_phone}.</p>
+              ) : (
+                <p className={styles.empty}>
+                  This is how your agent works. You text it a photo, it drafts the post, you reply
+                  “yes”.
+                </p>
+              )}
+              <form action={setPhoneAction} className={styles.quietForm}>
+                <input
+                  name="phone"
+                  inputMode="tel"
+                  placeholder="04xx xxx xxx"
+                  defaultValue={phoneSet ? brand.client_phone : ''}
+                  required
+                />
+                <button className="btn-primary" type="submit">
+                  {phoneSet ? 'Update' : 'Save number'}
+                </button>
+              </form>
+            </li>
+          </ul>
+        </article>
       )}
+
+      <article className={styles.panel}>
+        <h2>Upcoming</h2>
+        <PostRows posts={upcoming} empty="Nothing scheduled yet." />
+      </article>
+
+      <article className={styles.panel}>
+        <h2>Needs a yes</h2>
+        <p className={styles.yesCount}>
+          {waiting.length === 0
+            ? 'Nothing waiting'
+            : waiting.length === 1
+              ? '1 draft waiting'
+              : `${waiting.length} drafts waiting`}
+        </p>
+        {waiting.length > 0 ? <PostRows posts={waiting} empty="" /> : null}
+        <p className={styles.threadHint}>Reply yes in your text thread to approve. Nothing posts without it.</p>
+      </article>
     </section>
   );
 }
