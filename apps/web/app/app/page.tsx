@@ -20,7 +20,7 @@ const CONNECT_MSG: Record<string, { text: string; ok: boolean }> = {
 };
 
 const PHONE_MSG: Record<string, { text: string; ok: boolean }> = {
-  saved: { text: 'Phone number saved. Your agent will be in touch.', ok: true },
+  saved: { text: 'Phone number saved. Kip will be in touch.', ok: true },
   invalid: { text: 'That doesn’t look like a valid mobile number. Try again (e.g. 04xx xxx xxx).', ok: false },
   taken: { text: 'That number is already linked to another account.', ok: false },
 };
@@ -44,13 +44,13 @@ function Banner({ msg }: { msg?: { text: string; ok: boolean } }) {
 function setupLabel(status: OnboardingStatus | undefined): string {
   switch (status) {
     case 'pending':
-      return 'Your agent is about to message you to finish setup.';
+      return 'Kip is about to message you to finish setup.';
     case 'in_progress':
-      return 'Setup in progress. Reply to the agent to finish.';
+      return 'Setup in progress. Reply to Kip to finish.';
     case 'done':
-      return 'All set. Send a photo anytime and your agent drafts a post.';
+      return 'All set. Send a photo anytime and Kip drafts a post.';
     default:
-      return 'Add your number and your agent will reach out to get started.';
+      return 'Add your number and Kip will reach out to get started.';
   }
 }
 
@@ -72,7 +72,7 @@ function PostRows({ posts, empty }: { posts: Post[]; empty: string }) {
   return (
     <ul className={styles.list}>
       {posts.map((post) => (
-        <li key={post.id} className={styles.row}>
+        <li key={post.id} className={styles.draft}>
           <span className={styles.when}>{formatWhen(post.scheduled_at)}</span>
           <p className={styles.caption}>{post.caption ?? '(no caption yet)'}</p>
         </li>
@@ -143,10 +143,19 @@ export default async function DashboardHome({
   if (!brand) {
     return (
       <section className={styles.home}>
-        <article className={styles.panel}>
+        <article className={styles.row}>
           <h2>Status</h2>
           <p className={styles.status}>Still setting up</p>
           <p className={styles.statusDetail}>We’re setting up your account…</p>
+        </article>
+        <article className={styles.row}>
+          <h2>Upcoming</h2>
+          <p className={styles.empty}>Nothing scheduled yet.</p>
+        </article>
+        <article className={styles.row}>
+          <h2>Needs a yes</h2>
+          <p className={styles.empty}>Nothing waiting</p>
+          <p className={styles.threadHint}>Reply yes in your text thread to approve. Nothing posts without it.</p>
         </article>
       </section>
     );
@@ -165,7 +174,7 @@ export default async function DashboardHome({
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
 
-      <article className={styles.panel}>
+      <article className={styles.row}>
         <h2>Status</h2>
         {connected ? (
           <>
@@ -181,11 +190,7 @@ export default async function DashboardHome({
             <p className={styles.statusDetail}>{setupLabel(brand.onboarding_state?.status)}</p>
           </>
         )}
-      </article>
-
-      {!allDone && (
-        <article className={styles.panel}>
-          <h2>Setup</h2>
+        {!allDone && (
           <ul className={styles.setupList}>
             <li className={styles.setupItem}>
               <div className={styles.setupHead}>
@@ -203,7 +208,7 @@ export default async function DashboardHome({
               ) : (
                 <>
                   <p className={styles.empty}>
-                    Sign in with Facebook and choose the Page your agent should post to.
+                    Sign in with Facebook and choose the Page Kip should post to.
                   </p>
                   <a className="btn-primary" href="/api/connect/facebook/start">
                     Connect with Facebook
@@ -222,8 +227,7 @@ export default async function DashboardHome({
                 <p className={styles.empty}>We’ll reach you on {brand.client_phone}.</p>
               ) : (
                 <p className={styles.empty}>
-                  This is how your agent works. You text it a photo, it drafts the post, you reply
-                  “yes”.
+                  This is how Kip works. You text a photo, it drafts the post, you reply “yes”.
                 </p>
               )}
               <form action={setPhoneAction} className={styles.quietForm}>
@@ -240,24 +244,21 @@ export default async function DashboardHome({
               </form>
             </li>
           </ul>
-        </article>
-      )}
+        )}
+      </article>
 
-      <article className={styles.panel}>
+      <article className={styles.row}>
         <h2>Upcoming</h2>
         <PostRows posts={upcoming} empty="Nothing scheduled yet." />
       </article>
 
-      <article className={styles.panel}>
+      <article className={styles.row}>
         <h2>Needs a yes</h2>
-        <p className={styles.yesCount}>
-          {waiting.length === 0
-            ? 'Nothing waiting'
-            : waiting.length === 1
-              ? '1 draft waiting'
-              : `${waiting.length} drafts waiting`}
-        </p>
-        {waiting.length > 0 ? <PostRows posts={waiting} empty="" /> : null}
+        {waiting.length === 0 ? (
+          <p className={styles.empty}>Nothing waiting</p>
+        ) : (
+          <PostRows posts={waiting} empty="" />
+        )}
         <p className={styles.threadHint}>Reply yes in your text thread to approve. Nothing posts without it.</p>
       </article>
     </section>
