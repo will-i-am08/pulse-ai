@@ -25,18 +25,6 @@ const PHONE_MSG: Record<string, { text: string; ok: boolean }> = {
   taken: { text: 'That number is already linked to another account.', ok: false },
 };
 
-const GOOGLE_MSG: Record<string, { text: string; ok: boolean }> = {
-  success: { text: 'Google Business Profile connected 🎉', ok: true },
-  denied: { text: 'Google connection cancelled. You can try again anytime.', ok: false },
-  failed: { text: 'Something went wrong connecting Google. Please try again.', ok: false },
-  invalid: { text: 'That link expired. Please start the Google connection again.', ok: false },
-  expired: { text: 'Your Google session expired. Please reconnect.', ok: false },
-  unconfigured: { text: 'Google connect isn’t switched on yet. Hang tight.', ok: false },
-  norefresh: { text: 'Google didn’t grant lasting access. Please reconnect and allow offline access.', ok: false },
-  nolocations: { text: 'No Google Business Profile locations found on that account.', ok: false },
-  nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
-};
-
 function isConnected(b: Brand): boolean {
   // A Page + a stored publish token + a linked Instagram account (publishing runs
   // through IG today, so a Page with no IG isn't really "connected").
@@ -96,7 +84,7 @@ function PostRows({ posts, empty }: { posts: Post[]; empty: string }) {
 export default async function DashboardHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string; google?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -148,7 +136,7 @@ export default async function DashboardHome({
     );
   }
 
-  const { connect, phone, google } = await searchParams;
+  const { connect, phone } = await searchParams;
   const brands = await listBrandsForOwner(user!.id);
   const brand = brands[0];
 
@@ -176,7 +164,6 @@ export default async function DashboardHome({
     <section className={styles.home}>
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
-      <Banner msg={google ? GOOGLE_MSG[google] : undefined} />
 
       <article className={styles.panel}>
         <h2>Status</h2>

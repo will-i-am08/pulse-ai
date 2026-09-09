@@ -1,5 +1,5 @@
 import type { Brand, Interaction, Platform, PostFormat, ServerEnv } from "@pulse/shared";
-import { decryptJson, getServerEnv, googleAccessToken, gbpCreatePost } from "@pulse/shared";
+import { decryptJson, getServerEnv } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -166,17 +166,6 @@ export class LiveGraphAdapter implements GraphAdapter {
         return { externalPostId, permalink: null };
       }
 
-      if (platform === "google") {
-        if (!brand.google_tokens_encrypted || !brand.gbp_account || !brand.gbp_location_id) {
-          throw new Error(`Brand ${brand.id} has no Google Business Profile connected`);
-        }
-        const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted);
-        const accessToken = await googleAccessToken(refresh_token);
-        const locationName = `${brand.gbp_account}/${brand.gbp_location_id}`;
-        const postId = await gbpCreatePost(accessToken, locationName, { summary: caption, mediaUrl: mediaUrls[0] });
-        return { externalPostId: postId, permalink: null };
-      }
-
       throw new Error(`Unsupported platform: ${platform satisfies never}`);
     });
   }
@@ -192,7 +181,6 @@ export class LiveGraphAdapter implements GraphAdapter {
     }
     const env = getServerEnv();
     const tokens = getTokens(brand);
-    if (platform === "google") return {}; // GBP metrics arrive with the GBP integration
     const accessToken = platform === "instagram" ? tokens.ig_access_token : tokens.fb_page_access_token;
     if (!accessToken) throw new Error(`Brand ${brand.id} missing ${platform} access token`);
 
@@ -251,8 +239,6 @@ export class LiveGraphAdapter implements GraphAdapter {
 
   /**
    * Post an auto-approved reply (or qualified lead answer) back to the platform.
-   * Google reviews are NOT handled here — the worker routes those through the
-   * GBP API helpers in @pulse/shared.
    */
   async reply(input: {
     brand: Brand;
@@ -316,7 +302,7 @@ export class LiveGraphAdapter implements GraphAdapter {
         return { externalReplyId: (json.id as string | undefined) ?? null };
       }
 
-      throw new Error(`live:reply — platform '${interaction.platform}' goes via its own API (Google reviews use the GBP helpers)`);
+      throw new Error(`live:reply — unsupported platform '${interaction.platform}'`);
     });
   }
 
@@ -347,7 +333,6 @@ export class LiveGraphAdapter implements GraphAdapter {
         });
         return;
       }
-      // Google reviews cannot be hidden — negative ones escalate instead.
     });
   }
 }

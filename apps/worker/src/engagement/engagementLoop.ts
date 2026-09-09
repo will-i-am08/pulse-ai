@@ -1,10 +1,4 @@
-import {
-  query,
-  queryOne,
-  decryptJson,
-  googleAccessToken,
-  gbpReplyReview,
-} from "@pulse/shared";
+import { query, queryOne } from "@pulse/shared";
 import type { Brand, Interaction, InteractionStatus } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import type { GraphAdapter } from "@pulse/graph";
@@ -41,30 +35,12 @@ const SPIKE_PREFIX = "🚨 Sentiment spike";
 export interface RouteDeps {
   graph: GraphAdapter;
   sendToBrand: (brandId: string, body: string) => Promise<void>;
-  replyGoogleReview: (brand: Brand, interaction: Interaction, body: string) => Promise<void>;
 }
 
 export interface EngagementLoopDeps extends RouteDeps {
   claim: typeof claimInteraction;
   triage: typeof handleInteraction;
   now: () => Date;
-}
-
-/** Post/update the reply to a Google review via the GBP API. */
-export async function replyGoogleReview(
-  brand: Brand,
-  interaction: Interaction,
-  body: string,
-): Promise<void> {
-  if (!brand.google_tokens_encrypted) {
-    throw new Error(`Brand ${brand.id} has no Google Business Profile connected`);
-  }
-  if (!interaction.external_id) {
-    throw new Error(`Interaction ${interaction.id} has no review name to reply to`);
-  }
-  const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted);
-  const token = await googleAccessToken(refresh_token);
-  await gbpReplyReview(token, interaction.external_id, body);
 }
 
 function labelFor(interaction: Interaction): string {
@@ -106,9 +82,7 @@ export async function routeEngagementResult(
   // Auto-approved reply (or qualified lead answer): post it back.
   try {
     let externalReplyId: string | null = null;
-    if (interaction.platform === "google") {
-      await deps.replyGoogleReview(brand, interaction, res.publicReply);
-    } else if (deps.graph.reply) {
+    if (deps.graph.reply) {
       const posted = await deps.graph.reply({ brand, interaction, body: res.publicReply });
       externalReplyId = posted.externalReplyId;
     } else {
@@ -189,7 +163,6 @@ function realDeps(): EngagementLoopDeps {
   return {
     graph: getGraphAdapter(),
     sendToBrand,
-    replyGoogleReview,
     claim: claimInteraction,
     triage: handleInteraction,
     now: () => new Date(),

@@ -1,7 +1,7 @@
 'use server';
 import 'server-only';
 import { revalidatePath } from 'next/cache';
-import { decryptJson, googleAccessToken, gbpReplyReview, query, queryOne, sanitizeChatText } from '@pulse/shared';
+import { query, queryOne, sanitizeChatText } from '@pulse/shared';
 import type { Interaction } from '@pulse/shared';
 import { getGraphAdapter } from '@pulse/graph';
 import { currentUser } from '@/lib/auth/current-user';
@@ -31,8 +31,8 @@ async function requireInteraction(interactionId: string, brandId: string): Promi
 
 /**
  * Send (or edit + send) a reply to a drafted/escalated interaction.
- * Posts through the graph adapter (GBP helpers for Google reviews), records
- * the sent reply with the platform id, and marks the interaction handled.
+ * Posts through the graph adapter, records the sent reply with the platform
+ * id, and marks the interaction handled.
  * Anything already sent is excluded from the inbox, so this can't double-post.
  */
 export async function sendReplyAction(formData: FormData): Promise<void> {
@@ -47,17 +47,10 @@ export async function sendReplyAction(formData: FormData): Promise<void> {
   const interaction = await requireInteraction(interactionId, brandId);
 
   let externalReplyId: string | null = null;
-  if (interaction.platform === 'google') {
-    if (!brand.google_tokens_encrypted) throw new Error('sendReplyAction: Google is not connected');
-    if (!interaction.external_id) throw new Error('sendReplyAction: review has no id to reply to');
-    const { refresh_token } = decryptJson<{ refresh_token: string }>(brand.google_tokens_encrypted);
-    await gbpReplyReview(await googleAccessToken(refresh_token), interaction.external_id, body);
-  } else {
-    const graph = getGraphAdapter();
-    if (!graph.reply) throw new Error('sendReplyAction: active graph adapter cannot post replies');
-    const posted = await graph.reply({ brand, interaction, body });
-    externalReplyId = posted.externalReplyId;
-  }
+  const graph = getGraphAdapter();
+  if (!graph.reply) throw new Error('sendReplyAction: active graph adapter cannot post replies');
+  const posted = await graph.reply({ brand, interaction, body });
+  externalReplyId = posted.externalReplyId;
 
   const existingDraft = await queryOne<{ id: string; body: string }>(
     `select id, body from interaction_replies
