@@ -70,11 +70,12 @@ export default function LandingPage() {
       <section id="how" className={styles.proof}>
         <figure className={styles.thread} aria-label="Example text thread">
           <div className={`${styles.msg} ${styles.out}`}>
-            <div className={styles.threadPhoto} role="img" aria-label="A photo of a coffee and pastry">
-              <span className={styles.photoSurface} />
-              <span className={styles.photoCup} />
-              <span className={styles.photoPastry} />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- local demo photo in a chat bubble */}
+            <img
+              className={styles.threadPhoto}
+              src="/brand/thread-photo.jpg"
+              alt="A photo of a coffee and an almond croissant"
+            />
           </div>
           <div className={`${styles.msg} ${styles.in}`}>
             <p>

@@ -182,40 +182,11 @@
   padding: 10px 16px;
 }
 .threadPhoto {
-  position: relative;
   width: 196px;
   height: 196px;
+  object-fit: cover;
   border-radius: 18px 18px 6px 18px;
-  overflow: hidden;
-  background: #cbb7a4;
-}
-.photoSurface {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(120% 80% at 20% 0%, #efe3d4, transparent 55%),
-    linear-gradient(180deg, #d8c4ae 0%, #b89a82 100%);
-}
-.photoCup {
-  position: absolute;
-  left: 50%;
-  top: 54%;
-  width: 72px;
-  height: 72px;
-  margin: -36px 0 0 -36px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 42%, #f3e6d4 0 18%, #6f4e37 19% 48%, #3d291e 49% 62%, transparent 63%);
-  box-shadow: 28px 4px 0 -22px #efe3d4;
-}
-.photoPastry {
-  position: absolute;
-  right: 22px;
-  bottom: 28px;
-  width: 54px;
-  height: 28px;
-  border-radius: 20px 20px 12px 12px;
-  background: linear-gradient(180deg, #e8c9a0, #c48a4a);
+  display: block;
 }
 
 /* ── steps ── */
