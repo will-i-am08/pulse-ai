@@ -9,10 +9,9 @@
 
 .hero {
   min-height: 100svh;
+  height: 100svh;
   background: #000;
   color: #f5f5f7;
-  display: flex;
-  flex-direction: column;
   position: relative;
   overflow: hidden;
 }
@@ -61,10 +60,30 @@
 }
 
 .heroCopy {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 3;
   text-align: center;
-  padding: clamp(88px, 14vh, 128px) 24px 0;
+  padding: clamp(96px, 16vh, 148px) 24px 0;
+  pointer-events: none;
+}
+
+.heroCopy a {
+  pointer-events: auto;
+}
+
+.heroCopy::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 58%;
+  background: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.55) 52%, transparent 100%);
+  z-index: -1;
+  pointer-events: none;
 }
 
 .h1 {
@@ -102,15 +121,9 @@
 }
 
 .heroProduct {
-  margin-top: 28px;
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  width: 100%;
-  min-height: 0;
-  overflow: hidden;
-  padding-bottom: 28px;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 
 .idea {
@@ -206,7 +219,7 @@
   }
 
   .heroCopy {
-    padding-top: 84px;
+    padding-top: 88px;
   }
 
   .h1 {

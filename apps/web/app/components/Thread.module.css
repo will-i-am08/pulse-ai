@@ -7,10 +7,12 @@
 }
 
 .closeup {
-  width: min(720px, 94vw);
+  position: relative;
+  width: 100%;
+  height: 100%;
   max-width: none;
   padding: 0;
-  gap: 14px;
+  gap: 0;
 }
 
 .isolated {
@@ -30,7 +32,7 @@
 }
 
 .closeup .msg p {
-  font-size: clamp(17px, 2.1vw, 20px);
+  font-size: clamp(17px, 2.1vw, 21px);
 }
 
 .isolated .msg p {
@@ -53,11 +55,36 @@
   border-radius: 28px 28px 8px 28px;
 }
 
+.closeup .photoMsg {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
 .closeup .photo {
   width: 100%;
-  height: min(38vh, 340px);
-  aspect-ratio: auto;
+  height: 100%;
+  border-radius: 0;
   object-fit: cover;
+}
+
+.closeup .in {
+  position: absolute;
+  left: 3vw;
+  bottom: 11vh;
+  z-index: 1;
+  max-width: min(520px, 54vw);
+}
+
+.closeup .yesMsg {
+  position: absolute;
+  right: 3vw;
+  bottom: 4.5vh;
+  z-index: 1;
+  max-width: none;
 }
 
 .isolated .photo {
@@ -87,25 +114,26 @@
 }
 
 .dark .yes {
-  background: #0a84ff;
-  color: #fff;
+  background: #fff;
+  color: #000;
 }
 
 .light .yes {
-  background: #0a84ff;
+  background: #1d1d1f;
   color: #fff;
 }
 
 @media (max-width: 640px) {
-  .closeup {
-    padding: 0 16px;
-    gap: 12px;
-    width: 100%;
+  .closeup .in {
+    left: 16px;
+    right: 16px;
+    bottom: 12vh;
+    max-width: none;
   }
 
-  .closeup .photo {
-    height: min(32vh, 240px);
-    border-radius: 22px 22px 6px 22px;
+  .closeup .yesMsg {
+    right: 16px;
+    bottom: 4vh;
   }
 
   .isolated .photo {

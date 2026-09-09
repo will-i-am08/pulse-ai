@@ -12,7 +12,7 @@ export function Thread({ tone, size }: Props) {
       className={`${styles.thread} ${styles[tone]} ${styles[size]}`}
       aria-label="A text thread: a photo sent, a caption back, the word yes"
     >
-      <div className={`${styles.msg} ${styles.out}`}>
+      <div className={`${styles.msg} ${styles.out} ${styles.photoMsg}`}>
         <Image
           className={styles.photo}
           src="/brand/thread-photo.jpg"
@@ -20,7 +20,7 @@ export function Thread({ tone, size }: Props) {
           width={640}
           height={640}
           priority={size === 'closeup'}
-          sizes={size === 'closeup' ? '92vw' : '240px'}
+          sizes={size === 'closeup' ? '100vw' : '240px'}
         />
       </div>
       <div className={`${styles.msg} ${styles.in}`}>
@@ -32,7 +32,7 @@ export function Thread({ tone, size }: Props) {
           Reply yes to post to Instagram and Facebook.
         </p>
       </div>
-      <div className={`${styles.msg} ${styles.out}`}>
+      <div className={`${styles.msg} ${styles.out} ${styles.yesMsg}`}>
         <p className={styles.yes}>yes</p>
       </div>
     </figure>
