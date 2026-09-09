@@ -6,7 +6,7 @@ import { selectPageAction } from '@/lib/actions/connect';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: 'Choose a page | Pulse' };
+export const metadata = { title: 'Choose a page | Kip' };
 
 const ERRORS: Record<string, string> = {
   nopage: 'Please choose a page to continue.',
@@ -41,7 +41,7 @@ export default async function ChoosePage({
       </div>
       <div className="card">
         <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-          Pick the Facebook Page (and its linked Instagram) your Pulse agent will post to.
+          Pick the Facebook Page (and its linked Instagram) Kip will post to.
         </p>
         {error && ERRORS[error] && (
           <p style={{ color: '#c0392b' }}>{ERRORS[error]}</p>

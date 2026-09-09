@@ -11,7 +11,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <BrandLockup href="/app" className="brandmark" size={28} />
+        <BrandLockup href="/app" className="brandmark" size={24} />
         <nav style={{ display: 'flex', gap: 16, alignItems: 'center', marginLeft: 24, flex: 1 }}>
           <Link href="/app">Home</Link>
           <Link href="/app/plan">Calendar</Link>

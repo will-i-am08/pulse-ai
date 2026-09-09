@@ -15,20 +15,20 @@ export function BrandLockup({ href, className, size = 28, variant = 'black' }: P
   const mark = (
     <>
       <Image src={src} alt="" width={size} height={size} priority />
-      <span>Pulse</span>
+      <span>Kip</span>
     </>
   );
 
   if (href) {
     return (
-      <Link href={href} className={className} aria-label="Pulse">
+      <Link href={href} className={className} aria-label="Kip">
         {mark}
       </Link>
     );
   }
 
   return (
-    <span className={className} aria-label="Pulse">
+    <span className={className} aria-label="Kip">
       {mark}
     </span>
   );
