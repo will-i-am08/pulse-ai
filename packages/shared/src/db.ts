@@ -15,11 +15,14 @@ export function db(): pg.Pool {
   pool = new pg.Pool({
     connectionString,
     ssl: { rejectUnauthorized: false }, // Neon requires TLS; its cert chain is public
-    max: 5,
+    max: 3,
+    idleTimeoutMillis: 120000,
+    connectionTimeoutMillis: 30000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 5000,
+    // Neon-specific: use pgbouncer-compatible settings
+    application_name: "pulse-ai",
   });
-  // An idle pooled connection dropping (network blip: ECONNRESET/ENOTFOUND) emits
-  // an 'error' on the pool. Without a handler, Node treats it as unhandled and
-  // crashes the process. Log it and let the pool discard + recreate the client.
   pool.on("error", (err) => {
     console.error("[db] idle pool client error (recovering):", err instanceof Error ? err.message : err);
   });

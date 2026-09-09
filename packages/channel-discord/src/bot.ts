@@ -283,11 +283,18 @@ async function gapFillCheck(): Promise<void> {
     );
     if (paused) continue;
     const pillars = await query<Pillar>(
-      "select * from pillars where brand_id = $1 and posts_per_week > 0 order by sort, created_at",
+      // Least-recently gap-filled first, so day-to-day the touch rotates across pillars.
+      "select * from pillars where brand_id = $1 and posts_per_week > 0 order by last_gap_ping_at asc nulls first, sort, created_at",
       [brand.id],
     );
+    // Per-brand daily cap: one proactive gap-fill touch per brand per 24h. The
+    // throttle used to be per pillar, so a brand with 5 light pillars got nudged
+    // every 2h for the first ~5 passes — the nag-spam. If ANY pillar was touched
+    // in the last 24h, the whole brand stays quiet.
+    if (pillars.some((p) => p.last_gap_ping_at && Date.now() - new Date(p.last_gap_ping_at).getTime() < GAP_PING_THROTTLE_MS)) {
+      continue;
+    }
     for (const pillar of pillars) {
-      if (pillar.last_gap_ping_at && Date.now() - new Date(pillar.last_gap_ping_at).getTime() < GAP_PING_THROTTLE_MS) continue;
       const row = await queryOne<{ n: number }>(
         `select count(*)::int as n from posts
           where brand_id = $1 and pillar_id = $2
@@ -673,5 +680,9 @@ setInterval(() => {
       planBuildRunning = false;
     });
 }, 30 * 1000);
+
+process.on("unhandledRejection", (err) => {
+  console.error("[discord] unhandledRejection", err);
+});
 
 client.login(env.DISCORD_BOT_TOKEN);
