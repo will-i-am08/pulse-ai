@@ -22,6 +22,7 @@ export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMe
 export { scheduleSlot } from "./scheduler.js";
 export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
 export { pickFreshPhoto, pickFreshPhotos, pickReusablePhoto, bankedPhotoCount, draftPostFromPhoto, visualReference } from "./library.js";
+export { gapNudgeMessage } from "./nudges.js";
 export {
   chooseNextFormat,
   generateTipCarousel,
