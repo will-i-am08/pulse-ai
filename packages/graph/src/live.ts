@@ -1,5 +1,5 @@
-import type { Brand, Interaction, Platform, PostFormat, ServerEnv } from "@pulse/shared";
-import { decryptJson, getServerEnv } from "@pulse/shared";
+import type { Brand, Interaction, Platform, PostFormat, ServerEnv, XStoredTokens } from "@pulse/shared";
+import { decryptJson, encryptJson, getServerEnv, query, xEnsureToken, xPostTweet } from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -73,11 +73,30 @@ export class LiveGraphAdapter implements GraphAdapter {
     const { brand, platform, caption, mediaUrls } = input;
     const format: PostFormat = input.format ?? "feed";
 
-    // X and Threads are mock/fake-feed only. Never call a live API, never
-    // read tokens, never ask for an API key.
-    if (platform === "x" || platform === "threads") {
+    // Threads is still mock/fake-feed only (rides Meta's Graph API — next up).
+    if (platform === "threads") {
       const { MockGraphAdapter } = await import("./mock.js");
       return new MockGraphAdapter().publish(input);
+    }
+
+    // X: live once the app is configured (X_CLIENT_ID) and the brand has connected
+    // an account. Until then, fall back to the mock feed so nothing breaks.
+    if (platform === "x") {
+      if (!getServerEnv().X_CLIENT_ID || !brand.x_tokens_encrypted) {
+        const { MockGraphAdapter } = await import("./mock.js");
+        return new MockGraphAdapter().publish(input);
+      }
+      return withRetry(`live:publish:${brand.id}:x`, async () => {
+        const stored = decryptJson<XStoredTokens>(brand.x_tokens_encrypted!);
+        const { accessToken, refreshed } = await xEnsureToken(stored);
+        if (refreshed) {
+          await query("update brands set x_tokens_encrypted = $1 where id = $2", [encryptJson(refreshed), brand.id]);
+        }
+        // Text-only for now; X media upload is a flagged follow-on.
+        const id = await xPostTweet(accessToken, caption);
+        const permalink = brand.x_username ? `https://x.com/${brand.x_username}/status/${id}` : null;
+        return { externalPostId: id, permalink };
+      });
     }
 
     const env = getServerEnv();
