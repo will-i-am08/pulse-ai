@@ -72,6 +72,14 @@ export class LiveGraphAdapter implements GraphAdapter {
   }): Promise<{ externalPostId: string; permalink: string | null }> {
     const { brand, platform, caption, mediaUrls } = input;
     const format: PostFormat = input.format ?? "feed";
+
+    // X and Threads are mock/fake-feed only. Never call a live API, never
+    // read tokens, never ask for an API key.
+    if (platform === "x" || platform === "threads") {
+      const { MockGraphAdapter } = await import("./mock.js");
+      return new MockGraphAdapter().publish(input);
+    }
+
     const env = getServerEnv();
     const tokens = getTokens(brand);
 
@@ -178,6 +186,10 @@ export class LiveGraphAdapter implements GraphAdapter {
     externalPostId: string,
     platform: Platform
   ): Promise<Record<string, number>> {
+    if (platform === "x" || platform === "threads") {
+      const { MockGraphAdapter } = await import("./mock.js");
+      return new MockGraphAdapter().fetchEngagement(brand, externalPostId, platform);
+    }
     const env = getServerEnv();
     const tokens = getTokens(brand);
     if (platform === "google") return {}; // GBP metrics arrive with the GBP integration

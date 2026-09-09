@@ -16,6 +16,8 @@ const PLATFORM_WINDOWS: Record<Platform, number[]> = {
   instagram: [11, 13, 19],
   facebook: [9, 12, 17],
   google: [9, 12, 15],
+  x: [9, 12, 18],
+  threads: [11, 13, 19],
 };
 
 const DAILY_CAP = 3; // max posts per brand per day

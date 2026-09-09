@@ -5,3 +5,4 @@ export { getGraphAdapter } from "./factory.js";
 export { withRetry } from "./retry.js";
 export type { RetryOptions } from "./retry.js";
 export { countPublished24h } from "./rateStore.js";
+export { didPublishLive, publishConfirmation } from "./notice.js";

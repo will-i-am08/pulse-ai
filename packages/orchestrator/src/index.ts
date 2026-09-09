@@ -61,3 +61,11 @@ export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./r
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";
 export type { MockupInput } from "./mockup.js";
+export {
+  parseDestinationChoice,
+  slicesForApproval,
+  buildPlatformCaptions,
+  fitCaption,
+  CAPTION_LIMITS,
+  DEST_HINT,
+} from "./destinations.js";

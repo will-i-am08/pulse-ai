@@ -31,7 +31,7 @@ import {
 import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
-import { getGraphAdapter } from "@pulse/graph";
+import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/graph";
 import { createDiscordChannel } from "./discord-channel.js";
 
 const env = getServerEnv();
@@ -205,16 +205,20 @@ async function publishApproved(): Promise<void> {
         "update posts set status = 'published', published_at = now(), external_post_id = $2 where id = $1",
         [post.id, res.externalPostId],
       );
-      const live = env.GRAPH_MODE === "live";
+      const live = didPublishLive(post.platform, env.GRAPH_MODE);
       await query(
         `insert into approval_log (post_id, brand_id, action, actor, note) values ($1, $2, 'published', 'system', $3)`,
         [post.id, post.brand_id, `${live ? "live" : "mock"} publish ${res.externalPostId}`],
       );
+      const postFeed =
+        post.platform === "x" || post.platform === "threads" ? `${feedUrl}?platform=${post.platform}` : feedUrl;
       await sendToBrand(
         post.brand_id,
-        live
-          ? `✅ Posted live to ${post.platform} — id ${res.externalPostId}`
-          : `✅ Posted to ${post.platform}! See it on the feed: ${feedUrl}`,
+        publishConfirmation(post.platform, {
+          live,
+          feedUrl: postFeed,
+          externalPostId: res.externalPostId,
+        }),
       );
       console.log(`[discord] published post ${post.id.slice(0, 8)} → ${res.externalPostId}`);
     } catch (err) {

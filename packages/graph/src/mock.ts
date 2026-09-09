@@ -45,7 +45,18 @@ export class MockGraphAdapter implements GraphAdapter {
     return withRetry(`mock:publish:${brand.id}:${platform}`, async () => {
       const fingerprint = `${brand.id}|${platform}|${format}|${caption}|${mediaUrls.join(",")}|${Date.now()}`;
       const externalPostId = `mock_${hashHex(fingerprint).slice(0, 16)}`;
-      const handle = platform === "instagram" ? brand.ig_user_id : brand.fb_page_id;
+      const handle =
+        platform === "instagram"
+          ? brand.ig_user_id
+          : platform === "facebook"
+            ? brand.fb_page_id
+            : platform === "google"
+              ? brand.gbp_location_id
+              : platform === "x"
+                ? "x"
+                : platform === "threads"
+                  ? "threads"
+                  : brand.id;
       const permalink = `https://mock.graph.local/${platform}/${handle ?? brand.id}/${externalPostId}`;
       console.log(
         `[graph:mock] publish brand=${brand.id} platform=${platform} format=${format} media=${mediaUrls.length} -> ${externalPostId}`

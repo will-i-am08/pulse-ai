@@ -1,5 +1,5 @@
-import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText } from "@pulse/shared";
-import type { Brand, Message, MediaAsset, Post } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination } from "@pulse/shared";
+import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
 import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
@@ -35,6 +35,17 @@ import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
+import {
+  parseDestinationChoice,
+  persistDestinations,
+  persistEditedCaptions,
+  destinationAck,
+  DEST_HINT,
+  approvalReply,
+  approveSelectedDestinations,
+  buildPlatformCaptions,
+  selectedDestinations,
+} from "./destinations.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
 const REPURPOSE_RE = /\b(repurpose|turn (my|this|the) (site|website|page|blog|menu)|make posts? (from|out of)|posts? from (my|this))\b/i;
@@ -286,6 +297,19 @@ export async function processInbound(
 
   const pending = await getLatestPendingPost(brand.id);
 
+  // Channel pick on a pending draft — "X only", "Threads only", "X and Threads",
+  // "Instagram and Facebook". Not an approval; nothing publishes until "yes".
+  if (message.body && newMedia.length === 0 && pending) {
+    const dests = parseDestinationChoice(message.body);
+    if (dests) {
+      const captions = await persistDestinations(pending, dests, pending.caption ?? "");
+      return {
+        reply: destinationAck(dests, captions, pending.caption ?? ""),
+        postId: pending.id,
+      };
+    }
+  }
+
   // How long since we last spoke (either direction) — drives time-aware
   // re-engagement. Under 4h is "seamless"; above that we re-orient rather than
   // assume the client is jumping straight back in. Because this looks at the most
@@ -530,6 +554,10 @@ export async function processInbound(
       // mockup needs the final caption + format). Video-only messages have no
       // photo to frame, so they keep no mediaUrl — unchanged behaviour.
 
+      const inboundDests = parseDestinationChoice(message.body ?? "");
+      const captions = buildPlatformCaptions(caption);
+      const platform: PublishDestination = inboundDests?.[0] ?? "instagram";
+
       // Sort the photo into a content pillar and find a smart slot for it.
       const pillars = await ensurePillars(brand.id);
       const firstMediaId = firstPhoto?.id ?? originalIds[0];
@@ -538,18 +566,21 @@ export async function processInbound(
         : pillars[0];
       const slot = await scheduleSlot({
         brandId: brand.id,
-        platform: "instagram",
+        platform,
         pillarId: pillar?.id ?? null,
         postsPerWeek: pillar?.posts_per_week ?? 0,
       });
-      const autopilot = Boolean(pillar?.autopilot);
+      // Autopilot stays Instagram/Facebook. An explicit X/Threads pick always
+      // waits for "yes" — mock posts must not go out before approval.
+      const mockPicked = Boolean(inboundDests?.some((d) => d === "x" || d === "threads"));
+      const autopilot = Boolean(pillar?.autopilot) && !mockPicked;
 
       // Remember the source photo + styling recipe so a later "make the image
       // brighter" re-styles from the original instead of compounding edits.
       const styleMeta = { wants_text: wantsText, ...(headline ? { headline } : {}) };
       const post = await queryOne<Post>(
-        `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
-         values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, $6, $7, $8, 'instagram', $9, $10)
+        `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at, destinations, captions)
+         values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb)
          returning *`,
         [
           brand.id,
@@ -560,8 +591,11 @@ export async function processInbound(
           pillar?.id ?? null,
           autopilot,
           autopilot ? new Date().toISOString() : null,
+          platform,
           autopilot ? "scheduled" : "pending_approval",
           slot.toISOString(),
+          inboundDests ?? [],
+          JSON.stringify(captions),
         ],
       );
       if (!post) throw new Error("Failed to insert post");
@@ -601,8 +635,15 @@ export async function processInbound(
       }
 
       const styledLine = styledUrl ? "Here's your post. I styled the photo too ✨" : "Here's your post:";
+      if (inboundDests && inboundDests.length > 0) {
+        return {
+          reply: `${welcomeBack}${styledLine}\n\n${destinationAck(inboundDests, captions, caption)}\n\n${pillar?.name} · proposed for ${formatSlot(slot)}`,
+          postId: post.id,
+          mediaUrl: replyImageUrl,
+        };
+      }
       return {
-        reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.`,
+        reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.\n\n${DEST_HINT}`,
         postId: post.id,
         mediaUrl: replyImageUrl,
       };
@@ -669,10 +710,7 @@ export async function processInbound(
       // Records the correction + folds the delta into brand_voice_profile.notes.
       await applyCorrection(brand.id, pending.id, before, after);
 
-      await query(
-        `update posts set caption = $1 where id = $2 and brand_id = $3`,
-        [after, pending.id, brand.id],
-      );
+      const captions = await persistEditedCaptions(pending, after);
 
       await query(
         `insert into approval_log (post_id, brand_id, action, actor, before, after, note)
@@ -704,8 +742,14 @@ export async function processInbound(
         }
       }
 
+      const dests = selectedDestinations(pending).filter(isPublishDestination);
+      const reply =
+        dests.length > 0 && dests.some((d) => d === "x" || d === "threads")
+          ? destinationAck(dests, captions, after, "Updated")
+          : `Updated:\n\n"${after}"\n\nReply "yes" to approve.`;
+
       return {
-        reply: `Updated:\n\n"${after}"\n\nReply "yes" to approve.`,
+        reply,
         postId: pending.id,
         mediaUrl,
       };
@@ -718,26 +762,24 @@ export async function processInbound(
 
       // Approval is absolute (BUILD_CONTRACTS.md): we may set 'approved', but
       // never 'publishing'/'published' — that stays the worker's job. "post now"
-      // overrides the smart slot and publishes on the next tick.
+      // overrides the smart slot and publishes on the next tick. X/Threads mock
+      // posts are due immediately so they show on the fake feed after yes.
       const body = message.body ?? "";
       const postNow = /\b(now|immediately|right now|asap|straight away)\b/i.test(body) && !/\b(not|later|don'?t|dont)\b/i.test(body);
-      await query(
-        `update posts set status = 'approved'${postNow ? ", scheduled_at = now()" : ""} where id = $1 and brand_id = $2`,
-        [pending.id, brand.id],
-      );
+      const { dests } = await approveSelectedDestinations({
+        post: pending,
+        brand,
+        actor: brand.approver,
+        postNow,
+      });
 
-      await query(
-        `insert into approval_log (post_id, brand_id, action, actor, note)
-         values ($1, $2, 'approved', $3, $4)`,
-        [pending.id, brand.id, brand.approver, "Approved via inbound message"],
-      );
-
-      const when = postNow
+      const immediate = postNow || dests.every((d) => d === "x" || d === "threads");
+      const when = immediate
         ? ", going out now"
         : pending.scheduled_at
           ? `, going out ${formatSlot(new Date(pending.scheduled_at))}`
           : "";
-      return { reply: `Approved${when}.`, postId: pending.id };
+      return { reply: approvalReply(dests, when), postId: pending.id };
     }
 
     case "question": {
