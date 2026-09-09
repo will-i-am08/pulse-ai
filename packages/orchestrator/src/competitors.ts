@@ -13,7 +13,7 @@ const MAX_WATCHES = 3;
  */
 export async function competitorIntel(brand: Brand, request: string): Promise<string> {
   const system = [
-    `You are Pulse, "${brand.name}"'s social media manager${brand.website ? ` (${brand.website})` : ""}, doing a quick competitor scan for the owner.`,
+    `You are Kip, "${brand.name}"'s social media manager${brand.website ? ` (${brand.website})` : ""}, doing a quick competitor scan for the owner.`,
     "The owner wants to know what a competitor is up to on ads and socials. Work it out from their message — a name, a handle, or a link.",
     "Use web search to: (1) find the competitor's Instagram and Facebook from their name, (2) check the Meta Ad Library (facebook.com/ads/library) for ads they're currently running, (3) skim their recent posts — how often they post, their themes, and what seems to be landing.",
     "Then text the owner a punchy rundown: what they're pushing in ads, what they're posting organically, what's working — and finish with ONE sharp move for the owner to counter or one-up them. A few short paragraphs, no waffle. Note sources briefly where it helps.",
@@ -83,7 +83,7 @@ export async function competitorWeeklyUpdate(
   watch: CompetitorWatch,
 ): Promise<{ digest: string | null; snapshot: string }> {
   const system = [
-    `You are Pulse, "${brand.name}"'s social media manager, doing your weekly check on a competitor the owner watches: "${watch.name}"${watch.handles ? ` (${watch.handles})` : ""}.`,
+    `You are Kip, "${brand.name}"'s social media manager, doing your weekly check on a competitor the owner watches: "${watch.name}"${watch.handles ? ` (${watch.handles})` : ""}.`,
     watch.last_snapshot
       ? `Here is last week's snapshot of them to compare against:\n"""${watch.last_snapshot}"""`
       : "This is the first look — there's no previous snapshot.",

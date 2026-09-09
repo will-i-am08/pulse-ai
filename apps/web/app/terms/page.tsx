@@ -11,14 +11,14 @@ export default function TermsPage() {
       <p className="meta">Effective 1 September 2026</p>
 
       <p>
-        These Terms govern your use of Pulse, a social media assistant operated by Pulse Social Media
+        These Terms govern your use of Kip, a social media assistant operated by Pulse Social Media
         ("Pulse", "we", "us"). By creating an account or connecting your Instagram or Facebook account,
         you agree to these Terms.
       </p>
 
       <h2>The service</h2>
       <p>
-        Pulse helps you create and publish social media content. You send us a photo, we draft an
+        Kip helps you create and publish social media content. You send us a photo, we draft an
         on-brand caption, you approve it, and (for accounts you have connected) we publish it to your
         Instagram and/or Facebook Page on your behalf. You approve content before it is published,
         except where you have explicitly enabled automatic (&ldquo;autopilot&rdquo;) posting for a
@@ -29,10 +29,10 @@ export default function TermsPage() {
       <ul>
         <li>
           You must own, or be authorised to manage, any Instagram or Facebook account you connect to
-          Pulse.
+          Kip.
         </li>
         <li>
-          You grant Pulse permission to publish content you have approved to those connected accounts,
+          You grant Kip permission to publish content you have approved to those connected accounts,
           and to read the information needed to do so (your Pages, linked Instagram account, and post
           engagement).
         </li>
@@ -41,7 +41,7 @@ export default function TermsPage() {
 
       <h2>Your content</h2>
       <p>
-        You retain ownership of the photos, captions, and other content you provide. You grant Pulse a
+        You retain ownership of the photos, captions, and other content you provide. You grant Kip a
         limited licence to store, process, adapt (for example, styling a photo or generating a caption),
         and publish that content solely to deliver the service. You are responsible for ensuring you
         have the rights to the content you send us.
@@ -49,7 +49,7 @@ export default function TermsPage() {
 
       <h2>Acceptable use</h2>
       <p>
-        You agree not to use Pulse to publish unlawful, infringing, deceptive, or harmful content, or to
+        You agree not to use Kip to publish unlawful, infringing, deceptive, or harmful content, or to
         violate the terms or policies of Instagram, Facebook, or Meta. We may suspend or terminate
         accounts that do so.
       </p>
@@ -70,7 +70,7 @@ export default function TermsPage() {
 
       <h2>Termination</h2>
       <p>
-        You may stop using Pulse and disconnect your accounts at any time. You can revoke Pulse&apos;s
+        You may stop using Kip and disconnect your accounts at any time. You can revoke Kip&apos;s
         access to your Meta accounts from your Facebook settings (Settings &rarr; Business Integrations).
         On request we will delete the data we hold about you. See our{' '}
         <a href="/data-deletion">Data Deletion</a> page.

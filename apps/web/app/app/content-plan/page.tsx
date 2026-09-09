@@ -4,7 +4,7 @@ import { queryOne, type Brand, type ContentPlan } from '@pulse/shared';
 import { listBrandsForOwner } from '@/lib/data/brands';
 
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'Your content plan | Pulse' };
+export const metadata = { title: 'Your content plan | Kip' };
 
 export default async function ContentPlanPage() {
   const user = await currentUser();

@@ -8,7 +8,7 @@ const DEFAULT_LIMIT = 15;
 const SUMMARISE_THRESHOLD = 30;
 
 function formatMessage(m: Message): string {
-  const who = m.direction === "inbound" ? "Client" : "Pulse";
+  const who = m.direction === "inbound" ? "Client" : "Kip";
   const media = m.media_ids?.length ? ` [${m.media_ids.length} media attached]` : "";
   return `${who}: ${m.body ?? "(no text)"}${media}`;
 }
