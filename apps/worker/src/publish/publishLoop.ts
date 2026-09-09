@@ -1,6 +1,6 @@
-import { query } from "@pulse/shared";
+import { query, getServerEnv } from "@pulse/shared";
 import type { Brand, Post } from "@pulse/shared";
-import { getGraphAdapter } from "@pulse/graph";
+import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/graph";
 import type { GraphAdapter } from "@pulse/graph";
 import { sendToBrand } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
@@ -131,7 +131,10 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
     });
 
     const permalinkLine = result.permalink ? `\n${result.permalink}` : "";
-    await send(brand.id, `Posted to ${post.platform}! ✅${permalinkLine}`);
+    const env = getServerEnv();
+    const live = didPublishLive(post.platform, env.GRAPH_MODE);
+    const feedUrl = `${env.APP_BASE_URL.replace(/\/$/, "")}/feed${post.platform === "x" || post.platform === "threads" ? `?platform=${post.platform}` : ""}`;
+    await send(brand.id, `${publishConfirmation(post.platform, { live, feedUrl, externalPostId: result.externalPostId })}${live ? permalinkLine : ""}`);
   } catch (err) {
     await handlePublishFailure(post, brand, err, deps);
   }

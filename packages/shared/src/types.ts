@@ -13,8 +13,40 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator", "source"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook", "google"] as const;
+export const Platform = ["instagram", "facebook", "google", "x", "threads"] as const;
 export type Platform = (typeof Platform)[number];
+
+/** Chat-pickable publish destinations. Google is scheduled separately, not via this picker. */
+export const PublishDestination = ["instagram", "facebook", "x", "threads"] as const;
+export type PublishDestination = (typeof PublishDestination)[number];
+
+/** X and Threads are fake-feed only — never live APIs, never API keys. */
+export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x", "threads"];
+
+export function isMockOnlyPlatform(platform: Platform | string): boolean {
+  return platform === "x" || platform === "threads";
+}
+
+export function isPublishDestination(platform: string): platform is PublishDestination {
+  return (PublishDestination as readonly string[]).includes(platform);
+}
+
+export function platformLabel(platform: string): string {
+  switch (platform) {
+    case "x":
+      return "X";
+    case "threads":
+      return "Threads";
+    case "instagram":
+      return "Instagram";
+    case "facebook":
+      return "Facebook";
+    case "google":
+      return "Google";
+    default:
+      return platform;
+  }
+}
 
 // The post format the bot varies across. Reels (video) parked for later.
 export const PostFormat = ["feed", "carousel", "story"] as const;
@@ -227,6 +259,10 @@ export interface Post {
   chased_at: string | null;
   campaign_id: string | null;
   platform: Platform;
+  /** Owner-picked channels for this draft. Empty → use `platform` only. */
+  destinations: Platform[];
+  /** Per-channel caption variants (X ≤280, Threads ≤500). */
+  captions: Partial<Record<Platform, string>>;
   status: PostStatus;
   scheduled_at: string | null;
   published_at: string | null;

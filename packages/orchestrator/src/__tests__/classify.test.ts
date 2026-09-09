@@ -30,6 +30,12 @@ describe("ruleBasedClassify", () => {
     expect(ruleBasedClassify("looks good", false, true)?.classification).toBe("approval");
   });
 
+  it("does not treat a channel pick as an approval", () => {
+    expect(ruleBasedClassify("X only", false, true)?.classification).not.toBe("approval");
+    expect(ruleBasedClassify("Threads only", false, true)?.classification).not.toBe("approval");
+    expect(ruleBasedClassify("X and Threads", false, true)?.classification).not.toBe("approval");
+  });
+
   it("classifies question-shaped text as 'question'", () => {
     expect(ruleBasedClassify("What time will this post?", false, false)?.classification).toBe(
       "question",

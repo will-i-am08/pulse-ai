@@ -15,8 +15,9 @@ export async function getPost(postId: string): Promise<Post | null> {
 
 // jsonb / uuid[] columns need their SQL cast + (for jsonb) a stringified param —
 // everything else is a plain scalar `column = $n`.
-const JSONB_COLUMNS = new Set<keyof Post>(['engagement']);
-const UUID_ARRAY_COLUMNS = new Set<keyof Post>(['media_ids']);
+const JSONB_COLUMNS = new Set<keyof Post>(['engagement', 'captions', 'style_meta']);
+const UUID_ARRAY_COLUMNS = new Set<keyof Post>(['media_ids', 'source_media_ids']);
+const TEXT_ARRAY_COLUMNS = new Set<keyof Post>(['destinations']);
 
 export async function updatePost(postId: string, patch: Partial<Post>): Promise<void> {
   const entries = Object.entries(patch) as [keyof Post, unknown][];
@@ -32,6 +33,9 @@ export async function updatePost(postId: string, patch: Partial<Post>): Promise<
       params.push(JSON.stringify(value));
     } else if (UUID_ARRAY_COLUMNS.has(column)) {
       setClauses.push(`${column} = $${idx}::uuid[]`);
+      params.push(value);
+    } else if (TEXT_ARRAY_COLUMNS.has(column)) {
+      setClauses.push(`${column} = $${idx}::text[]`);
       params.push(value);
     } else {
       setClauses.push(`${column} = $${idx}`);

@@ -5,6 +5,8 @@ export const RATE_LIMITS: Record<Platform, number> = {
   instagram: 100,
   facebook: 25,
   google: 25,
+  x: 50,
+  threads: 100,
 };
 
 /** After this many failed publish attempts, a post is marked `failed` and the operator is alerted. */
