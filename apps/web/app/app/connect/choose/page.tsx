@@ -41,7 +41,7 @@ export default async function ChoosePage({
       </div>
       <div className="card">
         <p style={{ marginTop: 0, color: 'var(--muted, #667)' }}>
-          Pick the Facebook Page (and its linked Instagram) your Kip agent will post to.
+          Pick the Facebook Page (and its linked Instagram) Kip will post to.
         </p>
         {error && ERRORS[error] && (
           <p style={{ color: '#c0392b' }}>{ERRORS[error]}</p>

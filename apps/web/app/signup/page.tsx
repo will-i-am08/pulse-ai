@@ -23,7 +23,7 @@ export default async function SignupPage({
     <main className={styles.wrap}>
       <form className={styles.card} action={signupAction}>
         <h1 className={styles.h1}>Create your account</h1>
-        <p className={styles.sub}>Sign up and your Kip agent will message you to get set up.</p>
+        <p className={styles.sub}>Sign up and Kip will message you to get set up.</p>
         {msg && <p className={styles.error}>{msg}</p>}
 
         <label className={styles.label}>

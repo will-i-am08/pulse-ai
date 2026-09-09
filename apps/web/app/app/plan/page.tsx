@@ -19,7 +19,7 @@ const pillarColor = (key: string | null) => (key && PILLAR_COLORS[key]) || '#647
 
 type StatusStyle = { label: string; bg: string; fg: string };
 const STATUS: Record<string, StatusStyle> = {
-  pending_approval: { label: 'Needs a yes', bg: '#fdecea', fg: '#f5482a' },
+  pending_approval: { label: 'Needs a yes', bg: '#f3f3f4', fg: '#1d1d1f' },
   approved: { label: 'Approved', bg: '#eef1f5', fg: '#565f6b' },
   scheduled: { label: 'Autopilot', bg: '#eafaf0', fg: '#1a7f4e' },
   published: { label: 'Published', bg: '#eef1f5', fg: '#565f6b' },
