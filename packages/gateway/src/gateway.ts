@@ -21,6 +21,86 @@ import { withBackoff } from "./backoff.js";
 let channelSingleton: MessageChannel | null = null;
 let channelOverride: MessageChannel | null = null;
 
+/** Opaque handle for an in-flight typing indicator loop. Call stop() when done. */
+export interface TypingKeeper {
+  stop(): void;
+}
+
+/**
+ * Keep a channel's "... is typing" indicator alive while async work runs.
+ * Best-effort: channels without sendTyping (plain SMS) no-op. The indicator
+ * interval is per-channel (Discord expires after ~10s, Linq after ~85-90s).
+ * Never throws; stopping is idempotent.
+ */
+export function startTypingKeeper(channel: MessageChannel, to: string): TypingKeeper {
+  let stopped = false;
+  const intervalMs = channel.name === "linq" ? 60_000 : 8_000;
+  const tick = (): void => {
+    if (stopped || !to) return;
+    try {
+      const p = channel.sendTyping?.(to);
+      (p as Promise<unknown> | undefined)?.catch?.(() => {});
+    } catch {
+      /* best-effort */
+    }
+  };
+  tick();
+  const timer = setInterval(tick, intervalMs);
+  // Don't hold the process open for typing loops (serverless + bot ticks).
+  (timer as unknown as { unref?: () => void }).unref?.();
+  return {
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Split a long reply into chat-bubble-sized chunks on sentence boundaries,
+ * so paced SMS sends feel human. URLs and short texts pass through untouched.
+ */
+export function splitIntoBubbles(body: string, softMax = 320): string[] {
+  const text = (body ?? "").trim();
+  if (!text || text.length <= softMax) return [text];
+  const sentences = text.split(/(?<=[.!?…\n])\s+/);
+  const chunks: string[] = [];
+  let cur = "";
+  const push = (): void => {
+    if (cur.trim()) chunks.push(cur.trim());
+    cur = "";
+  };
+  for (const s of sentences) {
+    if (!cur || `${cur} ${s}`.trim().length <= softMax) {
+      cur = cur ? `${cur} ${s}` : s;
+    } else if (s.length > softMax) {
+      push();
+      // Hard-split an over-long sentence on word boundaries.
+      const words = s.split(/\s+/);
+      let w = "";
+      for (const word of words) {
+        if (!w || `${w} ${word}`.trim().length <= softMax) {
+          w = w ? `${w} ${word}` : word;
+        } else {
+          chunks.push(w);
+          w = word;
+        }
+      }
+      cur = w;
+    } else {
+      push();
+      cur = s;
+    }
+  }
+  push();
+  return chunks.filter(Boolean);
+}
+
 /**
  * Set the active channel explicitly. The Discord bot process calls this at
  * startup with a client-bound DiscordChannel (Discord can't be built from env
@@ -159,39 +239,62 @@ export async function captureMedia(
 }
 
 /** Send an outbound message via the active channel and log it as an outbound Message row. */
-export async function sendToBrand(brandId: string, body: string, mediaUrls?: string[]): Promise<void> {
+export async function sendToBrand(
+  brandId: string,
+  body: string,
+  mediaUrls?: string[],
+  opts?: { pace?: boolean },
+): Promise<void> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) {
     console.error(`sendToBrand: brand ${brandId} not found`);
     return;
   }
   const channel = activeChannel();
-  const to = getServerEnv().MESSAGE_CHANNEL === "discord" ? brand.discord_channel_id : brand.client_phone;
+  const which = getServerEnv().MESSAGE_CHANNEL;
+  const to = which === "discord" ? brand.discord_channel_id : brand.client_phone;
   if (!to) {
     console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
     return;
   }
 
-  let providerMessageId: string;
   const text = sanitizeChatText(body);
-  try {
-    const result = await withBackoff(() => channel.send({ to, body: text, mediaUrls }), {
-      onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
-    });
-    providerMessageId = result.providerMessageId;
-  } catch (err) {
-    console.error(`sendToBrand: send failed after retries for brand ${brandId}`, err);
-    return;
-  }
+  // Channels with a native typing indicator (Discord, Linq/iMessage) already
+  // show liveness — pacing is the SMS stand-in (SMS has no typing signal).
+  const hasNativeTyping = typeof channel.sendTyping === "function";
+  const pace = (opts?.pace ?? true) && !hasNativeTyping;
+  // Never split captioned media: the text + image ride together as one MMS.
+  const parts = pace && (!mediaUrls || mediaUrls.length === 0) ? splitIntoBubbles(text) : [text];
 
-  try {
-    await query(
-      `insert into messages (brand_id, direction, channel, body, provider_message_sid)
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+    const partMedia = i === parts.length - 1 ? mediaUrls : undefined;
+    if (pace) {
+      // Typing pause before each bubble: longer for longer texts (capped),
+      // plus a breath between consecutive bubbles.
+      const typingPause = Math.min(700 + part.length * 25, i === 0 ? 2500 : 1200);
+      await sleep(typingPause + (i > 0 ? 600 : 0));
+    }
+    let providerMessageId: string;
+    try {
+      const result = await withBackoff(() => channel.send({ to, body: part, mediaUrls: partMedia }), {
+        onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
+      });
+      providerMessageId = result.providerMessageId;
+    } catch (err) {
+      console.error(`sendToBrand: send failed after retries for brand ${brandId}`, err);
+      return;
+    }
+
+    try {
+      await query(
+        `insert into messages (brand_id, direction, channel, body, provider_message_sid)
        values ($1, $2, $3, $4, $5)`,
-      [brandId, "outbound", channel.name, text, providerMessageId],
-    );
-  } catch (err) {
-    console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
+        [brandId, "outbound", channel.name, part, providerMessageId],
+      );
+    } catch (err) {
+      console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
+    }
   }
 }
 
@@ -204,7 +307,17 @@ export async function sendToBrand(brandId: string, body: string, mediaUrls?: str
 export async function handleInbound(
   inbound: InboundMessage,
 ): Promise<{ brandId: string | null; messageId: string | null }> {
+  // Liveness from the first millisecond: keeper targets the sender address
+  // directly (Discord channel id / sender phone both equal inbound.from), so it
+  // can start before brand resolution. Twilio SMS no-ops here (paced sends +
+  // holding text below are its stand-in). Never let typing break the pipeline.
+  let keeper: TypingKeeper | null = null;
   try {
+    try {
+      keeper = startTypingKeeper(activeChannel(), inbound.from);
+    } catch {
+      keeper = null;
+    }
     const brand = await resolveBrand(inbound.from);
     if (!brand) {
       console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
@@ -252,11 +365,25 @@ export async function handleInbound(
     }
 
     // Styling a photo takes a moment — reassure the client first.
-    if (newMedia.some((m) => m.kind === "photo")) {
-      await sendToBrand(brand.id, "Got it, styling your photo and writing your caption, one sec ✨").catch(() => {});
+    const photoAckSent = newMedia.some((m) => m.kind === "photo");
+    if (photoAckSent) {
+      await sendToBrand(brand.id, "Got it, styling your photo and writing your caption, one sec ✨", undefined, {
+        pace: false,
+      }).catch(() => {});
     }
 
+    // Slow-work safety net for channels WITHOUT a native typing indicator
+    // (plain SMS): if the orchestrator is still thinking after a few seconds,
+    // say so — otherwise the client stares at silence. Skipped when the photo
+    // ack above already went out, and when native typing covers liveness.
+    let slowTimer: ReturnType<typeof setTimeout> | null = null;
     try {
+      if (!photoAckSent && typeof channel.sendTyping !== "function") {
+        slowTimer = setTimeout(() => {
+          sendToBrand(brand.id, "On it, one sec…", undefined, { pace: false }).catch(() => {});
+        }, 4500);
+        (slowTimer as unknown as { unref?: () => void }).unref?.();
+      }
       const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({ brand, message, newMedia });
       if (reply) {
         await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined);
@@ -284,11 +411,15 @@ export async function handleInbound(
       } catch {
         /* best-effort: the send itself may also be down */
       }
+    } finally {
+      if (slowTimer) clearTimeout(slowTimer);
     }
 
     return { brandId: brand.id, messageId: message.id };
   } catch (err) {
     console.error("handleInbound: unexpected failure", err);
     return { brandId: null, messageId: null };
+  } finally {
+    keeper?.stop();
   }
 }

@@ -19,12 +19,14 @@ import {
 } from "@pulse/shared";
 import {
   setActiveChannel,
+  activeChannel,
   handleInbound,
   sendToBrand,
   resolveBrand,
   resolveBrandByLinq,
   createLinqChannel,
   captureMedia,
+  startTypingKeeper,
 } from "@pulse/gateway";
 import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
@@ -58,6 +60,17 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  // "... is typing" while any slow path below runs (!sim / !digest /
+  // handleInbound). handleInbound also arms its own keeper — stopping twice is
+  // safe. Best-effort: never let typing break message handling.
+  let keeper: { stop(): void } | null = null;
+  try {
+    keeper = startTypingKeeper(activeChannel(), message.channelId);
+  } catch {
+    keeper = null;
+  }
+  try {
 
   // Engagement simulator (test triage before live Meta webhooks exist):
   //   !sim <comment|dm|mention|review> <text>
@@ -153,6 +166,9 @@ client.on(Events.MessageCreate, async (message) => {
   } catch (err) {
     console.error("[discord] handleInbound error", err);
   }
+  } finally {
+    keeper?.stop();
+  }
 });
 
 // In-process publish loop: approved → published (mock), then confirm in Discord.
@@ -220,6 +236,41 @@ setInterval(() => {
 
 // ─── Proactive gap-fill: nudge the client before a pillar's week runs dry ────
 const GAP_PING_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+/** Pick a varied, human-sounding gap-fill nudge. */
+function gapFillNudge(pillarName: string, have: number, needed: number): string {
+  const templates = [
+    `Your "${pillarName}" pillar is looking quiet this week — ${have}/${needed} posts lined up. Got a photo to share, or want me to draft something?`,
+    `Heads up: "${pillarName}" is light (${have}/${needed} planned). Send a photo or say "draft one" and I'll write a post for you.`,
+    `"${pillarName}" could use some love this week (${have}/${needed}). Got something to post, or shall I put something together?`,
+    `Quick ping — "${pillarName}" is at ${have}/${needed} posts for the week. Photo? Or reply "draft one" and I'll handle the caption.`,
+    `Your "${pillarName}" queue is running low (${have}/${needed}). Send something over or I can draft a post if you're stuck.`,
+  ];
+  return templates[Math.floor(Math.random() * templates.length)]!;
+}
+
+/** Pick a varied chase nudge for a pending draft. */
+function chaseNudge(what: string): string {
+  const templates = [
+    `Quick nudge — ${what} is still waiting. Want it to go out, or shall I tweak it? ("no" to bin it.)`,
+    `Hey, ${what} has been sitting there. Ship it, tweak it, or scrap it?`,
+    `${what} is still pending. "Yes" to post, tell me a change, or "no" to discard.`,
+    `Just checking — ${what} ready to go, or want changes?`,
+    `Still on ${what}? Reply "yes" to approve, edit away, or "no" to delete.`,
+  ];
+  return templates[Math.floor(Math.random() * templates.length)]!;
+}
+
+/** Pick a varied holding message when plan research is stuck. */
+function planHoldingNudge(): string {
+  const templates = [
+    `Still working on your content plan — the research is being stubborn but I'm on it. Will send it the moment it lands.`,
+    `Content plan's taking longer than expected. Still digging, will ping you the second it's ready.`,
+    `Plan research hit a snag, but I'm still going. You'll get it as soon as it's solid.`,
+    `Still cooking your content plan. The deep dive is taking a bit, but it's coming.`,
+  ];
+  return templates[Math.floor(Math.random() * templates.length)]!;
+}
 
 async function gapFillCheck(): Promise<void> {
   const brands = await query<Brand>("select * from brands where status = 'active'");
@@ -292,10 +343,7 @@ async function gapFillCheck(): Promise<void> {
         break;
       }
 
-      await sendToBrand(
-        brand.id,
-        `Heads up, your "${pillar.name}" content is a little light this week (${have}/${pillar.posts_per_week} planned). Send me a photo for it, or reply "draft one" and I'll write a post you can approve.`,
-      );
+      await sendToBrand(brand.id, gapFillNudge(pillar.name, have, pillar.posts_per_week));
       await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
       break; // at most one nudge per brand per pass — never a barrage
     }
@@ -453,6 +501,7 @@ async function processLinqInbound(): Promise<void> {
     body: string | null;
     media: InboundMedia[];
     provider_message_id: string | null;
+    chat_id: string | null;
   }>("select * from pending_inbound where channel = 'linq' and status = 'new' order by created_at asc limit 10");
   if (rows.length === 0) return;
   const linq = createLinqChannel();
@@ -463,6 +512,11 @@ async function processLinqInbound(): Promise<void> {
       [row.id],
     );
     if (claimed.length === 0) continue;
+    // Seed the chat mapping from the webhook payload so typing indicators can
+    // target this chat, then show "... is typing" while the slow work runs.
+    // iMessage-only per Linq (RCS/SMS accept-but-drop); failures are silent.
+    if (row.chat_id) linq.noteChat(row.from_handle, row.chat_id);
+    const keeper = startTypingKeeper(linq, row.from_handle);
     try {
       const brand = await resolveBrandByLinq(row.from_handle);
       if (!brand) continue;
@@ -482,6 +536,8 @@ async function processLinqInbound(): Promise<void> {
     } catch (err) {
       console.error(`[discord] linq inbound processing failed for ${row.id}`, err);
       await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+    } finally {
+      keeper.stop();
     }
   }
 }
@@ -521,7 +577,7 @@ async function chasePendingDrafts(): Promise<void> {
     const what = row.pillar_name ? `your ${row.pillar_name} post` : "the post I drafted";
     await sendToBrand(
       row.brand_id,
-      `Quick nudge, ${what} is still waiting your yes 🙂 Want it to go out, or shall I tweak it? (Reply "no" to bin it.)`,
+      chaseNudge(what),
     ).catch((err) => console.error(`[discord] chase send failed for post ${row.id}`, err));
   }
 }
@@ -591,10 +647,7 @@ async function buildNichePlans(): Promise<void> {
         // query gates retries to every 15 min), but tell the owner honestly.
         await query("update content_plans set updated_at = now() where id = $1", [row.id]);
         if (!(await holdingRecentlySent(brand.id))) {
-          await sendToBrand(
-            brand.id,
-            `${PLAN_HOLDING_PREFIX}. The research is being stubborn, but I'm still on it and I'll send it the moment it lands.`,
-          );
+          await sendToBrand(brand.id, planHoldingNudge());
         }
         continue;
       }

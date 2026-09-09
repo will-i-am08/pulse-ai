@@ -33,6 +33,13 @@ export interface MessageChannel {
   /** Send an outbound message (reply or proactive). Retries/backoff are the caller's concern. */
   send(msg: OutboundMessage): Promise<SendResult>;
 
+  /**
+   * Show a "typing..." indicator to the recipient (best-effort, never throws).
+   * Channels without a native indicator (e.g. plain SMS) should no-op.
+   * @param to  the channel-native recipient address (same as OutboundMessage.to)
+   */
+  sendTyping?(to: string): Promise<void>;
+
   /** Parse a raw provider webhook payload into a normalised InboundMessage. */
   parseInbound(payload: unknown): InboundMessage;
 

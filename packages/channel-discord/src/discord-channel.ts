@@ -29,6 +29,21 @@ export class DiscordChannel implements MessageChannel {
     return { providerMessageId: sent.id };
   }
 
+  /**
+   * Discord typing indicator ("... is typing"). Expires after ~10s server-side,
+   * so callers should re-call on an interval while work is ongoing.
+   * Best-effort: never throws — logs and no-ops on missing perms/channels.
+   */
+  async sendTyping(to: string): Promise<void> {
+    try {
+      const channel = await this.client.channels.fetch(to);
+      if (!channel || !channel.isTextBased() || !("sendTyping" in channel)) return;
+      await (channel as { sendTyping: () => Promise<unknown> }).sendTyping();
+    } catch (err) {
+      console.warn(`DiscordChannel.sendTyping: skipping for ${to}`, err);
+    }
+  }
+
   parseInbound(): InboundMessage {
     throw new Error("DiscordChannel.parseInbound is not used — the bot maps events to InboundMessage");
   }
