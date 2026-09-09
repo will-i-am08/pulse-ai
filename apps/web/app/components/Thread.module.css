@@ -7,10 +7,10 @@
 }
 
 .closeup {
-  width: 100%;
+  width: min(720px, 94vw);
   max-width: none;
-  padding: 0 4vw 0;
-  gap: 18px;
+  padding: 0;
+  gap: 14px;
 }
 
 .isolated {
@@ -30,7 +30,7 @@
 }
 
 .closeup .msg p {
-  font-size: clamp(18px, 2.4vw, 22px);
+  font-size: clamp(17px, 2.1vw, 20px);
 }
 
 .isolated .msg p {
@@ -54,9 +54,10 @@
 }
 
 .closeup .photo {
-  width: min(92vw, 820px);
-  height: auto;
-  aspect-ratio: 1;
+  width: 100%;
+  height: min(38vh, 340px);
+  aspect-ratio: auto;
+  object-fit: cover;
 }
 
 .isolated .photo {
@@ -99,10 +100,11 @@
   .closeup {
     padding: 0 16px;
     gap: 12px;
+    width: 100%;
   }
 
   .closeup .photo {
-    width: min(78vw, 420px);
+    height: min(32vh, 240px);
     border-radius: 22px 22px 6px 22px;
   }
 

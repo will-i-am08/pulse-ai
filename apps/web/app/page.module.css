@@ -18,8 +18,11 @@
 }
 
 .nav {
-  position: relative;
-  z-index: 2;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -61,7 +64,7 @@
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: clamp(48px, 12vh, 120px) 24px 0;
+  padding: clamp(88px, 14vh, 128px) 24px 0;
 }
 
 .h1 {
@@ -99,15 +102,15 @@
 }
 
 .heroProduct {
-  margin-top: 36px;
+  margin-top: 28px;
   flex: 1;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   width: 100%;
-  min-height: 42vh;
+  min-height: 0;
   overflow: hidden;
-  padding-bottom: 0;
+  padding-bottom: 28px;
 }
 
 .idea {
@@ -203,7 +206,7 @@
   }
 
   .heroCopy {
-    padding-top: clamp(36px, 8vh, 72px);
+    padding-top: 84px;
   }
 
   .h1 {

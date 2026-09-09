@@ -4,7 +4,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Kip',
-  description: "Kip, a texting agent from Pulse Social Media. Text a photo. It’s posted.",
+  description: "Internal operator console for Pulse Social Media's texting agent.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
