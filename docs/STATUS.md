@@ -76,14 +76,13 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 ## ✅ Done 2026-09-09
 
 - **Removed all Google code** (descoped — not social media): `shared/google.ts`, `reviewSync.ts`, `connect/google/*`, `actions/google.ts`, the `google` platform + Brand GBP fields, dashboard connect flow, worker review-sync loop, and the GBP doc. Migration `0024_drop_google.sql` drops the columns + `content_sources` table (prod-safe guard on the platform check). Typecheck + 110 tests green.
+- **Fixed stale Supabase→Neon docs**: `RUNBOOK.md` and `BUILD_CONTRACTS.md` now describe Neon Postgres, the `/api/media/[id]` storage, and the single-operator password gate; `MIGRATION_CONTRACTS.md` marked completed/historical.
 
 ## 🔲 To do
 
 1. **Ads / boost-top-posts** (Phase D) — not started.
 2. **X/Threads** real integrations — currently faked.
 3. **Wire the closed-loop learning digest** to a weekly trigger.
-4. **Doc/config hygiene:**
-   - `README.md`, `RUNBOOK.md`, `BUILD_CONTRACTS.md` still say **Supabase** — we're on **Neon**.
 
 ---
 
@@ -96,5 +95,4 @@ The build team has run out ahead of the paperwork. Extra features earn nothing u
 | 1 | **Start Meta Business Verification + upload app icon** | The single gate in front of every real client. Weeks of external wait. Zero code. |
 | 2 | **Run the beta on Meta Testers + Discord** | Testers need no review — onboard a paying cohort today against the built engine. Proof + cash while queues clear. |
 | 3 | Trim Meta scopes → 7, record screencast, submit App Review | Gets to a **Live** app any client can connect. |
-| 4 | Fix stale (Supabase→Neon) docs | Cheap insurance against a fumbled deploy. _(Google removal — done 2026-09-09.)_ |
-| 5 | (Post-approval) learning digest → ads | Real feature work, sequenced after the thing that lets clients pay. |
+| 4 | (Post-approval) learning digest → ads | Real feature work, sequenced after the thing that lets clients pay. _(Google removal + Supabase→Neon docs — done 2026-09-09.)_ |

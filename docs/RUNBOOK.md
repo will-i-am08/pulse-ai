@@ -13,15 +13,18 @@ they start on **day one** while the rest is set up in parallel.
 
 Everything else can be built and tested against mocks while these clear.
 
-## 1. Supabase
+## 1. Neon (Postgres)
 
-1. Use your existing project (or create a dedicated one — cleaner).
-2. Apply the schema: run `supabase/migrations/0001_init.sql` against the project
-   (Supabase SQL editor, or `supabase db push` with the CLI linked).
-3. Storage: create a **private** bucket named `brand-media`.
-4. Auth: enable **Email (magic link)**. Add your email as the only allowed user
-   (or leave open and just don't share the URL — single operator).
-5. Grab: `SUPABASE_URL`, `anon` key, `service_role` key.
+1. Use the existing Neon project (`super-leaf-19361791`, branch `production`) or
+   create a dedicated one. Grab the connection string → `DATABASE_URL`
+   (and `NEON_PROJECT_ID`).
+2. Apply the schema: `pnpm exec tsx --env-file=.env scripts/migrate.ts` — it runs
+   `db/migrations/*.sql` in order and is idempotent (safe to re-run).
+3. Storage: **none needed.** Media bytes are stored in Postgres and served from
+   the dashboard's public `/api/media/[id]` route.
+4. Auth: **single-operator email + password**. Set a random `AUTH_SECRET`
+   (`openssl rand -base64 32`) to sign the session cookie, then create the operator:
+   `ADMIN_PASSWORD=... pnpm exec tsx --env-file=.env scripts/create-admin.ts will@jmcalder.com`.
 
 ## 2. Anthropic
 - `ANTHROPIC_API_KEY` from console.anthropic.com.
@@ -56,9 +59,9 @@ Platform tokens are encrypted at rest with this (AES-256-GCM). Keep it out of gi
 
 ## 6. Deploy — dashboard + webhook (Vercel)
 - Import the repo; set **root** to the monorepo, framework **Next.js**, project = `apps/web`.
-- Env: all `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*`, `ANTHROPIC_API_KEY`,
-  `TWILIO_*`, `OPERATOR_PHONE`, `GRAPH_MODE`, `META_*`, `TOKEN_ENCRYPTION_KEY`,
-  `APP_BASE_URL` (your Vercel URL).
+- Env: `DATABASE_URL`, `NEON_PROJECT_ID`, `AUTH_SECRET`, `OPERATOR_PASSWORD`,
+  `ANTHROPIC_API_KEY`, `TWILIO_*`, `OPERATOR_PHONE`, `GRAPH_MODE`, `META_*`,
+  `TOKEN_ENCRYPTION_KEY`, `APP_BASE_URL` (your Vercel URL). See `.env.example`.
 - The webhook route runs on the **Node.js runtime** (not Edge) — already set in code.
 
 ## 7. Deploy — worker (Railway)

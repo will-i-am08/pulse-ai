@@ -1,5 +1,9 @@
 # Supabase → Neon migration — build contract
 
+> **✅ COMPLETED (historical).** The migration is done: the codebase runs on Neon
+> Postgres with a single-operator password gate and media served from `/api/media/[id]`.
+> No `@supabase/*` imports remain. Kept as a record of the work; not a live task list.
+
 We are moving off Supabase to **Neon Postgres**. `@pulse/shared` is already migrated.
 Your job: refactor your owned package so it uses the new seam and has **zero**
 `@supabase/*` imports left. Behaviour stays identical; only the data/auth/storage

@@ -5,7 +5,7 @@ This is the coordination spec for the parallel build. Four workstreams, **disjoi
 ## Stack (locked)
 - TypeScript, Node ≥20, ESM (`"type": "module"`), pnpm workspaces.
 - `@pulse/shared` (already built) holds: domain types, `MessageChannel` interface, `getServerEnv()`, `encrypt/decrypt`, `serviceClient()`, `MEDIA_BUCKET`.
-- Supabase = Postgres + Auth + Storage. Schema is `supabase/migrations/0001_init.sql` — treat table/column names there as canonical.
+- Neon = Postgres (the database). Media bytes live in Postgres, served from the dashboard's `/api/media/[id]` route; operator auth is a single-operator password gate. Schema is `db/migrations/*.sql` (canonical, applied in order by `scripts/migrate.ts`) — treat table/column names there as canonical.
 - Anthropic for drafting: `DRAFT_MODEL` (Haiku 4.5) with `FALLBACK_MODEL` (Sonnet 5).
 - Twilio SMS/MMS behind `MessageChannel`. Meta Graph behind a mock/live adapter (`GRAPH_MODE`).
 - Deploy: `apps/web` → Vercel (dashboard + inbound webhook). `apps/worker` → Railway (publish + scheduler).
@@ -97,7 +97,7 @@ Long-running Railway process. Uses `node-cron`. Two responsibilities:
 Every publish/failure writes an `approval_log` row. Never publish a post that lacks a logged `approved` action — assert it.
 
 ### D · `@pulse/web` (Next.js App Router)
-- Operator auth via Supabase Auth (email magic link). Middleware guards all routes except `/api/webhooks/*`, `/privacy`, `/login`.
+- Operator auth via a single-operator password gate (`OPERATOR_PASSWORD` + `AUTH_SECRET`-signed session cookie). Middleware guards all routes except `/api/webhooks/*`, `/privacy`, `/login`.
 - Webhook route `app/api/webhooks/twilio/route.ts`: verify signature via the channel, parse, call `@pulse/gateway.handleInbound`. Return TwiML/204 fast.
 - Dashboard: brands list; brand detail (pending approvals with approve/edit/reject → on approve set `status='approved'` + schedule, log `approved`; on edit call `applyCorrection` then approve; on reject set `rejected`); post history; brand-voice profile editor; onboarding form calling `seedBrandVoice`.
 - `/privacy` static page (needed for Meta App Review).
