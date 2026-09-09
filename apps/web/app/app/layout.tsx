@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { BrandLockup } from '../components/BrandLockup';
 import { signOutAction } from '@/lib/actions/auth';
 
 // The operator console is authed and per-request (reads the DB, uses cookies),
@@ -10,9 +11,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <Link href="/app" className="brandmark">
-          Pulse
-        </Link>
+        <BrandLockup href="/app" className="brandmark" size={28} />
         <nav style={{ display: 'flex', gap: 16, alignItems: 'center', marginLeft: 24, flex: 1 }}>
           <Link href="/app">Home</Link>
           <Link href="/app/plan">Calendar</Link>

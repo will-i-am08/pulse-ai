@@ -9,6 +9,20 @@ export async function listPostsByStatus(brandId: string, statuses: PostStatus[])
   );
 }
 
+/** Approved/scheduled posts that have a future time — date + caption only. */
+export async function listUpcomingPosts(brandId: string, limit = 8): Promise<Post[]> {
+  return query<Post>(
+    `select * from posts
+      where brand_id = $1
+        and status = any($2::text[])
+        and scheduled_at is not null
+        and scheduled_at >= now()
+      order by scheduled_at asc
+      limit $3`,
+    [brandId, ['approved', 'scheduled'], limit]
+  );
+}
+
 export async function getPost(postId: string): Promise<Post | null> {
   return queryOne<Post>(`select * from posts where id = $1`, [postId]);
 }
