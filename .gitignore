@@ -29,3 +29,6 @@ supabase/.temp/
 # vercel / railway
 .vercel/
 .railway/
+
+# Session artifacts
+.playwright-mcp/

@@ -25,6 +25,17 @@ const PHONE_MSG: Record<string, { text: string; ok: boolean }> = {
   taken: { text: 'That number is already linked to another account.', ok: false },
 };
 
+const X_MSG: Record<string, { text: string; ok: boolean }> = {
+  success: { text: 'X connected 🎉 Your agent can post to X now.', ok: true },
+  denied: { text: 'X connection cancelled. You can try again anytime.', ok: false },
+  failed: { text: 'Something went wrong connecting X. Please try again.', ok: false },
+  invalid: { text: 'That link expired. Please start the X connection again.', ok: false },
+  expired: { text: 'Your X session expired. Please reconnect.', ok: false },
+  unconfigured: { text: 'X connect isn’t switched on yet. Hang tight.', ok: false },
+  norefresh: { text: 'X didn’t grant lasting access. Please reconnect and allow offline access.', ok: false },
+  nobrand: { text: 'We couldn’t find your account. Please contact support.', ok: false },
+};
+
 function isConnected(b: Brand): boolean {
   // A Page + a stored publish token + a linked Instagram account (publishing runs
   // through IG today, so a Page with no IG isn't really "connected").
@@ -84,7 +95,7 @@ function PostRows({ posts, empty }: { posts: Post[]; empty: string }) {
 export default async function DashboardHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string; x?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -136,7 +147,7 @@ export default async function DashboardHome({
     );
   }
 
-  const { connect, phone } = await searchParams;
+  const { connect, phone, x } = await searchParams;
   const brands = await listBrandsForOwner(user!.id);
   const brand = brands[0];
 
@@ -173,6 +184,7 @@ export default async function DashboardHome({
     <section className={styles.home}>
       <Banner msg={connect ? CONNECT_MSG[connect] : undefined} />
       <Banner msg={phone ? PHONE_MSG[phone] : undefined} />
+      <Banner msg={x ? X_MSG[x] : undefined} />
 
       <article className={styles.row}>
         <h2>Status</h2>
@@ -260,6 +272,20 @@ export default async function DashboardHome({
           <PostRows posts={waiting} empty="" />
         )}
         <p className={styles.threadHint}>Reply yes in your text thread to approve. Nothing posts without it.</p>
+      </article>
+
+      <article className={styles.panel}>
+        <h2>Connect X (optional)</h2>
+        {brand.x_username ? (
+          <p className={styles.empty}>
+            Posting to @{brand.x_username}. <a href="/api/connect/x/start">Reconnect</a>
+          </p>
+        ) : (
+          <>
+            <p className={styles.empty}>Link your X account so your agent can post there too.</p>
+            <a className="btn-primary" href="/api/connect/x/start">Connect X</a>
+          </>
+        )}
       </article>
     </section>
   );
