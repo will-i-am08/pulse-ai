@@ -17,7 +17,7 @@
       --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
+    html, body { margin: 0; min-height: 100%; }
     body {
       font-family: var(--font);
       color: var(--ink);
@@ -26,13 +26,14 @@
       line-height: 1.4;
       -webkit-tap-highlight-color: transparent;
     }
+    .lp { overflow-x: hidden; }
     a { color: inherit; }
     button, input, textarea, select { font-family: inherit; }
     button { cursor: pointer; }
     img { max-width: 100%; display: block; }
 
     /* —— landing (unchanged language) —— */
-    .lp { background: #000; color: #f5f5f7; }
+    .lp { background: #000; color: #f5f5f7; overflow-x: hidden; }
     .hero { min-height: 100svh; min-height: 100dvh; height: 100svh; height: 100dvh; position: relative; overflow: hidden; background: #000; }
     .nav {
       position: absolute; inset: 0 0 auto 0; z-index: 4;
@@ -366,24 +367,27 @@
       .desk, .desk.three { grid-template-columns: 1fr; }
       .rail {
         position: sticky; top: 0; z-index: 12;
-        flex-direction: row; align-items: center; gap: 8px;
-        padding: 10px 12px;
-        padding-top: max(10px, env(safe-area-inset-top, 0px));
+        flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+        padding: 8px 10px 0;
+        padding-top: max(8px, env(safe-area-inset-top, 0px));
         border-bottom: 1px solid var(--line);
-        background: rgba(243,243,245,.94);
+        background: rgba(243,243,245,.96);
         backdrop-filter: blur(12px);
       }
-      .rail .brand { padding: 4px 8px 4px 2px; flex: 0 0 auto; }
-      .rail .brand span { display: none; }
+      .rail .brand { padding: 6px 8px; flex: 1 1 auto; }
+      .rail .brand span { display: inline; }
       .rail-nav {
-        flex: 1; flex-direction: row; flex-wrap: nowrap;
+        flex: 1 1 100%;
+        flex-direction: row; flex-wrap: nowrap;
         overflow-x: auto; -webkit-overflow-scrolling: touch;
-        scrollbar-width: none; gap: 2px;
+        scrollbar-width: none; gap: 0; min-width: 0;
+        margin: 0 -10px; padding: 0 10px 8px;
       }
       .rail-nav::-webkit-scrollbar { display: none; }
       .rail-nav a, .rail .navb {
-        width: auto; white-space: nowrap; padding: 8px 12px; font-size: 14px;
+        width: auto; white-space: nowrap; padding: 10px 12px; font-size: 14px;
       }
+      .rail-nav a.on { background: #fff; color: var(--ink); }
       .rail .spacer { display: none; }
       .rail-out { flex: 0 0 auto; }
       .stage {
