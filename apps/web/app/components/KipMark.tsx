@@ -13,6 +13,7 @@ export function KipMark({ size = 28 }: Props) {
       height={size}
       priority
       unoptimized
+      style={{ borderRadius: '50%' }}
     />
   );
 }
