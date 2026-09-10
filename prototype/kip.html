@@ -271,14 +271,23 @@
     .sketch.on-dark { color: rgba(255,255,255,.55); }
     .with-sketch { position: relative; }
     .sketch-title {
-      display: block; position: relative; padding-bottom: 12px; text-align: center;
+      display: block; position: relative; padding-bottom: 14px; text-align: center;
     }
-    .sketch-title .sketch {
-      left: 50%; bottom: -2px; width: min(200px, 72%); height: 14px;
-      transform: translateX(-50%);
+    .sketch-title > .sketch {
+      left: 0; right: 0; bottom: 0; margin: 0 auto;
+      width: min(168px, 55%); height: 16px;
+      transform: none;
     }
-    .ideas-head .sketch-title .sketch { color: #111; opacity: .7; }
-    .band .sketch-title .sketch { color: #111; opacity: .65; }
+    .ideas-head .sketch-title > .sketch { color: #111; opacity: .7; width: min(140px, 60%); }
+    .band .sketch-title > .sketch { color: #111; opacity: .65; }
+    .plate h2.sketch-title > .sketch { width: min(220px, 58%); }
+    .pricing h2.sketch-title > .sketch { width: min(200px, 58%); }
+    .dest.sketch-title {
+      display: inline-block; max-width: 100%; padding-bottom: 18px; margin-left: auto; margin-right: auto;
+    }
+    .dest.sketch-title > .sketch {
+      width: min(280px, 90%); height: 20px; bottom: 0;
+    }
     .doodle-arrow-yes {
       width: 92px; height: 78px; right: -6px; top: -28px; transform: rotate(8deg);
     }
@@ -287,9 +296,6 @@
     }
     .doodle-loop {
       width: 120px; height: 70px; left: 50%; top: -34px; margin-left: -60px;
-    }
-    .doodle-squiggle {
-      width: 160px; height: 28px; left: 50%; margin-left: -80px; bottom: -10px;
     }
     .doodle-cta {
       width: 110px; height: 90px; left: 50%; margin-left: 88px; top: -18px;
@@ -312,15 +318,15 @@
       .close .sketch.draw { animation-delay: .08s; }
     }
     @keyframes sketch-in {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: .78; transform: none; }
+      from { opacity: 0; }
+      to { opacity: .78; }
     }
     .sketch.on-dark.draw {
       animation-name: sketch-in-dark;
     }
     @keyframes sketch-in-dark {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: .55; transform: none; }
+      from { opacity: 0; }
+      to { opacity: .55; }
     }
 
     .doc { color: var(--ink); font-size: 16px; line-height: 1.55; max-width: 68ch; }
@@ -678,12 +684,12 @@
     /* Black dotted/sketch accents — sparse, decorative only */
     const doodles = {
       underline: (cls = "") => `
-        <svg class="sketch dash draw ${cls}" viewBox="0 0 200 14" aria-hidden="true">
-          <path d="M4 8c28-6 52 4 78-1s48-3 74 2 40-4 40-4"/>
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 200 16" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <path d="M10 9c20-5 40 5 60 0s40-5 60 0 40 5 60 0"/>
         </svg>`,
       squiggle: (cls = "") => `
-        <svg class="sketch dash draw ${cls}" viewBox="0 0 160 28" aria-hidden="true">
-          <path d="M6 16c18-10 28 8 46 0s28-10 44 2 30 6 48-4"/>
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 200 20" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <path d="M8 12c22-8 36 8 56 0s34-10 52 2 36 6 68-4"/>
         </svg>`,
       arrowYes: (cls = "") => `
         <svg class="sketch dash draw ${cls}" viewBox="0 0 92 78" aria-hidden="true">
@@ -881,7 +887,7 @@
                 <p>You should not also be the social media manager. This is that hire — without the awkward stand-up.</p>
               </article>
             </div>
-            <p class="dest sketch-title">Instagram · Facebook · X · Threads${doodles.squiggle("doodle-squiggle sketch")}</p>
+            <p class="dest sketch-title">Instagram · Facebook · X · Threads${doodles.squiggle()}</p>
             <p class="dest-note">Organic social. That’s the niche. Kip intends to be first in it.</p>
             <div class="product-frame with-sketch">
               ${doodles.loop("doodle-loop sketch")}
