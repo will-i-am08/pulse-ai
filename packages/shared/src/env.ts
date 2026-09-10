@@ -39,6 +39,10 @@ const serverEnvSchema = z.object({
   // X (Twitter) API v2 — OAuth 2.0 (PKCE). Present = X connect + live posting enabled.
   X_CLIENT_ID: z.string().optional(),
   X_CLIENT_SECRET: z.string().optional(),
+  // Threads API (Meta) — the "Threads API" use case in the Meta app. Present =
+  // Threads connect + live posting enabled.
+  THREADS_APP_ID: z.string().optional(),
+  THREADS_APP_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   TZ: z.string().default("Australia/Sydney"),
