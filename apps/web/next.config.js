@@ -17,10 +17,13 @@ const repoRoot = path.join(__dirname, '..', '..');
 // to the repo root with ../../.
 const tracingIncludes = [
   '../../packages/orchestrator/src/assets/*.ttf',
-  '../../node_modules/.pnpm/**/node_modules/harfbuzzjs/*.wasm',
-  '../../node_modules/.pnpm/**/node_modules/satori/*.wasm',
-  // Backstop: any other .wasm in the dependency store.
-  '../../node_modules/.pnpm/**/*.wasm',
+  // Target each package's REAL store dir only. A broad `.pnpm/**/*.wasm` also
+  // matches the symlinked copies pnpm places in every dependent's node_modules,
+  // and Vercel refuses to package a function that includes symlinked dirs
+  // ("invalid deployment package for a Serverless Function"). These exact paths
+  // hit the real files (`.pnpm/<pkg>@<ver>/node_modules/<pkg>/`) and nothing else.
+  '../../node_modules/.pnpm/harfbuzzjs@*/node_modules/harfbuzzjs/*.wasm',
+  '../../node_modules/.pnpm/satori@*/node_modules/satori/*.wasm',
 ];
 
 /** @type {import('next').NextConfig} */
