@@ -1,5 +1,5 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import { KipMark } from './KipMark';
 
 type Props = {
   href?: string;
@@ -10,11 +10,9 @@ type Props = {
 };
 
 export function BrandLockup({ href, className, size = 28, variant = 'black' }: Props) {
-  const src =
-    variant === 'white' ? '/brand/pulse-logo-white.png' : '/brand/pulse-logo-black.png';
   const mark = (
     <>
-      <Image src={src} alt="" width={size} height={size} priority />
+      <KipMark size={size} variant={variant} />
       <span>Kip</span>
     </>
   );

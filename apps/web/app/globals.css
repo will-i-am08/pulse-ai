@@ -89,10 +89,12 @@ h2 {
   text-decoration: none;
 }
 
-.brandmark img {
+.brandmark img,
+.brandmark svg {
   display: block;
   width: 24px;
   height: 24px;
+  flex-shrink: 0;
 }
 
 .content {
