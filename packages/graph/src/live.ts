@@ -60,8 +60,10 @@ async function waitForContainer(env: ServerEnv, creationId: string, accessToken:
 /**
  * Real Meta Graph API calls. Structured against the real endpoint shapes so this only
  * needs real brand tokens (post Meta App Review) to go live — flip GRAPH_MODE=live.
- * Several spots are marked TODO(live) where the exact response shape needs verifying
- * against a real IG Business / FB Page token, which we don't have yet.
+ * Permalink fetches, FB video routing, and reach insights are implemented to Meta's
+ * documented shapes and wrapped best-effort: they degrade to null/0 rather than
+ * failing the publish or the report, so a field mismatch against a real token is
+ * never fatal. Confirm them on the first real published post.
  */
 export class LiveGraphAdapter implements GraphAdapter {
   async publish(input: {
@@ -176,9 +178,18 @@ export class LiveGraphAdapter implements GraphAdapter {
         });
         const externalPostId = published.id as string;
 
-        // TODO(live): fetch the real permalink via GET /{externalPostId}?fields=permalink
-        // once a real token is available to verify field access.
-        return { externalPostId, permalink: null };
+        // Fetch the public permalink for the owner's confirmation message.
+        // Best-effort: the post is already published, so never fail over this.
+        let permalink: string | null = null;
+        try {
+          const info = await graphFetch(
+            graphUrl(env, `/${externalPostId}?fields=permalink&access_token=${accessToken}`),
+          );
+          permalink = (info.permalink as string | undefined) ?? null;
+        } catch {
+          // Permalink unavailable (field access / too new) — degrade to null.
+        }
+        return { externalPostId, permalink };
       }
 
       if (platform === "facebook") {
@@ -186,17 +197,36 @@ export class LiveGraphAdapter implements GraphAdapter {
         const accessToken = tokens.fb_page_access_token;
         if (!accessToken) throw new Error(`Brand ${brand.id} missing fb_page_access_token`);
         const mediaUrl = mediaUrls[0];
+        const isVideo = (u: string) => /\.(mp4|mov|m4v)(\?|$)/i.test(u);
 
-        // TODO(live): route videos through /{page_id}/videos (different upload shape)
-        // instead of /photos once we have a real page token to verify against.
-        const path = mediaUrl ? `/${brand.fb_page_id}/photos` : `/${brand.fb_page_id}/feed`;
-        const params = new URLSearchParams({
-          access_token: accessToken,
-          ...(mediaUrl ? { url: mediaUrl, caption } : { message: caption }),
-        });
+        // Route by media type: video → /videos (file_url + description),
+        // photo → /photos (url + caption), text-only → /feed (message).
+        let path: string;
+        let params: URLSearchParams;
+        if (mediaUrl && isVideo(mediaUrl)) {
+          path = `/${brand.fb_page_id}/videos`;
+          params = new URLSearchParams({ access_token: accessToken, file_url: mediaUrl, description: caption });
+        } else if (mediaUrl) {
+          path = `/${brand.fb_page_id}/photos`;
+          params = new URLSearchParams({ access_token: accessToken, url: mediaUrl, caption });
+        } else {
+          path = `/${brand.fb_page_id}/feed`;
+          params = new URLSearchParams({ access_token: accessToken, message: caption });
+        }
         const result = await graphFetch(graphUrl(env, path), { method: "POST", body: params });
         const externalPostId = (result.post_id as string | undefined) ?? (result.id as string);
-        return { externalPostId, permalink: null };
+
+        // Best-effort public permalink for the confirmation message (FB uses permalink_url).
+        let permalink: string | null = null;
+        try {
+          const info = await graphFetch(
+            graphUrl(env, `/${externalPostId}?fields=permalink_url&access_token=${accessToken}`),
+          );
+          permalink = (info.permalink_url as string | undefined) ?? null;
+        } catch {
+          // Permalink unavailable — degrade to null, the post is already up.
+        }
+        return { externalPostId, permalink };
       }
 
       throw new Error(`Unsupported platform: ${platform satisfies never}`);
@@ -254,11 +284,21 @@ export class LiveGraphAdapter implements GraphAdapter {
           `/${externalPostId}?fields=likes.summary(true),comments.summary(true),shares&access_token=${accessToken}`
         )
       );
+      // Reach via Page-post insights. Best-effort: needs a Page token with
+      // read_insights and a real Page post, so never fail the report over it.
+      let reach = 0;
+      try {
+        const insights = await graphFetch(
+          graphUrl(env, `/${externalPostId}/insights?metric=post_impressions_unique&access_token=${accessToken}`),
+        );
+        reach = (insights.data as any[] | undefined)?.[0]?.values?.[0]?.value ?? 0;
+      } catch {
+        // Insights unavailable (missing read_insights, or the post is too new).
+      }
       return {
         likes: json.likes?.summary?.total_count ?? 0,
         comments: json.comments?.summary?.total_count ?? 0,
-        // TODO(live): reach needs /insights?metric=post_impressions_unique with a Page token.
-        reach: 0,
+        reach,
         shares: json.shares?.count ?? 0,
       } as Record<string, number>;
     });
