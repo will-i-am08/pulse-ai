@@ -23,10 +23,12 @@ export async function seedPendingPlan(brandId: string, niche: string, exemplars:
   );
 }
 
-/** Plans awaiting research (the bot builds these). Gated so a failed attempt retries no sooner than 15 min later. */
+/** Plans awaiting research (the bot builds these). Fresh rows build immediately; failed attempts retry no sooner than 15 min later. */
 export async function pendingPlans(): Promise<ContentPlan[]> {
   return query<ContentPlan>(
-    "select * from content_plans where status = 'pending' and updated_at < now() - interval '15 minutes' order by created_at limit 5",
+    `select * from content_plans where status = 'pending'
+       and (updated_at = created_at or updated_at < now() - interval '15 minutes')
+     order by created_at limit 5`,
   );
 }
 

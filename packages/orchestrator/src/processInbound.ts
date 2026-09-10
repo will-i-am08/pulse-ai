@@ -216,7 +216,7 @@ async function converse(brand: Brand, message: string): Promise<string> {
         content: context ? `Recent conversation:\n${context}\n\nTheir latest message:\n${message}` : message,
       },
     ],
-    maxTokens: 200,
+    maxTokens: 500,
   });
   return sanitizeChatText(text);
 }
@@ -248,7 +248,7 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
     messages: [
       { role: "user", content: context ? `Recent conversation:\n${context}\n\nTheir latest message:\n${message}` : message },
     ],
-    maxTokens: 220,
+    maxTokens: 500,
   });
   return sanitizeChatText(text);
 }

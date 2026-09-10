@@ -24,6 +24,21 @@ describe("sanitizeChatText", () => {
     const clean = "Hey William! Send me a photo anytime and we'll get rolling.";
     expect(sanitizeChatText(clean)).toBe(clean);
   });
+
+  it("folds spaced hyphens into commas", () => {
+    expect(sanitizeChatText("mindset stuff - are you grind or smart")).toBe(
+      "mindset stuff, are you grind or smart",
+    );
+  });
+
+  it("leaves bullets and hyphenated words alone", () => {
+    expect(sanitizeChatText("- first\n- second")).toBe("- first\n- second");
+    expect(sanitizeChatText("well-known micro-SaaS tips")).toBe("well-known micro-SaaS tips");
+  });
+
+  it("lets ellipses and exclamations through", () => {
+    expect(sanitizeChatText("Hmm... interesting! Tell me more!")).toBe("Hmm... interesting! Tell me more!");
+  });
 });
 
 describe("isChatClean", () => {

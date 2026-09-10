@@ -23,6 +23,10 @@ export function sanitizeChatText(input: string): string {
   // Strip markdown the model slips in (**bold**, *italics*, __underline__).
   out = out.replace(/(\*\*|__)(.*?)\1/g, "$2");
   out = out.replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1$2");
+  // Spaced hyphens doing dash work ("stuff - are you X") read the same as an
+  // em dash. Fold them into commas, but never touch line-start bullets or
+  // hyphenated words (no spaces around those).
+  out = out.replace(/(\S) - (\S)/g, "$1, $2");
   // Tidy up: 3+ newlines to 2, trailing spaces, stray space before punctuation.
   out = out.replace(/\n{3,}/g, "\n\n");
   out = out.replace(/[ \t]+$/gm, "");

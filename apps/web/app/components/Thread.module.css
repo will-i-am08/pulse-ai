@@ -1,0 +1,155 @@
+.thread {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, sans-serif;
+}
+
+.closeup {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  padding: 0;
+  gap: 0;
+}
+
+.isolated {
+  width: min(420px, 100%);
+}
+
+.msg {
+  display: flex;
+  max-width: 86%;
+}
+
+.msg p {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.35;
+  font-weight: 400;
+}
+
+.closeup .msg p {
+  font-size: clamp(17px, 2.1vw, 21px);
+}
+
+.isolated .msg p {
+  font-size: 19px;
+}
+
+.out {
+  align-self: flex-end;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.in {
+  align-self: flex-start;
+}
+
+.photo {
+  display: block;
+  object-fit: cover;
+  border-radius: 28px 28px 8px 28px;
+}
+
+.closeup .photoMsg {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.closeup .photo {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.closeup .in {
+  position: absolute;
+  left: 3vw;
+  bottom: 11vh;
+  z-index: 1;
+  max-width: min(520px, 54vw);
+}
+
+.closeup .yesMsg {
+  position: absolute;
+  right: 3vw;
+  bottom: 4.5vh;
+  z-index: 1;
+  max-width: none;
+}
+
+.isolated .photo {
+  width: 240px;
+  height: 240px;
+}
+
+.in p {
+  border-radius: 22px 22px 22px 8px;
+  padding: 14px 18px;
+}
+
+.dark .in p {
+  background: #2c2c2e;
+  color: #f5f5f7;
+}
+
+.light .in p {
+  background: #e9e9eb;
+  color: #1d1d1f;
+}
+
+.yes {
+  font-weight: 600;
+  border-radius: 22px 22px 8px 22px;
+  padding: 10px 20px;
+}
+
+.dark .yes {
+  background: #fff;
+  color: #000;
+}
+
+.light .yes {
+  background: #1d1d1f;
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .closeup .in {
+    left: 16px;
+    right: 16px;
+    bottom: 12vh;
+    max-width: none;
+  }
+
+  .closeup .yesMsg {
+    right: 16px;
+    bottom: 4vh;
+  }
+
+  .isolated .photo {
+    width: 196px;
+    height: 196px;
+  }
+
+  .msg p,
+  .closeup .msg p,
+  .isolated .msg p {
+    font-size: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread {
+    animation: none;
+  }
+}

@@ -161,6 +161,10 @@ export interface Brand {
   ig_username: string | null;
   platform_tokens_encrypted: string | null;
   platform_user_token_encrypted: string | null;
+  // X (Twitter): the connected account and its OAuth 2.0 tokens ({access,refresh,expires_at}).
+  x_user_id: string | null;
+  x_username: string | null;
+  x_tokens_encrypted: string | null;
   meta_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;

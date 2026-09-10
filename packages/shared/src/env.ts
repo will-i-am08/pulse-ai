@@ -36,6 +36,9 @@ const serverEnvSchema = z.object({
   META_GRAPH_VERSION: z.string().default("v21.0"),
   // Token Meta echoes back when verifying the webhook subscription.
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  // X (Twitter) API v2 — OAuth 2.0 (PKCE). Present = X connect + live posting enabled.
+  X_CLIENT_ID: z.string().optional(),
+  X_CLIENT_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   TZ: z.string().default("Australia/Sydney"),

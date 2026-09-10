@@ -25,7 +25,7 @@ import {
   startTypingKeeper,
   deliverPendingLoginCodes,
 } from "@pulse/gateway";
-import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
+import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary, gapNudgeMessage } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
 import type { InteractionKind, Platform, Interaction, Message } from "@pulse/shared";
 import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/graph";
@@ -238,18 +238,6 @@ setInterval(() => {
 // ─── Proactive gap-fill: nudge the client before a pillar's week runs dry ────
 const GAP_PING_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
-/** Pick a varied, human-sounding gap-fill nudge. */
-function gapFillNudge(pillarName: string, have: number, needed: number): string {
-  const templates = [
-    `Your "${pillarName}" pillar is looking quiet this week — ${have}/${needed} posts lined up. Got a photo to share, or want me to draft something?`,
-    `Heads up: "${pillarName}" is light (${have}/${needed} planned). Send a photo or say "draft one" and I'll write a post for you.`,
-    `"${pillarName}" could use some love this week (${have}/${needed}). Got something to post, or shall I put something together?`,
-    `Quick ping — "${pillarName}" is at ${have}/${needed} posts for the week. Photo? Or reply "draft one" and I'll handle the caption.`,
-    `Your "${pillarName}" queue is running low (${have}/${needed}). Send something over or I can draft a post if you're stuck.`,
-  ];
-  return templates[Math.floor(Math.random() * templates.length)]!;
-}
-
 /** Pick a varied chase nudge for a pending draft. */
 function chaseNudge(what: string): string {
   const templates = [
@@ -284,11 +272,18 @@ async function gapFillCheck(): Promise<void> {
     );
     if (paused) continue;
     const pillars = await query<Pillar>(
-      "select * from pillars where brand_id = $1 and posts_per_week > 0 order by sort, created_at",
+      // Least-recently gap-filled first, so day-to-day the touch rotates across pillars.
+      "select * from pillars where brand_id = $1 and posts_per_week > 0 order by last_gap_ping_at asc nulls first, sort, created_at",
       [brand.id],
     );
+    // Per-brand daily cap: one proactive gap-fill touch per brand per 24h. The
+    // throttle used to be per pillar, so a brand with 5 light pillars got nudged
+    // every 2h for the first ~5 passes — the nag-spam. If ANY pillar was touched
+    // in the last 24h, the whole brand stays quiet.
+    if (pillars.some((p) => p.last_gap_ping_at && Date.now() - new Date(p.last_gap_ping_at).getTime() < GAP_PING_THROTTLE_MS)) {
+      continue;
+    }
     for (const pillar of pillars) {
-      if (pillar.last_gap_ping_at && Date.now() - new Date(pillar.last_gap_ping_at).getTime() < GAP_PING_THROTTLE_MS) continue;
       const row = await queryOne<{ n: number }>(
         `select count(*)::int as n from posts
           where brand_id = $1 and pillar_id = $2
@@ -336,15 +331,16 @@ async function gapFillCheck(): Promise<void> {
         const when = drafted.post.scheduled_at
           ? new Date(drafted.post.scheduled_at).toLocaleString("en-AU", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true })
           : "soon";
+        const topic = pillar.name.toLowerCase();
         const lead = auto
-          ? `Your "${pillar.name}" was looking light, so I put together a ${kind} and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
-          : `Your "${pillar.name}" was looking light, so I put together a ${kind}:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
+          ? `We were a bit light on ${topic}, so I put together a ${kind} and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
+          : `We were a bit light on ${topic}, so I put together a ${kind}:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
         await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
         await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
         break;
       }
 
-      await sendToBrand(brand.id, gapFillNudge(pillar.name, have, pillar.posts_per_week));
+      await sendToBrand(brand.id, await gapNudgeMessage(brand, pillar.name));
       await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
       break; // at most one nudge per brand per pass — never a barrage
     }
@@ -638,5 +634,9 @@ setInterval(() => {
       planBuildRunning = false;
     });
 }, 30 * 1000);
+
+process.on("unhandledRejection", (err) => {
+  console.error("[discord] unhandledRejection", err);
+});
 
 client.login(env.DISCORD_BOT_TOKEN);

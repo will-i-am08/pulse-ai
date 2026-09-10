@@ -63,7 +63,7 @@ export default async function FeedPage({
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
-        <span className={styles.logo}>kip<span className={styles.logoAccent}>feed</span></span>
+        <span className={styles.logo}>Kip<span className={styles.logoAccent}>feed</span></span>
         <span className={styles.demoTag}>Demo feed · not a real social network</span>
       </header>
 

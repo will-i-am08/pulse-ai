@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Kip Operator Console',
+  title: 'Kip',
   description: "Internal operator console for Pulse Social Media's texting agent.",
 };
 
