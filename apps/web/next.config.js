@@ -6,19 +6,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // resolves the pnpm store correctly and produces stable include globs.
 const repoRoot = path.join(__dirname, '..', '..');
 
-// Files to force into any serverless function that reaches the orchestrator's
-// image path. Globs are relative to `outputFileTracingRoot` (the repo root),
-// so they resolve against the pnpm store there / at /var/task in the lambda.
+// Assets to force into any serverless function that reaches the orchestrator's
+// image path. These are loaded by DYNAMIC paths that nft can't trace from a
+// require(): the fonts via readFileSync(fileURLToPath(import.meta.url)…), and
+// satori/harfbuzz's .wasm at runtime. sharp/@img/resvg/satori JS need no entry
+// here — they're direct deps and get traced through the require graph.
+//
+// IMPORTANT: outputFileTracingIncludes globs resolve relative to THIS app dir
+// (apps/web), not to outputFileTracingRoot — verified empirically — so reach up
+// to the repo root with ../../.
 const tracingIncludes = [
-  'node_modules/.pnpm/**/node_modules/sharp/**',
-  'node_modules/.pnpm/**/node_modules/@img/**',
-  'node_modules/.pnpm/**/node_modules/@resvg/**',
-  'node_modules/.pnpm/**/node_modules/satori/**',
-  'node_modules/.pnpm/**/node_modules/harfbuzzjs/**',
-  'node_modules/.pnpm/**/node_modules/yoga-wasm-web/**',
-  // Backstop: any .wasm asset in the dependency store (loaded by dynamic path,
-  // so nft can't trace it from a require()).
-  'node_modules/.pnpm/**/*.wasm',
+  '../../packages/orchestrator/src/assets/*.ttf',
+  '../../node_modules/.pnpm/**/node_modules/harfbuzzjs/*.wasm',
+  '../../node_modules/.pnpm/**/node_modules/satori/*.wasm',
+  // Backstop: any other .wasm in the dependency store.
+  '../../node_modules/.pnpm/**/*.wasm',
 ];
 
 /** @type {import('next').NextConfig} */
