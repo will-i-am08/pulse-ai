@@ -1638,7 +1638,9 @@
       if (bill) {
         e.preventDefault();
         state.billing = bill.dataset.bill;
+        const y = window.scrollY;
         render();
+        requestAnimationFrame(() => window.scrollTo(0, y));
         return;
       }
       const menu = e.target.closest("[data-menu]");
