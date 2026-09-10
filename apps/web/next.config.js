@@ -1,10 +1,41 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Monorepo root (…/apps/web -> repo root). Anchors output-file tracing so nft
+// resolves the pnpm store correctly and produces stable include globs.
+const repoRoot = path.join(__dirname, '..', '..');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@pulse/shared', '@pulse/gateway', '@pulse/orchestrator'],
-  // Native / heavy image-processing deps are reachable through the orchestrator
-  // barrel (imaging.ts) but never executed in the web app. Keep them external so
-  // webpack doesn't try to bundle their .node binaries (which breaks the build).
+  // Native / heavy image-processing deps reach the server bundle transitively
+  // through the orchestrator barrel (imaging.ts etc.) — e.g. the inbound Twilio
+  // webhook -> @pulse/gateway -> @pulse/orchestrator. Keep them external so
+  // webpack doesn't try to bundle their .node binaries (which breaks the build);
+  // they're require()d at runtime instead (see outputFileTracing* below, which
+  // guarantees they're actually shipped into the serverless functions).
   serverExternalPackages: ['@resvg/resvg-js', 'sharp', 'satori'],
+  // In a pnpm monorepo, nft won't reliably trace an externalised package that is
+  // only imported through a transpiled workspace package, so the runtime
+  // require('sharp') 500s with "Cannot find module 'sharp'". Pin the trace root
+  // to the repo and force-include the native packages (sharp ships its binaries
+  // as separate @img/* packages) for the routes that reach them.
+  outputFileTracingRoot: repoRoot,
+  outputFileTracingIncludes: {
+    '/api/webhooks/twilio': [
+      'node_modules/.pnpm/**/node_modules/sharp/**',
+      'node_modules/.pnpm/**/node_modules/@img/**',
+      'node_modules/.pnpm/**/node_modules/@resvg/**',
+      'node_modules/.pnpm/**/node_modules/satori/**',
+    ],
+    '/api/webhooks/linq': [
+      'node_modules/.pnpm/**/node_modules/sharp/**',
+      'node_modules/.pnpm/**/node_modules/@img/**',
+      'node_modules/.pnpm/**/node_modules/@resvg/**',
+      'node_modules/.pnpm/**/node_modules/satori/**',
+    ],
+  },
   eslint: {
     // Sibling workspace packages may not exist on disk yet during parallel build;
     // don't let lint block `next build`. Typecheck is the real gate (see `pnpm typecheck`).
