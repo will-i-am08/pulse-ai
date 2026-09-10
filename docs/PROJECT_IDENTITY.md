@@ -11,6 +11,7 @@
   This repo's `.vercel/project.json` is linked here. Deploy `apps/web` here only.
 - **Railway:** project `pulse-worker`, service `worker` — the prod worker loop.
 - **Channels:** Discord (now) → Twilio (interim) → Linq (end state, sandbox for now).
+- **Product name / mark:** **Kip** (cat logo). See [`docs/DESIGN.md`](DESIGN.md).
 
 ## Pulsepilot (separate — do not touch from this repo)
 

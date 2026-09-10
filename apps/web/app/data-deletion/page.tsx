@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { DocHeader } from '../components/DocHeader';
 
 export const metadata: Metadata = {
   title: 'Data Deletion | Pulse Social Media',
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 export default function DataDeletionPage() {
   return (
     <div className="content doc">
+      <DocHeader />
       <h1>Data Deletion</h1>
       <p className="meta">How to delete your data from Kip</p>
 

@@ -63,7 +63,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 |---|---|---|
 | Meta — FB Login, Privacy/Terms/Data-deletion URLs, app domain | ✅ | Done |
 | Meta — `instagram_content_publish` | ✅ | Active |
-| Meta — app icon upload | ⬜ | Last eligibility blocker |
+| Meta — app icon upload | ⬜ | Use `apps/web/public/brand/kip-logo-1024.png` |
 | Meta — **Business Verification** | ⬜ **not started** | Long pole. Gates `pages_manage_posts` + all advanced inbound scopes |
 | Meta — trim unused ads/marketing scopes to the 7 needed | ⬜ | Cleaner, faster review |
 | Meta — screencast + App Review submission | ⬜ | Blocked behind verification |

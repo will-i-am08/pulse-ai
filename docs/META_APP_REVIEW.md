@@ -16,7 +16,7 @@ Status audited 2026-09-04.
 | Terms of Service URL | ✅ set → `/terms` |
 | User-data-deletion URL | ✅ set → `/data-deletion` |
 | App domain | ✅ `web-tau-three-59.vercel.app` |
-| App icon (1024×1024) | ⬜ **upload the PNG I sent** — the last eligibility blocker |
+| App icon (1024×1024) | ⬜ upload [`apps/web/public/brand/kip-logo-1024.png`](../apps/web/public/brand/kip-logo-1024.png) |
 | Business & access verification | ⬜ **not started** — needs your business docs (the gate) |
 | `pages_manage_posts` (FB posting) | ⬜ **blocked** — "Add to App Review" errors; gated behind Business Verification |
 | App Review submission | ⬜ not submitted (blocked by verification) |
@@ -84,7 +84,7 @@ Upload the same screencast against each permission in the submission.
 ## Ordered checklist
 
 **You (needs your input / authority):**
-1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — use the PNG I sent, or your logo.
+1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — `apps/web/public/brand/kip-logo-1024.png`.
 2. **Set a real Terms of Service URL** and **data-deletion URL** (a short `/terms` and `/data-deletion` page — I can build these on the site if you want).
 3. **Complete Business Verification** (Review → Verification): legal business name, address, and the doc/phone/email checks Meta asks for. This is the long pole — start it first.
 4. **Record the screencast** above.

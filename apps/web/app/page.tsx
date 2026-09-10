@@ -17,7 +17,7 @@ export default function LandingPage() {
     <main className={styles.page}>
       <section className={styles.hero} aria-label="Kip">
         <header className={styles.nav}>
-          <BrandLockup className={styles.brand} size={36} variant="white" />
+          <BrandLockup className={styles.brand} size={36} />
           <Link href="/login" className={styles.navLogin}>
             Operator login
           </Link>
@@ -70,6 +70,7 @@ export default function LandingPage() {
       </section>
 
       <footer className={styles.footer}>
+        <BrandLockup href="/" className={styles.footerBrand} size={28} />
         <span>© {new Date().getFullYear()} Pulse Social Media</span>
         <span className={styles.footerLinks}>
           <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>

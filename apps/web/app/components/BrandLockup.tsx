@@ -5,14 +5,12 @@ type Props = {
   href?: string;
   className?: string;
   size?: number;
-  /** White mark is for dark surfaces only. */
-  variant?: 'black' | 'white';
 };
 
-export function BrandLockup({ href, className, size = 28, variant = 'black' }: Props) {
+export function BrandLockup({ href, className, size = 28 }: Props) {
   const mark = (
     <>
-      <KipMark size={size} variant={variant} />
+      <KipMark size={size} />
       <span>Kip</span>
     </>
   );

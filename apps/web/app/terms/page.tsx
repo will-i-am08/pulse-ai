@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { DocHeader } from '../components/DocHeader';
 
 export const metadata: Metadata = {
   title: 'Terms of Service | Pulse Social Media',
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 export default function TermsPage() {
   return (
     <div className="content doc">
+      <DocHeader />
       <h1>Terms of Service</h1>
       <p className="meta">Effective 1 September 2026</p>
 

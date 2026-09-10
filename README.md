@@ -1,4 +1,8 @@
-# Pulse Texting Agent
+# Kip
+
+<p align="center">
+  <img src="apps/web/public/brand/kip-logo.png" alt="Kip" width="160" />
+</p>
 
 An SMS-first social-media agent: clients text photos/video, the agent drafts an
 in-brand caption, you approve/edit/reject in the thread, and it publishes to
@@ -6,8 +10,8 @@ Instagram + Facebook on schedule. It also messages clients first — weekly
 check-ins and performance reports — and learns each brand's voice from every
 correction.
 
-MVP scope, architecture, and the decisions behind them: see
-[`docs/BUILD_CONTRACTS.md`](docs/BUILD_CONTRACTS.md) and the source spec.
+Visual identity: [`docs/DESIGN.md`](docs/DESIGN.md). MVP scope, architecture, and
+the decisions behind them: [`docs/BUILD_CONTRACTS.md`](docs/BUILD_CONTRACTS.md).
 
 ## Shape
 

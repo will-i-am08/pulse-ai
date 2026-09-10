@@ -419,6 +419,27 @@ button:disabled {
 
 /* ─── privacy / terms / data-deletion (unchanged look) ─── */
 
+.docHeader {
+  margin: 0 0 1.5rem;
+}
+
+.docBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #16181d;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.docBrand img {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
 .doc {
   --accent: #2f6feb;
   --text: #16181d;
