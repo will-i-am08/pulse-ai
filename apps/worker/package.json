@@ -13,6 +13,7 @@
   "dependencies": {
     "@pulse/gateway": "workspace:*",
     "@pulse/graph": "workspace:*",
+    "@pulse/orchestrator": "workspace:*",
     "@pulse/shared": "workspace:*",
     "cron-parser": "^4.9.0",
     "node-cron": "^3.0.3"

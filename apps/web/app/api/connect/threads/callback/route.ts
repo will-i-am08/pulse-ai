@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { query, queryOne, encryptJson, type Brand } from '@pulse/shared';
+import { queueVoiceAnalysis } from '@pulse/orchestrator';
 import { currentUser } from '@/lib/auth/current-user';
 import { verifyState } from '@/lib/meta/state';
 import { exchangeCode, exchangeForLongLived, getMe } from '@/lib/threads/oauth';
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
       encryptJson({ access_token: long.access_token, expires_at: expiresAt }),
       brand.id,
     ]);
+    // Threads history is now readable — (re)run the voice agent to fold it in.
+    await queueVoiceAnalysis(brand.id);
     return back('/app?threads=success');
   } catch (err) {
     console.error('threads callback failed', err);

@@ -4,6 +4,7 @@ import { logger } from "./lib/logger.js";
 import { runPublishLoop } from "./publish/publishLoop.js";
 import { runTriggerLoop } from "./triggers/triggerLoop.js";
 import { runEngagementLoop } from "./engagement/engagementLoop.js";
+import { runVoiceLoop } from "./voice/voiceLoop.js";
 import { deliverPendingLoginCodes } from "@pulse/gateway";
 
 async function main(): Promise<void> {
@@ -70,6 +71,26 @@ async function main(): Promise<void> {
     { timezone: env.TZ }
   );
 
+  let analysingVoice = false;
+  const voiceTask = cron.schedule(
+    "* * * * *",
+    async () => {
+      if (analysingVoice) {
+        logger.warn("voice loop: previous tick still running, skipping this tick");
+        return;
+      }
+      analysingVoice = true;
+      try {
+        await runVoiceLoop();
+      } catch (err) {
+        logger.error("voice loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+      } finally {
+        analysingVoice = false;
+      }
+    },
+    { timezone: env.TZ }
+  );
+
   // Passwordless-login code delivery. The bot owns the Discord channel and
   // delivers there; the worker owns SMS/Linq, so it delivers only then (avoids
   // a double-send, and activeChannel() would throw for discord here anyway).
@@ -98,6 +119,7 @@ async function main(): Promise<void> {
     publishTask.stop();
     triggerTask.stop();
     engagementTask.stop();
+    voiceTask.stop();
     if (loginCodeTimer) clearInterval(loginCodeTimer);
     process.exit(0);
   };
@@ -105,7 +127,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  logger.info("worker ready — publish, trigger, and engagement loops scheduled every minute");
+  logger.info("worker ready — publish, trigger, engagement, and voice loops scheduled every minute");
 }
 
 main().catch((err) => {

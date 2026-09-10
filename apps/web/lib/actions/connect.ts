@@ -2,6 +2,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { query, queryOne, decrypt, encryptJson, type Brand, type User } from '@pulse/shared';
+import { queueVoiceAnalysis } from '@pulse/orchestrator';
 import { currentUser } from '@/lib/auth/current-user';
 import { listManagedPages, derivePageToken } from '@/lib/meta/oauth';
 
@@ -51,6 +52,10 @@ export async function selectPageAction(formData: FormData): Promise<void> {
      where id = $6`,
     [chosen!.id, chosen!.name, chosen!.igUserId, chosen!.igUsername, encrypted, brand!.id],
   );
+
+  // Kick off the voice agent: it reads their real post history and learns how
+  // they write and shoot. The worker runs it; this just queues it.
+  await queueVoiceAnalysis(brand!.id);
 
   redirect('/app?connect=success');
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Brand, Interaction, InteractionStatus } from "@pulse/shared";
+import { emptyBrandVoiceProfile } from "@pulse/shared";
 import type { EngagementResult } from "@pulse/gateway";
 import {
   buildSpikeAlert,
@@ -18,16 +19,7 @@ function fakeBrand(): Brand {
     account_type: null,
     website: null,
     onboarding_state: { status: "none" as const },
-    brand_voice_profile: {
-      tone: [],
-      dos: [],
-      donts: [],
-      example_captions: [],
-      banned_words: [],
-      emoji_policy: "sparing",
-      hashtag_policy: "",
-      notes: [],
-    },
+    brand_voice_profile: emptyBrandVoiceProfile(),
     ig_user_id: null,
     fb_page_id: null,
     fb_page_name: null,
@@ -41,6 +33,8 @@ function fakeBrand(): Brand {
     threads_username: null,
     threads_tokens_encrypted: null,
     meta_connected_at: null,
+    voice_guide_md: null,
+    voice_analysis_state: { status: "none" },
     facts: {},
     visual: {},
     approver: "operator",
