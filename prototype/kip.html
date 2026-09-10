@@ -1147,11 +1147,7 @@
       if (bill) {
         e.preventDefault();
         state.billing = bill.dataset.bill;
-        document.querySelectorAll("[data-bill]").forEach((b) => b.classList.toggle("on", b.dataset.bill === state.billing));
-        document.querySelectorAll(".plan-price").forEach((el) => {
-          const n = state.billing === "annual" ? el.dataset.priceAnnual : el.dataset.priceMonthly;
-          el.innerHTML = `$${n} <span>/mo</span>`;
-        });
+        render();
         return;
       }
       const menu = e.target.closest("[data-menu]");
