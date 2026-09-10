@@ -343,9 +343,10 @@
     }
     .legal-wrap .page { max-width: 720px; margin: 0 auto; }
     .legal-wrap .ghost {
-      display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
       color: var(--muted); font-size: 15px; border: 0; background: none; padding: 0; margin-bottom: 18px;
     }
+    .legal-wrap .ghost .mark-bare { width: 22px; height: 22px; }
     .legal-wrap .ghost:hover { color: var(--ink); }
     .legal-wrap .page-h1 { margin-bottom: 8px; }
 
@@ -504,7 +505,25 @@
       width: 36px; height: 36px; border-radius: 50%;
       display: block; object-fit: cover; flex: 0 0 auto;
     }
-    .rail .mark, .topbar .brand .mark { width: 28px; height: 28px; }
+    .mark-bare {
+      width: 40px; height: 40px; border-radius: 0;
+      display: block; object-fit: contain; flex: 0 0 auto;
+    }
+    .rail .mark, .topbar .brand .mark,
+    .rail .mark-bare, .topbar .brand .mark-bare { width: 28px; height: 28px; }
+    .cat-spot {
+      display: flex; justify-content: center; margin: 0 auto 18px;
+    }
+    .cat-spot .mark-bare { width: 52px; height: 52px; }
+    .cat-spot.sm .mark-bare { width: 36px; height: 36px; }
+    .close .cat-spot { margin-bottom: 22px; }
+    .close .cat-spot .mark { width: 48px; height: 48px; margin: 0 auto; }
+    .footer-brand {
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .footer-brand .mark { width: 22px; height: 22px; opacity: .9; }
+    .auth-mark { display: flex; justify-content: center; margin-bottom: 18px; }
+    .auth-mark .mark-bare { width: 56px; height: 56px; }
 
     @media (max-width: 980px) {
       .desk, .desk.three {
@@ -528,6 +547,7 @@
         letter-spacing: -0.02em; flex: 1;
       }
       .topbar .brand .mark { width: 28px; height: 28px; }
+      .topbar .brand .mark-bare { width: 28px; height: 28px; }
       .menu-btn {
         display: inline-flex; align-items: center; justify-content: center;
         width: 44px; height: 44px; border: 0; border-radius: 12px;
@@ -655,6 +675,10 @@
 
     const mark = (cls = "mark") =>
       `<img class="${cls}" src="kip-mark.png" width="36" height="36" alt="" />`;
+    const cat = (cls = "mark-bare") =>
+      `<img class="${cls}" src="kip-cat.png" width="40" height="40" alt="Kip" />`;
+    const catSpot = (size = "") =>
+      `<div class="cat-spot ${size}" aria-hidden="true">${cat()}</div>`;
 
     /* Black dotted/sketch accents — sparse, decorative only */
     const doodles = {
@@ -742,7 +766,7 @@
     function rail(active) {
       return `
         <aside class="rail" id="app-menu" aria-label="Menu">
-          <a class="brand" href="#/home">${mark("mark")} <span>Kip</span></a>
+          <a class="brand" href="#/home">${cat("mark-bare")} <span>Kip</span></a>
           <nav class="rail-nav">
             <a href="#/home" class="${active === "home" ? "on" : ""}">Thread</a>
             <a href="#/plan" class="${active === "plan" ? "on" : ""}">Calendar</a>
@@ -765,7 +789,7 @@
               <path d="M4 7h16M4 12h16M4 17h16"/>
             </svg>
           </button>
-          <a class="brand" href="#/home">${mark("mark")} <span>Kip</span></a>
+          <a class="brand" href="#/home">${cat("mark-bare")} <span>Kip</span></a>
           <button class="ghost" type="button" data-go="#/">Sign out</button>
         </header>
         <button class="scrim" type="button" data-menu="close" aria-label="Close menu"></button>`;
@@ -803,6 +827,7 @@
         </section>
         <section class="ideas" aria-label="How Kip works">
           <div class="ideas-head">
+            ${catSpot()}
             <h2 class="sketch-title">Three moves.${doodles.underline()}</h2>
             <p>That’s the loop. Kip can also run the rest.</p>
           </div>
@@ -850,6 +875,7 @@
 
         <section class="band plate">
           <div class="band-inner">
+            ${catSpot("sm")}
             <h2 class="sketch-title with-sketch">${doodles.star("doodle-star sketch")}Hand it the whole job.${doodles.underline()}</h2>
             <p class="sub">Captions, the calendar, the Monday nudge, the Friday recap. Kip will run organic social until you say otherwise. Stay in the thread and tap yes — or put it on autopilot and get your evenings back.</p>
             <div class="who">
@@ -898,6 +924,7 @@
 
         <section class="band trust-band" aria-label="Privacy and control">
           <div class="band-inner">
+            ${catSpot("sm")}
             <h2>Private, and in your control.</h2>
             <p class="sub">Your data stays yours. Encrypted by default. Never used to train models.</p>
             <div class="trust-grid">
@@ -920,6 +947,7 @@
 
         <section class="band pricing" aria-label="Pricing">
           <div class="band-inner">
+            ${catSpot("sm")}
             <h2 class="sketch-title">Simple plans. Real work.${doodles.underline()}</h2>
             <p class="sub">Organic social, off your plate. No credit maths.</p>
             <div class="bill-toggle" role="group" aria-label="Billing period">
@@ -960,6 +988,7 @@
         </section>
 
         <section class="close">
+          <div class="cat-spot" aria-hidden="true">${mark()}</div>
           <h2 class="h1">Text a photo.<br>It’s posted.</h2>
           <p class="trust">Or don’t. Kip will.</p>
           <div class="with-sketch" style="display:inline-block">
@@ -968,7 +997,7 @@
           </div>
         </section>
         <footer class="footer">
-          <span>© 2026 Pulse Social Media</span>
+          <span class="footer-brand">${mark()} <span>© 2026 Pulse Social Media</span></span>
           <span class="footer-links">
             <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
             <a href="#/privacy">Privacy</a>
@@ -981,6 +1010,7 @@
     route("/login", () => `
       <main class="auth">
         <form class="auth-card" data-login>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
           <h1 class="page-h1">Log in</h1>
           <p class="lead" style="margin:0">Enter your mobile number and Kip will text you a code.</p>
           <label class="label">Mobile number
@@ -1004,6 +1034,7 @@
     route("/signup", () => `
       <main class="auth">
         <form class="auth-card" data-signup>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
           <h1 class="page-h1">Meet Kip</h1>
           <p class="lead" style="margin:0">Kip will message you. No password. Organic social, off your plate.</p>
           <label class="label">Your name or business name<input name="name" required value="Harbour Espresso" /></label>
@@ -1029,6 +1060,7 @@
     route("/verify", () => `
       <main class="auth">
         <form class="auth-card" data-verify>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
           <h1 class="page-h1">Enter your code</h1>
           <p class="lead" style="margin:0">Kip just messaged a 6-digit code to ${state.phone}. Any 6 digits work here.</p>
           <label class="label">Code<input name="code" inputmode="numeric" maxlength="6" required value="123456" /></label>
@@ -1273,7 +1305,7 @@
 
     function legal(title, body) {
       return `<main class="legal-wrap"><div class="page">
-        <a class="ghost" href="#/">← Kip</a>
+        <a class="ghost" href="#/">${cat("mark-bare")} <span style="margin-left:8px">Kip</span></a>
         <h1 class="page-h1">${title}</h1>${body}
       </div></main>`;
     }
