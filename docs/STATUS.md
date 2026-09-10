@@ -64,7 +64,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 | Meta — FB Login, Privacy/Terms/Data-deletion URLs, app domain | ✅ | Done |
 | Meta — `instagram_content_publish` | ✅ | Active |
 | Meta — **Business Verification** | ✅ **complete & verified (2026-09-10)** | The long pole — now cleared. Unblocks `pages_manage_posts` + advanced scopes |
-| Meta — app icon upload | ⬜ | Last eligibility blocker before submitting |
+| Meta — app icon upload | ⬜ | Use `apps/web/public/brand/kip-logo-1024.png` |
 | Meta — add `pages_manage_posts` + trim to the 7 scopes | ⬜ | Now unblocked by verification |
 | Meta — screencast + App Review submission | ⬜ **next up** | No longer blocked — then flip app to Live |
 | ~~Google GBP API access~~ | ✂️ **descoped** | Google cut — not social media |

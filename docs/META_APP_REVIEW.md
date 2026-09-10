@@ -16,7 +16,7 @@ Status audited 2026-09-04.
 | Terms of Service URL | ✅ set → `/terms` |
 | User-data-deletion URL | ✅ set → `/data-deletion` |
 | App domain | ✅ `web-tau-three-59.vercel.app` |
-| App icon (1024×1024) | ⬜ **upload the PNG I sent** — the last eligibility blocker |
+| App icon (1024×1024) | ⬜ upload [`apps/web/public/brand/kip-logo-1024.png`](../apps/web/public/brand/kip-logo-1024.png) |
 | **Business & access verification** | ✅ **COMPLETE & verified (2026-09-10)** — the gate is down |
 | `pages_manage_posts` (FB posting) | 🟩 **unblocked** — add to App Review now that verification is done |
 | App Review submission | ⬜ **next up** — no longer blocked; submit with the descriptions below |
@@ -84,7 +84,7 @@ Upload the same screencast against each permission in the submission.
 ## Ordered checklist
 
 **Next (the critical path now that verification is done):**
-1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — the last eligibility blocker for submission. Use the PNG I sent, or your logo.
+1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — `apps/web/public/brand/kip-logo-1024.png`.
 2. **Add `pages_manage_posts` to App Review** (it errored before only because it was gated behind verification — should add cleanly now).
 3. **Slim the review to the 7 permissions we use**: on **Review → App Review**, use the **"remove"** link beside each ads/marketing permission (`ads_management`, `ads_read`, `catalog_management`, `leads_retrieval`, `pages_manage_ads`, `ads_mcp_management`, Marketing API tier). (Meta's "Add use cases" dialog is add-only, so trim at the submission step.)
 4. **Record the screencast** (see above) on the live app as a test user.

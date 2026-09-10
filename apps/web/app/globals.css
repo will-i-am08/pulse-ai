@@ -89,10 +89,13 @@ h2 {
   text-decoration: none;
 }
 
-.brandmark img {
+.brandmark img,
+.brandmark svg {
   display: block;
   width: 24px;
   height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
 }
 
 .content {
@@ -416,6 +419,33 @@ button:disabled {
 }
 
 /* ─── privacy / terms / data-deletion (unchanged look) ─── */
+
+.docHeader {
+  margin: 0 0 1.5rem;
+}
+
+.docBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #16181d;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.doc a.docBrand,
+.doc a.docBrand:hover {
+  color: #16181d;
+}
+
+.docBrand img {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
 
 .doc {
   --accent: #2f6feb;

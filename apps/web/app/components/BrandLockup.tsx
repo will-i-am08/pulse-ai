@@ -1,20 +1,16 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import { KipMark } from './KipMark';
 
 type Props = {
   href?: string;
   className?: string;
   size?: number;
-  /** White mark is for dark surfaces only. */
-  variant?: 'black' | 'white';
 };
 
-export function BrandLockup({ href, className, size = 28, variant = 'black' }: Props) {
-  const src =
-    variant === 'white' ? '/brand/pulse-logo-white.png' : '/brand/pulse-logo-black.png';
+export function BrandLockup({ href, className, size = 28 }: Props) {
   const mark = (
     <>
-      <Image src={src} alt="" width={size} height={size} priority />
+      <KipMark size={size} />
       <span>Kip</span>
     </>
   );

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { signupAction } from '@/lib/actions/auth';
+import { BrandLockup } from '../components/BrandLockup';
 import styles from '../auth.module.css';
 
 export const metadata = { title: 'Sign up | Kip' };
@@ -20,6 +21,7 @@ export default async function SignupPage({
 
   return (
     <main className={styles.wrap}>
+      <BrandLockup href="/" className={styles.brand} size={36} />
       <form className={styles.card} action={signupAction}>
         <h1 className={styles.h1}>Create your account</h1>
         <p className={styles.sub}>Sign up and Kip will message you to get set up. No password to remember.</p>

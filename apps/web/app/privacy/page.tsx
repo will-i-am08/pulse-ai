@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { DocHeader } from '../components/DocHeader';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | Pulse Social Media',
@@ -7,6 +8,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <div className="content doc">
+      <DocHeader />
       <h1>Privacy Policy</h1>
       <p className="meta">Effective 1 September 2026</p>
 

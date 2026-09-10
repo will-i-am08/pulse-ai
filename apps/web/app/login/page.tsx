@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requestLoginCode, operatorLoginAction } from '@/lib/actions/auth';
+import { BrandLockup } from '../components/BrandLockup';
 import styles from '../auth.module.css';
 
 export const metadata = { title: 'Log in | Kip' };
@@ -22,6 +23,7 @@ export default async function LoginPage({
 
   return (
     <main className={styles.wrap}>
+      <BrandLockup href="/" className={styles.brand} size={36} />
       <form className={styles.card} action={requestLoginCode}>
         <h1 className={styles.h1}>Log in</h1>
         <p className={styles.sub}>Enter your mobile number and Kip will text you a code.</p>

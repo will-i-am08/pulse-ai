@@ -1,5 +1,6 @@
 import 'server-only';
 import { query, platformLabel } from '@pulse/shared';
+import { KipMark } from '../components/KipMark';
 import styles from './feed.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -63,7 +64,10 @@ export default async function FeedPage({
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
-        <span className={styles.logo}>Kip<span className={styles.logoAccent}>feed</span></span>
+        <span className={styles.logo}>
+          <KipMark size={28} />
+          Kip<span className={styles.logoAccent}>feed</span>
+        </span>
         <span className={styles.demoTag}>Demo feed · not a real social network</span>
       </header>
 

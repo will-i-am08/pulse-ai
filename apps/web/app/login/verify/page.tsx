@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { verifyLoginCode, requestLoginCode } from '@/lib/actions/auth';
 import { maskPhone } from '@pulse/shared';
+import { BrandLockup } from '../../components/BrandLockup';
 import styles from '../../auth.module.css';
 
 export const metadata = { title: 'Enter code | Kip' };
@@ -22,6 +23,7 @@ export default async function VerifyPage({
   if (!phone) {
     return (
       <main className={styles.wrap}>
+        <BrandLockup href="/" className={styles.brand} size={36} />
         <div className={styles.card}>
           <h1 className={styles.h1}>Enter your code</h1>
           <p className={styles.error}>We lost track of your number. Please start again.</p>
@@ -35,6 +37,7 @@ export default async function VerifyPage({
 
   return (
     <main className={styles.wrap}>
+      <BrandLockup href="/" className={styles.brand} size={36} />
       <form className={styles.card} action={verifyLoginCode}>
         <h1 className={styles.h1}>Enter your code</h1>
         <p className={styles.sub}>
