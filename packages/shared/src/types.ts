@@ -20,11 +20,11 @@ export type Platform = (typeof Platform)[number];
 export const PublishDestination = ["instagram", "facebook", "x", "threads"] as const;
 export type PublishDestination = (typeof PublishDestination)[number];
 
-/** X and Threads are fake-feed only — never live APIs, never API keys. */
-export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x", "threads"];
+/** X is still fake-feed only. Threads is live once a real token is connected. */
+export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x"];
 
 export function isMockOnlyPlatform(platform: Platform | string): boolean {
-  return platform === "x" || platform === "threads";
+  return platform === "x";
 }
 
 export function isPublishDestination(platform: string): platform is PublishDestination {
