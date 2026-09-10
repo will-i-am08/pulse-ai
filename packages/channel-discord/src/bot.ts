@@ -32,6 +32,16 @@ import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/gra
 import { createDiscordChannel } from "./discord-channel.js";
 
 const env = getServerEnv();
+// Discord is opt-in. The live product runs on SMS (MESSAGE_CHANNEL=twilio), so
+// the bot must not connect unless it's explicitly the selected channel — even
+// if this process is launched by hand. Set MESSAGE_CHANNEL=discord to re-enable.
+if (env.MESSAGE_CHANNEL !== "discord") {
+  console.log(
+    `[discord] bot disabled — MESSAGE_CHANNEL is "${env.MESSAGE_CHANNEL}", not "discord". ` +
+      "Set MESSAGE_CHANNEL=discord to enable it.",
+  );
+  process.exit(0);
+}
 if (!env.DISCORD_BOT_TOKEN) {
   console.error("DISCORD_BOT_TOKEN is not set");
   process.exit(1);
