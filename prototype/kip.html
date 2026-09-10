@@ -734,10 +734,37 @@
       .page { padding: 24px 18px 48px; overflow-x: hidden; }
       .chat { padding: 18px 16px 8px; }
       .dock { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
-      .files, .how, .product-frame, .trust-grid, .plans { grid-template-columns: 1fr 1fr; }
+      .files { grid-template-columns: 1fr 1fr; }
       .doodle-arrow-yes, .doodle-how, .doodle-save, .doodle-cta, .doodle-loop { display: none; }
       .ideas { padding: 48px 20px 56px; }
-      .how > li { min-height: 0; }
+      .how {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        max-width: 560px;
+      }
+      .how > li { min-height: 0; border-radius: 22px; }
+      .how > li > a.how-card {
+        flex-direction: row;
+        align-items: stretch;
+        min-height: 148px;
+      }
+      .how-visual {
+        flex: 0 0 42%;
+        width: 42%;
+        height: auto;
+        min-height: 148px;
+        padding: 14px;
+      }
+      .how-visual .cap {
+        font-size: 13px;
+        padding: 10px 12px;
+        border-radius: 16px 16px 16px 6px;
+        max-width: 100%;
+      }
+      .how-yes { font-size: 22px; padding: 10px 20px; }
+      .how-copy { flex: 1; min-width: 0; padding: 16px 16px 18px; display: flex; flex-direction: column; justify-content: center; }
+      .how-copy h3 { font-size: 18px; margin: 4px 0 6px; }
+      .how-copy p { font-size: 14px; line-height: 1.4; }
       .band { padding: 56px 20px 64px; }
       .who { gap: 14px; margin: 28px 0 36px; grid-template-columns: 1fr; }
       .who-card {
@@ -753,11 +780,41 @@
       .job-strip { gap: 6px; margin-bottom: 28px; justify-content: flex-start; }
       .job-strip li { font-size: 12px; padding: 7px 10px; }
       .channels {
-        grid-template-columns: 1fr 1fr; max-width: none; gap: 10px; margin: 4px 0 14px;
+        grid-template-columns: 1fr 1fr;
+        max-width: none;
+        gap: 12px;
+        margin: 8px 0 20px;
       }
-      .channel { padding: 14px 10px 12px; border-radius: 16px; gap: 8px; }
-      .channel svg { width: 28px; height: 28px; }
-      .channel span { font-size: 13px; }
+      .channel {
+        flex-direction: row;
+        justify-content: flex-start;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 16px;
+        gap: 12px;
+      }
+      .channel svg { width: 26px; height: 26px; flex-shrink: 0; }
+      .channel span { font-size: 14px; text-align: left; }
+      .product-frame {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 22px;
+      }
+      .pf { padding: 16px; border-radius: 16px; }
+      .rrow { font-size: 14px; gap: 12px; flex-wrap: wrap; }
+      .file { font-size: 12.5px; padding: 12px; }
+      .dest-note { margin-bottom: 28px; }
+      .plans {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        max-width: 420px;
+      }
+      .plan { padding: 22px 20px 24px; border-radius: 22px; gap: 12px; }
+      .plan-price { font-size: clamp(36px, 10vw, 44px); }
+      .plan-blurb { font-size: 16px; }
+      .plan-list { font-size: 15px; gap: 8px; }
+      .plan .pill-dark { width: 100%; text-align: center; }
       .trust-grid { grid-template-columns: 1fr; gap: 10px; }
       .trust-card { padding: 20px 18px 22px; }
       .trust-ico { width: 40px; height: 40px; margin-bottom: 10px; }
@@ -786,13 +843,14 @@
       .thread.closeup .in p { font-size: 16px; }
       .thread.closeup .yes-msg { right: 16px; bottom: 4svh; }
       .ideas { padding: 40px 16px 48px; }
-      .how-visual { height: 200px; }
-      .dest { font-size: 20px; line-height: 1.35; }
+      .how-visual { min-height: 128px; }
+      .how-copy h3 { font-size: 17px; }
+      .channels { gap: 10px; }
+      .channel { padding: 12px 14px; }
       .job-strip { max-width: none; }
       .who-card { gap: 12px; padding: 0; }
       .who-art { width: 64px; height: 64px; }
       .who-art svg { width: 42px; height: 42px; }
-      .channels { gap: 8px; }
       .ask .composer, .dock .composer {
         flex-direction: column; align-items: stretch;
         border-radius: 20px; padding: 10px;
