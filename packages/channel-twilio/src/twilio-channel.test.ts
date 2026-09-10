@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { TwilioChannel } from "./twilio-channel.js";
 
 describe("TwilioChannel.parseInbound", () => {
@@ -63,5 +63,47 @@ describe("TwilioChannel.parseInbound", () => {
     const result = channel.parseInbound(payload);
 
     expect(result.media).toEqual([{ url: "https://api.twilio.com/media/0", contentType: "image/png" }]);
+  });
+});
+
+describe("TwilioChannel.send contact card media", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("passes the Kip.vcf MediaUrl through to Twilio messages.create", async () => {
+    process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/test";
+    process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "test";
+    process.env.TOKEN_ENCRYPTION_KEY =
+      process.env.TOKEN_ENCRYPTION_KEY || Buffer.alloc(32).toString("base64");
+    process.env.TWILIO_ACCOUNT_SID = "ACtest";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_FROM_NUMBER = "+61411111111";
+    process.env.APP_BASE_URL = "https://kip.example";
+
+    const { resetServerEnvCache } = await import("@pulse/shared");
+    resetServerEnvCache();
+
+    const create = vi.fn().mockResolvedValue({ sid: "SMvcf" });
+    const channel = new TwilioChannel();
+    // Stub the private Twilio REST client.
+    (channel as unknown as { client: () => { messages: { create: typeof create } } }).client = () => ({
+      messages: { create },
+    });
+
+    const vcardUrl = "https://kip.example/api/contact/kip.vcf";
+    const result = await channel.send({
+      to: "+61400000000",
+      body: "Your Kip login code is 123456.",
+      mediaUrls: [vcardUrl],
+    });
+
+    expect(result.providerMessageId).toBe("SMvcf");
+    expect(create).toHaveBeenCalledWith({
+      to: "+61400000000",
+      from: "+61411111111",
+      body: "Your Kip login code is 123456.",
+      mediaUrl: [vcardUrl],
+    });
   });
 });

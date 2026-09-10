@@ -45,6 +45,21 @@ Everything else can be built and tested against mocks while these clear.
 4. Grab: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`.
 5. Set `OPERATOR_PHONE` to your own mobile (E.164, e.g. `+6141...`) — where
    operator-approver drafts and failure alerts go.
+6. **Kip contact card (name + profile pic):** on the first outbound to each
+   brand (OTP or onboarding), Kip MMS-attaches a vCard from
+   `https://<your-domain>/api/contact/kip.vcf` (FN=`KIP_CONTACT_FIRST_NAME`,
+   TEL=`TWILIO_FROM_NUMBER`, embedded cat logo). The client taps Save Contact
+   so Messages shows "Kip" instead of a raw number. Ensure the Twilio number
+   has **MMS** enabled and `APP_BASE_URL` is the public Vercel URL (Twilio must
+   be able to fetch the `.vcf`).
+
+### 3b. Linq contact card (iMessage end-state)
+When `MESSAGE_CHANNEL=linq`, configure Kip once then share per chat:
+1. Set `LINQ_API_KEY`, `LINQ_FROM_NUMBER`, `APP_BASE_URL`.
+2. Run `pnpm exec tsx --env-file=.env scripts/setup-kip-contact-card.ts`
+   (or let the worker warm it on startup via `ensureContactCard`).
+3. After each chat's first outbound, Linq's `share_contact_card` prompts
+   iMessage Name and Photo Sharing — native "Kip" + logo, not a vCard file.
 
 ## 4. Meta Graph API (do the review in parallel)
 Prerequisites and the App Review permission list are in the build notes; the
