@@ -71,20 +71,53 @@
       background: radial-gradient(circle at 40% 40%, #c9b7a2 0%, transparent 40%), linear-gradient(160deg, #8a7460, #2c241c);
     }
     .ideas {
-      background: #fff; color: var(--ink);
-      padding: 56px 40px 64px;
+      background: #f5f5f7; color: var(--ink);
+      padding: 72px 28px 80px;
     }
-    .ideas-inner {
-      display: grid; grid-template-columns: minmax(240px, 340px) 1fr 1fr;
-      gap: 40px 48px; align-items: center;
-      max-width: 1080px; margin: 0 auto;
+    .ideas-head { text-align: center; max-width: 18ch; margin: 0 auto 40px; }
+    .ideas-head h2 {
+      font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -0.035em;
+      line-height: 1.08; margin: 0 0 10px;
     }
-    .ideas .idea-copy { max-width: 16ch; }
-    .idea-title {
-      font-size: clamp(28px, 3.5vw, 36px); font-weight: 600; letter-spacing: -0.035em;
-      line-height: 1.08; margin: 0 0 8px;
+    .ideas-head p { margin: 0; font-size: 20px; color: var(--muted); }
+    .how {
+      list-style: none; margin: 0 auto; padding: 0;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+      max-width: 1080px;
     }
-    .idea-body { margin: 0; font-size: 18px; color: var(--muted); }
+    .how > li {
+      background: #fff; border-radius: 28px; overflow: hidden;
+      display: flex; flex-direction: column; min-height: 420px;
+      text-decoration: none; color: inherit;
+    }
+    a.how-card:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -28px rgba(0,0,0,.4); }
+    .how-card { transition: transform .2s, box-shadow .2s; }
+    .how-visual {
+      height: 240px; display: flex; align-items: flex-end; justify-content: flex-start;
+      padding: 18px; position: relative;
+    }
+    .how-visual img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    .how-visual .cap {
+      position: relative; background: #e9e9eb; color: #1d1d1f;
+      border-radius: 22px 22px 22px 8px; padding: 14px 16px; margin: 0;
+      font-size: 16px; line-height: 1.35; max-width: 92%;
+    }
+    .how-visual.dark {
+      background: #000; align-items: center; justify-content: center;
+    }
+    .how-yes {
+      display: inline-block; background: #fff; color: #000; font-weight: 600;
+      font-size: 28px; letter-spacing: -0.03em; padding: 12px 28px; border-radius: 980px;
+    }
+    .how-copy { padding: 22px 22px 26px; }
+    .how-n { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; }
+    .how-copy h3 {
+      font-size: 24px; font-weight: 600; letter-spacing: -0.03em;
+      line-height: 1.12; margin: 8px 0 8px;
+    }
+    .how-copy p { margin: 0; font-size: 16px; color: var(--muted); }
     .close {
       background: #000; color: #fff;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -322,9 +355,9 @@
       .rail .spacer { display: none; }
       .stage { margin: 0 12px 12px; }
       .aside { margin: 0 12px 12px; }
-      .trio, .where, .product-frame, .files, .ideas-inner { grid-template-columns: 1fr; }
-      .ideas { padding: 40px 24px 48px; }
-      .ideas-inner { justify-items: center; text-align: center; }
+      .trio, .where, .product-frame, .files, .how { grid-template-columns: 1fr; }
+      .ideas { padding: 48px 20px 56px; }
+      .how > li { min-height: 0; }
     }
     @media (max-width: 640px) {
       .h1 { font-size: clamp(44px, 12vw, 56px); }
@@ -447,11 +480,48 @@
           <div class="hero-product">${thread("dark", "closeup")}</div>
         </section>
         <section class="ideas" aria-label="How Kip works">
-          <div class="ideas-inner">
-            ${thread("light", "isolated")}
-            <div class="idea-copy"><h2 class="idea-title">You say yes.</h2><p class="idea-body">Approval happens in the thread.</p></div>
-            <div class="idea-copy"><h2 class="idea-title">Instagram and Facebook.</h2><p class="idea-body">Those are the only places Kip posts.</p></div>
+          <div class="ideas-head">
+            <h2>Three moves.</h2>
+            <p>That’s the whole product.</p>
           </div>
+          <ol class="how">
+            <li>
+              <a class="how-card" href="#/signup">
+                <div class="how-visual">
+                  <img src="${CROISSANT}" alt="A photo of an almond croissant" />
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">01</div>
+                  <h3>You send a photo.</h3>
+                  <p>From the floor, in the thread. That’s the brief.</p>
+                </div>
+              </a>
+            </li>
+            <li>
+              <a class="how-card" href="#/signup">
+                <div class="how-visual">
+                  <p class="cap">Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.</p>
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">02</div>
+                  <h3>Kip writes it.</h3>
+                  <p>In your voice. In the same thread you sent the photo.</p>
+                </div>
+              </a>
+            </li>
+            <li>
+              <a class="how-card" href="#/signup">
+                <div class="how-visual dark">
+                  <span class="how-yes">yes</span>
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">03</div>
+                  <h3>You say yes.</h3>
+                  <p>Then it posts to Instagram and Facebook. Nowhere else.</p>
+                </div>
+              </a>
+            </li>
+          </ol>
         </section>
 
         <section class="band">
