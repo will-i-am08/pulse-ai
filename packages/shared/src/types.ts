@@ -121,10 +121,26 @@ export interface OnboardingState {
 
 export interface User {
   id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   name: string | null;
   is_admin: boolean;
-  password_hash?: string;
+  password_hash?: string | null;
+  created_at: string;
+}
+
+/** A one-time passwordless login code (delivered through the agent thread). */
+export interface LoginCode {
+  id: string;
+  phone: string;
+  user_id: string | null;
+  brand_id: string | null;
+  code_encrypted: string;
+  purpose: "login" | "signup";
+  attempts: number;
+  delivered_at: string | null;
+  consumed_at: string | null;
+  expires_at: string;
   created_at: string;
 }
 
