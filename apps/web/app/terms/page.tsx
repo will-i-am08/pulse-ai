@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Terms of Service | Pulse Social Media',
@@ -8,79 +9,148 @@ export default function TermsPage() {
   return (
     <div className="content doc">
       <h1>Terms of Service</h1>
-      <p className="meta">Effective 1 September 2026</p>
+      <p className="meta">Effective 10 September 2026 · Pulse Social Media · Product: Kip</p>
 
       <p>
-        These Terms govern your use of Kip, a social media assistant operated by Pulse Social Media
-        ("Pulse", "we", "us"). By creating an account or connecting your Instagram or Facebook account,
-        you agree to these Terms.
+        These Terms govern your use of Kip — the SMS and web product that drafts and publishes organic
+        social content for your brand. By creating an account, texting Kip, or paying for a plan, you
+        agree to them. If you use Kip for a company, you confirm you can bind that company.
       </p>
 
-      <h2>The service</h2>
+      <h2>1. The service</h2>
       <p>
-        Kip helps you create and publish social media content. You send us a photo, we draft an
-        on-brand caption, you approve it, and (for accounts you have connected) we publish it to your
-        Instagram and/or Facebook Page on your behalf. You approve content before it is published,
-        except where you have explicitly enabled automatic (&ldquo;autopilot&rdquo;) posting for a
-        content type, which you can pause at any time.
+        Kip helps you run organic posting to destinations you connect (Instagram, Facebook, X,
+        Threads). Typical flow: you send a photo or instruction by SMS/MMS or in the web thread; Kip
+        drafts a caption; you reply <strong>yes</strong> (or approve in the dashboard) before anything
+        with outside impact posts — unless you explicitly enable autopilot. Kip may also run routines
+        you set (check-ins, recaps, reminders) and keep brand memory you can edit.
+      </p>
+      <p>
+        Kip is an organic social tool. It is not a paid-ads manager, CRM, or guarantee of reach,
+        virality, or platform ranking.
       </p>
 
-      <h2>Your accounts and connections</h2>
+      <h2>2. Accounts &amp; access</h2>
       <ul>
         <li>
-          You must own, or be authorised to manage, any Instagram or Facebook account you connect to
-          Kip.
+          You must provide an accurate mobile number and keep access to it. Login codes are sent by
+          SMS.
         </li>
         <li>
-          You grant Kip permission to publish content you have approved to those connected accounts,
-          and to read the information needed to do so (your Pages, linked Instagram account, and post
-          engagement).
+          You are responsible for activity on your account and for anyone you invite (including
+          operators you authorise).
         </li>
-        <li>You are responsible for keeping your login credentials secure.</li>
+        <li>
+          Pulse may provide break-glass operator access to help with setup or support; that access is
+          logged and limited to delivering the service.
+        </li>
       </ul>
 
-      <h2>Your content</h2>
+      <h2>3. Approvals, autopilot &amp; platforms</h2>
+      <ul>
+        <li>
+          <strong>Default:</strong> no publish with outside impact without a named yes from you or an
+          authorised approver.
+        </li>
+        <li>
+          <strong>Autopilot:</strong> if you turn it on, Kip may publish after a heads-up according to
+          the rules you set. You can turn it off anytime.
+        </li>
+        <li>
+          You must have rights to the media and captions you supply, and authority to post to
+          connected accounts.
+        </li>
+        <li>
+          You remain responsible for complying with Meta, X, Threads, and any other platform terms,
+          community guidelines, and advertising/disclosure rules. Platforms may reject, rate-limit, or
+          remove content; Kip is not liable for platform decisions.
+        </li>
+        <li>
+          Disconnecting a destination stops future Kip publishes to it; it does not remove posts
+          already live on that network.
+        </li>
+      </ul>
+
+      <h2>4. AI drafting</h2>
       <p>
-        You retain ownership of the photos, captions, and other content you provide. You grant Kip a
-        limited licence to store, process, adapt (for example, styling a photo or generating a caption),
-        and publish that content solely to deliver the service. You are responsible for ensuring you
-        have the rights to the content you send us.
+        Captions and suggestions are generated with third-party AI models from the inputs you provide.
+        Output can be wrong, off-brand, or unsuitable. You (or your approver) are responsible for
+        reviewing drafts before publish. Do not rely on Kip for legal, medical, or financial advice.
       </p>
 
-      <h2>Acceptable use</h2>
+      <h2>5. Plans, billing &amp; cancellation</h2>
+      <ul>
+        <li>
+          Paid plans currently described as <strong>Pro</strong> and <strong>Max</strong>, billed
+          monthly or annually (annual shown as a monthly equivalent with discount). Prices are in AUD
+          unless stated otherwise and may include GST where required.
+        </li>
+        <li>
+          Features and limits on each plan are as shown at checkout / on the Plan screen. We may
+          change prices or packaging with notice for renewals.
+        </li>
+        <li>
+          Cancel anytime; access continues through the paid period already billed unless we say
+          otherwise. Annual plans are billed up front.
+        </li>
+        <li>Failed payments may pause publishing or SMS until resolved.</li>
+      </ul>
+
+      <h2>6. Acceptable use</h2>
       <p>
-        You agree not to use Kip to publish unlawful, infringing, deceptive, or harmful content, or to
-        violate the terms or policies of Instagram, Facebook, or Meta. We may suspend or terminate
-        accounts that do so.
+        You will not use Kip to: spam; harass; infringe IP; post unlawful, hateful, or deceptive
+        content; attempt to bypass platform or Kip safety limits; probe or disrupt our systems; or
+        submit others’ personal data without a lawful basis. We may suspend accounts that break these
+        rules or create legal or security risk.
       </p>
 
-      <h2>Third-party platforms</h2>
+      <h2>7. Content ownership</h2>
       <p>
-        Publishing depends on Meta&apos;s platforms and APIs, which are outside our control. We are not
-        responsible for platform outages, policy changes, or actions Meta takes on your accounts. Your
-        use of Instagram and Facebook remains subject to Meta&apos;s own terms.
+        You keep ownership of your media, captions, and memory files. You grant Pulse a limited
+        licence to host, process, transmit, and publish that content solely to operate Kip for you. We
+        may use de-identified, aggregated usage patterns to improve reliability (not to train
+        generative models on your creative content).
       </p>
 
-      <h2>Disclaimers &amp; liability</h2>
+      <h2>8. Confidentiality &amp; privacy</h2>
       <p>
-        The service is provided &ldquo;as is&rdquo;. To the extent permitted by law, Pulse is not liable
-        for indirect or consequential losses, or for content published after your approval or under an
-        autopilot setting you enabled.
+        How we handle personal data is described in the <Link href="/privacy">Privacy Policy</Link>.
+        Deletion steps are in <Link href="/data-deletion">Data deletion</Link>.
       </p>
 
-      <h2>Termination</h2>
+      <h2>9. Availability &amp; changes</h2>
       <p>
-        You may stop using Kip and disconnect your accounts at any time. You can revoke Kip&apos;s
-        access to your Meta accounts from your Facebook settings (Settings &rarr; Business Integrations).
-        On request we will delete the data we hold about you. See our{' '}
-        <a href="/data-deletion">Data Deletion</a> page.
+        We aim for reliable uptime but do not guarantee uninterrupted SMS delivery or platform API
+        availability. We may modify features; we will not materially reduce core paid functionality
+        without notice except for legal or security reasons.
       </p>
 
-      <h2>Contact</h2>
+      <h2>10. Disclaimers &amp; liability</h2>
+      <p>
+        Kip is provided “as is” to the extent permitted by law. Nothing in these Terms excludes
+        non-waivable Australian Consumer Law rights. To the maximum extent permitted, Pulse’s total
+        liability for claims relating to Kip in any 12-month period is limited to the fees you paid us
+        for Kip in that period. We are not liable for lost profits, lost posts, platform bans, or
+        indirect damages.
+      </p>
+
+      <h2>11. Indemnity</h2>
+      <p>
+        You will indemnify Pulse against claims arising from your content, your connected accounts, or
+        your misuse of Kip, except to the extent caused by our wilful misconduct.
+      </p>
+
+      <h2>12. Governing law</h2>
+      <p>
+        These Terms are governed by the laws of Victoria, Australia. Courts there have exclusive
+        jurisdiction, without limiting any non-waivable consumer rights where you live.
+      </p>
+
+      <h2>13. Contact</h2>
       <p>
         Pulse Social Media
         <br />
-        Email: <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
+        <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
       </p>
     </div>
   );

@@ -8,49 +8,68 @@ export default function DataDeletionPage() {
   return (
     <div className="content doc">
       <h1>Data Deletion</h1>
-      <p className="meta">How to delete your data from Kip</p>
+      <p className="meta">How to delete your data from Kip · Pulse Social Media</p>
 
       <p>
-        You can have the data Kip holds about you deleted at any time. This page explains what we
-        store and how to request its removal.
+        You can stop Kip’s access to your social accounts and delete the data we hold. Use both steps
+        if you want a full exit.
       </p>
 
-      <h2>Disconnect Kip from Meta</h2>
+      <h2>1. Disconnect platforms</h2>
       <p>
-        To immediately revoke Kip&apos;s access to your Instagram and Facebook accounts, remove the
-        integration from your Facebook settings:
+        <strong>In Kip:</strong> open Connections and disconnect Instagram, Facebook, X, or Threads.
+        Tokens are revoked on our side when disconnect completes.
       </p>
+      <p>
+        <strong>On Meta:</strong> Facebook → Settings &amp; privacy → Settings → Business Integrations
+        → find <strong>Pulse AI</strong> → Remove. That immediately revokes Meta access even if you
+        skip the in-app button.
+      </p>
+      <p>
+        <strong>On X:</strong> revoke the Pulse / Kip app under X connected apps settings.
+      </p>
+      <p>
+        Disconnect stops future publishing. It does not by itself wipe history stored with us —
+        request that below.
+      </p>
+
+      <h2>2. Request deletion</h2>
+      <p>
+        Email <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> from the address or number on
+        your account with the subject <strong>“Delete my data”</strong>. We permanently delete (or
+        irreversibly anonymise) the data we hold within <strong>30 days</strong> and confirm when
+        done.
+      </p>
+
+      <h2>What we delete</h2>
       <ul>
+        <li>Account and brand profile (name, phone, email).</li>
+        <li>OAuth tokens and connected-account identifiers.</li>
+        <li>Photos, videos, captions, drafts, schedules, routines, and content plans.</li>
+        <li>SMS/MMS history and approval / edit audit trail.</li>
+        <li>Memory files and operator notes tied to your brand.</li>
         <li>
-          Go to <strong>Facebook &rarr; Settings &amp; privacy &rarr; Settings &rarr; Business
-          Integrations</strong>.
-        </li>
-        <li>
-          Find <strong>Pulse AI</strong> in the list and select <strong>Remove</strong>.
+          Billing profile links held by us (your payment provider may retain records they need for
+          tax/fraud).
         </li>
       </ul>
-      <p>
-        This stops all future access and publishing. It does not, on its own, delete the data already
-        stored with us. Request that below.
-      </p>
 
-      <h2>Request deletion of your data</h2>
-      <p>
-        Email <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> from the address on your account
-        with the subject <strong>&ldquo;Delete my data&rdquo;</strong>. We will permanently delete the
-        data we hold about you within <strong>30 days</strong> and confirm once it is done.
-      </p>
-
-      <h2>What gets deleted</h2>
+      <h2>What we cannot delete</h2>
       <ul>
-        <li>Your account and brand profile (name, email, phone number).</li>
-        <li>Your connected-account identifiers and stored access tokens.</li>
-        <li>Photos, captions, drafts, scheduled posts, and campaign plans.</li>
-        <li>Message history and the approval/edit audit trail.</li>
+        <li>
+          Posts already live on Instagram, Facebook, X, or Threads — remove those on each platform.
+        </li>
+        <li>
+          Copies held briefly by SMS or AI subprocessors under their own retention, subject to our
+          deletion instructions.
+        </li>
+        <li>Minimal records we must keep by law (for example invoice metadata).</li>
       </ul>
+
+      <h2>Export before you go</h2>
       <p>
-        Content already published to your own Instagram or Facebook is not affected. You control that
-        from those platforms directly. We may retain minimal records where required by law.
+        Ask for an export of memory files and recent message history in the same deletion email if you
+        want a copy first.
       </p>
 
       <h2>Contact</h2>
