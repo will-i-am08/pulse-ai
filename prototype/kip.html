@@ -259,7 +259,7 @@
     }
     .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 40px 0 48px; }
     .who-card {
-      text-align: left; background: var(--soft); border-radius: 24px; padding: 18px 18px 22px;
+      text-align: left; background: transparent; border-radius: 0; padding: 0;
       display: flex; flex-direction: column; min-width: 0;
     }
     .who-art {
@@ -283,7 +283,8 @@
     }
     .job-strip li {
       font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
-      padding: 8px 12px; border-radius: 980px; background: var(--soft); color: var(--ink);
+      padding: 8px 12px; border-radius: 980px; background: #fff; color: var(--ink);
+      border: 1px solid var(--line);
       display: inline-flex; align-items: center; gap: 6px;
     }
     .job-strip li svg {
@@ -297,7 +298,7 @@
       max-width: 720px; margin: 8px auto 18px;
     }
     .channel {
-      background: var(--soft); border-radius: 20px; padding: 18px 12px 16px;
+      background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 18px 12px 16px;
       display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0;
     }
     .channel svg { width: 36px; height: 36px; color: #111; }
@@ -736,7 +737,7 @@
       .who { gap: 14px; margin: 28px 0 36px; grid-template-columns: 1fr; }
       .who-card {
         flex-direction: row; align-items: flex-start; gap: 14px;
-        padding: 16px; border-radius: 20px;
+        padding: 0; border-radius: 0;
       }
       .who-art {
         width: 72px; height: 72px; margin: 0; border-radius: 14px;
@@ -783,7 +784,7 @@
       .how-visual { height: 200px; }
       .dest { font-size: 20px; line-height: 1.35; }
       .job-strip { max-width: none; }
-      .who-card { gap: 12px; padding: 14px; }
+      .who-card { gap: 12px; padding: 0; }
       .who-art { width: 64px; height: 64px; }
       .who-art svg { width: 42px; height: 42px; }
       .channels { gap: 8px; }
