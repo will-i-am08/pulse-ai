@@ -75,7 +75,7 @@
       background: #f5f5f7; color: var(--ink);
       padding: 72px 28px 80px;
     }
-    .ideas-head { text-align: center; max-width: 18ch; margin: 0 auto 40px; }
+    .ideas-head { text-align: center; max-width: 28ch; margin: 0 auto 40px; }
     .ideas-head h2 {
       font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -0.035em;
       line-height: 1.08; margin: 0 0 10px;
@@ -160,7 +160,7 @@
 
     /* Lindy-inspired product storytelling, still black/white */
     .band { background: #fff; color: var(--ink); padding: 88px 28px 96px; }
-    .band-inner { max-width: 1080px; margin: 0 auto; }
+    .band-inner { max-width: 1080px; margin: 0 auto; text-align: center; }
     .band h2 {
       font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -0.035em;
       line-height: 1.08; margin: 0 0 12px; text-align: center;
@@ -168,50 +168,8 @@
     .band > .band-inner > .lead, .band .sub {
       text-align: center; color: var(--muted); font-size: 20px; max-width: 36ch; margin: 0 auto 40px;
     }
-    .trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
-    .tcard {
-      background: var(--soft); border-radius: 22px; padding: 22px 22px 24px; min-height: 160px;
-    }
-    .tcard h3 { margin: 0 0 8px; font-size: 19px; letter-spacing: -0.02em; }
-    .tcard p { margin: 0; color: var(--muted); font-size: 16px; }
-    .product-frame {
-      background: var(--soft); border-radius: 28px; padding: 28px 18px 18px;
-      display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px;
-      position: relative; overflow: visible;
-    }
-    .pf {
-      background: #fff; border-radius: 20px; padding: 18px 18px 16px; border: 1px solid var(--line);
-    }
-    .pf h4 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-    .rrow { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
-    .rrow:last-child { border-bottom: 0; }
-    .file {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
-      background: var(--soft); border-radius: 12px; padding: 14px; color: #333; line-height: 1.5;
-    }
-    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin: 48px 0 56px; }
-    .who h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
-    .who p { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.45; }
-    .dest {
-      text-align: center; font-size: clamp(22px, 3vw, 28px); font-weight: 600;
-      letter-spacing: -0.03em; margin: 0 0 10px;
-    }
-    .dest-note { text-align: center; color: var(--muted); font-size: 16px; margin: 0 0 48px; }
-    .plate .sub { max-width: 42ch; }
-    .ask { max-width: 640px; margin: 0 auto; }
-    .composer {
-      display: flex; gap: 8px; align-items: center;
-      background: #fff; border: 1px solid var(--line); border-radius: 980px; padding: 8px 8px 8px 18px;
-      box-shadow: 0 16px 50px -28px rgba(0,0,0,.35);
-    }
-    .composer input {
-      flex: 1; border: 0; outline: none; font-size: 16px; background: transparent; padding: 10px 0;
-    }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
-    .chip-link {
-      font-size: 13px; padding: 6px 12px; border-radius: 980px; background: var(--soft);
-      text-decoration: none; color: var(--ink);
-    }
+    .trust-grid, .plans { text-align: left; }
+    .trust-card, .plan { text-align: left; }
 
     .trust-band { background: var(--soft); }
     .trust-grid {
@@ -229,8 +187,7 @@
     .pricing { background: #fff; }
     .bill-toggle {
       display: inline-flex; gap: 4px; padding: 4px; border-radius: 980px;
-      background: var(--soft); margin: 0 auto 36px; position: relative; left: 50%;
-      transform: translateX(-50%);
+      background: var(--soft); margin: 0 auto 36px; position: relative;
     }
     .bill-toggle button {
       border: 0; background: transparent; color: var(--muted); font-size: 15px; font-weight: 600;
@@ -260,6 +217,15 @@
     .plan .pill-dark { align-self: flex-start; margin-top: auto; text-align: center; }
     .price-note { text-align: center; color: var(--muted); font-size: 14px; margin: 22px 0 0; }
 
+    .composer {
+      display: flex; gap: 8px; align-items: center;
+      background: #fff; border: 1px solid var(--line); border-radius: 980px; padding: 8px 8px 8px 18px;
+      box-shadow: 0 16px 50px -28px rgba(0,0,0,.35);
+    }
+    .composer input {
+      flex: 1; border: 0; outline: none; font-size: 16px; background: transparent; padding: 10px 0;
+    }
+
     /* —— sketch accents (black, dotted, sparse) —— */
     .sketch {
       position: absolute; pointer-events: none; color: #1d1d1f;
@@ -274,33 +240,25 @@
     .sketch.on-dark { color: rgba(255,255,255,.55); }
     .with-sketch { position: relative; }
     .sketch-title {
-      display: inline-block; position: relative; padding-bottom: 10px;
+      display: block; position: relative; padding-bottom: 12px; text-align: center;
     }
-    .sketch-title .sketch { left: 8%; right: 8%; bottom: -2px; width: 84%; height: 14px; }
+    .sketch-title .sketch {
+      left: 50%; bottom: -2px; width: min(200px, 72%); height: 14px;
+      transform: translateX(-50%);
+    }
     .ideas-head .sketch-title .sketch { color: #111; opacity: .7; }
     .band .sketch-title .sketch { color: #111; opacity: .65; }
-    .doodle-slot { position: relative; }
     .doodle-arrow-yes {
       width: 92px; height: 78px; right: -6px; top: -28px; transform: rotate(8deg);
     }
-    .doodle-star {
-      width: 28px; height: 28px; left: -6px; top: -4px;
-    }
-    .doodle-loop {
-      width: 120px; height: 70px; left: 50%; top: -34px; margin-left: -60px;
-    }
-    .doodle-squiggle {
-      width: 160px; height: 28px; left: 50%; margin-left: -80px; bottom: -10px;
-    }
     .doodle-save {
-      width: 78px; height: 54px; right: -70px; top: -8px;
+      width: 78px; height: 54px; right: -64px; top: -6px;
     }
-    .bill-toggle { position: relative; }
     .doodle-cta {
       width: 110px; height: 90px; left: 50%; margin-left: 88px; top: -18px;
     }
     .close { position: relative; }
-    .ideas-head, .band h2, .dest { position: relative; }
+    .ideas-head, .band h2 { position: relative; }
     .how { position: relative; }
     .doodle-how {
       width: 64px; height: 48px; left: -10px; top: -22px;
@@ -312,7 +270,6 @@
         animation: sketch-in .7s ease forwards;
       }
       .ideas .sketch.draw { animation-delay: .05s; }
-      .plate .sketch.draw { animation-delay: .1s; }
       .pricing .sketch.draw { animation-delay: .12s; }
       .close .sketch.draw { animation-delay: .08s; }
     }
@@ -595,12 +552,11 @@
       .page { padding: 24px 18px 48px; overflow-x: hidden; }
       .chat { padding: 18px 16px 8px; }
       .dock { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
-      .trio, .where, .product-frame, .files, .how, .who, .trust-grid, .plans { grid-template-columns: 1fr; }
+      .files, .how, .trust-grid, .plans { grid-template-columns: 1fr; }
       .doodle-arrow-yes, .doodle-how, .doodle-save, .doodle-cta { display: none; }
       .ideas { padding: 48px 20px 56px; }
       .how > li { min-height: 0; }
       .band { padding: 56px 20px 64px; }
-      .who { gap: 22px; margin: 32px 0 40px; }
       .files { grid-template-columns: 1fr; }
       .files nav { display: flex; gap: 6px; overflow-x: auto; max-width: 100%; }
       .week {
@@ -625,12 +581,11 @@
       .thread.closeup .yes-msg { right: 16px; bottom: 4svh; }
       .ideas { padding: 40px 16px 48px; }
       .how-visual { height: 200px; }
-      .dest { font-size: 20px; line-height: 1.35; }
-      .ask .composer, .dock .composer {
+      .dock .composer {
         flex-direction: column; align-items: stretch;
         border-radius: 20px; padding: 10px;
       }
-      .ask .composer .pill-dark, .dock .composer .pill-dark { width: 100%; text-align: center; }
+      .dock .composer .pill-dark { width: 100%; text-align: center; }
       .footer { padding: 24px 16px 40px; flex-direction: column; align-items: flex-start; }
       .draft { grid-template-columns: 1fr; }
       .bubble img { width: 180px; height: 180px; }
@@ -873,58 +828,8 @@
           </ol>
         </section>
 
-        <section class="band plate">
-          <div class="band-inner">
-            ${catSpot("sm")}
-            <h2 class="sketch-title with-sketch">${doodles.star("doodle-star sketch")}Hand it the whole job.${doodles.underline()}</h2>
-            <p class="sub">Captions, the calendar, the Monday nudge, the Friday recap. Kip will run organic social until you say otherwise. Stay in the thread and tap yes — or put it on autopilot and get your evenings back.</p>
-            <div class="who">
-              <article>
-                <h3>The shop</h3>
-                <p>You were busy making the thing. Send a photo from the floor. Or don’t. Kip already knows the week.</p>
-              </article>
-              <article>
-                <h3>The creator</h3>
-                <p>Same voice, every channel, without becoming a content intern. You make the work. Kip ships it.</p>
-              </article>
-              <article>
-                <h3>The founder</h3>
-                <p>You should not also be the social media manager. This is that hire — without the awkward stand-up.</p>
-              </article>
-            </div>
-            <p class="dest sketch-title">Instagram · Facebook · X · Threads${doodles.squiggle("doodle-squiggle sketch")}</p>
-            <p class="dest-note">Organic social. That’s the niche. Kip intends to be first in it.</p>
-            <div class="product-frame with-sketch">
-              ${doodles.loop("doodle-loop sketch")}
-              <div class="pf">
-                <h4>On its plate</h4>
-                <div class="rrow"><span>Weekly check-in</span><span class="opt">Mondays · 9:00 am</span></div>
-                <div class="rrow"><span>Friday recap</span><span class="opt">Fridays · 4:00 pm</span></div>
-                <div class="rrow"><span>Quiet reminder</span><span class="opt">If no photo in 10 days</span></div>
-                <div class="rrow"><span>Autopilot</span><span class="opt">Heads-up, then it posts</span></div>
-              </div>
-              <div class="pf">
-                <h4>memory.md</h4>
-                <div class="file">Organic only — Instagram, Facebook, X, Threads.<br>Never post without a yes, unless autopilot is on.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
-              </div>
-            </div>
-            <div class="ask" style="margin-top:48px">
-              <form class="composer" data-landchat>
-                <input name="q" placeholder="Tell Kip you’re done doing social yourself…" />
-                <button class="pill-dark" type="submit">Get started</button>
-              </form>
-              <div class="chips">
-                <a class="chip-link" href="#/signup">I’m a café</a>
-                <a class="chip-link" href="#/signup">I’m a creator</a>
-                <a class="chip-link" href="#/signup">I’m a founder</a>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section class="band trust-band" aria-label="Privacy and control">
           <div class="band-inner">
-            ${catSpot("sm")}
             <h2>Private, and in your control.</h2>
             <p class="sub">Your data stays yours. Encrypted by default. Never used to train models.</p>
             <div class="trust-grid">
@@ -947,7 +852,6 @@
 
         <section class="band pricing" aria-label="Pricing">
           <div class="band-inner">
-            ${catSpot("sm")}
             <h2 class="sketch-title">Simple plans. Real work.${doodles.underline()}</h2>
             <p class="sub">Organic social, off your plate. No credit maths.</p>
             <div class="bill-toggle" role="group" aria-label="Billing period">
