@@ -32,3 +32,5 @@ supabase/.temp/
 
 # Session artifacts
 .playwright-mcp/
+.vercel
+.env*

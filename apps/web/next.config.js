@@ -16,7 +16,9 @@ const repoRoot = path.join(__dirname, '..', '..');
 // (apps/web), not to outputFileTracingRoot — verified empirically — so reach up
 // to the repo root with ../../.
 const tracingIncludes = [
-  '../../packages/orchestrator/src/assets/*.ttf',
+  // Fonts are handled in the orchestrator via `new URL('./assets/…', import.meta.url)`,
+  // which webpack emits + rewrites — no trace-include needed. Only the third-party
+  // .wasm assets (loaded internally by satori/harfbuzz) need forcing.
   // Target each package's REAL store dir only. A broad `.pnpm/**/*.wasm` also
   // matches the symlinked copies pnpm places in every dependent's node_modules,
   // and Vercel refuses to package a function that includes symlinked dirs
