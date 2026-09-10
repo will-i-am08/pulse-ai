@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kip</title>
+  <style>
+    :root {
+      --black: #000;
+      --white: #fff;
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --line: #ececec;
+      --soft: #f5f5f7;
+      --ok: #1a7f4e;
+      --bad: #b42318;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--white);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.4;
+    }
+    a { color: inherit; }
+    button, input, textarea, select { font-family: inherit; }
+    button { cursor: pointer; }
+    img { max-width: 100%; display: block; }
+    .hidden { display: none !important; }
+
+    /* —— landing —— */
+    .lp { background: #000; color: #f5f5f7; }
+    .hero {
+      min-height: 100svh;
+      height: 100svh;
+      position: relative;
+      overflow: hidden;
+      background: #000;
+    }
+    .nav {
+      position: absolute; inset: 0 0 auto 0; z-index: 3;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 28px 0;
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: #fff; text-decoration: none; font-size: 19px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    .nav-login {
+      color: rgba(255,255,255,.84); text-decoration: none; font-size: 15px;
+    }
+    .nav-login:hover { color: #fff; }
+    .hero-copy {
+      position: absolute; left: 0; right: 0; top: 0; z-index: 3;
+      text-align: center; padding: clamp(96px, 16vh, 148px) 24px 0;
+      pointer-events: none;
+    }
+    .hero-copy a { pointer-events: auto; }
+    .hero-copy::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; height: 58%;
+      background: linear-gradient(180deg, #000 0%, rgba(0,0,0,.55) 52%, transparent 100%);
+      z-index: -1;
+    }
+    .h1 {
+      font-size: clamp(56px, 9vw, 92px); font-weight: 600; letter-spacing: -0.038em;
+      line-height: 1.02; margin: 0 0 28px; color: #fff;
+    }
+    .pill {
+      display: inline-block; background: #fff; color: #000; font-size: 17px; font-weight: 600;
+      letter-spacing: -0.01em; padding: 12px 22px; border-radius: 980px; text-decoration: none; border: 0;
+    }
+    .pill:hover { background: #f5f5f7; }
+    .trust { margin: 18px 0 0; font-size: 19px; color: rgba(255,255,255,.52); }
+    .hero-product { position: absolute; inset: 0; z-index: 1; }
+    .photo-bleed {
+      width: 100%; height: 100%; object-fit: cover;
+      background:
+        radial-gradient(circle at 40% 40%, #c9b7a2 0%, transparent 40%),
+        linear-gradient(160deg, #8a7460, #2c241c);
+    }
+    .idea {
+      min-height: 100svh; background: #fff; color: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+      padding: clamp(72px, 14vh, 160px) 28px;
+    }
+    .idea-copy { text-align: center; max-width: 18ch; }
+    .idea-title {
+      font-size: clamp(40px, 6vw, 64px); font-weight: 600; letter-spacing: -0.035em;
+      line-height: 1.08; margin: 0 0 16px;
+    }
+    .idea-body { margin: 0; font-size: 21px; color: var(--muted); }
+    .close {
+      min-height: 100svh; background: #000; color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 80px 24px;
+    }
+    .close .h1 { color: #fff; }
+    .footer {
+      background: #000; color: rgba(255,255,255,.46);
+      padding: 28px 28px 48px; display: flex; flex-wrap: wrap; gap: 14px 24px;
+      justify-content: space-between; align-items: center; font-size: 14px;
+    }
+    .footer a { color: rgba(255,255,255,.46); text-decoration: none; }
+    .footer a:hover { color: #fff; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 20px; }
+
+    .thread { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+    .thread.closeup { position: relative; width: 100%; height: 100%; }
+    .thread.isolated { width: min(420px, 100%); }
+    .msg { display: flex; max-width: 86%; }
+    .msg p { margin: 0; font-size: 21px; line-height: 1.35; }
+    .out { align-self: flex-end; margin-left: auto; }
+    .in { align-self: flex-start; }
+    .thread.closeup .photo-msg { position: absolute; inset: 0; max-width: none; width: 100%; height: 100%; }
+    .thread.closeup .photo { width: 100%; height: 100%; object-fit: cover; }
+    .thread.closeup .in { position: absolute; left: 3vw; bottom: 11vh; z-index: 1; max-width: min(520px, 54vw); }
+    .thread.closeup .yes-msg { position: absolute; right: 3vw; bottom: 4.5vh; z-index: 1; }
+    .thread.isolated .photo { width: 240px; height: 240px; object-fit: cover; border-radius: 28px 28px 8px 28px; }
+    .in p { border-radius: 22px 22px 22px 8px; padding: 14px 18px; }
+    .dark .in p { background: #2c2c2e; color: #f5f5f7; }
+    .light .in p { background: #e9e9eb; color: #1d1d1f; }
+    .yes {
+      font-weight: 600; border-radius: 22px 22px 8px 22px; padding: 10px 20px; margin: 0;
+    }
+    .dark .yes { background: #fff; color: #000; }
+    .light .yes { background: #1d1d1f; color: #fff; }
+
+    /* —— app chrome —— */
+    .shell { min-height: 100svh; background: #fff; display: flex; flex-direction: column; }
+    .topbar {
+      display: flex; align-items: center; gap: 16px;
+      padding: 18px 28px; border-bottom: 1px solid var(--line);
+    }
+    .topbar .brand { color: var(--ink); font-size: 17px; }
+    .topbar nav { display: flex; gap: 18px; flex: 1; margin-left: 8px; }
+    .topbar nav a {
+      color: var(--muted); text-decoration: none; font-size: 15px;
+    }
+    .topbar nav a:hover, .topbar nav a.on { color: var(--ink); }
+    .ghost {
+      background: none; border: 0; color: var(--muted); font-size: 15px; padding: 0;
+    }
+    .ghost:hover { color: var(--ink); }
+    .content { flex: 1; width: 100%; max-width: 820px; margin: 0 auto; padding: 3.25rem 2.5rem 6rem; }
+
+    .page-h1 {
+      font-size: clamp(32px, 5vw, 44px); font-weight: 600; letter-spacing: -0.035em;
+      margin: 0 0 8px; line-height: 1.1;
+    }
+    .lead { margin: 0 0 2.5rem; font-size: 19px; color: var(--muted); }
+
+    .row { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
+    .row:first-of-type { padding-top: 0; }
+    .row h2, .panel h2 {
+      margin: 0 0 1.1rem; font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    .status { margin: 0; font-size: 21px; font-weight: 600; }
+    .muted, .empty { margin: 8px 0 0; color: var(--muted); font-size: 19px; }
+    .hint { margin: 16px 0 0; color: var(--muted); font-size: 19px; }
+
+    .setup { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 22px; }
+    .setup-head { display: flex; justify-content: space-between; gap: 12px; font-size: 19px; font-weight: 600; }
+    .need { font-size: 15px; }
+    .done { font-size: 15px; font-weight: 500; color: var(--muted); }
+    .quiet-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .quiet-form input { flex: 1 1 220px; }
+
+    input[type="text"], input[type="tel"], input[type="email"], input[type="password"],
+    input[type="number"], input[type="url"], input[type="datetime-local"], textarea, select {
+      font-size: 17px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; color: var(--ink);
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+    textarea { width: 100%; min-height: 96px; resize: vertical; }
+
+    .pill-dark {
+      display: inline-block; background: #000; color: #fff; font-size: 17px; font-weight: 600;
+      padding: 12px 22px; border-radius: 980px; text-decoration: none; border: 0;
+    }
+    .pill-dark:hover { background: #1d1d1f; }
+    .linkish { color: var(--ink); }
+
+    .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+    .draft { display: grid; grid-template-columns: 168px 1fr; gap: 20px; font-size: 19px; }
+    .when { color: var(--muted); font-size: 17px; }
+    .caption { margin: 0; }
+    .draft-actions { display: flex; gap: 12px; margin-top: 8px; }
+    .text-btn { background: none; border: 0; padding: 0; font-size: 15px; color: var(--muted); }
+    .text-btn:hover { color: var(--ink); }
+    .text-btn.bad { color: var(--bad); }
+
+    .panel { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
+    .banner { font-size: 19px; margin: 0 0 1.5rem; }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+
+    /* auth */
+    .auth {
+      min-height: 100svh; background: #fff; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 48px 20px 80px;
+    }
+    .auth-card { width: 100%; max-width: 420px; display: grid; gap: 14px; }
+    .auth .page-h1 { font-size: 40px; }
+    .auth .pill-dark { width: 100%; text-align: center; }
+    .label { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 500; }
+    .opt { font-weight: 400; color: var(--muted); font-size: 13px; }
+    .alt { text-align: center; color: var(--muted); font-size: 15px; }
+    .alt a { color: var(--ink); }
+    .operator { margin-top: 20px; width: 100%; max-width: 420px; color: var(--muted); font-size: 14px; text-align: center; }
+    .operator summary { cursor: pointer; list-style: none; }
+    .operator summary::-webkit-details-marker { display: none; }
+    .operator-form { display: grid; gap: 10px; text-align: left; margin-top: 12px; }
+    .radios { display: flex; gap: 18px; font-weight: 400; }
+
+    /* calendar */
+    .week-nav { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+    .week { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 8px; overflow-x: auto; }
+    .day {
+      min-height: 160px; border: 1px solid var(--line); border-radius: 14px; padding: 10px;
+      background: var(--soft);
+    }
+    .day.today { background: #fff; border-color: #000; }
+    .day-h { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .card-post {
+      background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px;
+      font-size: 13px; margin-bottom: 8px;
+    }
+    .chip { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: #eef1f5; color: #565f6b; }
+    .chip.yes { background: #f3f3f4; color: #1d1d1f; }
+    .chip.auto { background: #eafaf0; color: #1a7f4e; }
+    .pillar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    .choice {
+      display: flex; gap: 12px; align-items: flex-start; padding: 16px;
+      border: 1px solid var(--line); border-radius: 14px; cursor: pointer; margin-bottom: 10px;
+    }
+    .choice.disabled { opacity: .5; cursor: not-allowed; }
+    .table { width: 100%; border-collapse: collapse; font-size: 16px; }
+    .table th { text-align: left; font-size: 13px; color: var(--muted); font-weight: 500; padding: 8px 8px 12px; border-bottom: 1px solid var(--line); }
+    .table td { padding: 14px 8px; border-bottom: 1px solid var(--line); }
+    .table a { text-decoration: none; font-weight: 600; }
+
+    .oauth {
+      min-height: 100svh; display: grid; place-items: center; background: var(--soft); padding: 24px;
+    }
+    .oauth-card {
+      background: #fff; border-radius: 20px; padding: 36px 28px; max-width: 420px; width: 100%;
+      box-shadow: 0 20px 60px -30px rgba(0,0,0,.3);
+    }
+    .doc p { font-size: 18px; color: var(--muted); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+      background: #000; color: #fff; padding: 12px 18px; border-radius: 980px;
+      font-size: 15px; z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .toast.show { opacity: 1; }
+
+    .proto {
+      position: fixed; right: 16px; bottom: 16px; z-index: 50;
+      background: #1d1d1f; color: #fff; border-radius: 16px; padding: 12px 14px;
+      font-size: 12px; width: 220px; box-shadow: 0 12px 40px rgba(0,0,0,.3);
+    }
+    .proto summary { cursor: pointer; font-weight: 600; list-style: none; }
+    .proto nav { display: grid; gap: 4px; margin-top: 10px; }
+    .proto a, .proto button {
+      color: rgba(255,255,255,.8); text-decoration: none; background: none; border: 0;
+      text-align: left; padding: 4px 0; font-size: 12px;
+    }
+    .proto a:hover, .proto button:hover { color: #fff; }
+    .proto .note { color: rgba(255,255,255,.5); margin: 8px 0 0; }
+
+    .mark { width: 36px; height: 36px; }
+    .topbar .mark { width: 24px; height: 24px; }
+
+    @media (max-width: 640px) {
+      .nav { padding: 18px 18px 0; }
+      .h1 { font-size: clamp(44px, 12vw, 56px); }
+      .draft { grid-template-columns: 1fr; gap: 6px; }
+      .content { padding: 2.25rem 1.25rem 5rem; }
+      .thread.closeup .in { left: 16px; right: 16px; max-width: none; }
+      .week { grid-template-columns: repeat(7, minmax(140px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="toast" id="toast"></div>
+
+  <details class="proto" open>
+    <summary>Prototype jumps</summary>
+    <nav>
+      <a href="#/">Landing</a>
+      <a href="#/signup">Sign up</a>
+      <a href="#/login">Log in</a>
+      <a href="#/verify">Enter code</a>
+      <a href="#/home">Owner home</a>
+      <a href="#/plan">Calendar</a>
+      <a href="#/content-plan">Content plan</a>
+      <a href="#/connect">Choose Facebook Page</a>
+      <a href="#/operator">Operator brands</a>
+      <a href="#/brand">Brand approvals</a>
+      <a href="#/voice">Voice</a>
+      <a href="#/history">History</a>
+      <a href="#/new-brand">Add brand</a>
+      <a href="#/privacy">Privacy</a>
+      <button type="button" data-state="setup">State: still setting up</button>
+      <button type="button" data-state="live">State: connected</button>
+    </nav>
+    <p class="note">Clickable mock. Not the live app. Open this file, click around, then download when you’re happy.</p>
+  </details>
+
+  <script>
+    const PHOTO = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1800&q=80";
+    const CROISSANT = "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80";
+
+    const mark = (cls = "mark") =>
+      `<svg class="${cls}" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="18" fill="currentColor"/><path d="M13 11h5.2c3.4 0 5.6 1.9 5.6 4.8 0 1.9-1 3.3-2.7 4.1L24.8 25h-3.4l-3.4-4.7H16V25h-3V11zm3 6.8h1.9c1.6 0 2.6-.8 2.6-2s-1-2-2.6-2H16v6.8z" fill="#fff"/></svg>`;
+
+    const state = {
+      role: "owner",
+      connected: false,
+      phoneSet: false,
+      x: false,
+      threads: false,
+      name: "Harbour Espresso",
+      phone: "0412 000 000",
+      page: "Harbour Espresso",
+      ig: "harbourespresso",
+      banner: "",
+      week: 0,
+      waiting: [
+        { id: "w1", when: "Thu 11 Sep, 7:30 am", caption: "Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go." }
+      ],
+      upcoming: [
+        { id: "u1", when: "Fri 12 Sep, 8:00 am", caption: "Behind the bar before open. Steam, sunlight, same playlist as last year." },
+        { id: "u2", when: "Sat 13 Sep, 9:00 am", caption: "Almond croissant, still warm. That’s the post." }
+      ]
+    };
+
+    const routes = {};
+    function route(path, fn) { routes[path] = fn; }
+
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+    }
+
+    function go(path) {
+      location.hash = path.startsWith("#") ? path : "#" + path;
+    }
+
+    function shell(active, inner, extraNav = "") {
+      return `
+        <div class="shell">
+          <header class="topbar">
+            <a class="brand" href="#/home">${mark("mark")} <span>Kip</span></a>
+            <nav>
+              <a href="#/home" class="${active === "home" ? "on" : ""}">Home</a>
+              <a href="#/plan" class="${active === "plan" ? "on" : ""}">Calendar</a>
+              <a href="#/content-plan" class="${active === "plan" ? "" : ""} ${active === "content" ? "on" : ""}">Plan</a>
+              ${extraNav}
+            </nav>
+            <button class="ghost" data-go="#/">Sign out</button>
+          </header>
+          <main class="content">${inner}</main>
+        </div>`;
+    }
+
+    function thread(tone, size) {
+      const img = size === "closeup"
+        ? `<div class="photo-bleed photo" role="img" aria-label="A coffee and an almond croissant" style="background-image:url('${PHOTO}');background-size:cover;background-position:center"></div>`
+        : `<img class="photo" src="${CROISSANT}" alt="A photo of a coffee and an almond croissant" />`;
+      return `
+        <figure class="thread ${tone} ${size}" aria-label="A text thread: a photo sent, a caption back, the word yes">
+          <div class="msg out photo-msg">${img}</div>
+          <div class="msg in"><p>Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post to Instagram and Facebook.</p></div>
+          <div class="msg out yes-msg"><p class="yes">yes</p></div>
+        </figure>`;
+    }
+
+    route("/", () => `
+      <main class="lp">
+        <section class="hero" aria-label="Kip">
+          <header class="nav">
+            <span class="brand">${mark()} <span>Kip</span></span>
+            <a class="nav-login" href="#/login">Operator login</a>
+          </header>
+          <div class="hero-copy">
+            <h1 class="h1">Text a photo.<br>It’s posted.</h1>
+            <a class="pill" href="#/signup">Get started</a>
+            <p class="trust">Nothing posts without your yes.</p>
+          </div>
+          <div class="hero-product">${thread("dark", "closeup")}</div>
+        </section>
+        <section class="idea" aria-label="The thread">${thread("light", "isolated")}</section>
+        <section class="idea"><div class="idea-copy"><h2 class="idea-title">You say yes.</h2><p class="idea-body">Approval happens in the thread.</p></div></section>
+        <section class="idea"><div class="idea-copy"><h2 class="idea-title">Instagram and Facebook.</h2><p class="idea-body">Those are the only places Kip posts.</p></div></section>
+        <section class="close">
+          <h2 class="h1">Text a photo.<br>It’s posted.</h2>
+          <a class="pill" href="#/signup">Get started</a>
+        </section>
+        <footer class="footer">
+          <span>© 2026 Pulse Social Media</span>
+          <span class="footer-links">
+            <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
+            <a href="#/privacy">Privacy</a>
+            <a href="#/terms">Terms</a>
+            <a href="#/deletion">Data deletion</a>
+          </span>
+        </footer>
+      </main>`);
+
+    route("/login", () => `
+      <main class="auth">
+        <form class="auth-card" data-login>
+          <h1 class="page-h1">Log in</h1>
+          <p class="lead" style="margin:0">Enter your mobile number and Kip will text you a code.</p>
+          <label class="label">Mobile number
+            <input name="phone" type="tel" required placeholder="04xx xxx xxx" value="0412 000 000" />
+          </label>
+          <button class="pill-dark" type="submit">Send me a code</button>
+          <p class="alt">New here? <a href="#/signup">Create an account</a></p>
+        </form>
+        <details class="operator">
+          <summary>Operator login</summary>
+          <form class="operator-form" data-operator>
+            <label class="label">Operator password
+              <input type="password" name="password" value="operator" />
+            </label>
+            <button class="pill-dark" type="submit">Sign in as operator</button>
+            <span class="opt">Break-glass access if the messaging channel is down. Any password works in this mock.</span>
+          </form>
+        </details>
+      </main>`);
+
+    route("/signup", () => `
+      <main class="auth">
+        <form class="auth-card" data-signup>
+          <h1 class="page-h1">Create your account</h1>
+          <p class="lead" style="margin:0">Sign up and Kip will message you to get set up. No password to remember.</p>
+          <label class="label">Your name or business name
+            <input name="name" required value="Harbour Espresso" />
+          </label>
+          <label class="label">Mobile number
+            <input name="phone" type="tel" required placeholder="04xx xxx xxx" value="0412 000 000" />
+            <span class="opt">This is how you log in — Kip texts you a code.</span>
+          </label>
+          <label class="label">Email <span class="opt">(optional)</span>
+            <input name="email" type="email" />
+          </label>
+          <fieldset style="border:1px solid var(--line);border-radius:12px;padding:12px">
+            <legend class="opt">This account is for a…</legend>
+            <div class="radios">
+              <label><input type="radio" name="account_type" value="business" checked /> Business</label>
+              <label><input type="radio" name="account_type" value="personal" /> Personal</label>
+            </div>
+          </fieldset>
+          <label class="label">Website or Instagram <span class="opt">(optional)</span>
+            <input name="website" placeholder="https://…" />
+          </label>
+          <label class="label">Your Discord user ID <span class="opt">(optional)</span>
+            <input name="discord" placeholder="e.g. 1542…" />
+          </label>
+          <button class="pill-dark" type="submit">Create account</button>
+          <p class="alt">Already have an account? <a href="#/login">Log in</a></p>
+        </form>
+      </main>`);
+
+    route("/verify", () => `
+      <main class="auth">
+        <form class="auth-card" data-verify>
+          <h1 class="page-h1">Enter your code</h1>
+          <p class="lead" style="margin:0">Kip just messaged a 6-digit code to ${state.phone}. Any 6 digits work here.</p>
+          <label class="label">Code
+            <input name="code" inputmode="numeric" maxlength="6" placeholder="123456" required value="123456" />
+          </label>
+          <button class="pill-dark" type="submit">Verify and continue</button>
+        </form>
+        <p class="alt" style="margin-top:16px"><button class="ghost" data-go="#/login">Didn’t get it? Start again</button></p>
+      </main>`);
+
+    route("/home", () => {
+      const connected = state.connected;
+      const phoneSet = state.phoneSet;
+      const allDone = connected && phoneSet;
+      return shell("home", `
+        ${state.banner ? `<p class="banner ${state.banner.ok ? "ok" : "bad"}">${state.banner.text}</p>` : ""}
+        <article class="row">
+          <h2>Status</h2>
+          ${connected
+            ? `<p class="status">Connected</p><p class="muted">${state.page} · @${state.ig}</p>`
+            : `<p class="status">Still setting up</p><p class="muted">${phoneSet ? "Kip is about to message you to finish setup." : "Add your number and Kip will reach out to get started."}</p>`}
+          ${allDone ? "" : `
+            <ul class="setup">
+              <li>
+                <div class="setup-head"><span>Connect Facebook</span><span class="${connected ? "done" : "need"}">${connected ? "Done" : "Needs you"}</span></div>
+                ${connected
+                  ? `<p class="empty">${state.page} · @${state.ig}. <a href="#/oauth-fb">Reconnect</a></p>`
+                  : `<p class="empty">Sign in with Facebook and choose the Page Kip should post to.</p>
+                     <p><a class="pill-dark" href="#/oauth-fb">Connect with Facebook</a></p>`}
+              </li>
+              <li>
+                <div class="setup-head"><span>Add your phone</span><span class="${phoneSet ? "done" : "need"}">${phoneSet ? "Done" : "Needs you"}</span></div>
+                ${phoneSet
+                  ? `<p class="empty">We’ll reach you on ${state.phone}.</p>`
+                  : `<p class="empty">This is how Kip works. You text a photo, it drafts the post, you reply “yes”.</p>`}
+                <form class="quiet-form" data-phone>
+                  <input name="phone" inputmode="tel" placeholder="04xx xxx xxx" value="${phoneSet ? state.phone : ""}" required />
+                  <button class="pill-dark" type="submit">${phoneSet ? "Update" : "Save number"}</button>
+                </form>
+              </li>
+            </ul>`}
+        </article>
+        <article class="row">
+          <h2>Upcoming</h2>
+          ${state.upcoming.length ? `<ul class="list">${state.upcoming.map(p => `<li class="draft"><span class="when">${p.when}</span><p class="caption">${p.caption}</p></li>`).join("")}</ul>` : `<p class="empty">Nothing scheduled yet.</p>`}
+        </article>
+        <article class="row">
+          <h2>Needs a yes</h2>
+          ${state.waiting.length ? `<ul class="list">${state.waiting.map(p => `
+            <li class="draft">
+              <span class="when">${p.when}</span>
+              <div>
+                <p class="caption">${p.caption}</p>
+                <div class="draft-actions">
+                  <button class="text-btn" data-approve="${p.id}">Approve</button>
+                  <button class="text-btn bad" data-remove="${p.id}">Remove</button>
+                </div>
+              </div>
+            </li>`).join("")}</ul>` : `<p class="empty">Nothing waiting</p>`}
+          <p class="hint">Reply yes in your text thread to approve. Nothing posts without it.</p>
+        </article>
+        <article class="panel">
+          <h2>Connect X (optional)</h2>
+          ${state.x
+            ? `<p class="empty">Posting to @${state.ig}. <a href="#/oauth-x">Reconnect</a></p>`
+            : `<p class="empty">Link your X account so your agent can post there too.</p><p><a class="pill-dark" href="#/oauth-x">Connect X</a></p>`}
+        </article>
+        <article class="panel">
+          <h2>Connect Threads (optional)</h2>
+          ${state.threads
+            ? `<p class="empty">Posting to @${state.ig}. <a href="#/oauth-threads">Reconnect</a></p>`
+            : `<p class="empty">Link your Threads account so your agent can post there too.</p><p><a class="pill-dark" href="#/oauth-threads">Connect Threads</a></p>`}
+        </article>
+      `);
+    });
+
+    route("/oauth-fb", () => `
+      <main class="oauth">
+        <div class="oauth-card">
+          <h1 class="page-h1" style="font-size:28px">Continue with Facebook</h1>
+          <p class="lead">Fake Meta screen. In production this is Facebook Login. Here it just continues.</p>
+          <p>Kip would like to manage your Facebook Pages and linked Instagram.</p>
+          <p style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="pill-dark" href="#/connect">Continue</a>
+            <a class="ghost" href="#/home">Cancel</a>
+          </p>
+        </div>
+      </main>`);
+
+    route("/connect", () => `
+      ${shell("home", `
+        <h1 class="page-h1">Choose the account to connect</h1>
+        <p class="lead">Pick the Facebook Page (and its linked Instagram) Kip will post to.</p>
+        <form data-choose>
+          <label class="choice"><input type="radio" name="page" value="Harbour Espresso" checked /> <span><strong>Harbour Espresso</strong><br><span class="opt">Instagram: @harbourespresso</span></span></label>
+          <label class="choice"><input type="radio" name="page" value="Harbour Events" /> <span><strong>Harbour Events</strong><br><span class="opt">Instagram: @harbourevents</span></span></label>
+          <label class="choice disabled"><input type="radio" disabled /> <span><strong>Old pop-up page</strong><br><span class="opt">No Instagram linked. Can’t post to this one yet</span></span></label>
+          <button class="pill-dark" type="submit">Connect this account</button>
+        </form>
+      `)}`);
+
+    route("/oauth-x", () => `
+      <main class="oauth">
+        <div class="oauth-card">
+          <h1 class="page-h1" style="font-size:28px">Authorize Kip on X</h1>
+          <p class="lead">Fake X screen. Allow posting on your behalf.</p>
+          <p style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="pill-dark" data-connect="x" type="button">Authorize app</button>
+            <a class="ghost" href="#/home">Cancel</a>
+          </p>
+        </div>
+      </main>`);
+
+    route("/oauth-threads", () => `
+      <main class="oauth">
+        <div class="oauth-card">
+          <h1 class="page-h1" style="font-size:28px">Authorize Kip on Threads</h1>
+          <p class="lead">Fake Threads screen. Allow posting on your behalf.</p>
+          <p style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="pill-dark" data-connect="threads" type="button">Authorize app</button>
+            <a class="ghost" href="#/home">Cancel</a>
+          </p>
+        </div>
+      </main>`);
+
+    route("/plan", () => {
+      const days = ["Mon 8", "Tue 9", "Wed 10", "Thu 11", "Fri 12", "Sat 13", "Sun 14"].map((d, i) => {
+        const posts = [];
+        if (i === 3 && state.waiting[0]) posts.push({ ...state.waiting[0], chip: "Needs a yes", cls: "yes" });
+        if (i === 4 && state.upcoming[0]) posts.push({ ...state.upcoming[0], chip: "Autopilot", cls: "auto" });
+        if (i === 5 && state.upcoming[1]) posts.push({ ...state.upcoming[1], chip: "Autopilot", cls: "auto" });
+        return { label: d, today: i === 2, posts };
+      });
+      return shell("plan", `
+        <h1 class="page-h1">Content calendar</h1>
+        <div class="week-nav">
+          <button class="ghost" data-week="-1">← Prev</button>
+          <span class="muted" style="margin:0">Week of 8 Sep</span>
+          <button class="ghost" data-week="1">Next →</button>
+        </div>
+        <div class="week">
+          ${days.map(d => `
+            <div class="day ${d.today ? "today" : ""}">
+              <div class="day-h">${d.label}</div>
+              ${d.posts.map(p => `
+                <div class="card-post">
+                  <div style="display:flex;justify-content:space-between;gap:6px"><strong>${p.when.split(", ")[1] || ""}</strong><span class="chip ${p.cls}">${p.chip}</span></div>
+                  <div>${p.caption.slice(0, 72)}…</div>
+                  <div class="draft-actions">
+                    <button class="text-btn" data-toast="Moved. (This is a mock.)">Move</button>
+                    <button class="text-btn bad" data-remove="${p.id}">Remove</button>
+                  </div>
+                </div>`).join("") || `<span class="opt">—</span>`}
+            </div>`).join("")}
+        </div>
+        <div class="row" style="border:0;padding-top:2.5rem">
+          <h2>Content pillars & cadence</h2>
+          <p class="empty" style="margin-top:0">Set how often each type posts. Autopilot still sends a heads-up before each one.</p>
+          ${[
+            ["#6366f1", "Behind the scenes", 2],
+            ["#ec4899", "Product", 2],
+            ["#10b981", "Social proof", 1],
+            ["#f59e0b", "Educational", 1],
+            ["#06b6d4", "Lifestyle", 1]
+          ].map(([c, n, w]) => `
+            <form class="pillar" data-pillar>
+              <span class="dot" style="background:${c}"></span>
+              <strong style="flex:1">${n}</strong>
+              <label class="opt"><input type="number" value="${w}" min="0" max="14" style="width:64px" /> / week</label>
+              <label class="opt"><input type="checkbox" ${n === "Product" ? "checked" : ""} /> Autopilot</label>
+              <button class="text-btn" type="submit">Save</button>
+            </form>`).join("")}
+        </div>
+      `);
+    });
+
+    route("/content-plan", () => shell("content", `
+      <h1 class="page-h1">Your content plan</h1>
+      <p class="lead">Quiet local café. Three to five posts a week. Warm, short, no hype.</p>
+      <p class="ok">Active. Your pillars and schedule are set to this.</p>
+      ${[
+        ["Behind the scenes", "2/wk · photo", "Open, close, staff, the machine."],
+        ["Product", "2/wk · photo", "Coffee, pastry, the thing on the counter."],
+        ["Social proof", "1/wk · photo", "Regulars, reviews, a full room."]
+      ].map(([n, m, d]) => `<article class="row"><h2>${n}</h2><p class="muted" style="margin:0">${m}</p><p class="empty">${d}</p></article>`).join("")}
+      <article class="row">
+        <h2>Format mix</h2>
+        <p class="empty">Mostly single photos. A carousel when there’s a story.</p>
+        <p class="empty">Best times: weekday 7–9am, Saturday 8–10am.</p>
+      </article>
+    `));
+
+    route("/operator", () => shell("home", `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1.5rem">
+        <h1 class="page-h1">All brands</h1>
+        <a class="pill-dark" href="#/new-brand">Add brand</a>
+      </div>
+      <table class="table">
+        <thead><tr><th>Name</th><th>Owner</th><th>Connected</th><th>Setup</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Harbour Espresso</td><td>user</td><td>@harbourespresso</td><td>done</td><td>active</td><td><a href="#/brand">Open</a></td></tr>
+          <tr><td>Northside Dental</td><td>user</td><td>@northsidedental</td><td>in_progress</td><td>active</td><td><a href="#/brand">Open</a></td></tr>
+          <tr><td>Willow & Co</td><td>—</td><td>—</td><td>none</td><td>paused</td><td><a href="#/brand">Open</a></td></tr>
+        </tbody>
+      </table>
+    `, `<a href="#/operator" class="on">Brands</a>`));
+
+    route("/brand", () => shell("home", `
+      <h1 class="page-h1">Harbour Espresso</h1>
+      <p class="lead">0412 000 000 · client approves · active · <a href="#/voice">Voice profile</a> · <a href="#/history">Post history</a></p>
+      <h2>Pending approvals</h2>
+      ${state.waiting.length ? state.waiting.map(p => `
+        <article class="row">
+          <img src="${CROISSANT}" alt="" style="width:160px;height:160px;object-fit:cover;border-radius:16px" />
+          <form data-edit="${p.id}" style="display:grid;gap:10px;margin-top:16px">
+            <label class="label">Caption<textarea name="caption">${p.caption}</textarea></label>
+            <label class="label">Scheduled for<input type="datetime-local" value="2026-09-11T07:30" /></label>
+            <p style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="pill-dark" type="submit">Save and approve</button>
+              <button class="ghost" type="button" data-remove="${p.id}">Reject</button>
+            </p>
+          </form>
+        </article>`).join("") : `<p class="empty">Nothing waiting on you right now.</p>`}
+    `));
+
+    route("/voice", () => shell("home", `
+      <h1 class="page-h1">Voice profile</h1>
+      <p class="lead"><a href="#/brand">Back to approvals</a></p>
+      <form data-voice style="display:grid;gap:14px">
+        <label class="label">Tone<textarea>warm\nplayful\nconcise</textarea></label>
+        <label class="label">Dos<textarea>talk like a local\nname the pastry</textarea></label>
+        <label class="label">Don'ts<textarea>no corporate\nno hashtag dumps</textarea></label>
+        <label class="label">Example captions<textarea>Saturday morning energy — first pour of the day.</textarea></label>
+        <label class="label">Banned words<textarea>slay\nartisan (we can say it, just not every time)</textarea></label>
+        <label class="label">Emoji policy
+          <select><option>sparingly</option><option>none</option><option>ok</option></select>
+        </label>
+        <button class="pill-dark" type="submit">Save voice</button>
+      </form>
+    `));
+
+    route("/history", () => shell("home", `
+      <h1 class="page-h1">Post history</h1>
+      <p class="lead"><a href="#/brand">Back to approvals</a></p>
+      <ul class="list">
+        <li class="draft"><span class="when">Mon 8 Sep</span><p class="caption">Rain. Flat whites. That’s the morning.</p></li>
+        <li class="draft"><span class="when">Sat 6 Sep</span><p class="caption">Almond croissant, still warm.</p></li>
+        <li class="draft"><span class="when">Thu 4 Sep</span><p class="caption">New beans on the hopper. Come taste them with us.</p></li>
+      </ul>
+    `));
+
+    route("/new-brand", () => shell("home", `
+      <h1 class="page-h1">Add a brand</h1>
+      <form data-newbrand style="display:grid;gap:14px;max-width:520px">
+        <label class="label">Name<input name="name" required /></label>
+        <label class="label">Client phone<input name="phone" placeholder="+614xxxxxxxx" required /></label>
+        <label class="label">Approver<select><option>Client</option><option>Operator</option></select></label>
+        <label class="label">Status<select><option>Active</option><option>Paused</option></select></label>
+        <button class="pill-dark" type="submit">Create brand</button>
+      </form>
+    `));
+
+    function legal(title, body) {
+      return `
+        <main class="shell">
+          <header class="topbar">
+            <a class="brand" href="#/">${mark("mark")} <span>Kip</span></a>
+            <nav></nav>
+            <a class="ghost" href="#/">Back</a>
+          </header>
+          <main class="content doc">
+            <h1 class="page-h1">${title}</h1>
+            ${body}
+          </main>
+        </main>`;
+    }
+
+    route("/privacy", () => legal("Privacy", `<p>Pulse Social Media operates Kip. We hold a name, mobile number, photos you send, captions, and encrypted tokens for Instagram and Facebook so we can post after you say yes.</p><p>We don’t sell this. Staff access is gated. Email will@jmcalder.com with questions.</p>`));
+    route("/terms", () => legal("Terms", `<p>Kip drafts posts and publishes only after you approve in the thread. Instagram and Facebook are the default destinations. You can disconnect Meta and ask us to delete your data at any time.</p>`));
+    route("/deletion", () => legal("Data deletion", `<p>Remove Pulse AI from Facebook → Settings → Business Integrations to cut access. Email will@jmcalder.com with the subject “Delete my data” to wipe what we hold.</p>`));
+
+    function render() {
+      const path = (location.hash.replace(/^#/, "") || "/");
+      const view = routes[path] || routes["/"];
+      document.getElementById("app").innerHTML = view();
+      document.title = path === "/" ? "Kip" : "Kip · prototype";
+    }
+
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest("[data-go]");
+      if (a) { e.preventDefault(); go(a.getAttribute("data-go")); }
+      const st = e.target.closest("[data-state]");
+      if (st) {
+        if (st.dataset.state === "live") {
+          state.connected = true; state.phoneSet = true; state.banner = { ok: true, text: "Instagram & Facebook connected." };
+        } else {
+          state.connected = false; state.phoneSet = false; state.x = false; state.threads = false; state.banner = "";
+        }
+        toast(st.dataset.state === "live" ? "Previewing a connected account" : "Previewing setup");
+        render();
+      }
+      const ap = e.target.closest("[data-approve]");
+      if (ap) {
+        const id = ap.dataset.approve;
+        const post = state.waiting.find(p => p.id === id);
+        state.waiting = state.waiting.filter(p => p.id !== id);
+        if (post) state.upcoming.unshift(post);
+        toast("Approved. It can post.");
+        render();
+      }
+      const rm = e.target.closest("[data-remove]");
+      if (rm) {
+        const id = rm.dataset.remove;
+        state.waiting = state.waiting.filter(p => p.id !== id);
+        state.upcoming = state.upcoming.filter(p => p.id !== id);
+        toast("Removed.");
+        render();
+      }
+      const tw = e.target.closest("[data-toast]");
+      if (tw) { e.preventDefault(); toast(tw.dataset.toast); }
+      const cx = e.target.closest("[data-connect]");
+      if (cx) {
+        if (cx.dataset.connect === "x") {
+          state.x = true;
+          state.banner = { ok: true, text: "X connected. Your agent can post to X now." };
+        } else {
+          state.threads = true;
+          state.banner = { ok: true, text: "Threads connected." };
+        }
+        go("/home");
+      }
+    });
+
+    document.addEventListener("submit", (e) => {
+      if (e.target.matches("[data-login]")) { e.preventDefault(); state.phone = e.target.phone.value; go("/verify"); }
+      if (e.target.matches("[data-signup]")) { e.preventDefault(); state.name = e.target.name.value; state.phone = e.target.phone.value; go("/verify"); }
+      if (e.target.matches("[data-verify]")) { e.preventDefault(); state.role = "owner"; go("/home"); }
+      if (e.target.matches("[data-operator]")) { e.preventDefault(); state.role = "operator"; go("/operator"); }
+      if (e.target.matches("[data-phone]")) { e.preventDefault(); state.phone = e.target.phone.value; state.phoneSet = true; state.banner = { ok: true, text: "Phone number saved. Kip will be in touch." }; toast("Phone saved"); render(); }
+      if (e.target.matches("[data-choose]")) { e.preventDefault(); state.connected = true; state.page = e.target.page.value; state.banner = { ok: true, text: "Instagram & Facebook connected." }; go("/home"); }
+      if (e.target.matches("[data-voice]")) { e.preventDefault(); toast("Voice saved"); }
+      if (e.target.matches("[data-pillar]")) { e.preventDefault(); toast("Pillar saved"); }
+      if (e.target.matches("[data-newbrand]")) { e.preventDefault(); toast("Brand created"); go("/operator"); }
+      if (e.target.matches("[data-edit]")) { e.preventDefault(); const id = e.target.dataset.edit; const post = state.waiting.find(p => p.id === id); if (post) post.caption = e.target.caption.value; state.waiting = state.waiting.filter(p => p.id !== id); if (post) state.upcoming.unshift(post); toast("Saved and approved"); go("/brand"); }
+    });
+
+    window.addEventListener("hashchange", render);
+    render();
+  </script>
+</body>
+</html>
