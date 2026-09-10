@@ -42,6 +42,9 @@ export async function GET(request: NextRequest) {
       encryptJson({ access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at: expiresAt }),
       brand.id,
     ]);
+    // Note: we don't queue the voice agent on X connect — reading a user's own
+    // X history needs the paid X API, so the harvester stubs X for now. Once
+    // that's wired, queue queueVoiceAnalysis(brand.id) here too.
     const res = back('/app?x=success');
     res.cookies.delete(X_PKCE_COOKIE);
     return res;

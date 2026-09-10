@@ -12,6 +12,10 @@ export { buildConversationContext } from "./conversationContext.js";
 
 export { startOnboarding, onboardingTurn, onboardingNext, finishOnboarding, WRAP_ACK } from "./onboarding.js";
 
+export { runVoiceAnalysis, queueVoiceAnalysis } from "./voice/analyzeVoice.js";
+export { computeTextStats } from "./voice/textStats.js";
+export type { TextStats } from "./voice/textStats.js";
+
 export { callLLM } from "./llm.js";
 export type { CallLLMOptions } from "./llm.js";
 

@@ -58,6 +58,37 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
   lines.push(`Emoji policy: ${profile.emoji_policy}.`);
   if (profile.hashtag_policy) lines.push(`Hashtag policy: ${profile.hashtag_policy}.`);
 
+  // Micro-tells learned from real post history — the difference between
+  // "sounds like AI" and "sounds like them". Only emit what's actually set.
+  const m = profile.writing_mechanics;
+  const mech: string[] = [];
+  if (m.emoji_frequency) mech.push(`emoji: ${m.emoji_frequency}`);
+  if (m.favourite_emojis.length) mech.push(`emojis they reach for: ${m.favourite_emojis.join(" ")}`);
+  if (m.exclamation_usage) mech.push(`exclamation marks: ${m.exclamation_usage}`);
+  if (m.ellipsis_usage) mech.push(`ellipses: ${m.ellipsis_usage}`);
+  if (m.capitalisation) mech.push(`capitalisation: ${m.capitalisation}`);
+  if (m.sentence_length) mech.push(`sentence length: ${m.sentence_length}`);
+  if (m.punctuation_quirks.length) mech.push(`punctuation quirks: ${m.punctuation_quirks.join("; ")}`);
+  if (m.openers.length) mech.push(`typical openers: ${m.openers.join(" / ")}`);
+  if (m.sign_offs.length) mech.push(`typical sign-offs: ${m.sign_offs.join(" / ")}`);
+  if (m.hashtag_style) mech.push(`hashtags: ${m.hashtag_style}`);
+  if (m.cta_style) mech.push(`calls to action: ${m.cta_style}`);
+  if (m.favourite_phrases.length) mech.push(`phrases they use: ${m.favourite_phrases.join("; ")}`);
+  if (mech.length) {
+    lines.push("Match these writing habits exactly (learned from their real posts):");
+    for (const line of mech) lines.push(`- ${line}`);
+  }
+
+  const ps = profile.photo_style;
+  const photo: string[] = [];
+  if (ps.overall_aesthetic) photo.push(`aesthetic: ${ps.overall_aesthetic}`);
+  if (ps.editing) photo.push(`editing: ${ps.editing}`);
+  if (ps.colour_palette.length) photo.push(`colours: ${ps.colour_palette.join(", ")}`);
+  if (photo.length) {
+    lines.push("Their visual style (reference when the caption should match the look):");
+    for (const line of photo) lines.push(`- ${line}`);
+  }
+
   if (profile.example_captions.length) {
     lines.push("Examples of this brand's voice (match the style, don't copy):");
     for (const ex of profile.example_captions.slice(0, 5)) lines.push(`- "${ex}"`);

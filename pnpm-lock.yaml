@@ -84,6 +84,9 @@ importers:
       '@pulse/graph':
         specifier: workspace:*
         version: link:../../packages/graph
+      '@pulse/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@pulse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -200,6 +203,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.32.1
         version: 0.32.1
+      '@pulse/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@pulse/shared':
         specifier: workspace:*
         version: link:../shared

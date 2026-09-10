@@ -42,6 +42,53 @@ export async function threadsEnsureToken(stored: ThreadsStoredTokens): Promise<{
   }
 }
 
+export interface ThreadsFetchedPost {
+  id: string;
+  text: string | null;
+  media_type: string | null; // TEXT_POST | IMAGE | VIDEO | CAROUSEL_ALBUM | ...
+  media_url: string | null;
+  permalink: string | null;
+  timestamp: string | null;
+}
+
+/**
+ * Read a user's own Threads posts, newest first, following pagination until we
+ * hit `max` or run out. Read-only — used by the onboarding voice agent to learn
+ * how the client writes. Best-effort: returns whatever it gathered on error.
+ */
+export async function threadsFetchPosts(
+  userId: string,
+  accessToken: string,
+  max = 200,
+): Promise<ThreadsFetchedPost[]> {
+  const fields = "id,text,media_type,media_url,permalink,timestamp";
+  const out: ThreadsFetchedPost[] = [];
+  let url: string | null =
+    `${GRAPH}/${userId}/threads?fields=${fields}&limit=50&access_token=${encodeURIComponent(accessToken)}`;
+
+  try {
+    while (url && out.length < max) {
+      const res = await fetch(url);
+      const body = (await res.json()) as any;
+      if (!res.ok || body.error) break;
+      for (const p of (body.data ?? []) as any[]) {
+        out.push({
+          id: String(p.id ?? ""),
+          text: typeof p.text === "string" ? p.text : null,
+          media_type: typeof p.media_type === "string" ? p.media_type : null,
+          media_url: typeof p.media_url === "string" ? p.media_url : null,
+          permalink: typeof p.permalink === "string" ? p.permalink : null,
+          timestamp: typeof p.timestamp === "string" ? p.timestamp : null,
+        });
+      }
+      url = body.paging?.next ?? null;
+    }
+  } catch {
+    /* best-effort — return what we have */
+  }
+  return out.slice(0, max);
+}
+
 /** Publish a post to Threads (text, optionally a single image). Returns the id + permalink. */
 export async function threadsPublish(
   userId: string,

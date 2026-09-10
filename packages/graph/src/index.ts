@@ -6,3 +6,5 @@ export { withRetry } from "./retry.js";
 export type { RetryOptions } from "./retry.js";
 export { countPublished24h } from "./rateStore.js";
 export { didPublishLive, publishConfirmation } from "./notice.js";
+export { harvestBrandPosts } from "./harvest.js";
+export type { HarvestedPost, HarvestResult } from "./harvest.js";

@@ -84,6 +84,44 @@ export const ApprovalAction = [
 export type ApprovalAction = (typeof ApprovalAction)[number];
 
 // ─── Brand-voice profile (the "learning" — structured, not a model) ─
+
+// The micro-tells that make writing sound like a specific person: how they
+// punctuate, capitalise, sign off, which emojis they reach for and how often.
+// Learned from real post history by the onboarding voice agent. Every field is
+// defaulted, so older profiles (from the chat interview alone) still parse.
+export const writingMechanicsSchema = z
+  .object({
+    emoji_frequency: z.string().default(""),       // narrative: "~1 per post, always trailing"
+    favourite_emojis: z.array(z.string()).default([]),
+    exclamation_usage: z.string().default(""),     // "rare — maybe 1 in 5 posts"
+    ellipsis_usage: z.string().default(""),        // "loves a trailing ... for suspense"
+    capitalisation: z.string().default(""),        // "all-lowercase" | "sentence case" | ...
+    sentence_length: z.string().default(""),       // "short, punchy — 6-10 words"
+    punctuation_quirks: z.array(z.string()).default([]),
+    openers: z.array(z.string()).default([]),      // recurring first-line patterns
+    sign_offs: z.array(z.string()).default([]),    // recurring closers
+    hashtag_style: z.string().default(""),         // count, placement, examples
+    cta_style: z.string().default(""),             // how they ask for the click/comment
+    favourite_phrases: z.array(z.string()).default([]),
+  })
+  .default({});
+export type WritingMechanics = z.infer<typeof writingMechanicsSchema>;
+
+// How their photos look, learned by running real images through vision.
+export const photoStyleSchema = z
+  .object({
+    overall_aesthetic: z.string().default(""),
+    lighting: z.string().default(""),
+    composition: z.string().default(""),
+    colour_palette: z.array(z.string()).default([]),
+    editing: z.string().default(""),               // "warm, high-contrast, film grain"
+    common_subjects: z.array(z.string()).default([]),
+    framing: z.string().default(""),               // "flat-lay", "candid", "posed portrait"
+    recurring_motifs: z.array(z.string()).default([]),
+  })
+  .default({});
+export type PhotoStyle = z.infer<typeof photoStyleSchema>;
+
 export const brandVoiceProfileSchema = z.object({
   tone: z.array(z.string()).default([]),          // e.g. ["warm", "playful", "concise"]
   dos: z.array(z.string()).default([]),
@@ -93,11 +131,35 @@ export const brandVoiceProfileSchema = z.object({
   emoji_policy: z.enum(["none", "sparing", "liberal"]).default("sparing"),
   hashtag_policy: z.string().default(""),
   notes: z.array(z.string()).default([]),         // rolling learned notes from corrections
+  // Enriched by the onboarding voice agent from real post history (additive).
+  writing_mechanics: writingMechanicsSchema,
+  photo_style: photoStyleSchema,
+  analysis_source: z.string().default(""),        // "148 posts (instagram, facebook); 30 images"
 });
 export type BrandVoiceProfile = z.infer<typeof brandVoiceProfileSchema>;
 
 export const emptyBrandVoiceProfile = (): BrandVoiceProfile =>
   brandVoiceProfileSchema.parse({});
+
+// ─── Voice-analysis job state (async, run on the worker) ────────────
+export type VoiceAnalysisStatus =
+  | "none"
+  | "pending"
+  | "running"
+  | "done"
+  | "failed"
+  | "skipped";
+
+export interface VoiceAnalysisState {
+  status: VoiceAnalysisStatus;
+  queued_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  posts_analysed?: number;
+  images_analysed?: number;
+  platforms?: string[];
+  error?: string;
+}
 
 // ─── Row shapes (mirror the tables in 0001_init.sql) ────────
 export type AccountType = "business" | "personal";
@@ -155,6 +217,8 @@ export interface Brand {
   website: string | null;
   onboarding_state: OnboardingState;
   brand_voice_profile: BrandVoiceProfile;
+  voice_guide_md: string | null;
+  voice_analysis_state: VoiceAnalysisState;
   ig_user_id: string | null;
   fb_page_id: string | null;
   fb_page_name: string | null;
