@@ -257,15 +257,73 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
       background: var(--soft); border-radius: 12px; padding: 14px; color: #333; line-height: 1.5;
     }
-    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin: 48px 0 56px; }
+    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 40px 0 48px; }
+    .who-card {
+      text-align: left; background: var(--soft); border-radius: 24px; padding: 18px 18px 22px;
+      display: flex; flex-direction: column; min-width: 0;
+    }
+    .who-art {
+      height: 132px; border-radius: 18px; background: #fff; margin: 0 0 16px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--line); flex-shrink: 0;
+    }
+    .who-art svg {
+      width: 92px; height: 92px; color: #111;
+    }
+    .who-art path, .who-art circle, .who-art line, .who-art polyline, .who-art rect {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .who-art .ink-fill { fill: currentColor; stroke: none; }
+    .who-body { min-width: 0; }
     .who h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
-    .who p { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.45; }
+    .who p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+    .job-strip {
+      list-style: none; margin: 0 auto 36px; padding: 0;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 56ch;
+    }
+    .job-strip li {
+      font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+      padding: 8px 12px; border-radius: 980px; background: var(--soft); color: var(--ink);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .job-strip li svg {
+      width: 14px; height: 14px; flex-shrink: 0;
+    }
+    .job-strip li svg path, .job-strip li svg circle, .job-strip li svg line, .job-strip li svg rect {
+      fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .channels {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+      max-width: 720px; margin: 8px auto 18px;
+    }
+    .channel {
+      background: var(--soft); border-radius: 20px; padding: 18px 12px 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0;
+    }
+    .channel svg { width: 36px; height: 36px; color: #111; }
+    .channel svg path, .channel svg circle, .channel svg rect, .channel svg line, .channel svg polyline {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .channel svg .ink-fill { fill: currentColor; stroke: none; }
+    .channel span { font-size: 14px; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
     .dest {
       text-align: center; font-size: clamp(22px, 3vw, 28px); font-weight: 600;
       letter-spacing: -0.03em; margin: 0 0 10px;
     }
+    .dest.sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
     .dest-note { text-align: center; color: var(--muted); font-size: 16px; margin: 0 0 48px; }
     .plate .sub { max-width: 42ch; }
+    .trust-ico {
+      width: 48px; height: 48px; margin: 0 0 14px; color: #111;
+    }
+    .trust-ico path, .trust-ico circle, .trust-ico line, .trust-ico polyline, .trust-ico rect {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .trust-ico .ink-fill { fill: currentColor; stroke: none; }
+    .trust-card { text-align: left; }
     .ask { max-width: 640px; margin: 0 auto; text-align: left; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
     .chip-link {
@@ -667,12 +725,33 @@
       .page { padding: 24px 18px 48px; overflow-x: hidden; }
       .chat { padding: 18px 16px 8px; }
       .dock { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
-      .files, .how, .who, .product-frame, .trust-grid, .plans { grid-template-columns: 1fr; }
+      .files, .how, .product-frame, .trust-grid, .plans { grid-template-columns: 1fr 1fr; }
       .doodle-arrow-yes, .doodle-how, .doodle-save, .doodle-cta, .doodle-loop { display: none; }
       .ideas { padding: 48px 20px 56px; }
       .how > li { min-height: 0; }
       .band { padding: 56px 20px 64px; }
-      .who { gap: 22px; margin: 32px 0 40px; }
+      .who { gap: 14px; margin: 28px 0 36px; grid-template-columns: 1fr; }
+      .who-card {
+        flex-direction: row; align-items: flex-start; gap: 14px;
+        padding: 16px; border-radius: 20px;
+      }
+      .who-art {
+        width: 72px; height: 72px; margin: 0; border-radius: 14px;
+      }
+      .who-art svg { width: 48px; height: 48px; }
+      .who h3 { font-size: 19px; margin-bottom: 4px; }
+      .who p { font-size: 15px; }
+      .job-strip { gap: 6px; margin-bottom: 28px; justify-content: flex-start; }
+      .job-strip li { font-size: 12px; padding: 7px 10px; }
+      .channels {
+        grid-template-columns: 1fr 1fr; max-width: none; gap: 10px; margin: 4px 0 14px;
+      }
+      .channel { padding: 14px 10px 12px; border-radius: 16px; gap: 8px; }
+      .channel svg { width: 28px; height: 28px; }
+      .channel span { font-size: 13px; }
+      .trust-grid { grid-template-columns: 1fr; gap: 10px; }
+      .trust-card { padding: 20px 18px 22px; }
+      .trust-ico { width: 40px; height: 40px; margin-bottom: 10px; }
       .files { grid-template-columns: 1fr; }
       .files nav { display: flex; gap: 6px; overflow-x: auto; max-width: 100%; }
       .week {
@@ -700,6 +779,11 @@
       .ideas { padding: 40px 16px 48px; }
       .how-visual { height: 200px; }
       .dest { font-size: 20px; line-height: 1.35; }
+      .job-strip { max-width: none; }
+      .who-card { gap: 12px; padding: 14px; }
+      .who-art { width: 64px; height: 64px; }
+      .who-art svg { width: 42px; height: 42px; }
+      .channels { gap: 8px; }
       .ask .composer, .dock .composer {
         flex-direction: column; align-items: stretch;
         border-radius: 20px; padding: 10px;
@@ -792,6 +876,26 @@
         </svg>`,
     };
 
+    /* Line icons for About / Trust — same ink language as doodles */
+    const icons = {
+      shop: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M18 38l8-18h44l8 18"/><path d="M22 38v34h52V38"/><path d="M38 72V52h20v20"/><circle cx="30" cy="46" r="2.2" class="ink-fill"/><circle cx="66" cy="46" r="2.2" class="ink-fill"/></svg>`,
+      creator: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><rect x="22" y="18" width="52" height="60" rx="8"/><circle cx="48" cy="42" r="12"/><path d="M32 68c4-8 12-12 16-12s12 4 16 12"/><path d="M58 22l8-6 4 8"/><path d="M66 20l4 2"/></svg>`,
+      founder: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M28 70V40l20-14 20 14v30"/><path d="M40 70V52h16v18"/><path d="M20 70h56"/><path d="M48 26v-6"/><circle cx="48" cy="16" r="3"/></svg>`,
+      caption: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h10M5 17h12"/></svg>`,
+      calendar: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>`,
+      nudge: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v2M12 18v2M6 12H4M20 12h-2"/><circle cx="12" cy="12" r="5"/><path d="M12 9v3l2 2"/></svg>`,
+      recap: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h10M7 12h7M7 16h9"/><path d="M5 5h14v14H5z"/></svg>`,
+      yes: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L19 7"/></svg>`,
+      autopilot: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2"/></svg>`,
+      ig: () => `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="10" width="28" height="28" rx="8"/><circle cx="24" cy="24" r="8"/><circle cx="33" cy="15" r="2" class="ink-fill"/></svg>`,
+      fb: () => `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="14"/><path d="M27 18h-3c-2 0-3 1-3 3v3h-3v4h3v10h4V28h3.5l.5-4H28v-2c0-.6.2-1 1-1h2v-3z"/></svg>`,
+      x: () => `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 14l20 20M34 14L14 34"/></svg>`,
+      threads: () => `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M18 22c0-6 4-10 10-10s8 3 8 8c0 10-16 10-16 18 0 4 3 6 8 6 7 0 12-4 14-10"/><path d="M16 26c2 6 8 10 14 10"/></svg>`,
+      lock: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="12" y="22" width="24" height="18" rx="3"/><path d="M18 22v-6a6 6 0 0 1 12 0v6"/><circle cx="24" cy="31" r="2" class="ink-fill"/></svg>`,
+      control: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="14"/><circle cx="24" cy="24" r="4"/><path d="M24 10v4M24 34v4M10 24h4M34 24h4"/></svg>`,
+      visible: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M6 24s8-12 18-12 18 12 18 12-8 12-18 12S6 24 6 24z"/><circle cx="24" cy="24" r="5"/></svg>`,
+    };
+
     const state = {
       billing: "monthly",
       connected: false,
@@ -808,11 +912,11 @@
       memory: "Weekly report goes out Mondays, 9am.\\nNever post without a yes.\\nTone is warm, short, no hype.\\nAlmond croissant is the hero pastry.",
       messages: [
         { who: "you", photo: true },
-        { who: "kip", text: "Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.\\n\\nReply yes to post." },
+        { who: "kip", text: "Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.\\n\\nReply yes to post." },
         { who: "you", text: "yes" }
       ],
       waiting: [
-        { id: "w1", when: "Thu 11 Sep, 7:30 am", caption: "Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go." }
+        { id: "w1", when: "Thu 11 Sep, 7:30 am", caption: "Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go." }
       ],
       upcoming: [
         { id: "u1", when: "Fri 12 Sep, 8:00 am", caption: "Behind the bar before open. Steam, sunlight, same playlist as last year." },
@@ -874,7 +978,7 @@
       return `
         <figure class="thread ${tone} ${size}" aria-label="A text thread: a photo sent, a caption back, the word yes">
           <div class="msg out photo-msg">${img}</div>
-          <div class="msg in"><p>Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post.</p></div>
+          <div class="msg in"><p>Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post.</p></div>
           <div class="msg out yes-msg"><p class="yes">yes</p></div>
         </figure>`;
     }
@@ -920,7 +1024,7 @@
             <li class="reveal reveal-d2">
               <a class="how-card" href="#/signup">
                 <div class="how-visual">
-                  <p class="cap">Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.</p>
+                  <p class="cap">Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.</p>
                 </div>
                 <div class="how-copy">
                   <div class="how-n">02</div>
@@ -948,22 +1052,45 @@
         <section class="band plate" id="about">
           <div class="band-inner">
             <h2 class="sketch-title reveal">Hand it the whole job.${doodles.underline()}</h2>
-            <p class="sub reveal reveal-d1">Captions, the calendar, the Monday nudge, the Friday recap. Kip will run organic social until you say otherwise. Stay in the thread and tap yes — or put it on autopilot and get your evenings back.</p>
+            <p class="sub reveal reveal-d1">Kip will run organic social until you say otherwise. Stay in the thread and tap yes, or put it on autopilot and get your evenings back.</p>
+            <ul class="job-strip reveal reveal-d1" aria-label="What Kip handles">
+              <li>${icons.caption()} Captions</li>
+              <li>${icons.calendar()} The calendar</li>
+              <li>${icons.nudge()} Monday nudge</li>
+              <li>${icons.recap()} Friday recap</li>
+              <li>${icons.yes()} Tap yes</li>
+              <li>${icons.autopilot()} Autopilot</li>
+            </ul>
             <div class="who">
-              <article class="reveal reveal-d1">
-                <h3>The shop</h3>
-                <p>You were busy making the thing. Send a photo from the floor. Or don’t. Kip already knows the week.</p>
+              <article class="who-card reveal reveal-d1">
+                <div class="who-art">${icons.shop()}</div>
+                <div class="who-body">
+                  <h3>The shop</h3>
+                  <p>You were busy making the thing. Send a photo from the floor. Or don’t. Kip already knows the week.</p>
+                </div>
               </article>
-              <article class="reveal reveal-d2">
-                <h3>The creator</h3>
-                <p>Same voice, every channel, without becoming a content intern. You make the work. Kip ships it.</p>
+              <article class="who-card reveal reveal-d2">
+                <div class="who-art">${icons.creator()}</div>
+                <div class="who-body">
+                  <h3>The creator</h3>
+                  <p>Same voice, every channel, without becoming a content intern. You make the work. Kip ships it.</p>
+                </div>
               </article>
-              <article class="reveal reveal-d3">
-                <h3>The founder</h3>
-                <p>You should not also be the social media manager. This is that hire — without the awkward stand-up.</p>
+              <article class="who-card reveal reveal-d3">
+                <div class="who-art">${icons.founder()}</div>
+                <div class="who-body">
+                  <h3>The founder</h3>
+                  <p>You should not also be the social media manager. This is that hire, without the awkward stand-up.</p>
+                </div>
               </article>
             </div>
-            <p class="dest sketch-title reveal">Instagram · Facebook · X · Threads${doodles.squiggle()}</p>
+            <p class="dest sr-only">Instagram · Facebook · X · Threads</p>
+            <div class="channels reveal" aria-label="Destinations">
+              <div class="channel">${icons.ig()}<span>Instagram</span></div>
+              <div class="channel">${icons.fb()}<span>Facebook</span></div>
+              <div class="channel">${icons.x()}<span>X</span></div>
+              <div class="channel">${icons.threads()}<span>Threads</span></div>
+            </div>
             <p class="dest-note reveal reveal-d1">Organic social. That’s the niche. Kip intends to be first in it.</p>
             <div class="product-frame with-sketch reveal reveal-d2">
               ${doodles.loop("doodle-loop sketch")}
@@ -976,7 +1103,7 @@
               </div>
               <div class="pf">
                 <h4>memory.md</h4>
-                <div class="file">Organic only — Instagram, Facebook, X, Threads.<br>Never post without a yes, unless autopilot is on.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
+                <div class="file">Organic only: Instagram, Facebook, X, Threads.<br>Never post without a yes, unless autopilot is on.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
               </div>
             </div>
             <div class="ask reveal" style="margin-top:48px">
@@ -1000,14 +1127,17 @@
             <p class="sub reveal reveal-d1">Your data stays yours. Encrypted by default. Never used to train models.</p>
             <div class="trust-grid">
               <article class="trust-card reveal reveal-d1">
+                ${icons.lock()}
                 <h3>Private.</h3>
-                <p>Photos, captions, and brand memory aren’t sold, shared for ads, or used to train anyone’s model — ours or a provider’s.</p>
+                <p>Photos, captions, and brand memory aren’t sold, shared for ads, or used to train anyone’s model, ours or a provider’s.</p>
               </article>
               <article class="trust-card reveal reveal-d2">
+                ${icons.control()}
                 <h3>In your control.</h3>
                 <p>You set what Kip can touch. Approvals in the thread. Revoke Meta, X, or Threads anytime. Pause or wipe when you ask.</p>
               </article>
               <article class="trust-card reveal reveal-d3">
+                ${icons.visible()}
                 <h3>Visible.</h3>
                 <p>Publishes, approvals, and access leave a trail. Tokens stay encrypted. Your brand doesn’t mingle with anyone else’s.</p>
               </article>
