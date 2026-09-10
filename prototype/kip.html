@@ -70,21 +70,25 @@
       width: 100%; height: 100%;
       background: radial-gradient(circle at 40% 40%, #c9b7a2 0%, transparent 40%), linear-gradient(160deg, #8a7460, #2c241c);
     }
-    .idea {
-      min-height: 100svh; background: #fff; color: var(--ink);
-      display: flex; align-items: center; justify-content: center;
-      padding: clamp(72px, 14vh, 160px) 28px;
+    .ideas {
+      background: #fff; color: var(--ink);
+      padding: 56px 40px 64px;
     }
-    .idea-copy { text-align: center; max-width: 18ch; }
+    .ideas-inner {
+      display: grid; grid-template-columns: minmax(240px, 340px) 1fr 1fr;
+      gap: 40px 48px; align-items: center;
+      max-width: 1080px; margin: 0 auto;
+    }
+    .ideas .idea-copy { max-width: 16ch; }
     .idea-title {
-      font-size: clamp(40px, 6vw, 64px); font-weight: 600; letter-spacing: -0.035em;
-      line-height: 1.08; margin: 0 0 16px;
+      font-size: clamp(28px, 3.5vw, 36px); font-weight: 600; letter-spacing: -0.035em;
+      line-height: 1.08; margin: 0 0 8px;
     }
-    .idea-body { margin: 0; font-size: 21px; color: var(--muted); }
+    .idea-body { margin: 0; font-size: 18px; color: var(--muted); }
     .close {
-      min-height: 100svh; background: #000; color: #fff;
+      background: #000; color: #fff;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      text-align: center; padding: 80px 24px;
+      text-align: center; padding: 88px 24px 72px;
     }
     .close .h1 { color: #fff; }
     .footer {
@@ -318,7 +322,9 @@
       .rail .spacer { display: none; }
       .stage { margin: 0 12px 12px; }
       .aside { margin: 0 12px 12px; }
-      .trio, .where, .product-frame, .files { grid-template-columns: 1fr; }
+      .trio, .where, .product-frame, .files, .ideas-inner { grid-template-columns: 1fr; }
+      .ideas { padding: 40px 24px 48px; }
+      .ideas-inner { justify-items: center; text-align: center; }
     }
     @media (max-width: 640px) {
       .h1 { font-size: clamp(44px, 12vw, 56px); }
@@ -440,9 +446,13 @@
           </div>
           <div class="hero-product">${thread("dark", "closeup")}</div>
         </section>
-        <section class="idea">${thread("light", "isolated")}</section>
-        <section class="idea"><div class="idea-copy"><h2 class="idea-title">You say yes.</h2><p class="idea-body">Approval happens in the thread.</p></div></section>
-        <section class="idea"><div class="idea-copy"><h2 class="idea-title">Instagram and Facebook.</h2><p class="idea-body">Those are the only places Kip posts.</p></div></section>
+        <section class="ideas" aria-label="How Kip works">
+          <div class="ideas-inner">
+            ${thread("light", "isolated")}
+            <div class="idea-copy"><h2 class="idea-title">You say yes.</h2><p class="idea-body">Approval happens in the thread.</p></div>
+            <div class="idea-copy"><h2 class="idea-title">Instagram and Facebook.</h2><p class="idea-body">Those are the only places Kip posts.</p></div>
+          </div>
+        </section>
 
         <section class="band">
           <div class="band-inner">
