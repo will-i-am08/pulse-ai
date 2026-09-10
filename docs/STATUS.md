@@ -49,8 +49,8 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 
 | Item | Reality |
 |---|---|
-| Live Meta publishing | Code complete; `TODO(live)` on permalink fetch + FB video routing, unverifiable without a real token. **Done-pending-token.** |
-| X & Threads | Deliberately **mock/fake-feed only** — `live.ts` routes them to the mock adapter. Placeholders, not integrations. |
+| Live Meta publishing | **Code complete** — the `TODO(live)` gaps (IG permalink, FB video routing, FB reach) are now implemented to Meta's documented shapes, best-effort wrapped so they degrade rather than fail. Only remaining step is confirming against the **first real published post** (e.g. the App Review screencast). |
+| X & Threads | **Real integrations built** — OAuth connect + live publish for both (X via API v2, Threads via Meta). They fall back to the mock feed only until the app is configured (`X_CLIENT_ID` / `THREADS_APP_ID`) and a brand connects an account, via the `platformConfigured()` guard. |
 | Closed-loop learning digest (Phase D) | `analyzePerformance` exists; not wired to a weekly trigger. |
 | Channel end-state | Discord live now; Twilio built + tested (not primary); **Linq** (end state) sandbox only. |
 | ~~Google Photos/Drive auto-import~~ | **Cut** with the Google descope. Migrations `0012`/`0015` (`content_sources`) are now dead schema. |
@@ -73,6 +73,11 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 
 ---
 
+## ✅ Done 2026-09-10
+
+- **Finished the live Meta Graph paths**: the three `TODO(live)` gaps are implemented — IG permalink fetch, FB video routing (`/videos`) vs photo/text, and FB reach via post insights. All best-effort wrapped so a field mismatch degrades to `null`/`0` rather than failing the publish/report. Confirm on the first real post.
+- **Passwordless phone login** (OTP through the agent thread), **X + Threads live integrations**, and the **`platformConfigured()` mock-fallback guard** (ends the recurring env-validation bug) all landed. **Meta Business Verification complete** — App Review submission is the remaining Meta gate.
+
 ## ✅ Done 2026-09-09
 
 - **Removed all Google code** (descoped — not social media): `shared/google.ts`, `reviewSync.ts`, `connect/google/*`, `actions/google.ts`, the `google` platform + Brand GBP fields, dashboard connect flow, worker review-sync loop, and the GBP doc. Migration `0024_drop_google.sql` drops the columns + `content_sources` table (prod-safe guard on the platform check). Typecheck + 110 tests green.
@@ -81,8 +86,8 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 ## 🔲 To do
 
 1. **Ads / boost-top-posts** (Phase D) — not started.
-2. **X/Threads** real integrations — currently faked.
-3. **Wire the closed-loop learning digest** to a weekly trigger.
+2. **Wire the closed-loop learning digest** to a weekly trigger.
+3. **Confirm live publish end-to-end** against a real connected account (permalink/reach fields, FB video) — one real post during the App Review screencast covers it.
 
 ---
 
