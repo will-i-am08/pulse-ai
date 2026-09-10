@@ -41,6 +41,9 @@ importers:
       '@pulse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@resvg/resvg-js':
+        specifier: ^2.6.2
+        version: 2.6.2
       next:
         specifier: ^15.0.3
         version: 15.5.25(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -50,6 +53,12 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.8(react@19.2.8)
+      satori:
+        specifier: ^0.33.4
+        version: 0.33.4
+      sharp:
+        specifier: ^0.35.4
+        version: 0.35.4(@types/node@20.19.43)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -2942,7 +2951,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
       '@types/node': 20.19.43
-    optional: true
 
   sharp@0.35.4(@types/node@22.10.2):
     dependencies:
