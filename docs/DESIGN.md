@@ -10,7 +10,7 @@ The company behind Kip is Pulse Social Media. Pulse does not appear in the produ
 
 ## Mark
 
-The cat is the logo. Always the charcoal strokes (`#202020`) on a black field (`#000000`). Square, generous padding, no crop into the whiskers or ears.
+The cat is the logo. Always the charcoal strokes (`#202020`) on a black field (`#000000`). Square, generous padding, no crop into the whiskers or ears. The Canva export is transparent; the master files in this repo are flattened onto black so the mark matches how it was drawn.
 
 | File | Use |
 |---|---|

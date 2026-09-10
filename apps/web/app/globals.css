@@ -434,6 +434,11 @@ button:disabled {
   letter-spacing: -0.02em;
 }
 
+.doc a.docBrand,
+.doc a.docBrand:hover {
+  color: #16181d;
+}
+
 .docBrand img {
   display: block;
   width: 28px;
