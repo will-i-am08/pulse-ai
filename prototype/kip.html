@@ -87,7 +87,10 @@
     }
     .how > li {
       background: #fff; border-radius: 28px; overflow: hidden;
-      display: flex; flex-direction: column; min-height: 420px;
+      min-height: 420px;
+    }
+    .how > li > a {
+      display: flex; flex-direction: column; height: 100%;
       text-decoration: none; color: inherit;
     }
     a.how-card:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -28px rgba(0,0,0,.4); }
@@ -182,7 +185,15 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
       background: var(--soft); border-radius: 12px; padding: 14px; color: #333; line-height: 1.5;
     }
-    .where { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin: 48px 0 56px; }
+    .who h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
+    .who p { margin: 0; color: var(--muted); font-size: 17px; line-height: 1.45; }
+    .dest {
+      text-align: center; font-size: clamp(22px, 3vw, 28px); font-weight: 600;
+      letter-spacing: -0.03em; margin: 0 0 10px;
+    }
+    .dest-note { text-align: center; color: var(--muted); font-size: 16px; margin: 0 0 48px; }
+    .plate .sub { max-width: 42ch; }
     .ask { max-width: 640px; margin: 0 auto; }
     .composer {
       display: flex; gap: 8px; align-items: center;
@@ -355,7 +366,7 @@
       .rail .spacer { display: none; }
       .stage { margin: 0 12px 12px; }
       .aside { margin: 0 12px 12px; }
-      .trio, .where, .product-frame, .files, .how { grid-template-columns: 1fr; }
+      .trio, .where, .product-frame, .files, .how, .who { grid-template-columns: 1fr; }
       .ideas { padding: 48px 20px 56px; }
       .how > li { min-height: 0; }
     }
@@ -410,7 +421,7 @@
       memory: "Weekly report goes out Mondays, 9am.\\nNever post without a yes.\\nTone is warm, short, no hype.\\nAlmond croissant is the hero pastry.",
       messages: [
         { who: "you", photo: true },
-        { who: "kip", text: "Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.\\n\\nReply yes to post to Instagram and Facebook." },
+        { who: "kip", text: "Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.\\n\\nReply yes to post." },
         { who: "you", text: "yes" }
       ],
       waiting: [
@@ -460,7 +471,7 @@
       return `
         <figure class="thread ${tone} ${size}" aria-label="A text thread: a photo sent, a caption back, the word yes">
           <div class="msg out photo-msg">${img}</div>
-          <div class="msg in"><p>Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post to Instagram and Facebook.</p></div>
+          <div class="msg in"><p>Saturday morning energy — first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post.</p></div>
           <div class="msg out yes-msg"><p class="yes">yes</p></div>
         </figure>`;
     }
@@ -475,14 +486,14 @@
           <div class="hero-copy">
             <h1 class="h1">Text a photo.<br>It’s posted.</h1>
             <a class="pill" href="#/signup">Get started</a>
-            <p class="trust">Nothing posts without your yes.</p>
+            <p class="trust">Kip can take the lot. Nothing posts without your yes.</p>
           </div>
           <div class="hero-product">${thread("dark", "closeup")}</div>
         </section>
         <section class="ideas" aria-label="How Kip works">
           <div class="ideas-head">
             <h2>Three moves.</h2>
-            <p>That’s the whole product.</p>
+            <p>That’s the loop. Kip can also run the rest.</p>
           </div>
           <ol class="how">
             <li>
@@ -517,56 +528,55 @@
                 <div class="how-copy">
                   <div class="how-n">03</div>
                   <h3>You say yes.</h3>
-                  <p>Then it posts to Instagram and Facebook. Nowhere else.</p>
+                  <p>Instagram, Facebook, X, Threads. Organic, and done.</p>
                 </div>
               </a>
             </li>
           </ol>
         </section>
 
-        <section class="band">
+        <section class="band plate">
           <div class="band-inner">
-            <h2>Why Kip feels like a teammate.</h2>
-            <p class="sub">It lives in your messages, learns the brand, and does the posting. You still say yes.</p>
-            <div class="trio">
-              <article class="tcard"><h3>Shows up on schedule.</h3><p>A Monday check-in, a Friday recap, a nudge if you haven’t sent a photo. Same as handing it to a person.</p></article>
-              <article class="tcard"><h3>Memory you can edit.</h3><p>Voice, don’ts, the hero pastry — plain files. Open them, change a line, Kip uses it next time.</p></article>
-              <article class="tcard"><h3>Asks before it posts.</h3><p>Anything with outside impact waits for a named yes. Lookups just happen. Posts never do.</p></article>
+            <h2>Hand it the whole job.</h2>
+            <p class="sub">Captions, the calendar, the Monday nudge, the Friday recap. Kip will run organic social until you say otherwise. Stay in the thread and tap yes — or put it on autopilot and get your evenings back.</p>
+            <div class="who">
+              <article>
+                <h3>The shop</h3>
+                <p>You were busy making the thing. Send a photo from the floor. Or don’t. Kip already knows the week.</p>
+              </article>
+              <article>
+                <h3>The creator</h3>
+                <p>Same voice, every channel, without becoming a content intern. You make the work. Kip ships it.</p>
+              </article>
+              <article>
+                <h3>The founder</h3>
+                <p>You should not also be the social media manager. This is that hire — without the awkward stand-up.</p>
+              </article>
             </div>
+            <p class="dest">Instagram · Facebook · X · Threads</p>
+            <p class="dest-note">Organic social. That’s the niche. Kip intends to be first in it.</p>
             <div class="product-frame">
               <div class="pf">
-                <h4>Routines</h4>
+                <h4>On its plate</h4>
                 <div class="rrow"><span>Weekly check-in</span><span class="opt">Mondays · 9:00 am</span></div>
                 <div class="rrow"><span>Friday recap</span><span class="opt">Fridays · 4:00 pm</span></div>
                 <div class="rrow"><span>Quiet reminder</span><span class="opt">If no photo in 10 days</span></div>
-                <div class="rrow"><span>+ New routine</span><span class="opt">a sentence is all it takes</span></div>
+                <div class="rrow"><span>Autopilot</span><span class="opt">Heads-up, then it posts</span></div>
               </div>
               <div class="pf">
                 <h4>memory.md</h4>
-                <div class="file">Weekly report goes out Mondays, 9am.<br>Never post without a yes.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
+                <div class="file">Organic only — Instagram, Facebook, X, Threads.<br>Never post without a yes, unless autopilot is on.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
               </div>
             </div>
-          </div>
-        </section>
-
-        <section class="band" style="padding-top:0">
-          <div class="band-inner">
-            <h2>Like any good teammate, Kip is wherever you work.</h2>
-            <p class="sub">SMS, Discord, or this dashboard. One thread. Same Kip.</p>
-            <div class="where">
-              <article class="tcard"><h3>SMS</h3><p>Text a photo from the floor. Kip drafts. You reply yes.</p></article>
-              <article class="tcard"><h3>Discord</h3><p>The same thread, if that’s already where you live.</p></article>
-              <article class="tcard"><h3>Here</h3><p>Calendar, memory, connections — optional. The chat is the product.</p></article>
-            </div>
-            <div class="ask" style="margin-top:40px">
+            <div class="ask" style="margin-top:48px">
               <form class="composer" data-landchat>
-                <input name="q" placeholder="Tell Kip what to post…" />
+                <input name="q" placeholder="Tell Kip you’re done doing social yourself…" />
                 <button class="pill-dark" type="submit">Get started</button>
               </form>
               <div class="chips">
-                <a class="chip-link" href="#/signup">Post this croissant</a>
-                <a class="chip-link" href="#/signup">Write this week’s plan</a>
-                <a class="chip-link" href="#/signup">Connect Instagram</a>
+                <a class="chip-link" href="#/signup">I’m a café</a>
+                <a class="chip-link" href="#/signup">I’m a creator</a>
+                <a class="chip-link" href="#/signup">I’m a founder</a>
               </div>
             </div>
           </div>
@@ -574,6 +584,7 @@
 
         <section class="close">
           <h2 class="h1">Text a photo.<br>It’s posted.</h2>
+          <p class="trust">Or don’t. Kip will.</p>
           <a class="pill" href="#/signup">Get started</a>
         </section>
         <footer class="footer">
@@ -614,7 +625,7 @@
       <main class="auth">
         <form class="auth-card" data-signup>
           <h1 class="page-h1">Meet Kip</h1>
-          <p class="lead" style="margin:0">Sign up and Kip will message you. No password to remember.</p>
+          <p class="lead" style="margin:0">Kip will message you. No password. Organic social, off your plate.</p>
           <label class="label">Your name or business name<input name="name" required value="Harbour Espresso" /></label>
           <label class="label">Mobile number
             <input name="phone" type="tel" required placeholder="04xx xxx xxx" value="0412 000 000" />
@@ -622,10 +633,11 @@
           </label>
           <label class="label">Email <span class="opt">(optional)</span><input name="email" type="email" /></label>
           <fieldset style="border:1px solid var(--line);border-radius:12px;padding:12px">
-            <legend class="opt">This account is for a…</legend>
-            <div class="radios">
-              <label><input type="radio" name="account_type" value="business" checked /> Business</label>
-              <label><input type="radio" name="account_type" value="personal" /> Personal</label>
+            <legend class="opt">I’m a…</legend>
+            <div class="radios" style="flex-wrap:wrap">
+              <label><input type="radio" name="account_type" value="shop" checked /> Shop</label>
+              <label><input type="radio" name="account_type" value="creator" /> Creator</label>
+              <label><input type="radio" name="account_type" value="founder" /> Founder</label>
             </div>
           </fieldset>
           <label class="label">Website or Instagram <span class="opt">(optional)</span><input name="website" placeholder="https://…" /></label>
