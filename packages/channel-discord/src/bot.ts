@@ -23,6 +23,7 @@ import {
   createLinqChannel,
   captureMedia,
   startTypingKeeper,
+  deliverPendingLoginCodes,
 } from "@pulse/gateway";
 import { startOnboarding, createInteraction, claimInteraction, handleInteraction, analyzePerformance, processInbound, isDaytime, pickFreshPhoto, pickFreshPhotos, draftPostFromPhoto, dueCompetitorWatches, competitorWeeklyUpdate, markWatchSwept, chooseNextFormat, draftCarouselFromPhotos, draftStoryFromPhoto, generateTipCarousel, pendingPlans, buildPlanWithFallback, markPlanProposed, markPlanFailed, planTextSummary } from "@pulse/orchestrator";
 import type { PostPerf } from "@pulse/orchestrator";
@@ -440,6 +441,22 @@ setInterval(() => {
       engagementRunning = false;
     });
 }, 5000);
+
+// Passwordless-login codes: deliver any the dashboard has queued, through the
+// user's own thread. The bot holds the Discord channel, so it does the sending.
+let loginCodesRunning = false;
+setInterval(() => {
+  if (loginCodesRunning) return;
+  loginCodesRunning = true;
+  deliverPendingLoginCodes()
+    .then((n) => {
+      if (n > 0) console.log(`[discord] delivered ${n} login code(s)`);
+    })
+    .catch((err) => console.error("[discord] login-code delivery error", err))
+    .finally(() => {
+      loginCodesRunning = false;
+    });
+}, 4000);
 
 // ─── Linq: process queued inbound (the webhook only ingests; we do the work) ─
 async function processLinqInbound(): Promise<void> {

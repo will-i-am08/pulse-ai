@@ -22,9 +22,16 @@ Everything else can be built and tested against mocks while these clear.
    `db/migrations/*.sql` in order and is idempotent (safe to re-run).
 3. Storage: **none needed.** Media bytes are stored in Postgres and served from
    the dashboard's public `/api/media/[id]` route.
-4. Auth: **single-operator email + password**. Set a random `AUTH_SECRET`
-   (`openssl rand -base64 32`) to sign the session cookie, then create the operator:
-   `ADMIN_PASSWORD=... pnpm exec tsx --env-file=.env scripts/create-admin.ts will@jmcalder.com`.
+4. Auth: **passwordless phone login**. Users sign in with their mobile number —
+   Kip messages a one-time code through their own agent thread, they enter it on
+   the dashboard. Set a random `AUTH_SECRET` (`openssl rand -base64 32`) to sign
+   the session cookie. Seed your own operator account (also sets a **break-glass**
+   password for when the messaging channel is down):
+   `ADMIN_PASSWORD=... ADMIN_PHONE=+61... pnpm exec tsx --env-file=.env scripts/create-admin.ts will@jmcalder.com`.
+   The break-glass password logs the operator in via the "Operator login" panel on
+   `/login`; it reads `OPERATOR_PASSWORD` from the environment.
+   Codes are delivered by whichever process owns the channel — the Discord bot
+   (`MESSAGE_CHANNEL=discord`) or the worker (SMS/Linq).
 
 ## 2. Anthropic
 - `ANTHROPIC_API_KEY` from console.anthropic.com.

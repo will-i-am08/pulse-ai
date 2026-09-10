@@ -74,3 +74,50 @@
 .button:hover { filter: brightness(1.06); }
 .alt { text-align: center; font-size: 14px; color: var(--muted); margin: 4px 0 0; }
 .alt a { color: var(--accent); text-decoration: none; }
+
+.buttonGhost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.buttonGhost:hover { color: var(--ink); border-color: var(--muted); }
+
+.resend {
+  width: 100%;
+  max-width: 420px;
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+.resend .buttonGhost { width: 100%; }
+
+.operator {
+  width: 100%;
+  max-width: 420px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.operator > summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+  padding: 6px;
+  user-select: none;
+}
+.operator > summary::-webkit-details-marker { display: none; }
+.operatorForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}

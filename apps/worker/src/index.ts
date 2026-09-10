@@ -4,6 +4,7 @@ import { logger } from "./lib/logger.js";
 import { runPublishLoop } from "./publish/publishLoop.js";
 import { runTriggerLoop } from "./triggers/triggerLoop.js";
 import { runEngagementLoop } from "./engagement/engagementLoop.js";
+import { deliverPendingLoginCodes } from "@pulse/gateway";
 
 async function main(): Promise<void> {
   const env = getServerEnv(); // fail fast on missing/invalid config
@@ -69,6 +70,26 @@ async function main(): Promise<void> {
     { timezone: env.TZ }
   );
 
+  // Passwordless-login code delivery. The bot owns the Discord channel and
+  // delivers there; the worker owns SMS/Linq, so it delivers only then (avoids
+  // a double-send, and activeChannel() would throw for discord here anyway).
+  let loginCodeTimer: ReturnType<typeof setInterval> | null = null;
+  if (env.MESSAGE_CHANNEL !== "discord") {
+    let deliveringCodes = false;
+    loginCodeTimer = setInterval(() => {
+      if (deliveringCodes) return;
+      deliveringCodes = true;
+      deliverPendingLoginCodes()
+        .then((n) => {
+          if (n > 0) logger.info(`delivered ${n} login code(s)`);
+        })
+        .catch((err) => logger.error("login-code delivery crashed", { error: err instanceof Error ? err.message : String(err) }))
+        .finally(() => {
+          deliveringCodes = false;
+        });
+    }, 4000);
+  }
+
   let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
@@ -77,6 +98,7 @@ async function main(): Promise<void> {
     publishTask.stop();
     triggerTask.stop();
     engagementTask.stop();
+    if (loginCodeTimer) clearInterval(loginCodeTimer);
     process.exit(0);
   };
 

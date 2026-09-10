@@ -2,8 +2,12 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { query, queryOne, hashPassword, verifyPassword } from '@pulse/shared';
+import { query, queryOne, encrypt, decrypt, generateLoginCode, normalizePhone } from '@pulse/shared';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
+
+const CODE_TTL_MINUTES = 10;
+const RESEND_THROTTLE_SECONDS = 30;
+const MAX_ATTEMPTS = 5;
 
 async function setSession(userId: string): Promise<void> {
   const secret = process.env.AUTH_SECRET;
@@ -19,51 +23,138 @@ async function setSession(userId: string): Promise<void> {
   });
 }
 
-/** Create an account + the user's brand (pending onboarding), then sign them in. */
+/** Constant-time string compare (avoids leaking length-independent timing). */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Queue a fresh login code for a phone, tied to the user + their brand. */
+async function issueCode(
+  phone: string,
+  userId: string,
+  brandId: string | null,
+  purpose: 'login' | 'signup',
+): Promise<void> {
+  // Throttle: if a code was queued very recently, don't spam the channel — the
+  // existing one is still valid.
+  const recent = await queryOne<{ id: string }>(
+    `select id from login_codes
+      where phone = $1 and consumed_at is null
+        and created_at > now() - ($2 || ' seconds')::interval
+      order by created_at desc limit 1`,
+    [phone, String(RESEND_THROTTLE_SECONDS)],
+  );
+  if (recent) return;
+
+  const code = generateLoginCode();
+  await query(
+    `insert into login_codes (phone, user_id, brand_id, code_encrypted, purpose, expires_at)
+     values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
+    [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
+  );
+}
+
+/** Step 1 of login: look up the phone, queue a code, go to the verify screen. */
+export async function requestLoginCode(formData: FormData): Promise<void> {
+  const phone = normalizePhone(String(formData.get('phone') ?? ''));
+  if (!phone) redirect('/login?error=badphone');
+
+  const user = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
+  if (!user) redirect('/login?error=nouser');
+
+  const brand = await queryOne<{ id: string }>(
+    'select id from brands where owner_user_id = $1 order by created_at asc limit 1',
+    [user!.id],
+  );
+  await issueCode(phone!, user!.id, brand?.id ?? null, 'login');
+  redirect(`/login/verify?phone=${encodeURIComponent(phone!)}`);
+}
+
+/** Step 2 of login: verify the code and start the session. */
+export async function verifyLoginCode(formData: FormData): Promise<void> {
+  const phone = normalizePhone(String(formData.get('phone') ?? ''));
+  const input = String(formData.get('code') ?? '').replace(/\D/g, '');
+  if (!phone) redirect('/login?error=badphone');
+  const verifyUrl = `/login/verify?phone=${encodeURIComponent(phone!)}`;
+
+  const row = await queryOne<{ id: string; user_id: string | null; code_encrypted: string; attempts: number }>(
+    `select id, user_id, code_encrypted, attempts from login_codes
+      where phone = $1 and consumed_at is null and expires_at > now()
+      order by created_at desc limit 1`,
+    [phone],
+  );
+  if (!row) redirect(`${verifyUrl}&error=expired`);
+  if (row!.attempts >= MAX_ATTEMPTS) redirect(`${verifyUrl}&error=locked`);
+
+  let actual = '';
+  try {
+    actual = decrypt(row!.code_encrypted);
+  } catch {
+    redirect(`${verifyUrl}&error=expired`);
+  }
+
+  if (!input || !timingSafeEqual(input, actual)) {
+    await query('update login_codes set attempts = attempts + 1 where id = $1', [row!.id]);
+    redirect(`${verifyUrl}&error=wrong`);
+  }
+  if (!row!.user_id) redirect('/login?error=nouser');
+
+  await query('update login_codes set consumed_at = now() where id = $1', [row!.id]);
+  await setSession(row!.user_id!);
+  redirect('/app');
+}
+
+/** Create an account (phone identity, no password) + their brand, then verify. */
 export async function signupAction(formData: FormData): Promise<void> {
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  const password = String(formData.get('password') ?? '');
   const name = String(formData.get('name') ?? '').trim();
+  const phone = normalizePhone(String(formData.get('phone') ?? ''));
+  const emailRaw = String(formData.get('email') ?? '').trim().toLowerCase();
+  const email = emailRaw || null;
   const accountType = String(formData.get('account_type') ?? 'business') === 'personal' ? 'personal' : 'business';
   const website = String(formData.get('website') ?? '').trim();
   const discordUserId = String(formData.get('discord_user_id') ?? '').trim();
 
-  if (!email || !password || !name) redirect('/signup?error=missing');
-  if (password.length < 8) redirect('/signup?error=short');
+  if (!name) redirect('/signup?error=missing');
+  if (!phone) redirect('/signup?error=badphone');
 
-  const existing = await queryOne('select id from users where email = $1', [email]);
-  if (existing) redirect('/signup?error=exists');
+  const existing = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
+  if (existing) redirect('/login?error=exists');
 
   const user = await queryOne<{ id: string }>(
-    'insert into users (email, password_hash, name) values ($1, $2, $3) returning id',
-    [email, hashPassword(password), name],
+    'insert into users (phone, email, name) values ($1, $2, $3) returning id',
+    [phone, email, name],
   );
   if (!user) redirect('/signup?error=failed');
 
-  await query(
+  const brand = await queryOne<{ id: string }>(
     `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
-     values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)`,
-    [name, `signup:${user!.id}`, user!.id, discordUserId || null, accountType, website || null],
+     values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
+     returning id`,
+    [name, phone, user!.id, discordUserId || null, accountType, website || null],
   );
 
-  await setSession(user!.id);
-  redirect('/app');
+  await issueCode(phone!, user!.id, brand?.id ?? null, 'signup');
+  redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
 }
 
-/** Email + password sign-in. */
-export async function loginAction(formData: FormData): Promise<void> {
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+/**
+ * Operator break-glass: if the messaging channel is down, the admin can still
+ * sign in with OPERATOR_PASSWORD. Never exposed to normal users.
+ */
+export async function operatorLoginAction(formData: FormData): Promise<void> {
   const password = String(formData.get('password') ?? '');
-
-  const user = await queryOne<{ id: string; password_hash: string }>(
-    'select id, password_hash from users where email = $1',
-    [email],
-  );
-  if (!user || !verifyPassword(password, user.password_hash)) {
-    redirect('/login?error=1');
+  const expected = process.env.OPERATOR_PASSWORD;
+  if (!expected || !password || !timingSafeEqual(password, expected)) {
+    redirect('/login?error=operator');
   }
-
-  await setSession(user!.id);
+  const admin = await queryOne<{ id: string }>(
+    'select id from users where is_admin = true order by created_at asc limit 1',
+  );
+  if (!admin) redirect('/login?error=noadmin');
+  await setSession(admin!.id);
   redirect('/app');
 }
 
