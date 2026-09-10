@@ -210,6 +210,53 @@
       text-decoration: none; color: var(--ink);
     }
 
+    .trust-band { background: var(--soft); }
+    .trust-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px;
+    }
+    .trust-card {
+      background: #fff; border-radius: 22px; padding: 26px 24px 28px;
+    }
+    .trust-card h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
+    .trust-card p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+    .trust-foot {
+      text-align: center; color: var(--muted); font-size: 15px; margin: 28px auto 0; max-width: 44ch;
+    }
+
+    .pricing { background: #fff; }
+    .bill-toggle {
+      display: inline-flex; gap: 4px; padding: 4px; border-radius: 980px;
+      background: var(--soft); margin: 0 auto 36px; position: relative; left: 50%;
+      transform: translateX(-50%);
+    }
+    .bill-toggle button {
+      border: 0; background: transparent; color: var(--muted); font-size: 15px; font-weight: 600;
+      padding: 10px 18px; border-radius: 980px;
+    }
+    .bill-toggle button.on { background: #000; color: #fff; }
+    .plans {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 860px; margin: 0 auto;
+    }
+    .plan {
+      border: 1px solid var(--line); border-radius: 28px; padding: 28px 26px 30px;
+      background: #fff; display: flex; flex-direction: column; gap: 14px;
+    }
+    .plan.featured { background: #000; color: #fff; border-color: #000; }
+    .plan.featured .opt, .plan.featured .plan-list { color: rgba(255,255,255,.62); }
+    .plan.featured .pill-dark { background: #fff; color: #000; }
+    .plan.featured .pill-dark:hover { background: #f5f5f7; }
+    .plan-name { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .plan.featured .plan-name { color: rgba(255,255,255,.55); }
+    .plan-price { margin: 0; font-size: clamp(40px, 6vw, 52px); font-weight: 600; letter-spacing: -0.04em; line-height: 1; }
+    .plan-price span { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; opacity: .55; }
+    .plan-blurb { margin: 0; font-size: 17px; color: var(--muted); }
+    .plan.featured .plan-blurb { color: rgba(255,255,255,.7); }
+    .plan-list { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 10px; font-size: 16px; }
+    .plan-list li { padding-left: 18px; position: relative; }
+    .plan-list li::before { content: ""; position: absolute; left: 0; top: .55em; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .35; }
+    .plan .pill-dark { align-self: flex-start; margin-top: auto; text-align: center; }
+    .price-note { text-align: center; color: var(--muted); font-size: 14px; margin: 22px 0 0; }
+
     /* —— app: teammate workspace —— */
     .desk {
       min-height: 100svh; display: grid; grid-template-columns: 232px 1fr;
@@ -436,7 +483,7 @@
       .page { padding: 24px 18px 48px; overflow-x: hidden; }
       .chat { padding: 18px 16px 8px; }
       .dock { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
-      .trio, .where, .product-frame, .files, .how, .who { grid-template-columns: 1fr; }
+      .trio, .where, .product-frame, .files, .how, .who, .trust-grid, .plans { grid-template-columns: 1fr; }
       .ideas { padding: 48px 20px 56px; }
       .how > li { min-height: 0; }
       .band { padding: 56px 20px 64px; }
@@ -517,6 +564,7 @@
       `<img class="${cls}" src="kip-mark.png" width="36" height="36" alt="" />`;
 
     const state = {
+      billing: "monthly",
       connected: false,
       phoneSet: false,
       x: false,
@@ -705,6 +753,68 @@
                 <a class="chip-link" href="#/signup">I’m a founder</a>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section class="band trust-band" aria-label="Privacy and control">
+          <div class="band-inner">
+            <h2>Private, and in your control.</h2>
+            <p class="sub">Your data stays yours. Encrypted by default. Never used to train models.</p>
+            <div class="trust-grid">
+              <article class="trust-card">
+                <h3>Private.</h3>
+                <p>Photos, captions, and brand memory aren’t sold, shared for ads, or used to train anyone’s model — ours or a provider’s.</p>
+              </article>
+              <article class="trust-card">
+                <h3>In your control.</h3>
+                <p>You set what Kip can touch. Approvals in the thread. Revoke Meta, X, or Threads anytime. Pause or wipe when you ask.</p>
+              </article>
+              <article class="trust-card">
+                <h3>Visible.</h3>
+                <p>Publishes, approvals, and access leave a trail. Tokens stay encrypted. Your brand doesn’t mingle with anyone else’s.</p>
+              </article>
+            </div>
+            <p class="trust-foot">Encrypted in transit and at rest. Disconnect Meta, X, or Threads anytime. Email will@jmcalder.com to wipe what we hold.</p>
+          </div>
+        </section>
+
+        <section class="band pricing" aria-label="Pricing">
+          <div class="band-inner">
+            <h2>Simple plans. Real work.</h2>
+            <p class="sub">Organic social, off your plate. No credit maths.</p>
+            <div class="bill-toggle" role="group" aria-label="Billing period">
+              <button type="button" class="${state.billing === "monthly" ? "on" : ""}" data-bill="monthly">Monthly</button>
+              <button type="button" class="${state.billing === "annual" ? "on" : ""}" data-bill="annual">Annual <span class="opt" style="font-weight:500">−20%</span></button>
+            </div>
+            <div class="plans">
+              <article class="plan">
+                <p class="plan-name">Pro</p>
+                <p class="plan-price" data-price-monthly="79" data-price-annual="63">$${state.billing === "annual" ? "63" : "79"} <span>/mo</span></p>
+                <p class="plan-blurb">One brand. Everyday posting. You stay in the thread.</p>
+                <ul class="plan-list">
+                  <li>Instagram, Facebook, X, Threads</li>
+                  <li>Drafts in your voice</li>
+                  <li>Approvals in the thread</li>
+                  <li>Calendar + content plan</li>
+                  <li>Weekly check-in + Friday recap</li>
+                </ul>
+                <a class="pill-dark" href="#/signup">Start Pro</a>
+              </article>
+              <article class="plan featured">
+                <p class="plan-name">Max</p>
+                <p class="plan-price" data-price-monthly="149" data-price-annual="119">$${state.billing === "annual" ? "119" : "149"} <span>/mo</span></p>
+                <p class="plan-blurb">Hand Kip the lot. Autopilot when you want evenings back.</p>
+                <ul class="plan-list">
+                  <li>Everything in Pro</li>
+                  <li>Autopilot with a heads-up</li>
+                  <li>Editable memory files</li>
+                  <li>Routines you write in a sentence</li>
+                  <li>Priority setup with Pulse</li>
+                </ul>
+                <a class="pill-dark" href="#/signup">Start Max</a>
+              </article>
+            </div>
+            <p class="price-note">Prices in AUD. Cancel anytime. Annual billed up front${state.billing === "annual" ? " · shown as monthly equivalent" : ""}.</p>
           </div>
         </section>
 
@@ -1033,6 +1143,17 @@
     }
 
     document.addEventListener("click", (e) => {
+      const bill = e.target.closest("[data-bill]");
+      if (bill) {
+        e.preventDefault();
+        state.billing = bill.dataset.bill;
+        document.querySelectorAll("[data-bill]").forEach((b) => b.classList.toggle("on", b.dataset.bill === state.billing));
+        document.querySelectorAll(".plan-price").forEach((el) => {
+          const n = state.billing === "annual" ? el.dataset.priceAnnual : el.dataset.priceMonthly;
+          el.innerHTML = `$${n} <span>/mo</span>`;
+        });
+        return;
+      }
       const menu = e.target.closest("[data-menu]");
       if (menu) {
         e.preventDefault();
