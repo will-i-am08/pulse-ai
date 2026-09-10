@@ -1,15 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import sharp from "sharp";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { query, putMedia, getMedia, publicMediaUrl } from "@pulse/shared";
 import type { Brand, PostFormat } from "@pulse/shared";
-
-const INTER_REGULAR = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/inter-regular.ttf"));
-const INTER_BOLD = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/inter-bold.ttf"));
+// Fonts embedded as base64 (see scripts/embed-fonts.ts) — identical in the Next
+// serverless bundle and the worker, no file tracing / path issues.
+import { interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 
 export interface MockupInput {
   brandName: string;

@@ -1,16 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { query, getMedia, putMedia, getServerEnv, sanitizeChatText, type Brand } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-
-const ANTON = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/anton.ttf"));
-const SERIF = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "assets/serif.ttf"));
+// Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
+// in the Next serverless bundle and the worker — no file tracing / path issues.
+import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
 
 // AI image editing via Replicate (Flux Kontext by default). The agent writes a
 // tailored edit instruction from the actual photo + brand, then runs the model.
