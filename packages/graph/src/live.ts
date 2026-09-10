@@ -3,6 +3,7 @@ import { decryptJson, encryptJson, getServerEnv, query, xEnsureToken, xPostTweet
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
+import { platformConfigured } from "./platformConfig.js";
 
 /**
  * Shape of the JSON blob stored (encrypted) in `brands.platform_tokens_encrypted`.
@@ -76,10 +77,7 @@ export class LiveGraphAdapter implements GraphAdapter {
     // Threads: live once the app is configured (THREADS_APP_ID) and the brand has
     // connected an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "threads") {
-      // Read THREADS_APP_ID straight from the environment: the mock fallback must
-      // not depend on the full server env being configured (it isn't in tests,
-      // and shouldn't need to be just to decide "Threads isn't set up, use the mock").
-      if (!process.env.THREADS_APP_ID || !brand.threads_tokens_encrypted || !brand.threads_user_id) {
+      if (!platformConfigured("THREADS_APP_ID") || !brand.threads_tokens_encrypted || !brand.threads_user_id) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }
@@ -98,10 +96,7 @@ export class LiveGraphAdapter implements GraphAdapter {
     // X: live once the app is configured (X_CLIENT_ID) and the brand has connected
     // an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "x") {
-      // Read X_CLIENT_ID straight from the environment: the mock fallback must
-      // not depend on the full server env being configured (it isn't in tests,
-      // and shouldn't need to be just to decide "X isn't set up, use the mock").
-      if (!process.env.X_CLIENT_ID || !brand.x_tokens_encrypted) {
+      if (!platformConfigured("X_CLIENT_ID") || !brand.x_tokens_encrypted) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }
