@@ -133,7 +133,7 @@ A living profile captured at onboarding and editable by chat:
 
 Almost none of this is code-blocked — it's **approval-blocked**, on the same track as the current push:
 
-1. **Meta Business Verification** — in progress. Unlocks advanced permissions.
+1. **Meta Business Verification** — ✅ **complete & verified (2026-09-10).** Advanced permissions unlocked; App Review is now the remaining Meta gate.
 2. **Meta App Review** — must add and justify each new scope (comments, messaging, engagement, ads) with screencasts. Bigger submission than posting alone.
 3. ~~Google Business Profile API access~~ — **descoped 2026-09-09** (Google is not social media). No longer on the critical path.
 
