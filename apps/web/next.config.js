@@ -6,6 +6,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // resolves the pnpm store correctly and produces stable include globs.
 const repoRoot = path.join(__dirname, '..', '..');
 
+// Files to force into any serverless function that reaches the orchestrator's
+// image path. Globs are relative to `outputFileTracingRoot` (the repo root),
+// so they resolve against the pnpm store there / at /var/task in the lambda.
+const tracingIncludes = [
+  'node_modules/.pnpm/**/node_modules/sharp/**',
+  'node_modules/.pnpm/**/node_modules/@img/**',
+  'node_modules/.pnpm/**/node_modules/@resvg/**',
+  'node_modules/.pnpm/**/node_modules/satori/**',
+  'node_modules/.pnpm/**/node_modules/harfbuzzjs/**',
+  'node_modules/.pnpm/**/node_modules/yoga-wasm-web/**',
+  // Backstop: any .wasm asset in the dependency store (loaded by dynamic path,
+  // so nft can't trace it from a require()).
+  'node_modules/.pnpm/**/*.wasm',
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ['@pulse/shared', '@pulse/gateway', '@pulse/orchestrator'],
@@ -23,18 +38,14 @@ const nextConfig = {
   // as separate @img/* packages) for the routes that reach them.
   outputFileTracingRoot: repoRoot,
   outputFileTracingIncludes: {
-    '/api/webhooks/twilio': [
-      'node_modules/.pnpm/**/node_modules/sharp/**',
-      'node_modules/.pnpm/**/node_modules/@img/**',
-      'node_modules/.pnpm/**/node_modules/@resvg/**',
-      'node_modules/.pnpm/**/node_modules/satori/**',
-    ],
-    '/api/webhooks/linq': [
-      'node_modules/.pnpm/**/node_modules/sharp/**',
-      'node_modules/.pnpm/**/node_modules/@img/**',
-      'node_modules/.pnpm/**/node_modules/@resvg/**',
-      'node_modules/.pnpm/**/node_modules/satori/**',
-    ],
+    // Same include set for every route that reaches the orchestrator's imaging
+    // path. Covers: sharp's JS + its separate @img/* native binaries; resvg's
+    // JS + @resvg/* native binaries; satori's JS; and — crucially — the runtime
+    // .wasm assets that satori loads by a dynamic path (harfbuzzjs' hb.wasm,
+    // yoga-wasm-web's yoga.wasm), which nft can't see statically. The trailing
+    // **/*.wasm catch-all backstops any other wasm asset in the dep store.
+    '/api/webhooks/twilio': tracingIncludes,
+    '/api/webhooks/linq': tracingIncludes,
   },
   eslint: {
     // Sibling workspace packages may not exist on disk yet during parallel build;
