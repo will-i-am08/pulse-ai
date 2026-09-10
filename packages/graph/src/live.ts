@@ -82,7 +82,10 @@ export class LiveGraphAdapter implements GraphAdapter {
     // X: live once the app is configured (X_CLIENT_ID) and the brand has connected
     // an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "x") {
-      if (!getServerEnv().X_CLIENT_ID || !brand.x_tokens_encrypted) {
+      // Read X_CLIENT_ID straight from the environment: the mock fallback must
+      // not depend on the full server env being configured (it isn't in tests,
+      // and shouldn't need to be just to decide "X isn't set up, use the mock").
+      if (!process.env.X_CLIENT_ID || !brand.x_tokens_encrypted) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }
