@@ -17,11 +17,11 @@ Status audited 2026-09-04.
 | User-data-deletion URL | ✅ set → `/data-deletion` |
 | App domain | ✅ `web-tau-three-59.vercel.app` |
 | App icon (1024×1024) | ⬜ **upload the PNG I sent** — the last eligibility blocker |
-| Business & access verification | ⬜ **not started** — needs your business docs (the gate) |
-| `pages_manage_posts` (FB posting) | ⬜ **blocked** — "Add to App Review" errors; gated behind Business Verification |
-| App Review submission | ⬜ not submitted (blocked by verification) |
+| **Business & access verification** | ✅ **COMPLETE & verified (2026-09-10)** — the gate is down |
+| `pages_manage_posts` (FB posting) | 🟩 **unblocked** — add to App Review now that verification is done |
+| App Review submission | ⬜ **next up** — no longer blocked; submit with the descriptions below |
 
-> Attempted to add `pages_manage_posts` to the review — Meta returned "something went wrong, try again later". This permission grants advanced Page access, which Meta gates behind **Business Verification**; it should add cleanly once verification is done. `instagram_content_publish` (Instagram posting) is already active.
+> **Business Verification is done.** That was the long pole and it gated advanced Page access. `pages_manage_posts` should now add to the review cleanly (it errored before only because it's gated behind verification). `instagram_content_publish` (Instagram posting) is already active. The remaining work is the **App Review submission itself** (add `pages_manage_posts`, trim the unused scopes, record the screencast, submit) → then flip the app to **Live**.
 
 The app is currently cluttered with **ads/marketing use cases** (ads_management, ads_read, catalog_management, leads_retrieval, pages_manage_ads, Marketing API tier…) pulled in from a template. **We don't use any of them.** Removing them shrinks the review to only what we need and makes approval faster.
 
@@ -83,22 +83,19 @@ Upload the same screencast against each permission in the submission.
 
 ## Ordered checklist
 
-**You (needs your input / authority):**
-1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — use the PNG I sent, or your logo.
-2. **Set a real Terms of Service URL** and **data-deletion URL** (a short `/terms` and `/data-deletion` page — I can build these on the site if you want).
-3. **Complete Business Verification** (Review → Verification): legal business name, address, and the doc/phone/email checks Meta asks for. This is the long pole — start it first.
-4. **Record the screencast** above.
-5. **Submit for App Review** with the descriptions above.
+**Next (the critical path now that verification is done):**
+1. **Upload the app icon** (Dashboard → App settings → Basic → App icon) — the last eligibility blocker for submission. Use the PNG I sent, or your logo.
+2. **Add `pages_manage_posts` to App Review** (it errored before only because it was gated behind verification — should add cleanly now).
+3. **Slim the review to the 7 permissions we use**: on **Review → App Review**, use the **"remove"** link beside each ads/marketing permission (`ads_management`, `ads_read`, `catalog_management`, `leads_retrieval`, `pages_manage_ads`, `ads_mcp_management`, Marketing API tier). (Meta's "Add use cases" dialog is add-only, so trim at the submission step.)
+4. **Record the screencast** (see above) on the live app as a test user.
+5. **Submit for App Review** with the permission descriptions above.
+6. **After approval → flip the app to Live** → any user can connect without a tester invite, and Facebook Page posting works. Then the gated Phase-3 pieces (per-platform tailoring, engagement learning) come online, and `GRAPH_MODE=live` with real tokens goes hot.
 
 **Done:**
+- ✅ **Business & access verification — complete and verified (2026-09-10).** The long pole is cleared.
 - Privacy Policy, Terms of Service, and data-deletion URLs set to live pages; app domain added.
 - Built `/terms` and `/data-deletion` pages on the site.
-
-**Do after Business Verification (a single clean pass — these are blocked/risky until then):**
-- Add `pages_manage_posts` to App Review (errors until verified).
-- Slim the review to only the 7 permissions: on **Review → App Review**, use the **"remove"** link beside each ads/marketing permission (`ads_management`, `ads_read`, `catalog_management`, `leads_retrieval`, `pages_manage_ads`, `ads_mcp_management`, Marketing API tier) so they aren't part of the submission. (Meta's "Add use cases" dialog is add-only; there's no clean bulk-remove, so we trim at the submission step instead.)
-
-**After approval + verification:** flip the app to **Live** → any user can connect without a tester invite, and Facebook Page posting works. Then the two gated Phase-3 pieces (per-platform tailoring, engagement learning) can come online.
+- `instagram_content_publish` active.
 
 ---
 
