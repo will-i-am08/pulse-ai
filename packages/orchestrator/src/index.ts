@@ -31,6 +31,14 @@ export {
   extractVisualHintsFromHtml,
   seedVisualProfileFromWebsite,
 } from "./onboarding.js";
+export {
+  brandsDueForConnectNudge,
+  connectNudgeMessage,
+  markConnectNudgeSent,
+  clearSkippedConnectFlags,
+} from "./connectNudge.js";
+export type { ConnectNudgeCandidate } from "./connectNudge.js";
+
 export type { LabChatSummary } from "./onboarding.js";
 
 export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";

@@ -337,6 +337,10 @@ export async function onChannelsConnectedDuringOnboarding(
   const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
   const type: AccountType = prev.type ?? brand.account_type ?? "business";
   const answers: Record<string, string> = { ...(prev.answers ?? {}), connected_meta: "1" };
+  delete answers.skipped_connect;
+  delete answers.skipped_connect_at;
+  delete answers.connect_nudge_count;
+  delete answers.connect_nudge_at;
   await saveState(brand.id, {
     status: "reading_content",
     type,
@@ -369,7 +373,7 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
   if (looksLikeSkipConnect(text)) {
     const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
     const type: AccountType = prev.type ?? brand.account_type ?? "business";
-    const answers: Record<string, string> = { ...(prev.answers ?? {}), skipped_connect: "1" };
+    const answers: Record<string, string> = { ...(prev.answers ?? {}), skipped_connect: "1", skipped_connect_at: new Date().toISOString(), connect_nudge_count: "0" };
     await saveState(brand.id, {
       status: "in_progress",
       type,

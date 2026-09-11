@@ -28,4 +28,7 @@ export {
   planTextSummary,
   buildPerformanceDigest,
   processInbound,
+  brandsDueForConnectNudge,
+  markConnectNudgeSent,
+  clearSkippedConnectFlags,
 } from "@pulse/orchestrator";

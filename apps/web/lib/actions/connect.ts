@@ -2,7 +2,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { query, queryOne, decrypt, encryptJson, type Brand, type User } from '@pulse/shared';
-import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding } from '@pulse/orchestrator';
+import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding, clearSkippedConnectFlags } from '@pulse/orchestrator';
 import { sendToBrand } from '@pulse/gateway';
 import { currentUser } from '@/lib/auth/current-user';
 import { listManagedPages, derivePageToken } from '@/lib/meta/oauth';
@@ -56,6 +56,8 @@ export async function selectPageAction(formData: FormData): Promise<void> {
 
   // Kick off the voice agent: it reads their real post history and learns how
   // they write and shoot. The worker runs it; this just queues it.
+  await clearSkippedConnectFlags(brand!.id).catch(() => undefined);
+
   const onboarding = await onChannelsConnectedDuringOnboarding(brand!.id);
   if (!onboarding.handled) {
     await queueVoiceAnalysis(brand!.id);
