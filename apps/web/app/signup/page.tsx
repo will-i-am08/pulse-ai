@@ -9,6 +9,8 @@ const ERRORS: Record<string, string> = {
   badphone: 'That doesn’t look like a valid mobile number. Try again (e.g. 04xx xxx xxx).',
   missing: 'Please tell us your name or business name.',
   failed: 'Something went wrong. Please try again.',
+  phoneinuse:
+    'That mobile number is already linked to a Kip account. Log in with it instead — or text Kip from that number if you need help.',
 };
 
 export default async function SignupPage({

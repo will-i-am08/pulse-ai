@@ -9,6 +9,7 @@ const ERRORS: Record<string, string> = {
   badphone: 'That doesn’t look like a valid mobile number. Try again (e.g. 04xx xxx xxx).',
   nouser: 'We don’t have an account for that number. Create one to get started.',
   exists: 'You already have an account — enter your number to log in.',
+  phoneinuse: 'That mobile number is already linked to a Kip account. Log in with it instead.',
   operator: 'Incorrect operator password.',
   noadmin: 'No operator account exists yet.',
 };
