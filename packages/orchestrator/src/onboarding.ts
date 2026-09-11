@@ -2,6 +2,7 @@ import {
   query,
   queryOne,
   brandVoiceProfileSchema,
+  emptyBrandVoiceProfile,
   sanitizeChatText,
   type AccountType,
   type Brand,
@@ -308,4 +309,54 @@ async function compileProfile(
   const tone = profile.tone.length ? profile.tone.join(", ") : "friendly";
   const donts = profile.donts.length ? profile.donts.join("; ") : "none noted";
   return `Here's what I've got: tone is ${tone}; emoji ${profile.emoji_policy}; never: ${donts}. You can tweak any of this on your dashboard anytime.`;
+}
+
+
+/** Soft-restart the interview for any brand: fresh transcript via startOnboarding. */
+export async function restartOnboarding(brandId: string): Promise<string> {
+  await query(
+    `update brands set onboarding_state = $2::jsonb where id = $1`,
+    [brandId, JSON.stringify({ status: "pending" })],
+  );
+  return startOnboarding(brandId);
+}
+
+/**
+ * Hard-reset a lab brand only (facts.lab === true): wipe thread + notes + drafts,
+ * clear voice/strategy derived from onboarding, re-arm pending onboarding.
+ */
+export async function hardResetLabBrand(brandId: string): Promise<void> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`hardResetLabBrand: brand ${brandId} not found`);
+  if (!brand.facts?.lab) {
+    throw new Error(`hardResetLabBrand: brand ${brandId} is not a lab brand (facts.lab)`);
+  }
+
+  await query(`delete from lab_notes where brand_id = $1`, [brandId]);
+  await query(`delete from corrections where brand_id = $1`, [brandId]);
+  await query(`delete from approval_log where brand_id = $1`, [brandId]);
+  await query(`delete from posts where brand_id = $1`, [brandId]);
+  await query(`delete from messages where brand_id = $1`, [brandId]);
+  await query(
+    `delete from media_blobs where media_id in (select id from media_assets where brand_id = $1)`,
+    [brandId],
+  );
+  await query(`delete from media_assets where brand_id = $1`, [brandId]);
+  await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
+
+  const facts = { ...(brand.facts ?? {}), lab: true as const };
+  await query(
+    `update brands
+        set onboarding_state = $2::jsonb,
+            brand_voice_profile = $3::jsonb,
+            voice_guide_md = null,
+            facts = $4::jsonb
+      where id = $1`,
+    [
+      brandId,
+      JSON.stringify({ status: "pending" }),
+      JSON.stringify(emptyBrandVoiceProfile()),
+      JSON.stringify(facts),
+    ],
+  );
 }

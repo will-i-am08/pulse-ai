@@ -10,7 +10,7 @@ export { seedBrandVoice } from "./seedBrandVoice.js";
 
 export { buildConversationContext } from "./conversationContext.js";
 
-export { startOnboarding, onboardingTurn, onboardingNext, finishOnboarding, WRAP_ACK } from "./onboarding.js";
+export { startOnboarding, onboardingTurn, onboardingNext, finishOnboarding, WRAP_ACK, restartOnboarding, hardResetLabBrand } from "./onboarding.js";
 
 export { runVoiceAnalysis, queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 export { computeTextStats } from "./voice/textStats.js";

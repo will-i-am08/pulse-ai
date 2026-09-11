@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { currentUser } from '@/lib/auth/current-user';
+import { getCurrentUser } from '@/lib/auth/session';
 import { DashShell } from './DashShell';
 import './workspace.css';
 
@@ -7,7 +7,7 @@ import './workspace.css';
 // so it must never be statically prerendered at build time.
 export const dynamic = 'force-dynamic';
 
-export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const user = await currentUser();
+export default async function AppLayout({ children }: { children: ReactNode }) {
+  const user = await getCurrentUser();
   return <DashShell isAdmin={Boolean(user?.is_admin)}>{children}</DashShell>;
 }

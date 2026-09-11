@@ -356,6 +356,8 @@ export interface Post {
 }
 
 export interface BusinessFacts {
+  /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
+  lab?: boolean;
   // The owner's name, for personal address ("Morning, Sarah!").
   owner_name?: string;
   hours?: string;
