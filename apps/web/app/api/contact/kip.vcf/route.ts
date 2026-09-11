@@ -16,12 +16,18 @@ export async function GET(): Promise<NextResponse> {
 
   // Embed a small JPEG so "Add to Contacts" brings the profile pic along.
   // Large embeds sometimes fail Twilio media fetch — keep ~160px.
+  // Flatten onto the disc colour first: JPEG has no alpha, and transparent
+  // PNG corners would otherwise bake in as black.
   let photoJpeg: Uint8Array | undefined;
   try {
-    const logoPath = path.join(process.cwd(), "public", "brand", "kip-logo-1024.png");
+    const logoPath = path.join(process.cwd(), "public", "brand", "kip-contact-avatar.png");
     const png = await readFile(logoPath);
     photoJpeg = new Uint8Array(
-      await sharp(png).resize(160, 160, { fit: "cover" }).jpeg({ quality: 82 }).toBuffer(),
+      await sharp(png)
+        .flatten({ background: { r: 244, g: 241, b: 234 } })
+        .resize(160, 160, { fit: "cover" })
+        .jpeg({ quality: 82 })
+        .toBuffer(),
     );
   } catch (err) {
     console.warn("kip.vcf: could not embed logo, falling back to PHOTO URI", err);

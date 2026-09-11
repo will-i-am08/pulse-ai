@@ -26,7 +26,9 @@ export function kipContactIdentity(): KipContactIdentity {
     firstName: env.KIP_CONTACT_FIRST_NAME,
     // Prefer the active channel's from-number; fall back across providers.
     phone: env.TWILIO_FROM_NUMBER ?? env.LINQ_FROM_NUMBER,
-    imageUrl: env.KIP_CONTACT_IMAGE_URL ?? `${base}/brand/kip-logo-1024.png`,
+    // Opaque off-white square (not the transparent web mark) — iMessage /
+    // JPEG vCards turn transparent corners black.
+    imageUrl: env.KIP_CONTACT_IMAGE_URL ?? `${base}/brand/kip-contact-avatar.png`,
     vcardUrl: `${base}/api/contact/kip.vcf`,
   };
 }
