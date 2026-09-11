@@ -8,6 +8,11 @@ import {
   type SendResult,
 } from "@pulse/shared";
 
+import {
+  claimContactCardSentByPhone,
+  releaseContactCardSent,
+} from "./contactCardSent.js";
+
 // Linq (linqapp.com) messaging channel — iMessage/RCS/SMS. Send via the partner
 // v3 API; inbound arrives as `message.received` webhooks (verified in the web
 // route). See docs.linqapp.com.
@@ -29,9 +34,8 @@ export class LinqChannel implements MessageChannel {
   private chatIdCache = new Map<string, { chatId: string; at: number }>();
   private static readonly CHAT_CACHE_TTL_MS = 10 * 60 * 1000;
 
-  /** chatId → last successful share_contact_card timestamp (once/day per Linq docs). */
-  private shareCache = new Map<string, number>();
-  private static readonly SHARE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  /** chatId → in-flight share so concurrent ACK+reply sends don't double-POST. */
+  private shareInFlight = new Set<string>();
 
   /** Lazily ensure Kip's contact card exists on the sending line (once per process). */
   private contactCardReady: Promise<boolean> | null = null;
@@ -222,15 +226,29 @@ export class LinqChannel implements MessageChannel {
    * Best-effort, never throws. Requires a prior outbound message and an active
    * card. Safe to call once per day per chat (Linq recommendation).
    */
-  async shareContactCard(chatId: string | null | undefined): Promise<void> {
+  async shareContactCard(
+    chatId: string | null | undefined,
+    opts?: { phone?: string },
+  ): Promise<void> {
     if (!chatId) return;
-    const last = this.shareCache.get(chatId) ?? 0;
-    if (Date.now() - last < LinqChannel.SHARE_COOLDOWN_MS) return;
+    if (this.shareInFlight.has(chatId)) return;
+    this.shareInFlight.add(chatId);
 
-    const ready = await this.ensureContactCard();
-    if (!ready) return;
-
+    const phone = opts?.phone;
+    let claimedBrandId: string | null = null;
     try {
+      // Persist across cold starts; without a phone we cannot claim — skip
+      // rather than re-spam every outbound on an ephemeral in-memory cooldown.
+      if (!phone) return;
+      claimedBrandId = await claimContactCardSentByPhone(phone);
+      if (!claimedBrandId) return;
+
+      const ready = await this.ensureContactCard();
+      if (!ready) {
+        await releaseContactCardSent(claimedBrandId);
+        return;
+      }
+
       const res = await fetch(`${API}/chats/${encodeURIComponent(chatId)}/share_contact_card`, {
         method: "POST",
         headers: this.authHeaders(),
@@ -238,11 +256,13 @@ export class LinqChannel implements MessageChannel {
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         console.warn(`linq shareContactCard ${res.status} for ${chatId}`, body.slice(0, 200));
-        return;
+        await releaseContactCardSent(claimedBrandId);
       }
-      this.shareCache.set(chatId, Date.now());
     } catch (err) {
       console.warn(`linq shareContactCard: skipping for ${chatId}`, err);
+      if (claimedBrandId) await releaseContactCardSent(claimedBrandId);
+    } finally {
+      this.shareInFlight.delete(chatId);
     }
   }
 
@@ -282,9 +302,9 @@ export class LinqChannel implements MessageChannel {
     const chatId = String(body?.chat_id ?? body?.data?.chat_id ?? "") || null;
     if (chatId) this.noteChat(msg.to, chatId);
 
-    // After the first outbound in a chat, share Kip's name + profile photo so
-    // iMessage prompts "Kip" instead of a raw +61… number. Fire-and-forget.
-    void this.shareContactCard(chatId).catch((err) =>
+    // Share Kip's name + photo once per brand (not every bubble). Concurrent
+    // sends race through an in-flight set + DB claim so ACK+reply can't double.
+    void this.shareContactCard(chatId, { phone: msg.to }).catch((err) =>
       console.warn(`linq shareContactCard after send failed for ${msg.to}`, err),
     );
 

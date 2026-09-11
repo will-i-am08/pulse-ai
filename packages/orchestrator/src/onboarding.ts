@@ -437,7 +437,8 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
         set onboarding_state = $2::jsonb,
             brand_voice_profile = $3::jsonb,
             voice_guide_md = null,
-            facts = $4::jsonb
+            facts = $4::jsonb,
+            contact_card_sent_at = null
       where id = $1`,
     [
       brandId,

@@ -1,6 +1,20 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { buildKipVCard, foldVCardLine, resetServerEnvCache } from "@pulse/shared";
+
+const claimContactCardSentByPhone = vi.fn();
+const releaseContactCardSent = vi.fn();
+
+vi.mock("./contactCardSent.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./contactCardSent.js")>();
+  return {
+    ...actual,
+    claimContactCardSentByPhone: (...args: unknown[]) => claimContactCardSentByPhone(...args),
+    releaseContactCardSent: (...args: unknown[]) => releaseContactCardSent(...args),
+  };
+});
+
 import { LinqChannel } from "./linq-channel.js";
+import { needsContactCard } from "./contactCardSent.js";
 
 describe("foldVCardLine", () => {
   it("leaves short lines alone", () => {
@@ -41,6 +55,25 @@ describe("buildKipVCard", () => {
   });
 });
 
+describe("needsContactCard", () => {
+  it("is false when contact_card_sent_at is set", () => {
+    expect(needsContactCard({ contact_card_sent_at: "2026-01-01T00:00:00Z" })).toBe(false);
+  });
+
+  it("is false when legacy onboarding stamp exists", () => {
+    expect(
+      needsContactCard({
+        contact_card_sent_at: null,
+        onboarding_state: { kip_contact_card_sent_at: "2026-01-01T00:00:00Z" },
+      }),
+    ).toBe(false);
+  });
+
+  it("is true when neither stamp is set", () => {
+    expect(needsContactCard({ contact_card_sent_at: null, onboarding_state: {} })).toBe(true);
+  });
+});
+
 describe("LinqChannel contact card", () => {
   const realFetch = globalThis.fetch;
 
@@ -54,6 +87,10 @@ describe("LinqChannel contact card", () => {
     process.env.KIP_CONTACT_FIRST_NAME = "Kip";
     delete process.env.KIP_CONTACT_IMAGE_URL;
     resetServerEnvCache();
+    claimContactCardSentByPhone.mockReset();
+    releaseContactCardSent.mockReset();
+    claimContactCardSentByPhone.mockResolvedValue("brand-1");
+    releaseContactCardSent.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -97,12 +134,44 @@ describe("LinqChannel contact card", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const linq = new LinqChannel("test-key");
-    const result = await linq.send({ to: "+61400000000", body: "Hey, it's Kip" });
+    const result = await linq.send({ to: "+61400000000", body: "Hey, it\'s Kip" });
     expect(result.providerMessageId).toBe("msg-1");
 
     await vi.waitFor(() => {
       expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/share_contact_card"))).toBe(true);
     });
+    expect(claimContactCardSentByPhone).toHaveBeenCalledWith("+61400000000");
+  });
+
+  it("does not share again when the brand already claimed the card", async () => {
+    claimContactCardSentByPhone.mockResolvedValue(null);
+    let shareCalls = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (u.endsWith("/messages") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ chat_id: "chat-abc", message: { id: "msg-2" } }),
+          { status: 200 },
+        );
+      }
+      if (u.endsWith("/share_contact_card") && init?.method === "POST") {
+        shareCalls += 1;
+        return new Response(null, { status: 204 });
+      }
+      if (u.includes("/contact_card")) {
+        return new Response(JSON.stringify({ contact_cards: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected " + u }), { status: 500 });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const linq = new LinqChannel("test-key");
+    await linq.send({ to: "+61400000000", body: "Second ping" });
+    await linq.send({ to: "+61400000000", body: "Third ping" });
+    // Give fire-and-forget shares a tick to settle.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(shareCalls).toBe(0);
+    expect(claimContactCardSentByPhone).toHaveBeenCalled();
   });
 
   it("creates a contact card when none exists", async () => {

@@ -14,6 +14,7 @@ function fakeBrand(): Brand {
     account_type: null,
     website: null,
     onboarding_state: { status: "none" as const },
+    contact_card_sent_at: null,
     brand_voice_profile: emptyBrandVoiceProfile(),
     ig_user_id: null,
     fb_page_id: null,

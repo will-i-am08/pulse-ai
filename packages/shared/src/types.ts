@@ -216,6 +216,8 @@ export interface Brand {
   account_type: AccountType | null;
   website: string | null;
   onboarding_state: OnboardingState;
+  /** When Kip's contact card (.vcf / Linq share) was last delivered — once per brand. */
+  contact_card_sent_at: string | null;
   brand_voice_profile: BrandVoiceProfile;
   voice_guide_md: string | null;
   voice_analysis_state: VoiceAnalysisState;
