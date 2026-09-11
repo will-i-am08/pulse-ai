@@ -46,7 +46,7 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 ### Wave 1 — IG + FB organic (SMS)
 
 - [ ] Meta **Business Verification** ✅ (done)
-- [ ] Upload app icon (`apps/web/public/brand/kip-logo-1024.png`) — see META_APP_REVIEW
+- [ ] Upload app icon (`apps/web/public/brand/kip-appicon-1024.png` — flattened, no transparency) — see META_APP_REVIEW
 - [ ] App Review: Wave 1 scopes only (publishing — not ads)
 - [ ] Screencast: connect → draft photo → approve → live IG + Page post
 - [ ] Flip app to **Live**; set `GRAPH_MODE=live`

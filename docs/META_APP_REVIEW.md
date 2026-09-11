@@ -4,8 +4,9 @@ App: **Pulse AI / Kip** · App ID `2105802910330255` · Business portfolio `4344
 Live app: `https://web-tau-three-59.vercel.app`  
 Prereq: ✅ **Business Verification complete (2026-09-10)**.
 
-**Icon path (upload this):** [`apps/web/public/brand/kip-logo-1024.png`](../apps/web/public/brand/kip-logo-1024.png)  
-Dashboard → App settings → Basic → App icon → 1024×1024 PNG, no transparency, no rounded corners.
+**Icon path (upload this):** [`apps/web/public/brand/kip-appicon-1024.png`](../apps/web/public/brand/kip-appicon-1024.png)  
+Dashboard → App settings → Basic → App icon → 1024×1024 PNG, no transparency, no rounded corners.  
+_(This is `kip-logo-1024.png` flattened onto its cream `#F4F1EA` fill — the original has transparent corners Meta rejects. Use `kip-appicon-1024.png`, not the logo.)_
 
 Status: App Review submission is the remaining gate before **Live** + `GRAPH_MODE=live` for Wave 1 clients.
 
@@ -89,7 +90,7 @@ Record on the **live** URL as a **Meta Test User** (or your account). Upload the
 
 ## Ordered checklist
 
-1. Upload icon from `apps/web/public/brand/kip-logo-1024.png`.
+1. Upload icon from `apps/web/public/brand/kip-appicon-1024.png` (flattened, no transparency).
 2. Add `pages_manage_posts`; remove unused ads scopes from **this** Wave 1 submission.
 3. Record screencast; paste descriptions above.
 4. Submit → on approval flip app to **Live** → set `GRAPH_MODE=live`.
