@@ -4,13 +4,12 @@ import Link from 'next/link';
 import { Save } from './landing-art';
 import styles from '../page.module.css';
 
-const SIGNUP = '/signup';
-
 /** Pricing block with a monthly / annual toggle. Prices in AUD.
- *  Both plan CTAs route to signup. */
+ *  Plan CTAs carry the selection into signup → payment UI. */
 export function PricingPlans() {
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
   const annual = billing === 'annual';
+  const billingParam = annual ? 'annual' : 'monthly';
 
   return (
     <>
@@ -38,7 +37,7 @@ export function PricingPlans() {
             <li>Calendar + content plan</li>
             <li>Weekly check-in + Friday recap</li>
           </ul>
-          <Link className={styles.pillDark} href={SIGNUP}>
+          <Link className={styles.pillDark} href={`/signup?plan=pro&billing=${billingParam}`}>
             Start Pro
           </Link>
         </article>
@@ -56,7 +55,7 @@ export function PricingPlans() {
             <li>Routines you write in a sentence</li>
             <li>Priority setup with Pulse</li>
           </ul>
-          <Link className={styles.pillDark} href={SIGNUP}>
+          <Link className={styles.pillDark} href={`/signup?plan=max&billing=${billingParam}`}>
             Start Max
           </Link>
         </article>

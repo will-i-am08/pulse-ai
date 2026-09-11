@@ -12,6 +12,13 @@ export { buildConversationContext } from "./conversationContext.js";
 
 export {
   startOnboarding,
+  kickOffOnboardingAfterPayment,
+  beginOnboardingInterview,
+  onChannelsConnectedDuringOnboarding,
+  continueOnboardingAfterVoiceAnalysis,
+  handleAwaitingConnect,
+  handleReadingContent,
+  looksLikeSkipConnect,
   onboardingTurn,
   onboardingNext,
   finishOnboarding,
@@ -24,6 +31,14 @@ export {
   extractVisualHintsFromHtml,
   seedVisualProfileFromWebsite,
 } from "./onboarding.js";
+export {
+  brandsDueForConnectNudge,
+  connectNudgeMessage,
+  markConnectNudgeSent,
+  clearSkippedConnectFlags,
+} from "./connectNudge.js";
+export type { ConnectNudgeCandidate } from "./connectNudge.js";
+
 export type { LabChatSummary } from "./onboarding.js";
 
 export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";

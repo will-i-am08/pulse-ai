@@ -10,6 +10,7 @@ import { runGapFillLoop } from "./proactive/gapFill.js";
 import { runChaseLoop } from "./proactive/chase.js";
 import { runCompetitorWatchLoop } from "./proactive/competitorWatch.js";
 import { runNichePlanLoop } from "./proactive/nichePlan.js";
+import { runConnectNudgeLoop } from "./proactive/connectNudge.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
 import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
@@ -162,6 +163,9 @@ async function main(): Promise<void> {
   const chaseTimer = guardedInterval("chase", 60 * 60 * 1000, runChaseLoop);
   const watchTimer = guardedInterval("competitor-watch", 6 * 60 * 60 * 1000, runCompetitorWatchLoop);
   const planTimer = guardedInterval("niche-plan", 30 * 1000, runNichePlanLoop);
+  const connectNudgeTimer = guardedInterval("connect-nudge", 60 * 60 * 1000, runConnectNudgeLoop, {
+    runSoonMs: 45_000,
+  });
   const digestTimer = guardedInterval("weekly-digest", 60 * 60 * 1000, runWeeklyDigestLoop);
 
   // Linq inbound drain — only meaningful when MESSAGE_CHANNEL=linq, but cheap to poll.
@@ -200,6 +204,7 @@ async function main(): Promise<void> {
     clearInterval(chaseTimer);
     clearInterval(watchTimer);
     clearInterval(planTimer);
+  clearInterval(connectNudgeTimer);
     clearInterval(digestTimer);
     clearInterval(linqTimer);
     clearInterval(aiVideoTimer);

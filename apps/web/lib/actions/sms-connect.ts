@@ -2,7 +2,7 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
 import { query, queryOne, decrypt, encryptJson, type Brand } from '@pulse/shared';
-import { queueVoiceAnalysis } from '@pulse/orchestrator';
+import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding, clearSkippedConnectFlags } from '@pulse/orchestrator';
 import { listManagedPages, derivePageToken, listAdAccounts } from '@/lib/meta/oauth';
 import { verifySmsConnectToken } from '@/lib/sms-connect/token';
 import { sendToBrand } from '@pulse/gateway';
@@ -47,10 +47,16 @@ export async function selectPageFromSmsAction(formData: FormData): Promise<void>
     [chosen.id, chosen.name, chosen.igUserId, chosen.igUsername, encrypted, brand.id],
   );
 
-  await queueVoiceAnalysis(brand.id).catch(() => undefined);
+  await clearSkippedConnectFlags(brand.id).catch(() => undefined);
+  const onboarding = await onChannelsConnectedDuringOnboarding(brand.id);
+  if (!onboarding.handled) {
+    await queueVoiceAnalysis(brand.id).catch(() => undefined);
+  }
 
   const ig = chosen.igUsername ? `@${chosen.igUsername}` : 'Instagram';
-  const confirm = `Connected ✅ ${ig} + ${chosen.name}. I'll take it from here — send a photo any time.`;
+  const confirm = onboarding.handled
+    ? (onboarding.message ?? `Connected ✅ ${ig}. Reading your posts now.`)
+    : `Connected ✅ ${ig} + ${chosen.name}. I'll take it from here — send a photo any time.`;
   await sendToBrand(brand.id, confirm).catch((err) =>
     console.error('selectPageFromSmsAction: confirmation SMS failed', err),
   );

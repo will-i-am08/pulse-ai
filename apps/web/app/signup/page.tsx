@@ -17,18 +17,29 @@ const ERRORS: Record<string, string> = {
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; plan?: string; billing?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, plan, billing } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
+  const planTier = plan === 'pro' || plan === 'max' ? plan : null;
+  const planBilling =
+    billing === 'annual' || billing === 'yearly' || billing === 'year'
+      ? 'annual'
+      : billing === 'monthly' || billing === 'month'
+        ? 'monthly'
+        : null;
 
   return (
     <main className={styles.wrap}>
       <BrandLockup href="/" className={styles.brand} size={36} />
       <form className={styles.card} action={signupAction}>
         <h1 className={styles.h1}>Create your account</h1>
-        <p className={styles.sub}>Sign up and Kip will message you to get set up. No password to remember.</p>
+        <p className={styles.sub}>
+          Sign up, choose a plan, then Kip texts you to get set up. No password to remember.
+        </p>
         {msg && <p className={styles.error}>{msg}</p>}
+        {planTier && <input type="hidden" name="plan" value={planTier} />}
+        {planBilling && <input type="hidden" name="billing" value={planBilling} />}
 
         <label className={styles.label}>
           Your name or business name
