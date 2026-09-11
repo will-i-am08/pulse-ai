@@ -1,4 +1,4 @@
--- 0035_reel_format.sql — first-class Reel format + AI video job queue (Phase G).
+-- 0036_reel_format.sql — first-class Reel format + AI video job queue (Phase G).
 
 -- posts.format: allow 'reel' (drop anonymous check from 0018, re-add named).
 alter table posts drop constraint if exists posts_format_check;
