@@ -53,6 +53,6 @@ export async function sendChatMessageAction(formData: FormData): Promise<void> {
     console.error('sendChatMessageAction: handleInbound failed', err);
   }
 
+  // LiveThread on /app polls for new rows — avoid a full redirect flash.
   revalidatePath('/app');
-  redirect('/app');
 }
