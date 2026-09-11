@@ -124,5 +124,15 @@ Platform tokens are encrypted at rest with this (AES-256-GCM). Keep it out of gi
 
 ## Approval is absolute
 No code path publishes without a logged `approved` action. Every draft, approval,
-edit, publish, and failure is written to `approval_log`. If you ever see a post
-published without an `approved` row, that's a bug — stop and report it.
+edit, publish, and failure is written to `approval_log`. The worker publish loop
+calls `hasApprovedLog` and **skips** any due post that lacks an `approved` row
+(and logs `publish_failed` with that reason). If you ever see a post published
+without an `approved` row, that's a bug — stop and report it.
+
+## Quiet hours (proactive SMS)
+Near-real-time engagement escalations can still land when a customer writes in,
+but **proactive** owner pings (check-in, chase, weekly digest, competitor watch)
+only fire during sociable local hours — default **8am–7pm** via `isDaytime()`
+(`packages/orchestrator/src/reengagement.ts`). Overnight quiet is intentional so
+a surge detector or webhook doesn't mean 2am marketing nudges. If you change the
+window, keep the same helper so all loops stay consistent.

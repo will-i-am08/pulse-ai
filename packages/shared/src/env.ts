@@ -59,6 +59,14 @@ const serverEnvSchema = z.object({
   // Threads connect + live posting enabled.
   THREADS_APP_ID: z.string().optional(),
   THREADS_APP_SECRET: z.string().optional(),
+  // LinkedIn Marketing Developer Platform — Company Page OAuth + Posts API.
+  LINKEDIN_CLIENT_ID: z.string().optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().optional(),
+  // TikTok Content Posting API (Direct Post). Public live also needs TIKTOK_AUDIT_PASSED.
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  /** Set to "true" only after TikTok Content Posting API audit clears. */
+  TIKTOK_AUDIT_PASSED: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   TZ: z.string().default("Australia/Sydney"),

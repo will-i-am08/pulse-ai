@@ -1,12 +1,29 @@
 # Kip — build status snapshot
 
-_Living snapshot of what's built, what's gated, and what's next. Audited 2026-09-09 against the source, not the intentions. Pairs with [`ROADMAP.md`](ROADMAP.md) (strategy) and [`META_APP_REVIEW.md`](META_APP_REVIEW.md) (approvals)._
+_Living snapshot of what's built, what's gated, and what's next. Audited 2026-09-11 against the source. Pairs with [`ROADMAP.md`](ROADMAP.md), [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md), and [`META_APP_REVIEW.md`](META_APP_REVIEW.md)._
 
-**One-line verdict:** the engine is built and far ahead of its own docs. The project is **approval-blocked, not code-blocked** — but the biggest gate just cleared: **Meta Business Verification is complete (2026-09-10)**. The only thing between the built engine and real clients is now the **Meta App Review submission** (then flip to Live). Highest-ROI work is finishing that submission, not writing more features.
+**One-line verdict:** Phases **A–G are built** on this branch; **Phase H** (LinkedIn + TikTok) is Wave 3 next; **Phase I** is **scoped only** (no full CRM). The project remains **approval-blocked for Live Meta clients** — Business Verification is ✅; App Review submission is the remaining gate. Highest-ROI non-code work is finishing that submission.
 
-- ~14,500 lines of TypeScript, clean pnpm monorepo, 16 test files, audit-first (nothing publishes without a logged `approved` action).
-- All feature branches merged into `main`; `main` == `origin/main`. No stranded half-work.
-- Stack: **Neon** Postgres · Vercel (dashboard + webhooks) · Railway (worker) · Anthropic (drafting) · Meta Graph (mock→live) · GBP API.
+- TypeScript monorepo (pnpm), audit-first (nothing publishes without a logged `approved` action).
+- Stack: **Neon** Postgres · Vercel (dashboard + webhooks) · Railway (worker) · Anthropic · Meta Graph (mock→live) · optional X/Threads via `platformConfigured()`.
+
+---
+
+## Phase scoreboard (foundation wave)
+
+| Phase | Goal | State |
+|---|---|---|
+| **A** — SMS cutover + thin engagement SMS | Discord out; Twilio/Linq; worker loops; deep-link connects; A6 `send`/edit for drafted replies | ✅ **done** |
+| **B** — Brand context | ICP, pains, positioning, offers, visual tokens / design memory hooks | ✅ **done** |
+| **C** — Organic excellence | Context-driven visuals, carousels/stories quality, design composer + QA, model router | ✅ **done** |
+| **D** — Research → strategy → plan | Research snapshots, strategy brief, plan bias, campaign controls | ✅ **done** |
+| **E** — Performance analyst | Unified organic (+ paid when on) digest; make-more / boost / confirm SMS verbs | ✅ **done** |
+| **F** — Meta paid ads | SMS ads connect, campaign builder, boost, spend caps, Marketing API surface | ✅ **done** |
+| **G** — Video & AI gen | First-class Reels, vision caption, motion templates, Kling/Runway AI video | ✅ **done** |
+| **H** — LinkedIn + TikTok outbound | SMS connect/publish; H0 aggregator spike; paperwork parallel | 🟡 **landing on this branch** (H0 **Direct** decision; platform types + adapters in flight) |
+| **I** — Engagement → light CRM | Reply-verb polish, lead card, thin Zapier/Make webhook, toggles | 📋 **scoped only** — [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) |
+
+**Cross-cutting (X1–X4):** approvals absolute; quiet hours via `isDaytime` (8am–7pm); `platformConfigured()` mock fallbacks; cohort go-live still gated on Meta App Review.
 
 ---
 
@@ -15,93 +32,85 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 **Outbound loop**
 - Photo → on-brand caption → approve/edit/reject in-thread → publish (`processInbound.ts`).
 - Brand-voice learning; edits fold into the voice profile (`applyCorrection.ts`).
-- Smart scheduler: per-platform windows, daily caps, spacing, no back-to-back same pillar, pillar schedule pins (`scheduler.ts`).
+- Smart scheduler: per-platform windows, daily caps, spacing, pillar pins (`scheduler.ts`).
 - Pillars + photo auto-classification, gap-fill filler, conversational campaigns.
-- AI image editing (tiles, quote/tip cards, re-edits) (`imaging.ts`).
-- Formats: feed / carousel / story with explicit commands (`formats.ts`).
+- AI image editing + context-driven design composer / Design QA (Phase C).
+- Formats: feed / carousel / story / **reel** with explicit commands.
 - IG mockup preview on every draft (`mockup.ts`).
 
-**Inbound engagement (Phase A)** — _built, contrary to the old roadmap_
-- Policy engine: classify → auto-reply / draft / escalate / spam-hide / lead hand-off + sentiment-spike detection (`engagement.ts`, `engagementLoop.ts`).
-- Meta webhook ingestion into `interactions` (`webhooks/meta/route.ts`).
+**Inbound engagement (Phase A engine + A6 SMS)**
+- Policy engine: classify → auto-reply / draft / escalate / spam-hide / lead hand-off (`engagement.ts`, `engagementLoop.ts`).
+- Meta webhook ingestion into `interactions`.
+- Thin SMS approve path: `"send"` → `sendLatestDraft`; edit verbs → `editLatestDraft` when no pending post.
 
 **Live publishing engine**
-- Real Meta implementation: IG feed/carousel/story/reels, FB Page, engagement pull, comment/DM replies, spam-hide (`graph/live.ts`). Needs only real tokens.
+- Real Meta implementation: IG feed/carousel/story/reels, FB Page, engagement pull, comment/DM replies, spam-hide (`graph/live.ts`). Needs only real tokens + App Review for Live clients.
 
-> **Google Business Profile (was Phase B) — DESCOPED & REMOVED (2026-09-09).**
-> GBP isn't social media, so posting to Google and Google-review sync were cut.
-> The code has been removed: `shared/google.ts`, `reviewSync.ts`, `connect/google/*`,
-> `actions/google.ts`, the `google` branch of `live.ts`, the `google` platform +
-> Brand GBP fields, and the dashboard connect flow are all gone. Migration
-> `0024_drop_google.sql` drops the GBP columns + `content_sources` table (prod-safe).
-> Typecheck + all 110 tests pass after removal.
+> **Google Business Profile — DESCOPED & REMOVED.** Not social media. Migration `0024_drop_google.sql`.
 
-**Growth/learning (Phase D, partial)**
-- Performance analysis (`insights.ts`), competitor intel + weekly watch (`competitors.ts`), niche research → content plan (`nichePlan.ts`), URL repurposing (`repurpose.ts`).
+**Brand / strategy / analyst / ads / video (B–G)**
+- ICP, pain points, positioning, offers; research snapshots + strategy brief SMS.
+- Performance digest on SMS; paid metrics join when ads enabled.
+- Meta ads: feature toggles, spend caps, boost + campaign builder, Marketing API types.
+- Reels + client video captioning + motion edits + async AI video jobs.
 
 **Infra & dashboard**
-- Neon + migrations; Railway worker (publish + trigger + engagement + voice +
-  gap-fill / chase / competitor watch / niche plan / weekly digest + Linq inbound,
-  overlap-guarded, graceful shutdown); Next.js dashboard; passwordless phone auth;
-  `/privacy`, `/terms`, `/data-deletion`.
+- Neon + migrations; Railway worker (publish + engagement + proactive loops + Linq inbound); Next.js dashboard; passwordless phone auth; `/privacy`, `/terms`, `/data-deletion`.
 - User-facing rename to **Kip** done.
-- **SMS cutover (Phase A):** Discord package removed; `MESSAGE_CHANNEL=twilio|linq`
-  only; proactive loops live on the worker; SMS deep-link Meta connect at `/c/[token]`.
+- **SMS cutover:** Discord package **removed**; `MESSAGE_CHANNEL=twilio|linq` only; SMS deep-link Meta/ads connect at `/c/[token]`.
 
 ---
 
-## 🟡 Halfway (built-but-gated, or scaffolded-not-wired)
+## 🟡 Halfway / optional / gated
 
 | Item | Reality |
 |---|---|
-| Live Meta publishing | **Code complete** — the `TODO(live)` gaps (IG permalink, FB video routing, FB reach) are now implemented to Meta's documented shapes, best-effort wrapped so they degrade rather than fail. Only remaining step is confirming against the **first real published post** (e.g. the App Review screencast). |
-| X & Threads | **Real integrations built** — OAuth connect + live publish for both (X via API v2, Threads via Meta). They fall back to the mock feed only until the app is configured (`X_CLIENT_ID` / `THREADS_APP_ID`) and a brand connects an account, via the `platformConfigured()` guard. |
-| Closed-loop learning digest (Phase D) | `analyzePerformance` + weekly SMS digest + NL “how did we do?” wired. |
-| Channel end-state | **Twilio SMS primary**; **Linq** end-state supported (`MESSAGE_CHANNEL=linq`). Discord removed. |
-| ~~Google Photos/Drive auto-import~~ | **Cut** with the Google descope. Migrations `0012`/`0015` (`content_sources`) are now dead schema. |
+| Live Meta publishing | **Code complete** — confirm against first real published post (App Review screencast). |
+| **X & Threads (keep decision)** | **Keep as optional destinations.** Real OAuth + live publish exist; they fall back to mock until the app is configured (`X_CLIENT_ID` / `THREADS_APP_ID`) **and** a brand connects, via `platformConfigured()`. Not descoped; not required for Wave 1 IG/FB cohort. |
+| Channel end-state | **Twilio SMS primary**; **Linq** supported (`MESSAGE_CHANNEL=linq`). Discord removed. |
+| Phase H LinkedIn/TikTok | **H0 decision: Direct adapters** (not Postiz) — see [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md). Types / env / connect purposes landing; finish publish + SMS connect before calling H done. |
+| Phase I CRM webhook | Type stub `features.crm_webhook` only — no push implementation. |
 
 ---
 
-## 🔐 Verification & approvals (the real critical path — none of it is code)
+## 🔐 Verification & approvals (critical path — mostly not code)
 
 | Gate | State | Notes |
 |---|---|---|
 | Meta — FB Login, Privacy/Terms/Data-deletion URLs, app domain | ✅ | Done |
 | Meta — `instagram_content_publish` | ✅ | Active |
-| Meta — **Business Verification** | ✅ **complete & verified (2026-09-10)** | The long pole — now cleared. Unblocks `pages_manage_posts` + advanced scopes |
+| Meta — **Business Verification** | ✅ **complete (2026-09-10)** | Unblocks advanced scopes |
 | Meta — app icon upload | ⬜ | Use `apps/web/public/brand/kip-logo-1024.png` |
-| Meta — add `pages_manage_posts` + trim to the 7 scopes | ⬜ | Now unblocked by verification |
-| Meta — screencast + App Review submission | ⬜ **next up** | No longer blocked — then flip app to Live |
-| ~~Google GBP API access~~ | ✂️ **descoped** | Google cut — not social media |
-| Twilio AU sender registration | ⬜ | Needed for reliable AU SMS delivery |
-| Internal typecheck + tests | ✅ green (2026-09-09) | `pnpm -r typecheck` clean across all 8 packages; **110 tests pass** (graph 6, orchestrator 72, gateway 14, worker 18) |
+| Meta — add `pages_manage_posts` + trim scopes | ⬜ | Unblocked by verification |
+| Meta — screencast + App Review submission | ⬜ **next up** | Then flip app to Live |
+| Twilio AU sender registration | ⬜ | Needed for reliable AU SMS |
+| **X1 Approvals** | ✅ | Worker `hasApprovedLog` blocks publish without `approval_log.action='approved'` |
+| Internal typecheck + tests | ✅ | Run `pnpm -r typecheck` / package vitest suites on this branch |
 
 ---
 
-## ✅ Done 2026-09-10
+## Cross-cutting notes (X1–X4)
 
-- **Finished the live Meta Graph paths**: the three `TODO(live)` gaps are implemented — IG permalink fetch, FB video routing (`/videos`) vs photo/text, and FB reach via post insights. All best-effort wrapped so a field mismatch degrades to `null`/`0` rather than failing the publish/report. Confirm on the first real post.
-- **Passwordless phone login** (OTP through the agent thread), **X + Threads live integrations**, and the **`platformConfigured()` mock-fallback guard** (ends the recurring env-validation bug) all landed. **Meta Business Verification complete** — App Review submission is the remaining Meta gate.
-
-## ✅ Done 2026-09-09
-
-- **Removed all Google code** (descoped — not social media): `shared/google.ts`, `reviewSync.ts`, `connect/google/*`, `actions/google.ts`, the `google` platform + Brand GBP fields, dashboard connect flow, worker review-sync loop, and the GBP doc. Migration `0024_drop_google.sql` drops the columns + `content_sources` table (prod-safe guard on the platform check). Typecheck + 110 tests green.
-- **Fixed stale Supabase→Neon docs**: `RUNBOOK.md` and `BUILD_CONTRACTS.md` now describe Neon Postgres, the `/api/media/[id]` storage, and the single-operator password gate; `MIGRATION_CONTRACTS.md` marked completed/historical.
-
-## 🔲 To do
-
-2. **Wire ads / boost** (Phase F) — ad-account SMS connect scaffolded; builder not started.
-3. **Confirm live publish end-to-end** against a real connected account (permalink/reach fields, FB video) — one real post during the App Review screencast covers it.
+- **X1 — Approvals & audit:** Every draft / approve / edit / publish / failure writes `approval_log`. Publish loop refuses posts missing an `approved` row (`apps/worker/src/publish/assertApproved.ts`). Do not weaken this.
+- **X2 — Quiet hours:** Proactive SMS (check-in, chase, digest, competitor watch) uses `isDaytime` — default **8am–7pm** local (`reengagement.ts`). See RUNBOOK.
+- **X3 — Platform configured:** New platforms must use `platformConfigured(ENV)` for mock fallback — never `getServerEnv()` for that gate.
+- **X4 — Cohort go-live:** Beta on Meta Testers + Twilio SMS while App Review clears; flip `GRAPH_MODE=live` only after approval.
 
 ---
 
-## Next actions (ROI order)
+## 🔲 To do (ROI order)
 
-The build team has run out ahead of the paperwork. Extra features earn nothing until a client can connect a real account, so unblock revenue first.
+1. **Submit Meta App Review** (icon, scopes, screencast) → Live app.
+2. **Confirm live publish** end-to-end on a real connected account.
+3. **Phase H** — LinkedIn + TikTok outbound (after H0 Postiz-vs-direct spike).
+4. **Phase I** — only when scheduled; follow [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) (no full CRM).
 
-| # | Move | Why first |
-|---|---|---|
-| 1 | **Submit Meta App Review** — upload app icon, add `pages_manage_posts`, trim to 7 scopes, record screencast, submit | Business Verification is ✅ done, so this is unblocked. It's the last gate before a **Live** app any client can connect. |
-| 2 | **Run the beta on Meta Testers + Twilio SMS** | Testers need no review — onboard a paying cohort today against the built engine while App Review clears. Proof + cash now. |
-| 3 | **On approval → flip app to Live**, set `GRAPH_MODE=live` with real tokens | Real posting to IG + FB goes hot; first real client onboards end-to-end. |
-| 4 | (Post-approval) learning digest → ads | Real feature work, sequenced after the thing that lets clients pay. _(Google removal + Supabase→Neon docs — done 2026-09-09.)_ |
+---
+
+## Decisions locked (this wave)
+
+- Discord **removed**; SMS-led product.
+- X/Threads **remain optional** destinations behind `platformConfigured()`.
+- Phase H0: **Direct** LinkedIn + TikTok adapters (not Postiz) — [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md).
+- Phase I = thin CRM webhook + SMS polish later — **not** a Kip CRM product.
+- Phase H = LinkedIn/TikTok **outbound** first; inbound engagement deferred.

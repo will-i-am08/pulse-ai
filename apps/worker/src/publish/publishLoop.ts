@@ -1,4 +1,4 @@
-import { query, getServerEnv } from "@pulse/shared";
+import { query, getServerEnv, platformLabel } from "@pulse/shared";
 import type { Brand, Post } from "@pulse/shared";
 import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/graph";
 import type { GraphAdapter } from "@pulse/graph";
@@ -10,6 +10,22 @@ import { checkRateLimit } from "./rateLimit.js";
 import { hasApprovedLog } from "./assertApproved.js";
 import { writeApprovalLog } from "./approvalLog.js";
 import { MAX_PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_BASE_MINUTES, operatorPhone } from "../config.js";
+
+function brandFacingPublishError(platform: string, message: string): string | null {
+  if (platform !== "linkedin" && platform !== "tiktok") return null;
+  const name = platformLabel(platform);
+  if (/caption too long|too long \(max/i.test(message)) {
+    const max = platform === "linkedin" ? 3000 : 2200;
+    return `${name} rejected that caption — keep it under ${max} characters, then approve again. Other destinations are unaffected.`;
+  }
+  if (/music|consent|privacy|unaudited|audit/i.test(message)) {
+    return `${name} needs privacy / music consent before I can post. Say "connect TikTok" for a fresh link. Other destinations are unaffected.`;
+  }
+  if (/video|photo|media|needs a video/i.test(message)) {
+    return `${name} needs video (or a photo) — text-only isn't supported. Other destinations are unaffected.`;
+  }
+  return `${name} publish failed (${message.slice(0, 120)}). Other destinations are unaffected.`;
+}
 
 export interface PublishLoopDeps {
   graph: GraphAdapter;
@@ -133,8 +149,17 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
     const permalinkLine = result.permalink ? `\n${result.permalink}` : "";
     const env = getServerEnv();
     const live = didPublishLive(post.platform, env.GRAPH_MODE);
-    const feedUrl = `${env.APP_BASE_URL.replace(/\/$/, "")}/feed${post.platform === "x" || post.platform === "threads" ? `?platform=${post.platform}` : ""}`;
-    await send(brand.id, `${publishConfirmation(post.platform, { live, feedUrl, externalPostId: result.externalPostId })}${live ? permalinkLine : ""}`);
+    const feedPlatforms = new Set(["x", "threads", "linkedin", "tiktok"]);
+    const feedUrl = `${env.APP_BASE_URL.replace(/\/$/, "")}/feed${feedPlatforms.has(post.platform) ? `?platform=${post.platform}` : ""}`;
+    await send(
+      brand.id,
+      `${publishConfirmation(post.platform, {
+        live,
+        feedUrl,
+        externalPostId: result.externalPostId,
+        permalink: result.permalink,
+      })}${live && !result.permalink ? permalinkLine : ""}`,
+    );
   } catch (err) {
     await handlePublishFailure(post, brand, err, deps);
   }
@@ -165,6 +190,13 @@ async function handlePublishFailure(
       action: "publish_failed",
       note: message,
     });
+
+    const ownerSms = brandFacingPublishError(post.platform, message);
+    if (ownerSms) {
+      await send(brand.id, ownerSms).catch((alertErr) =>
+        logger.error("failed to SMS brand of LI/TT publish failure", { error: String(alertErr) }),
+      );
+    }
 
     await send(
       operatorPhone(),

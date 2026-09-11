@@ -1,0 +1,206 @@
+import { getServerEnv } from "./env.js";
+import type { TikTokPrivacyDefaults } from "./types.js";
+import { tiktokAuditPassed } from "./types.js";
+
+/**
+ * TikTok Content Posting API — Direct Post path.
+ *
+ * Unaudited mode: without TIKTOK_AUDIT_PASSED, Kip must not claim public live
+ * posts (graph adapter stays on the mock feed). Documented in
+ * docs/PLATFORM_AGGREGATOR_SPIKE.md and STATUS.md.
+ *
+ * Video-first; photo mode is secondary. Set `aigc` when the creative is AI video.
+ */
+
+const TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/";
+const DIRECT_POST_URL = "https://open.tiktokapis.com/v2/post/publish/video/init/";
+const PHOTO_POST_URL = "https://open.tiktokapis.com/v2/post/publish/content/init/";
+
+export interface TikTokStoredTokens {
+  access_token: string;
+  refresh_token?: string;
+  expires_at: number;
+  open_id?: string;
+}
+
+export const DEFAULT_TIKTOK_PRIVACY: TikTokPrivacyDefaults = {
+  privacy_level: "PUBLIC_TO_EVERYONE",
+  allow_comment: true,
+  allow_duet: true,
+  allow_stitch: true,
+  music_usage_confirmed: false,
+  aigc_disclosure: true,
+};
+
+function creds(): { key: string; secret: string } {
+  const env = getServerEnv();
+  if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
+    throw new Error("TikTok client credentials not set");
+  }
+  return { key: env.TIKTOK_CLIENT_KEY, secret: env.TIKTOK_CLIENT_SECRET };
+}
+
+export async function tiktokRefresh(refreshToken: string): Promise<TikTokStoredTokens> {
+  const { key, secret } = creds();
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_key: key,
+      client_secret: secret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+  const body = (await res.json()) as { error?: string; data?: Record<string, unknown> } & Record<
+    string,
+    unknown
+  >;
+  if (!res.ok || body.error) {
+    throw new Error(`tiktok refresh: ${JSON.stringify(body).slice(0, 200)}`);
+  }
+  const data = (body.data ?? body) as Record<string, unknown>;
+  return {
+    access_token: String(data.access_token),
+    refresh_token: data.refresh_token ? String(data.refresh_token) : refreshToken,
+    expires_at: Date.now() + Number(data.expires_in ?? 86400) * 1000,
+    open_id: data.open_id ? String(data.open_id) : undefined,
+  };
+}
+
+export async function tiktokEnsureToken(
+  stored: TikTokStoredTokens,
+): Promise<{ accessToken: string; refreshed: TikTokStoredTokens | null }> {
+  if (stored.expires_at && stored.expires_at - Date.now() > 60_000) {
+    return { accessToken: stored.access_token, refreshed: null };
+  }
+  if (!stored.refresh_token) {
+    return { accessToken: stored.access_token, refreshed: null };
+  }
+  const t = await tiktokRefresh(stored.refresh_token);
+  return { accessToken: t.access_token, refreshed: t };
+}
+
+function isVideoUrl(u: string): boolean {
+  return /\.(mp4|mov|m4v|webm)(\?|$)/i.test(u);
+}
+
+export type TikTokPublishInput = {
+  accessToken: string;
+  title: string;
+  mediaUrls: string[];
+  privacy?: TikTokPrivacyDefaults;
+  /** True when the video is AI-generated — sets AIGC disclosure on the post. */
+  aigc?: boolean;
+};
+
+/**
+ * Build Direct Post init body (video) or photo content init.
+ * Live client POSTs this to the matching TikTok endpoint.
+ */
+export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
+  url: string;
+  body: Record<string, unknown>;
+} {
+  const title = (input.title ?? "").slice(0, 2200);
+  const privacy = { ...DEFAULT_TIKTOK_PRIVACY, ...(input.privacy ?? {}) };
+  if (!privacy.music_usage_confirmed) {
+    throw new Error(
+      "tiktok: music / commercial content consent required — reopen the connect link and confirm privacy settings",
+    );
+  }
+
+  const media = (input.mediaUrls ?? []).filter(Boolean);
+  if (media.length === 0) {
+    throw new Error("tiktok: needs a video (preferred) or photo — text-only posts aren't supported");
+  }
+
+  const video = media.find(isVideoUrl) ?? (media.length === 1 && !/\.(jpe?g|png|gif|webp)(\?|$)/i.test(media[0]!) ? media[0] : null);
+
+  if (video) {
+    return {
+      url: DIRECT_POST_URL,
+      body: {
+        post_info: {
+          title,
+          privacy_level: privacy.privacy_level,
+          disable_duet: !privacy.allow_duet,
+          disable_comment: !privacy.allow_comment,
+          disable_stitch: !privacy.allow_stitch,
+          video_cover_timestamp_ms: 1000,
+          ...(input.aigc || privacy.aigc_disclosure
+            ? { brand_content_toggle: false, brand_organic_toggle: false, is_aigc: true }
+            : {}),
+        },
+        source_info: {
+          source: "PULL_FROM_URL",
+          video_url: video,
+        },
+      },
+    };
+  }
+
+  // Photo mode (secondary path).
+  const photos = media.slice(0, 35);
+  return {
+    url: PHOTO_POST_URL,
+    body: {
+      post_info: {
+        title,
+        description: title,
+        privacy_level: privacy.privacy_level,
+        disable_comment: !privacy.allow_comment,
+        auto_add_music: false,
+      },
+      source_info: {
+        source: "PULL_FROM_URL",
+        photo_cover_index: 0,
+        photo_images: photos,
+      },
+      post_mode: "DIRECT_POST",
+      media_type: "PHOTO",
+    },
+  };
+}
+
+/**
+ * Init a Direct Post. Requires TIKTOK_AUDIT_PASSED for public privacy levels.
+ * Unaudited deploys should never call this for PUBLIC_TO_EVERYONE — the graph
+ * adapter enforces that gate before reaching here.
+ */
+export async function tiktokDirectPost(
+  input: TikTokPublishInput,
+): Promise<{ publishId: string; permalink: string | null }> {
+  if (!tiktokAuditPassed()) {
+    throw new Error(
+      "tiktok: unaudited mode — set TIKTOK_AUDIT_PASSED after Content Posting API audit before public live posts",
+    );
+  }
+  const { url, body } = tiktokBuildDirectPostBody(input);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json; charset=UTF-8",
+    },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as {
+    error?: { code?: string; message?: string };
+    data?: { publish_id?: string; share_id?: string };
+  };
+  if (!res.ok || (json.error && json.error.code && json.error.code !== "ok")) {
+    const msg = json.error?.message ?? JSON.stringify(json).slice(0, 240);
+    if (/title|caption|length|too long|characters|max/i.test(msg)) {
+      throw new Error(`tiktok caption too long (max 2200): ${msg}`);
+    }
+    if (/privacy|unaudited|scope|audit/i.test(msg)) {
+      throw new Error(`tiktok privacy/audit: ${msg}`);
+    }
+    throw new Error(`tiktok post: ${msg}`);
+  }
+  const publishId = String(json.data?.publish_id ?? json.data?.share_id ?? `tt_${Date.now()}`);
+  return { publishId, permalink: null };
+}
+
+export { tiktokAuditPassed };

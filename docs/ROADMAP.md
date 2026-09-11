@@ -1,45 +1,29 @@
-# Pulse — product spec & roadmap
+# Kip — product spec & roadmap
 
-**The promise:** a small business owner sends a photo (or nothing at all) and never thinks about social media again. Pulse runs the whole presence — posting, replies, reviews, leads — on autopilot, on brand, in one text thread.
+**The promise:** a small business owner sends a photo (or nothing at all) and never thinks about social media again. Kip runs the whole presence — posting, replies, leads — on autopilot, on brand, in one text thread.
 
-This spec captures the target product and the phased build to get there. Decisions below were settled in the scoping sessions; the roadmap section is the ordered plan.
+This spec captures the target product and the phased build. **Authoritative build state:** [`STATUS.md`](STATUS.md). Phase I CRM scope (later): [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md).
 
 ---
 
 ## Where we are (built)
 
-> **Status note (audited 2026-09-09):** this section previously claimed only the
-> outbound half was built. That was stale — Phase **A** (inbound engagement) is
-> largely **built and wired in code**, waiting on Meta approvals and real tokens,
-> not on engineering. See [`STATUS.md`](STATUS.md) for the authoritative done /
-> halfway / to-do snapshot. The project is **approval-blocked, not code-blocked.**
->
-> **Scope change (2026-09-09): all Google is descoped** — Google Business Profile
-> posting and review sync are cut (GBP isn't social media). Google code in the repo
-> is now slated for removal, not go-live. Phase B is struck; Phase C loses its
-> Google Photos/Drive connector (generate-to-fill and URL repurpose stay).
+> **Status note (audited 2026-09-11):** foundation Phases **A–G are built** on the
+> Kip foundation branch. **Discord is removed** — channel is SMS only
+> (`MESSAGE_CHANNEL=twilio|linq`). Google Business Profile remains **descoped**.
+> **Phase H** (LinkedIn + TikTok outbound) is Wave 3 next. **Phase I** (light CRM
+> webhook + engagement polish) is **scoped only** — do not build a full CRM.
+> Live client connect is still **Meta App Review–gated**. See STATUS for the
+> phase scoreboard.
 
-The **outbound** half is done:
+**Done in code (high level):**
 
-- SMS agent: text a photo → drafted on-brand caption → approve → publish (Instagram live; Facebook pending App Review).
-- Brand-voice learning (corrections fold into the voice profile).
-- AI image editing (styling, magazine tiles, quote cards) + follow-up "make the photo brighter" re-edits.
-- Content **pillars** with photo auto-classification.
-- **Smart scheduler**: per-platform windows + guardrails (daily cap, spacing, no back-to-back same pillar, weekly cadence).
-- Per-pillar **hold-window autopilot**.
-- Proactive **gap-fill** (nudges + generated filler).
-- Conversational **campaigns**.
-- Dashboard **content calendar**.
-- **Self-serve Meta linking** (Facebook Login for Business → durable encrypted Page token).
+- SMS agent (Twilio primary, Linq end-state): photo → draft → approve → publish; deep-link connects.
+- Brand voice, ICP/offers, context-driven organic visuals, Reels + AI video, Meta paid ads + spend caps.
+- Inbound engagement policy + thin A6 SMS `send`/edit for drafted replies.
+- Performance analyst digests on SMS; optional X/Threads behind `platformConfigured()`.
 
-The **inbound** half is also **built in code** (this spec is what defined it):
-
-- **Phase A — inbound engagement:** policy engine (classify → auto-reply / draft / escalate / spam-hide / lead hand-off) + sentiment-spike detection; Meta webhook ingestion into `interactions`; worker engagement loop.
-- **Live publishing engine:** real Meta Graph implementation (IG feed/carousel/story/reels, FB Page) — needs only real tokens to switch from `mock` to `live`.
-
-_(A Google Business Profile integration was built — connect, post, review sync/reply — but was **descoped 2026-09-09** and is slated for removal; see the scope note above.)_
-
-Still genuinely unbuilt: **ads/boost** (Phase D) and real **X/Threads** integrations (currently mock feeds). (The Google Photos/Drive connector is descoped along with the rest of Google.)
+**Next:** Meta App Review → Live cohort → Phase H LinkedIn/TikTok → Phase I CRM webhook polish.
 
 ---
 
@@ -116,16 +100,22 @@ A living profile captured at onboarding and editable by chat:
 
 | Phase | Ships | Build state | Depends on |
 | --- | --- | --- | --- |
-| **A — Inbound engagement + business profile** | Business-facts profile (onboarding + chat-editable, pre-filled from the owner's website) · IG/FB comment/DM/mention webhooks · auto/draft/escalate policy engine · lead qualify + hand-off · reply auditing | ✅ **built** — live-gated | Meta scopes (`instagram_manage_comments/messages`, `pages_messaging/manage_engagement`) → **App Review + Business Verification** |
-| ~~**B — Google Business Profile**~~ | ~~Connect GBP · post to Google · pull + reply to Google reviews~~ | ✂️ **DESCOPED (2026-09-09)** — Google isn't social media; code slated for removal | — |
-| **C — Content sourcing** | Generation-to-fill (graphics + AI photo-style) · repurpose existing content (URL → posts) | 🟡 partial — generate-to-fill + URL repurpose built; **Photos/Drive connector descoped with Google** | — |
-| **D — Growth & learning** | Boost top posts / simple ads on an owner-set budget · results tracking · **closed-loop learning** (weekly top-decile vs bottom-decile → agent suggests shifting timing/format/topic) · **actionable digests** (one insight + one recommendation, e.g. "carousels beat static 3:1 — want more?") · optional **outbound-engagement** and **seasonal/local-event** toggles | 🟡 partial — perf analysis, competitor watch, niche plans built; **ads unbuilt, learning digest not wired to a trigger** | Ads permissions + App Review; billing on the owner's ad account |
+| **A — SMS + inbound engagement** | Discord removed · Twilio/Linq · deep-link connects · policy engine · thin A6 SMS `send`/edit | ✅ **done** | Meta messaging scopes → App Review |
+| **B — Brand context** | ICP · pains · positioning · offers · visual tokens | ✅ **done** | — |
+| **C — Organic excellence** | Context-driven visuals · design composer/QA · carousels/stories | ✅ **done** | — |
+| **D — Research → strategy → plan** | Snapshots · strategy brief · plan bias · campaign controls | ✅ **done** | — |
+| **E — Performance analyst** | Unified digest · make-more / boost / confirm SMS | ✅ **done** | Soft-links to F for live boost |
+| **F — Meta paid** | Ads connect · campaign builder · spend caps · boost | ✅ **done** | Marketing API App Review |
+| **G — Video + AI gen** | Reels · vision caption · motion · Kling/Runway | ✅ **done** | — |
+| **H — LinkedIn + TikTok** | Outbound SMS connect/publish · H0 aggregator spike (**Direct**, not Postiz) | 🟡 **landing** — see STATUS + [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md) | A + deep links; paperwork parallel |
+| **I — Light CRM** | Reply polish · lead card · Zapier/Make webhook · toggles | 📋 **scoped only** — see [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) | After A–H wave |
 
-**Acceptance snapshot per phase:**
-- **A:** a comment/DM on a connected account gets an appropriate auto-reply, draft, or escalation within minutes; a booking DM produces a one-line lead hand-off in the owner's thread.
-- ~~**B:**~~ descoped with Google.
-- **C:** a starved slot fills with generated content (graphic or AI photo-style) held for approval; an existing blog/menu URL atomises into a week of platform-specific posts.
-- **D:** the owner flips "ads" on with a weekly budget and the agent boosts the best-performing post within that cap.
+**Acceptance snapshot (selected):**
+- **A:** comment/DM gets auto/draft/escalate in minutes; owner can `"send"` a drafted reply from SMS.
+- **F:** owner enables ads + budget; agent boosts / runs campaigns only with confirm + caps.
+- **G:** client video or AI video drafts as Reels, approve-gated.
+- **H:** LinkedIn Company Page + TikTok Direct Post publish from SMS (when Wave 3 ships).
+- **I:** lead card + optional webhook push — **not** a Kip CRM (parked).
 
 ---
 
@@ -136,6 +126,7 @@ Almost none of this is code-blocked — it's **approval-blocked**, on the same t
 1. **Meta Business Verification** — ✅ **complete & verified (2026-09-10).** Advanced permissions unlocked; App Review is now the remaining Meta gate.
 2. **Meta App Review** — must add and justify each new scope (comments, messaging, engagement, ads) with screencasts. Bigger submission than posting alone.
 3. ~~Google Business Profile API access~~ — **descoped 2026-09-09** (Google is not social media). No longer on the critical path.
+4. **Phase H paperwork** — LinkedIn Community Management + TikTok Direct Post audit (start in parallel with F/G, not after code).
 
 Sequence the approval requests to match the roadmap so nothing waits on paperwork it could have started weeks earlier.
 
@@ -176,7 +167,7 @@ Run against the Value Equation, the all-in offer is strong on every axis:
 ---
 
 ## Open items to decide at build time
-- Exact escalation format + quiet hours (near-real-time shouldn't mean 2am pings).
+- Exact escalation format (quiet hours for **proactive** SMS: 8am–7pm via `isDaytime` — see RUNBOOK).
 - Sentiment/intent classifier thresholds (tune auto vs draft to minimise both owner load and bad auto-replies).
 - Whether AI photo-style filler carries any subtle "created by" treatment.
-- Ads budget guardrails and spend approval UX for Phase D.
+- Ads budget guardrails and spend approval UX — largely shipped in Phase F; tune with first cohort.

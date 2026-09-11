@@ -17,6 +17,8 @@ const PLATFORM_WINDOWS: Record<Platform, number[]> = {
   facebook: [9, 12, 17],
   x: [9, 12, 18],
   threads: [11, 13, 19],
+  linkedin: [8, 12, 17],
+  tiktok: [12, 17, 20],
 };
 
 const DAILY_CAP = 3; // max posts per brand per day

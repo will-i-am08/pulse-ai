@@ -4,7 +4,12 @@ import {
 } from "@pulse/shared";
 
 const DEFAULT_FEATURES: Required<BrandFeatures> = {
-  autopilot: true, auto_replies: true, lead_handoff: true, ads: false, ads_autopilot: false,
+  autopilot: true,
+  auto_replies: true,
+  lead_handoff: true,
+  ads: false,
+  ads_autopilot: false,
+  crm_webhook: false, // Phase I stub — see docs/PHASE_I_CRM_SCOPE.md
 };
 const DEFAULT_CAPS: Required<AdsSpendCaps> = { weekly_cents: 50_000, campaign_cents: 20_000 };
 
@@ -16,6 +21,7 @@ export function brandFeatures(brand: Brand): Required<BrandFeatures> {
     lead_handoff: f.lead_handoff ?? DEFAULT_FEATURES.lead_handoff,
     ads: f.ads ?? DEFAULT_FEATURES.ads,
     ads_autopilot: f.ads_autopilot ?? DEFAULT_FEATURES.ads_autopilot,
+    crm_webhook: f.crm_webhook ?? DEFAULT_FEATURES.crm_webhook,
   };
 }
 export function adsEnabled(brand: Brand): boolean { return brandFeatures(brand).ads === true; }

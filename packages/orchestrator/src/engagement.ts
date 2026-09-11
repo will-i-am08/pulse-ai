@@ -6,6 +6,11 @@ import { factsForPrompt } from "./businessProfile.js";
 // The engagement engine: classify an inbound interaction (comment/DM/mention/
 // review) into a bucket + sentiment, then route it — auto-reply the safe stuff,
 // draft the judgment calls, escalate complaints and hot leads, hide spam.
+//
+// TODO(Phase I): thin CRM webhook handoff — when brands.features.crm_webhook is
+// on and a lead is qualified (or the owner says "send to CRM"), POST the stable
+// lead card JSON to the owner's Zapier/Make/n8n catch URL. Do NOT build a full
+// CRM here. Scope: docs/PHASE_I_CRM_SCOPE.md. Stub field only today.
 
 export type EngagementResult = {
   interaction: Interaction;

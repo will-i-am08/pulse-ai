@@ -117,6 +117,7 @@ import {
   approveSelectedDestinations,
   buildPlatformCaptions,
   selectedDestinations,
+  shouldPublishImmediately,
 } from "./destinations.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
@@ -134,8 +135,12 @@ const CONNECT_META_RE =
   /\b(connect|link|reconnect|relink)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|my accounts?)\b|\b(insta(?:gram)?|facebook|fb)\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_ADS_RE =
   /\b(connect|link)\b.{0,40}\b(ad accounts?|ads|meta ads|facebook ads)\b|\b(ad accounts?|ads)\b.{0,30}\b(connect|link)\b/i;
+const CONNECT_LINKEDIN_RE =
+  /\b(connect|link|reconnect)\b.{0,40}\blinkedin\b|\blinkedin\b.{0,30}\b(connect|link|reconnect|company page)\b/i;
+const CONNECT_TIKTOK_RE =
+  /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_STATUS_RE =
-  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb) connected\b/i;
+  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b/i;
 const DISCONNECT_META_RE =
   /\b(disconnect|unlink|remove)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|accounts?)\b/i;
 
@@ -698,6 +703,8 @@ export async function processInbound(
     if (looksLikePastAdsRequest(message.body)) return { reply: await pastAdsAnalysis(brand) };
     if (looksLikeAdLibraryRequest(message.body)) return { reply: await adLibraryBrief(brand, message.body) };
     if (CONNECT_ADS_RE.test(message.body)) return { reply: connectLinkMessage(brand, "ads") };
+    if (CONNECT_LINKEDIN_RE.test(message.body)) return { reply: connectLinkMessage(brand, "linkedin") };
+    if (CONNECT_TIKTOK_RE.test(message.body)) return { reply: connectLinkMessage(brand, "tiktok") };
     if (CONNECT_META_RE.test(message.body)) return { reply: connectLinkMessage(brand, "meta") };
     if (looksLikeDigestRequest(message.body)) {
       try { return { reply: await buildPerformanceDigest(brand) }; }
@@ -973,9 +980,11 @@ export async function processInbound(
         pillarId: pillar?.id ?? null,
         postsPerWeek: pillar?.posts_per_week ?? 0,
       });
-      // Autopilot stays Instagram/Facebook. An explicit X/Threads pick always
-      // waits for "yes" — mock posts must not go out before approval.
-      const mockPicked = Boolean(inboundDests?.some((d) => d === "x" || d === "threads"));
+      // Autopilot stays Instagram/Facebook. Explicit long-tail picks always
+      // wait for "yes" — mock posts must not go out before approval.
+      const mockPicked = Boolean(
+        inboundDests?.some((d) => d === "x" || d === "threads" || d === "linkedin" || d === "tiktok"),
+      );
       const autopilot = Boolean(pillar?.autopilot) && !mockPicked;
 
       // Remember the source photo + styling recipe so a later "make the image
@@ -1154,7 +1163,8 @@ export async function processInbound(
 
       const dests = selectedDestinations(pending).filter(isPublishDestination);
       const reply =
-        dests.length > 0 && dests.some((d) => d === "x" || d === "threads")
+        dests.length > 0 &&
+        dests.some((d) => d === "x" || d === "threads" || d === "linkedin" || d === "tiktok")
           ? destinationAck(dests, captions, after, "Updated")
           : `Updated:\n\n"${after}"\n\nReply "yes" to approve.`;
 
@@ -1198,7 +1208,7 @@ export async function processInbound(
         });
       }
 
-      const immediate = postNow || dests.every((d) => d === "x" || d === "threads");
+      const immediate = postNow || shouldPublishImmediately(dests, false);
       const when = immediate
         ? ", going out now"
         : pending.scheduled_at

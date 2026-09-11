@@ -6,12 +6,14 @@ import {
   platformLabel,
 } from "@pulse/shared";
 
-/** Hard caps. X is 280; Threads is 500. Instagram/Facebook keep the drafted line. */
+/** Hard caps. X 280; Threads 500; LinkedIn 3000 (professional); TikTok 2200. */
 export const CAPTION_LIMITS: Record<PublishDestination, number | null> = {
   instagram: null,
   facebook: null,
   x: 280,
   threads: 500,
+  linkedin: 3000,
+  tiktok: 2200,
 };
 
 export type PlatformCaptions = Partial<Record<PublishDestination, string>>;
@@ -53,12 +55,25 @@ export function fitCaption(text: string, max: number): string {
   return cut.trimEnd().slice(0, max);
 }
 
+/**
+ * LinkedIn professional variant: same source, soft-trim runaway emoji runs,
+ * then fit to 3000. Keeps the fuller line vs X/Threads.
+ */
+export function fitLinkedInProfessional(text: string): string {
+  const softened = text
+    .trim()
+    .replace(/([!?]){3,}/g, "$1$1")
+    .replace(/([\p{Extended_Pictographic}\uFE0F]){6,}/gu, (m) => m.slice(0, 12));
+  return fitCaption(softened, 3000);
+}
+
 export function fitFor(platform: PublishDestination, text: string): string {
+  if (platform === "linkedin") return fitLinkedInProfessional(text);
   const limit = CAPTION_LIMITS[platform];
   return limit == null ? text.trim() : fitCaption(text, limit);
 }
 
-/** Derive per-channel captions from one source line. Threads keeps more than X when the source is longer. */
+/** Derive per-channel captions from one source line. */
 export function buildPlatformCaptions(source: string): PlatformCaptions {
   const trimmed = source.trim();
   return {
@@ -66,6 +81,8 @@ export function buildPlatformCaptions(source: string): PlatformCaptions {
     facebook: trimmed,
     x: fitCaption(trimmed, 280),
     threads: fitCaption(trimmed, 500),
+    linkedin: fitLinkedInProfessional(trimmed),
+    tiktok: fitCaption(trimmed, 2200),
   };
 }
 
@@ -91,7 +108,8 @@ function uniqueDests(list: PublishDestination[]): PublishDestination[] {
 /** Pull platform aliases out of free text, preserving mention order. */
 export function extractPlatforms(text: string): PublishDestination[] {
   const dests: PublishDestination[] = [];
-  const re = /\b(twitter|tweet|threads?|instagram|insta|\big\b|facebook|\bfb\b|\bx\b)\b/gi;
+  const re =
+    /\b(twitter|tweet|threads?|instagram|insta|\big\b|facebook|\bfb\b|\bx\b|linkedin|tiktok|tt)\b/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const raw = m[1]!.toLowerCase();
@@ -99,6 +117,9 @@ export function extractPlatforms(text: string): PublishDestination[] {
     if (raw === "twitter" || raw === "tweet" || raw === "x") dest = "x";
     else if (raw === "thread" || raw === "threads") dest = "threads";
     else if (raw === "instagram" || raw === "insta" || raw === "ig") dest = "instagram";
+    else if (raw === "facebook" || raw === "fb") dest = "facebook";
+    else if (raw === "linkedin") dest = "linkedin";
+    else if (raw === "tiktok" || raw === "tt") dest = "tiktok";
     else dest = "facebook";
     dests.push(dest);
   }
@@ -106,8 +127,8 @@ export function extractPlatforms(text: string): PublishDestination[] {
 }
 
 /**
- * True destination picks ("X only", "Threads only", "X and Threads",
- * "post this to Instagram") — not questions, edits, or competitor chat.
+ * True destination picks ("X only", "LinkedIn and TikTok", …) — not questions,
+ * edits, or competitor chat.
  */
 export function parseDestinationChoice(body: string | null | undefined): PublishDestination[] | null {
   const text = (body ?? "").trim();
@@ -121,9 +142,12 @@ export function parseDestinationChoice(body: string | null | undefined): Publish
   if (dests.length === 0) return null;
 
   const leftover = text
-    .replace(/\b(twitter|tweet|threads?|instagram|insta|\big\b|facebook|\bfb\b|\bx\b)\b/gi, " ")
     .replace(
-      /\b(only|just|and|both|&|to|on|post|put|publish|send|share|it|this|that|please|pls|the|my|our|feed|channel|channels|account|accounts|instead)\b/gi,
+      /\b(twitter|tweet|threads?|instagram|insta|\big\b|facebook|\bfb\b|\bx\b|linkedin|tiktok|tt)\b/gi,
+      " ",
+    )
+    .replace(
+      /\b(only|just|and|both|&|to|on|post|put|publish|send|share|it|this|that|please|pls|the|my|our|feed|channel|channels|account|accounts|instead|page|company)\b/gi,
       " ",
     )
     .replace(/[.!,]/g, " ")
@@ -149,6 +173,8 @@ export function captionsForPost(post: Pick<Post, "caption" | "captions">): Platf
     facebook: stored.facebook ?? built.facebook,
     x: stored.x ?? built.x,
     threads: stored.threads ?? built.threads,
+    linkedin: stored.linkedin ?? built.linkedin,
+    tiktok: stored.tiktok ?? built.tiktok,
   };
 }
 
@@ -159,8 +185,7 @@ export type PublishSlice = {
 };
 
 /**
- * One slice per picked channel. Same photo; X gets the short line, Threads the
- * longer one (or the same line when the source already fit in 280).
+ * One slice per picked channel. Same media; each channel gets its caption variant.
  */
 export function slicesForApproval(post: Post): PublishSlice[] {
   const dests = selectedDestinations(post);
@@ -214,7 +239,7 @@ export function destinationAck(
 }
 
 export const DEST_HINT =
-  'Want this on X or Threads? Reply "X only", "Threads only", or "X and Threads" — then "yes". A plain "yes" still posts to Instagram.';
+  'Want this on X, Threads, LinkedIn, or TikTok? Reply "X only", "LinkedIn only", "TikTok only", or "LinkedIn and TikTok" — then "yes". A plain "yes" still posts to Instagram.';
 
 export function approvalReply(dests: Platform[], when: string): string {
   const names = dests.map(platformLabel).join(" and ");
@@ -261,6 +286,9 @@ export async function persistEditedCaptions(
  * Mark the draft approved and clone it once per extra picked channel.
  * Never sets publishing/published — the worker publish loop does that.
  * Never asks for an API key.
+ *
+ * Multi-destination isolation (H6): each channel becomes its own post row, so
+ * a LinkedIn failure cannot roll back a successful TikTok (or IG) sibling.
  */
 export async function approveSelectedDestinations(opts: {
   post: Post;

@@ -13,18 +13,32 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator", "source"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook", "x", "threads"] as const;
+export const Platform = ["instagram", "facebook", "x", "threads", "linkedin", "tiktok"] as const;
 export type Platform = (typeof Platform)[number];
 
 /** Chat-pickable publish destinations. */
-export const PublishDestination = ["instagram", "facebook", "x", "threads"] as const;
+export const PublishDestination = ["instagram", "facebook", "x", "threads", "linkedin", "tiktok"] as const;
 export type PublishDestination = (typeof PublishDestination)[number];
 
-/** X is still fake-feed only. Threads is live once a real token is connected. */
+/**
+ * Platforms that stay on the fake feed even when GRAPH_MODE=live.
+ * X is always mock-only until a paid tier is wired.
+ * TikTok is mock-only for *public* live until TIKTOK_AUDIT_PASSED is set
+ * (Content Posting API audit). LinkedIn goes live once LINKEDIN_CLIENT_ID + tokens exist.
+ */
 export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x"];
 
+/** True when TikTok Content Posting audit has cleared for this deploy. */
+export function tiktokAuditPassed(): boolean {
+  const v = process.env.TIKTOK_AUDIT_PASSED;
+  return v === "true" || v === "1" || v === "yes";
+}
+
 export function isMockOnlyPlatform(platform: Platform | string): boolean {
-  return platform === "x";
+  if (platform === "x") return true;
+  // Unaudited TikTok must not claim live public posts.
+  if (platform === "tiktok" && !tiktokAuditPassed()) return true;
+  return false;
 }
 
 export function isPublishDestination(platform: string): platform is PublishDestination {
@@ -41,6 +55,10 @@ export function platformLabel(platform: string): string {
       return "Instagram";
     case "facebook":
       return "Facebook";
+    case "linkedin":
+      return "LinkedIn";
+    case "tiktok":
+      return "TikTok";
     default:
       return platform;
   }
@@ -259,6 +277,18 @@ export interface Brand {
   threads_user_id: string | null;
   threads_username: string | null;
   threads_tokens_encrypted: string | null;
+  // LinkedIn Company Page: org URN + OAuth tokens ({access_token,refresh_token,expires_at}).
+  linkedin_org_id: string | null;
+  linkedin_org_name: string | null;
+  linkedin_tokens_encrypted: string | null;
+  linkedin_connected_at: string | null;
+  // TikTok: open_id + Direct Post tokens; public live gated by TIKTOK_AUDIT_PASSED.
+  tiktok_open_id: string | null;
+  tiktok_display_name: string | null;
+  tiktok_tokens_encrypted: string | null;
+  tiktok_connected_at: string | null;
+  /** Last TikTok privacy/music consent choices from the SMS connect UX. */
+  tiktok_privacy_defaults?: TikTokPrivacyDefaults | null;
   meta_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;
@@ -283,6 +313,18 @@ export interface Brand {
   updated_at: string;
 }
 
+/** TikTok Direct Post privacy + music consent (required UX). */
+export interface TikTokPrivacyDefaults {
+  privacy_level: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY";
+  allow_comment: boolean;
+  allow_duet: boolean;
+  allow_stitch: boolean;
+  /** Owner confirmed commercial music / branded content rules. */
+  music_usage_confirmed: boolean;
+  /** Disclose AI-generated content when posting AI video. */
+  aigc_disclosure: boolean;
+}
+
 /** Per-brand capability toggles. */
 export interface BrandFeatures {
   autopilot?: boolean;
@@ -290,6 +332,12 @@ export interface BrandFeatures {
   lead_handoff?: boolean;
   ads?: boolean;
   ads_autopilot?: boolean;
+  /**
+   * Phase I (scoped later) — when true, qualified leads may POST to the
+   * owner’s CRM webhook (Zapier/Make/etc.). Stub only; no runtime push yet.
+   * See docs/PHASE_I_CRM_SCOPE.md.
+   */
+  crm_webhook?: boolean;
 }
 
 export interface AdsSpendCaps {
