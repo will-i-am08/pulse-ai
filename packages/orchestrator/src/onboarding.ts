@@ -13,6 +13,8 @@ import {
 import { callLLM } from "./llm.js";
 import { seedPendingPlan } from "./nichePlan.js";
 import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
+import { connectLinkMessage, isMetaConnected } from "./smsConnect.js";
+import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -81,7 +83,12 @@ export async function ensureOwnerNameFromUser(brand: Brand): Promise<Brand> {
   return { ...brand, facts };
 }
 
-function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
+function interviewerSystem(
+  brand: Brand,
+  type: AccountType,
+  websiteSummary?: string,
+  priorContent?: string,
+): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
   const knownName = ownerFirstName(brand);
   const personalBits =
@@ -97,6 +104,9 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
   return [
     `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Warm, sharp, human, like texting a switched-on mate.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
+    priorContent
+      ? `From their connected socials / existing posts you already know:\n${priorContent}\nTreat this as prior context. Confirm or refine — do not re-ask things you already know well.`
+      : "",
     ...personalBits,
     knownName
       ? `You already know their first name is ${knownName}. Greet them by it. Do NOT ask for their name — never re-ask who they are.`
@@ -110,7 +120,7 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
     "- React specifically to what they just said before you ask. Prove you listened.",
     "- Punctuate like a human texter: ... for a thoughtful pause, ! for genuine enthusiasm. Sparingly, never performative, never more than one ! per message.",
     "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
-    "- Never re-ask something you already know (including from the website).",
+    "- Never re-ask something you already know (including from the website or their existing posts).",
     "FINISH:",
     type === "personal"
       ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like. Then wrap up. Do not ask about customers, ads, or offers."
@@ -121,6 +131,7 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
     .filter(Boolean)
     .join("\n");
 }
+
 
 function toMessages(transcript: OnboardingTurnMsg[]): { role: "user" | "assistant"; content: string }[] {
   return transcript.map((t) => ({ role: t.role, content: t.content }));
@@ -257,6 +268,136 @@ export async function seedVisualProfileFromWebsite(
 }
 
 /** Begin onboarding: read the website if present, then open the conversation (LLM-generated). */
+/** Keep prior voice/content context short enough for the interview prompt. */
+function priorContentForInterview(brand: Brand, answers: Record<string, string>): string | undefined {
+  const guide = (brand.voice_guide_md ?? "").trim();
+  if (guide) return guide.length > 1800 ? `${guide.slice(0, 1800)}…` : guide;
+  const fromAnswers = (answers.voice_summary ?? answers.content_summary ?? "").trim();
+  return fromAnswers || undefined;
+}
+
+const SKIP_CONNECT_RE =
+  /^\s*(skip|later|not now|no thanks|don't have|dont have|no ig|no instagram|no facebook|none|n\/a)\b/i;
+
+export function looksLikeSkipConnect(body: string): boolean {
+  return SKIP_CONNECT_RE.test(body.trim());
+}
+
+/**
+ * Open the SMS interview (after connect/skip). Uses website + harvested voice
+ * as prior context so Kip does not re-ask what it already learned.
+ */
+export async function beginOnboardingInterview(brandId: string): Promise<string> {
+  let brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`beginOnboardingInterview: brand ${brandId} not found`);
+  brand = await ensureOwnerNameFromUser(brand);
+
+  const prev = brand.onboarding_state ?? { status: "none" };
+  if (prev.status === "done" || typeof prev.completed_at === "string") {
+    const name = ownerFirstName(brand);
+    return name
+      ? `Hey ${name} — we're already set up. Send a photo or tell me what you want to post.`
+      : "Hey — we're already set up. Send a photo or tell me what you want to post.";
+  }
+
+  const type: AccountType = prev.type ?? brand.account_type ?? "business";
+  const answers: Record<string, string> = { ...(prev.answers ?? {}) };
+  const websiteSummary = answers.website_summary;
+  const prior = priorContentForInterview(brand, answers);
+
+  const knownName = ownerFirstName(brand);
+  const system = interviewerSystem(brand, type, websiteSummary, prior);
+  const reflectPrior = prior
+    ? " You already studied their existing posts — briefly reflect one concrete thing you noticed, then ask your first most useful question that fills a gap."
+    : websiteSummary
+      ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
+      : " Ask your first, most useful question.";
+  const seed: OnboardingTurnMsg = {
+    role: "user",
+    content: knownName
+      ? `Start the onboarding interview now: greet them as ${knownName} (you already know their name — do not ask for it).${reflectPrior}`
+      : `Start the onboarding interview now: greet them by name.${reflectPrior}`,
+  };
+  const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
+  const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];
+  await saveState(brand.id, { status: "in_progress", type, turns: 0, transcript, answers });
+  return sanitizeChatText(await enforceOneQuestion(opening));
+}
+
+/** After Meta connect during onboarding: queue harvest and park on reading_content. */
+export async function onChannelsConnectedDuringOnboarding(
+  brandId: string,
+): Promise<{ handled: boolean; message?: string }> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) return { handled: false };
+  const status = brand.onboarding_state?.status;
+  if (status !== "awaiting_connect" && status !== "pending" && status !== "reading_content") {
+    return { handled: false };
+  }
+  const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
+  const type: AccountType = prev.type ?? brand.account_type ?? "business";
+  const answers: Record<string, string> = { ...(prev.answers ?? {}), connected_meta: "1" };
+  await saveState(brand.id, {
+    status: "reading_content",
+    type,
+    turns: prev.turns ?? 0,
+    transcript: prev.transcript ?? [],
+    answers,
+  });
+  await queueVoiceAnalysis(brand.id).catch(() => undefined);
+  const ig = brand.ig_username ? `@${brand.ig_username}` : "Instagram";
+  return {
+    handled: true,
+    message: `Connected ✅ ${ig}. I'm reading your existing posts now so I don't ask stuff you already show online — one sec.`,
+  };
+}
+
+/**
+ * After voice analysis finishes (or skips/fails): start the interview if we were
+ * waiting on reading_content. Returns the opening SMS, or null if not applicable.
+ */
+export async function continueOnboardingAfterVoiceAnalysis(brandId: string): Promise<string | null> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) return null;
+  if (brand.onboarding_state?.status !== "reading_content") return null;
+  return beginOnboardingInterview(brandId);
+}
+
+/** Handle inbound SMS while waiting for channel connect (or skip). */
+export async function handleAwaitingConnect(brand: Brand, body: string): Promise<string> {
+  const text = (body ?? "").trim();
+  if (looksLikeSkipConnect(text)) {
+    const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
+    const type: AccountType = prev.type ?? brand.account_type ?? "business";
+    const answers: Record<string, string> = { ...(prev.answers ?? {}), skipped_connect: "1" };
+    await saveState(brand.id, {
+      status: "in_progress",
+      type,
+      turns: 0,
+      transcript: prev.transcript ?? [],
+      answers,
+    });
+    // beginOnboardingInterview sets in_progress + opening
+    return beginOnboardingInterview(brand.id);
+  }
+  if (isMetaConnected(brand)) {
+    const result = await onChannelsConnectedDuringOnboarding(brand.id);
+    return result.message ?? "Connected — reading your posts now.";
+  }
+  const link = connectLinkMessage(brand, "meta");
+  return `All good — tap the link to connect Instagram + Facebook first (so I can learn from what you already post), or reply "skip" if you don't have them yet.\n\n${link}`;
+}
+
+/** Hold-line while voice harvest runs. */
+export async function handleReadingContent(_brand: Brand, _body: string): Promise<string> {
+  return "Still reading your posts, nearly there — then I'll ask a couple of quick questions.";
+}
+
+/**
+ * Begin onboarding after payment is submitted.
+ * Reads website if present, then asks them to connect channels first so Kip can
+ * harvest existing content before the interview.
+ */
 export async function startOnboarding(brandId: string): Promise<string> {
   let brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) throw new Error(`startOnboarding: brand ${brandId} not found`);
@@ -269,6 +410,17 @@ export async function startOnboarding(brandId: string): Promise<string> {
     return name
       ? `Hey ${name} — we're already set up. Send a photo or tell me what you want to post.`
       : "Hey — we're already set up. Send a photo or tell me what you want to post.";
+  }
+
+  // Already mid-flow — don't restart from connect.
+  if (prev.status === "in_progress") {
+    return "We're mid set-up — just reply to the last question and I'll keep going.";
+  }
+  if (prev.status === "reading_content") {
+    return handleReadingContent(brand, "");
+  }
+  if (prev.status === "wrapping_up") {
+    return "Still writing your voice up, nearly there.";
   }
 
   const type: AccountType = brand.account_type ?? "business";
@@ -285,23 +437,50 @@ export async function startOnboarding(brandId: string): Promise<string> {
     }
   }
 
-  const knownName = ownerFirstName(brand);
-  const system = interviewerSystem(brand, type, websiteSummary);
-  const seed: OnboardingTurnMsg = {
-    role: "user",
-    content: knownName
-      ? `Start the onboarding now: greet them as ${knownName} (you already know their name — do not ask for it), and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.`
-      : "Start the onboarding now: greet them by name, and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.",
-  };
-  const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
-
-  const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];
   const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
-  await saveState(brand.id, { status: "in_progress", type, turns: 0, transcript, answers });
-  return sanitizeChatText(await enforceOneQuestion(opening));
+  const knownName = ownerFirstName(brand);
+  const hello = knownName ? `Hey ${knownName}` : "Hey";
+
+  // Already connected (e.g. dashboard) — harvest first, then interview.
+  if (isMetaConnected(brand)) {
+    await saveState(brand.id, { status: "reading_content", type, turns: 0, transcript: [], answers });
+    await queueVoiceAnalysis(brand.id).catch(() => undefined);
+    const ig = brand.ig_username ? `@${brand.ig_username}` : "your Instagram";
+    return `${hello}, it's Kip — thanks for being here. I'm reading ${ig} now so I can learn your voice from what you already post. Hang tight.`;
+  }
+
+  await saveState(brand.id, { status: "awaiting_connect", type, turns: 0, transcript: [], answers });
+  const link = connectLinkMessage(brand, "meta");
+  return (
+    `${hello}, it's Kip — thanks for jumping in. First up, connect Instagram + Facebook so I can learn from what you already post before we chat.`
+    + ` If you don't have them yet, reply "skip".\n\n${link}`
+  );
 }
 
-/** Instant acknowledgement sent the moment the last answer lands, while the wrap-up compiles. */
+/**
+ * Payment-submitted kickoff. Call from the billing webhook / checkout success
+ * handler as soon as payment clears — not at signup.
+ * Returns the first SMS body for the gateway/worker to deliver.
+ */
+export async function kickOffOnboardingAfterPayment(brandId: string): Promise<string> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`kickOffOnboardingAfterPayment: brand ${brandId} not found`);
+  const status = brand.onboarding_state?.status ?? "none";
+  if (status === "done" || typeof brand.onboarding_state?.completed_at === "string") {
+    return startOnboarding(brandId);
+  }
+  if (status === "none" || status === "pending") {
+    await saveState(brandId, {
+      status: "pending",
+      type: brand.account_type ?? "business",
+      turns: 0,
+      transcript: [],
+      answers: brand.onboarding_state?.answers ?? {},
+    });
+  }
+  return startOnboarding(brandId);
+}
+
 export const WRAP_ACK = "Awesome, got everything. Writing your voice up now, one sec.";
 
 /** Count the questions in a message. */
@@ -359,7 +538,8 @@ export async function onboardingNext(
     });
   }
 
-  const system = interviewerSystem(brand, type, answers.website_summary);
+  const prior = priorContentForInterview(brand, answers);
+  const system = interviewerSystem(brand, type, answers.website_summary, prior);
   // Headroom so a reply never gets cut off mid-word. Brevity is enforced by the
   // prompt, not by starving the token budget (which truncated messages mid-sentence).
   const raw = await callLLM({ system, messages, maxTokens: 600 });
@@ -469,6 +649,23 @@ async function compileProfile(
   } catch {
     profile = brandVoiceProfileSchema.parse({});
   }
+
+  // Merge with anything voice analysis already learned — union, don't clobber.
+  const existing = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const merged = brandVoiceProfileSchema.parse({
+    tone: [...new Set([...(existing.tone ?? []), ...(profile.tone ?? [])])].slice(0, 8),
+    dos: [...new Set([...(existing.dos ?? []), ...(profile.dos ?? [])])].slice(0, 12),
+    donts: [...new Set([...(existing.donts ?? []), ...(profile.donts ?? [])])].slice(0, 12),
+    example_captions: [...new Set([...(existing.example_captions ?? []), ...(profile.example_captions ?? [])])].slice(0, 8),
+    banned_words: [...new Set([...(existing.banned_words ?? []), ...(profile.banned_words ?? [])])],
+    emoji_policy: profile.emoji_policy || existing.emoji_policy,
+    hashtag_policy: profile.hashtag_policy || existing.hashtag_policy,
+    notes: existing.notes ?? [],
+    writing_mechanics: existing.writing_mechanics ?? profile.writing_mechanics,
+    photo_style: existing.photo_style ?? profile.photo_style,
+    analysis_source: existing.analysis_source || profile.analysis_source || "",
+  });
+  profile = merged;
 
   await query("update brands set brand_voice_profile = $2::jsonb where id = $1", [
     brand.id,

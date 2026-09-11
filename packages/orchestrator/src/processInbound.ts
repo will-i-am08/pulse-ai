@@ -4,7 +4,7 @@ import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
-import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser } from "./onboarding.js";
+import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleReadingContent } from "./onboarding.js";
 import {
   editImageForBrand,
   shouldOverlayHeadline,
@@ -395,6 +395,14 @@ export async function processInbound(
   // When the interview completes, the ack goes out instantly and the heavy
   // wrap-up (profile compile + plan seeding) runs after, delivered as a
   // second message by the caller via finishOnboardingBrandId.
+  // Early onboarding: wait for Instagram/Facebook connect (or skip) before the interview.
+  if (brand.onboarding_state?.status === "awaiting_connect") {
+    return { reply: await handleAwaitingConnect(brand, message.body ?? "") };
+  }
+  // Harvesting existing posts after connect — hold the line until voice analysis finishes.
+  if (brand.onboarding_state?.status === "reading_content") {
+    return { reply: await handleReadingContent(brand, message.body ?? "") };
+  }
   if (brand.onboarding_state?.status === "in_progress") {
     const step = await onboardingNext(brand, message.body ?? "");
     if (!step.complete) return { reply: step.reply };

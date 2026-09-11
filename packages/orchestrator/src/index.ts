@@ -12,6 +12,13 @@ export { buildConversationContext } from "./conversationContext.js";
 
 export {
   startOnboarding,
+  kickOffOnboardingAfterPayment,
+  beginOnboardingInterview,
+  onChannelsConnectedDuringOnboarding,
+  continueOnboardingAfterVoiceAnalysis,
+  handleAwaitingConnect,
+  handleReadingContent,
+  looksLikeSkipConnect,
   onboardingTurn,
   onboardingNext,
   finishOnboarding,
