@@ -27,20 +27,18 @@ export function LiveThread({ firstName, initialMessages }: Props) {
   const [messages, setMessages] = useState<LiveThreadMessage[]>(initialMessages);
   const [pending, startTransition] = useTransition();
   const [text, setText] = useState('');
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoName, setPhotoName] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]);
   const chatRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stickToBottom = useRef(true);
   const lastIdsRef = useRef(initialMessages.map((m) => m.id).join(','));
 
-  const clearPhoto = useCallback(() => {
-    setPhotoPreview((url) => {
-      if (url) URL.revokeObjectURL(url);
-      return null;
+  const clearPhotos = useCallback(() => {
+    setPhotos((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return [];
     });
-    setPhotoName(null);
     if (fileRef.current) fileRef.current.value = '';
   }, []);
 
@@ -113,25 +111,35 @@ export function LiveThread({ firstName, initialMessages }: Props) {
   }
 
   function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) {
-      clearPhoto();
-      return;
-    }
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoPreview(URL.createObjectURL(file));
-    setPhotoName(file.name);
+    const picked = e.target.files;
+    if (!picked || picked.length === 0) return;
+    const added = Array.from(picked).map((file) => ({ file, url: URL.createObjectURL(file) }));
+    setPhotos((prev) => [...prev, ...added]);
+    // Reset the input so re-picking the same file, or adding more in a second
+    // pick, both work — we keep the File objects in state, not the input.
+    e.target.value = '';
   }
 
-  function onSubmit(formData: FormData) {
-    // Guard the empty submit that a bare Enter/Send could otherwise fire.
-    if (!text.trim() && !photoName) return;
+  function removePhoto(index: number) {
+    setPhotos((prev) => {
+      const gone = prev[index];
+      if (gone) URL.revokeObjectURL(gone.url);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  // We build the FormData from state (not the native form) so per-photo removals
+  // and multi-pick accumulation are honoured — a file <input> can't be mutated.
+  function onSubmit() {
+    if (!text.trim() && photos.length === 0) return;
+    const formData = new FormData();
+    formData.set('q', text);
+    for (const p of photos) formData.append('photo', p.file);
     stickToBottom.current = true;
     startTransition(async () => {
       await sendChatMessageAction(formData);
-      formRef.current?.reset();
       setText('');
-      clearPhoto();
+      clearPhotos();
       // Pull immediately, then again shortly after Kip's reply lands.
       await load();
       window.setTimeout(() => void load(), 1200);
@@ -165,28 +173,31 @@ export function LiveThread({ firstName, initialMessages }: Props) {
         )}
       </div>
       <div className="dock">
-        {photoPreview && (
-          <div className="composer-preview">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={photoPreview} alt={photoName ?? 'Selected photo'} />
-            <span className="composer-preview-name">{photoName}</span>
-            <button
-              type="button"
-              className="composer-preview-remove"
-              onClick={clearPhoto}
-              aria-label="Remove photo"
-              disabled={pending}
-            >
-              ×
-            </button>
+        {photos.length > 0 && (
+          <div className="composer-previews">
+            {photos.map((p, i) => (
+              <div key={p.url} className="composer-thumb">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.file.name} />
+                <button
+                  type="button"
+                  className="composer-thumb-remove"
+                  onClick={() => removePhoto(i)}
+                  aria-label={`Remove ${p.file.name}`}
+                  disabled={pending}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
         )}
         <form className="composer" ref={formRef} action={onSubmit}>
           <input
             ref={fileRef}
             type="file"
-            name="photo"
             accept="image/*"
+            multiple
             hidden
             onChange={onPhotoChange}
             disabled={pending}
@@ -195,7 +206,7 @@ export function LiveThread({ firstName, initialMessages }: Props) {
             type="button"
             className="composer-attach"
             onClick={() => fileRef.current?.click()}
-            aria-label="Attach a photo"
+            aria-label="Attach photos"
             disabled={pending}
           >
             {/* paperclip */}
@@ -211,7 +222,7 @@ export function LiveThread({ firstName, initialMessages }: Props) {
           </button>
           <input
             name="q"
-            placeholder={photoName ? 'Add a note (optional)…' : 'Tell Kip what to post…'}
+            placeholder={photos.length > 0 ? 'Add a note (optional)…' : 'Tell Kip what to post…'}
             aria-label="Message Kip"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -220,7 +231,7 @@ export function LiveThread({ firstName, initialMessages }: Props) {
           <button
             className="pill-dark"
             type="submit"
-            disabled={pending || (!text.trim() && !photoName)}
+            disabled={pending || (!text.trim() && photos.length === 0)}
             aria-busy={pending}
           >
             {pending ? 'Sending…' : 'Send'}
