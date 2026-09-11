@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { requestLoginCode, operatorLoginAction } from '@/lib/actions/auth';
+import { requestLoginCode } from '@/lib/actions/auth';
+import { operatorLoginAction } from '@/lib/actions/operator-auth';
 import { BrandLockup } from '../components/BrandLockup';
 import { PendingSubmitButton } from '../components/PendingSubmitButton';
 import styles from '../auth.module.css';
@@ -22,6 +23,7 @@ export default async function LoginPage({
 }) {
   const { error, redirectTo } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
+  const isOperatorError = error === 'operator' || error === 'noadmin';
   const next =
     redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')
       ? redirectTo
@@ -33,7 +35,7 @@ export default async function LoginPage({
       <form className={styles.card} action={requestLoginCode}>
         <h1 className={styles.h1}>Log in</h1>
         <p className={styles.sub}>Enter your mobile number and Kip will text you a code.</p>
-        {msg && <p className={styles.error}>{msg}</p>}
+        {msg && !isOperatorError && <p className={styles.error}>{msg}</p>}
         <label className={styles.label}>
           Mobile number
           <input
@@ -52,10 +54,20 @@ export default async function LoginPage({
         </p>
       </form>
 
-      <details className={styles.operator} open={next === '/lab' || next.startsWith('/lab/')}>
+      <details
+        className={styles.operator}
+        open={
+          next === '/lab' ||
+          next.startsWith('/lab/') ||
+          isOperatorError
+        }
+      >
         <summary>Operator login</summary>
         <form className={styles.operatorForm} action={operatorLoginAction}>
           <input type="hidden" name="redirectTo" value={next} />
+          {isOperatorError && msg && (
+            <p className={styles.error}>{msg}</p>
+          )}
           <label className={styles.label}>
             Operator password
             <input className={styles.input} type="password" name="password" autoComplete="off" />

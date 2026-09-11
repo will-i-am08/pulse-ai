@@ -292,34 +292,6 @@ export async function signupAction(formData: FormData): Promise<void> {
   verifyRedirect(phone!, { new: true, delivered });
 }
 
-/** Same-origin path only — blocks open redirects. */
-function safeAppPath(raw: FormDataEntryValue | null, fallback: string): string {
-  const value = String(raw ?? '').trim();
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-    return fallback;
-  }
-  return value;
-}
-
-/**
- * Operator break-glass: if the messaging channel is down, the admin can still
- * sign in with OPERATOR_PASSWORD. Never exposed to normal users.
- * Lands in the agent lab by default (or ?redirectTo= when safe).
- */
-export async function operatorLoginAction(formData: FormData): Promise<void> {
-  const password = String(formData.get('password') ?? '');
-  const expected = process.env.OPERATOR_PASSWORD;
-  if (!expected || !password || !timingSafeEqual(password, expected)) {
-    redirect('/login?error=operator');
-  }
-  const admin = await queryOne<{ id: string }>(
-    'select id from users where is_admin = true order by created_at asc limit 1',
-  );
-  if (!admin) redirect('/login?error=noadmin');
-  await setSession(admin!.id);
-  redirect(safeAppPath(formData.get('redirectTo'), '/lab'));
-}
-
 export async function signOutAction(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(SESSION_COOKIE_NAME);
