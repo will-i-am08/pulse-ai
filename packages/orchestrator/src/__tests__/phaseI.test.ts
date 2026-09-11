@@ -202,7 +202,8 @@ describe("I3 CRM webhook POST", () => {
       "https://hooks.example/catch",
       expect.objectContaining({ method: "POST" }),
     );
-    const body = JSON.parse(String((fetchImpl.mock.calls[0]![1] as RequestInit).body));
+    const callArgs = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(callArgs[1].body));
     expect(body.handle).toBe("@alex");
     expect(body.channel).toBe("dm");
     expect(body.platform).toBe("instagram");
