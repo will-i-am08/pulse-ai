@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { verifyLoginCode, requestLoginCode } from '@/lib/actions/auth';
 import { maskPhone } from '@pulse/shared';
 import { BrandLockup } from '../../components/BrandLockup';
+import { PendingSubmitButton } from '../../components/PendingSubmitButton';
 import styles from '../../auth.module.css';
 
 export const metadata = { title: 'Enter code | Kip' };
@@ -12,13 +13,19 @@ const ERRORS: Record<string, string> = {
   locked: 'Too many tries. Send a new code and try again.',
 };
 
+const WARNINGS: Record<string, string> = {
+  undelivered:
+    'We couldn’t text your code just now. Tap “Send a new code” in a moment — if it keeps failing, Kip’s SMS line may be misconfigured.',
+};
+
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phone?: string; error?: string; new?: string }>;
+  searchParams: Promise<{ phone?: string; error?: string; new?: string; warn?: string }>;
 }) {
-  const { phone, error, new: isNew } = await searchParams;
+  const { phone, error, new: isNew, warn } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
+  const warning = !msg && warn ? (WARNINGS[warn] ?? null) : null;
 
   if (!phone) {
     return (
@@ -41,9 +48,13 @@ export default async function VerifyPage({
       <form className={styles.card} action={verifyLoginCode}>
         <h1 className={styles.h1}>Enter your code</h1>
         <p className={styles.sub}>
-          {isNew ? 'Welcome! ' : ''}Kip just messaged a 6-digit code to {maskPhone(phone)}.
+          {isNew ? 'Welcome! ' : ''}
+          {warning
+            ? `We prepared a 6-digit code for ${maskPhone(phone)}, but the text didn’t go through yet.`
+            : `Kip just messaged a 6-digit code to ${maskPhone(phone)}.`}
         </p>
         {msg && <p className={styles.error}>{msg}</p>}
+        {warning && <p className={styles.error}>{warning}</p>}
         <input type="hidden" name="phone" value={phone} />
         <label className={styles.label}>
           Code
@@ -59,12 +70,16 @@ export default async function VerifyPage({
             placeholder="123456"
           />
         </label>
-        <button className={styles.button} type="submit">Verify and continue</button>
+        <PendingSubmitButton idleLabel="Verify and continue" pendingLabel="Checking code…" />
       </form>
 
       <form className={styles.resend} action={requestLoginCode}>
         <input type="hidden" name="phone" value={phone} />
-        <button className={styles.buttonGhost} type="submit">Didn’t get it? Send a new code</button>
+        <PendingSubmitButton
+          className={styles.buttonGhost}
+          idleLabel="Didn’t get it? Send a new code"
+          pendingLabel="Sending code…"
+        />
       </form>
     </main>
   );

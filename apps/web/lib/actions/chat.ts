@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { queryOne, sanitizeChatText, getServerEnv, type Brand } from '@pulse/shared';
-import { handleInbound } from '@pulse/gateway';
 import { currentUser } from '@/lib/auth/current-user';
 
 /**
@@ -38,6 +37,10 @@ export async function sendChatMessageAction(formData: FormData): Promise<void> {
   if (!from) redirect('/app?chat=nochannel');
 
   try {
+    // Dynamic import: @pulse/gateway's barrel pulls orchestrator → satori/harfbuzz
+    // WASM. A static import here aborts the whole /app serverless function on Vercel
+    // (ENOENT hb.wasm) before the Thread page can render.
+    const { handleInbound } = await import('@pulse/gateway');
     await handleInbound({
       from: from!,
       to: 'web',

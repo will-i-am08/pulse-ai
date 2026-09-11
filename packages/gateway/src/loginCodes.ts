@@ -1,6 +1,14 @@
 import { query, queryOne, decrypt, getServerEnv, type LoginCode } from "@pulse/shared";
 import { createTwilioChannel } from "@pulse/channel-twilio";
-import { sendToBrand } from "./gateway.js";
+
+export type DeliverLoginCodesOptions = {
+  /** Only attempt codes for this E.164 phone (login/signup flush). */
+  phone?: string;
+  now?: () => Date;
+};
+
+/** Validity window that starts when the SMS is actually sent (not when queued). */
+export const LOGIN_CODE_TTL_MINUTES = 15;
 
 /**
  * Resolve which brand should receive a login code for this phone.
@@ -38,10 +46,32 @@ function twilioSmsReady(): boolean {
   }
 }
 
+/** Agent-thread fallback is only useful when MESSAGE_CHANNEL is not Twilio SMS. */
+function agentFallbackAvailable(): boolean {
+  try {
+    return getServerEnv().MESSAGE_CHANNEL !== "twilio";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deliver via Discord/Linq agent thread. Lazy-imported so the login serverless
+ * path does not pull @pulse/orchestrator (satori/harfbuzz) into the bundle when
+ * Twilio SMS is the delivery path.
+ */
+async function deliverViaAgentChannel(brandId: string, body: string): Promise<boolean> {
+  const { sendToBrand } = await import("./gateway.js");
+  // OTP is not a chat bubble — skip typing pauses.
+  return sendToBrand(brandId, body, undefined, { pace: false });
+}
+
 /**
  * Deliver one login-code body. Prefer Twilio SMS to the login phone (matches the
  * dashboard "we'll text you a code" copy and works even when MESSAGE_CHANNEL is
- * discord and the bot is down). Fall back to the agent thread via sendToBrand.
+ * discord and the bot is down). Fall back to the agent thread only when that
+ * channel is actually different from Twilio — otherwise we just retry the same
+ * failing From-number with backoff and stall the login form.
  */
 async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
   if (twilioSmsReady()) {
@@ -62,11 +92,29 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
       }
       return true;
     } catch (err) {
+      if (!agentFallbackAvailable()) {
+        console.error(
+          `deliverPendingLoginCodes: Twilio SMS failed for ${row.phone}; no alternate channel`,
+          err,
+        );
+        return false;
+      }
       console.error(
         `deliverPendingLoginCodes: Twilio SMS failed for ${row.phone}; trying agent channel`,
         err,
       );
     }
+  }
+
+  if (!agentFallbackAvailable() && !twilioSmsReady()) {
+    console.warn(
+      `deliverPendingLoginCodes: Twilio SMS not configured and MESSAGE_CHANNEL is twilio; cannot deliver code ${row.id}`,
+    );
+    return false;
+  }
+
+  if (!agentFallbackAvailable()) {
+    return false;
   }
 
   const brandId = await resolveBrandId(row);
@@ -76,7 +124,7 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
     );
     return false;
   }
-  return sendToBrand(brandId, body);
+  return deliverViaAgentChannel(brandId, body);
 }
 
 /**
@@ -87,15 +135,36 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
  * agent process (Discord bot or worker) also polls as a backup. Best-effort: a
  * send failure leaves the row undelivered so the next tick retries, until it expires.
  */
-export async function deliverPendingLoginCodes(now: () => Date = () => new Date()): Promise<number> {
-  const rows = await query<LoginCode>(
-    `select * from login_codes
-      where delivered_at is null
-        and consumed_at is null
-        and expires_at > now()
-      order by created_at asc
-      limit 20`,
-  );
+export async function deliverPendingLoginCodes(
+  nowOrOpts: (() => Date) | DeliverLoginCodesOptions = () => new Date(),
+): Promise<number> {
+  const opts: DeliverLoginCodesOptions =
+    typeof nowOrOpts === "function" ? { now: nowOrOpts } : nowOrOpts;
+  // `now` is accepted for call-site compatibility / tests; expiry is set in SQL.
+  void (opts.now ?? (() => new Date()));
+
+  // Newest first, one pending code per phone — older queued rows are superseded
+  // so a late SMS for a stale attempt can't outrace the code the user just asked for.
+  const rows = opts.phone
+    ? await query<LoginCode>(
+        `select * from login_codes
+          where delivered_at is null
+            and consumed_at is null
+            and expires_at > now()
+            and phone = $1
+          order by created_at desc
+          limit 1`,
+        [opts.phone],
+      )
+    : await query<LoginCode>(
+        `select distinct on (phone) *
+           from login_codes
+          where delivered_at is null
+            and consumed_at is null
+            and expires_at > now()
+          order by phone, created_at desc
+          limit 20`,
+      );
   let sent = 0;
   for (const row of rows) {
     let code: string;
@@ -106,15 +175,33 @@ export async function deliverPendingLoginCodes(now: () => Date = () => new Date(
       await query(`update login_codes set delivered_at = now() where id = $1`, [row.id]).catch(() => undefined);
       continue;
     }
-    const minutes = Math.max(1, Math.round((new Date(row.expires_at).getTime() - now().getTime()) / 60000));
     const body =
       `Your Kip login code is ${code}. ` +
-      `Enter it on the dashboard to sign in — it expires in about ${minutes} minute${minutes === 1 ? "" : "s"}. ` +
+      `Enter it on the dashboard to sign in — it expires in about ${LOGIN_CODE_TTL_MINUTES} minutes. ` +
       `If you didn't try to log in, ignore this.`;
     try {
       const ok = await deliverCodeBody(row, body);
       if (!ok) continue;
-      await query(`update login_codes set delivered_at = now() where id = $1`, [row.id]);
+      // Start the validity clock at send time (not queue time) so a slow SMS
+      // path doesn't burn the TTL before the user ever sees the text.
+      await query(
+        `update login_codes
+            set delivered_at = now(),
+                expires_at = now() + ($2 || ' minutes')::interval
+          where id = $1`,
+        [row.id, String(LOGIN_CODE_TTL_MINUTES)],
+      );
+      // Drop any older undelivered siblings for this phone.
+      await query(
+        `update login_codes
+            set expires_at = least(expires_at, now())
+          where phone = $1
+            and id <> $2
+            and consumed_at is null
+            and delivered_at is null
+            and expires_at > now()`,
+        [row.phone, row.id],
+      ).catch(() => undefined);
       sent += 1;
     } catch {
       // Leave undelivered; a later tick retries until expiry.

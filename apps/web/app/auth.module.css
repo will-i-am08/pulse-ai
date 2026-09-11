@@ -89,8 +89,36 @@
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 .button:hover { filter: brightness(1.06); }
+.button:disabled,
+.buttonPending {
+  cursor: wait;
+  opacity: 0.72;
+  filter: none;
+}
+.button:disabled:hover,
+.buttonPending:hover { filter: none; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: authSpin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes authSpin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 1.4s; }
+}
 .alt { text-align: center; font-size: 14px; color: var(--muted); margin: 4px 0 0; }
 .alt a { color: var(--accent); text-decoration: none; }
 
@@ -103,8 +131,16 @@
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 .buttonGhost:hover { color: var(--ink); border-color: var(--muted); }
+.buttonGhost:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
 
 .resend {
   width: 100%;
