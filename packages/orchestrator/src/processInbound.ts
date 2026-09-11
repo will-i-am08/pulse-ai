@@ -81,6 +81,16 @@ import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } fro
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
+import {
+  looksLikeDigestRequest,
+  looksLikeMakeMore,
+  looksLikeAnalystBoost,
+  getPerfPending,
+  applyMakeMoreOfThese,
+  handoffBoostOrCampaign,
+  confirmPerfSuggestion,
+  clearPerfPending,
+} from "./performanceActions.js";
 import { connectLinkMessage, isMetaConnected, metaConnectStatusMessage } from "./smsConnect.js";
 import {
   parseDestinationChoice,
@@ -103,9 +113,6 @@ const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|somethin
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
 
-// Natural-language performance digest (replaces Discord !digest).
-const DIGEST_RE =
-  /\b(how did (we|i|things) do|how(?:'?s| is| are) (we|things|performance) (doing|going)|weekly (recap|digest|report|summary)|performance (digest|report|recap)|what(?:'?s| is) (working|performing)|engagement (report|recap|this week))\b/i;
 
 // SMS deep-link connect / disconnect intents.
 const CONNECT_META_RE =
@@ -573,8 +580,15 @@ export async function processInbound(
     if (CONNECT_META_RE.test(message.body)) {
       return { reply: connectLinkMessage(brand, "meta") };
     }
-    if (DIGEST_RE.test(message.body)) {
-      return { reply: await buildPerformanceDigest(brand) };
+    if (looksLikeDigestRequest(message.body)) {
+      try {
+        return { reply: await buildPerformanceDigest(brand) };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit, or ask "how did we do this week?" later.`,
+        };
+      }
     }
   }
 

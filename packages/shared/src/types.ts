@@ -270,11 +270,144 @@ export interface Brand {
   positioning: BrandPositioning;
   /** Primary offer stack + claim constraints. */
   offers: BrandOffers;
+  /** Per-capability toggles — ads defaults off until Phase F enables. */
+  features?: BrandFeatures;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
+  ads_tokens_encrypted?: string | null;
+  ads_connected_at?: string | null;
+  ads_spend_caps?: AdsSpendCaps;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
   updated_at: string;
 }
+
+/** Per-brand capability toggles. */
+export interface BrandFeatures {
+  autopilot?: boolean;
+  auto_replies?: boolean;
+  lead_handoff?: boolean;
+  ads?: boolean;
+  ads_autopilot?: boolean;
+}
+
+export interface AdsSpendCaps {
+  weekly_cents?: number;
+  campaign_cents?: number;
+}
+
+export const AdObjective = ["awareness", "traffic", "leads", "messages", "sales"] as const;
+export type AdObjective = (typeof AdObjective)[number];
+
+export const AdCampaignStatus = [
+  "proposed", "preview", "active", "paused", "done", "cancelled", "killed",
+] as const;
+export type AdCampaignStatus = (typeof AdCampaignStatus)[number];
+
+export const AdCampaignKind = ["campaign", "boost"] as const;
+export type AdCampaignKind = (typeof AdCampaignKind)[number];
+
+export const AdCreativeSource = ["organic", "static", "carousel", "video"] as const;
+export type AdCreativeSource = (typeof AdCreativeSource)[number];
+
+export interface AdAudience {
+  label?: string;
+  meta_type?: "interest" | "lookalike" | "retargeting" | "broad" | "custom";
+  interests?: string[];
+  geo?: string;
+  age_min?: number;
+  age_max?: number;
+  notes?: string;
+}
+
+export interface AdCreativeSpec {
+  source: AdCreativeSource;
+  primary_text?: string;
+  headline?: string;
+  cta?: string;
+  media_ids?: string[];
+  source_post_id?: string;
+  notes?: string;
+}
+
+export interface AdCampaignPlan {
+  step?: string;
+  pending_budget_cents?: number;
+  scale_suggestion?: string;
+  pause_suggestion?: string;
+  [key: string]: unknown;
+}
+
+export interface AdCampaignMetrics {
+  spend_cents?: number;
+  impressions?: number;
+  clicks?: number;
+  ctr?: number;
+  leads?: number;
+  messages?: number;
+  purchases?: number;
+  cpa_cents?: number;
+  roas?: number;
+  [key: string]: unknown;
+}
+
+export interface AdCampaign {
+  id: string;
+  brand_id: string;
+  name: string;
+  objective: AdObjective;
+  status: AdCampaignStatus;
+  audience: AdAudience;
+  offer_ref: Record<string, unknown>;
+  creative: AdCreativeSpec;
+  budget_cents: number;
+  duration_days: number;
+  weekly_cap_cents: number | null;
+  campaign_cap_cents: number | null;
+  external_campaign_id: string | null;
+  external_adset_id: string | null;
+  external_ad_id: string | null;
+  source_post_id: string | null;
+  kind: AdCampaignKind;
+  metrics: AdCampaignMetrics;
+  plan: AdCampaignPlan;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const AdApprovalAction = [
+  "launch","boost","pause","resume","kill","budget_edit","scale","enable_ads","connect","cap_breach","reject",
+] as const;
+export type AdApprovalAction = (typeof AdApprovalAction)[number];
+
+export interface AdApproval {
+  id: string;
+  brand_id: string;
+  ad_campaign_id: string | null;
+  action: AdApprovalAction;
+  actor: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  note: string | null;
+  message_id: string | null;
+  created_at: string;
+}
+
+export interface AdSpendLog {
+  id: string;
+  brand_id: string;
+  ad_campaign_id: string | null;
+  amount_cents: number;
+  currency: string;
+  source: "sync" | "mock" | "manual" | "estimate";
+  occurred_at: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
 
 export interface Message {
   id: string;

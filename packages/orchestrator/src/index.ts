@@ -164,9 +164,39 @@ export {
   cancelStrategyBrief,
 } from "./strategyBrief.js";
 export type { StrategyPieceKey } from "./strategyBrief.js";
-export { analyzePerformance } from "./insights.js";
-export type { PostPerf } from "./insights.js";
-export { buildPerformanceDigest } from "./performanceDigest.js";
+export {
+  analyzePerformance,
+  aggregateAdMetrics,
+  summarizePaidMetrics,
+} from "./insights.js";
+export type {
+  PostPerf,
+  PaidDigestMetrics,
+  PerformanceAnalysis,
+  PerfSuggestion,
+  OrganicWinner,
+} from "./insights.js";
+export {
+  buildPerformanceDigest,
+  buildPerformanceAnalysis,
+  fetchPaidDigestMetrics,
+} from "./performanceDigest.js";
+export {
+  looksLikeDigestRequest,
+  looksLikeMakeMore,
+  looksLikeAnalystBoost,
+  looksLikePerfConfirm,
+  isAdsEnabled,
+  isAdsConnected,
+  applyMakeMoreOfThese,
+  handoffBoostOrCampaign,
+  confirmPerfSuggestion,
+  getPerfPending,
+  savePerfPending,
+  clearPerfPending,
+  queueAdsRecommendation,
+} from "./performanceActions.js";
+export type { PerfPendingAction } from "./performanceActions.js";
 export { connectLinkMessage, metaConnectStatusMessage, isMetaConnected } from "./smsConnect.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";

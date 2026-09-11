@@ -5,9 +5,12 @@ import { logger } from "../lib/logger.js";
 const DIGEST_PREFIX = "📊 Weekly recap";
 
 /**
- * Weekly performance digest for every active brand (SMS). Overlap-guarded by
- * checking for a digest sent in the last 6 days. Natural-language "how did we
- * do?" is handled in processInbound via the same builder.
+ * Weekly performance digest for every active brand (SMS). Uses the enhanced
+ * analyst (format/pillar/timing + organic winners + paid stub). Overlap-guarded
+ * by checking for a digest sent in the last 6 days. Natural-language "how did
+ * we do?" is handled in processInbound via the same builder.
+ *
+ * Insight failure → SMS error, not a silently skipped week.
  */
 export async function runWeeklyDigestLoop(): Promise<void> {
   if (!isDaytime(new Date())) return;
@@ -37,6 +40,16 @@ export async function runWeeklyDigestLoop(): Promise<void> {
       logger.error(`weekly digest failed for brand ${brand.id}`, {
         error: err instanceof Error ? err.message : String(err),
       });
+      try {
+        await sendToBrand(
+          brand.id,
+          "Couldn't build your weekly recap this time — I'll try again next week, or ask me \"how did we do this week?\" anytime.",
+        );
+      } catch (sendErr) {
+        logger.error(`weekly digest error SMS failed for brand ${brand.id}`, {
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        });
+      }
     }
   }
 }
