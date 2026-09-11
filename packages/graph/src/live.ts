@@ -103,7 +103,7 @@ export class LiveGraphAdapter implements GraphAdapter {
     // Threads: live once the app is configured (THREADS_APP_ID) and the brand has
     // connected an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "threads") {
-      if (!platformConfigured("THREADS_APP_ID") || !brand.threads_tokens_encrypted || !brand.threads_user_id) {
+      if (!platformConfigured("threads") || !brand.threads_tokens_encrypted || !brand.threads_user_id) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }
@@ -121,7 +121,7 @@ export class LiveGraphAdapter implements GraphAdapter {
 
     // LinkedIn Company Page: live once LINKEDIN_CLIENT_ID + org tokens exist.
     if (platform === "linkedin") {
-      if (!platformConfigured("LINKEDIN_CLIENT_ID") || !brand.linkedin_tokens_encrypted || !brand.linkedin_org_id) {
+      if (!platformConfigured("linkedin") || !brand.linkedin_tokens_encrypted || !brand.linkedin_org_id) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }
@@ -144,12 +144,10 @@ export class LiveGraphAdapter implements GraphAdapter {
       });
     }
 
-    // TikTok Direct Post: mock until TIKTOK_CLIENT_KEY + tokens + TIKTOK_AUDIT_PASSED.
+    // TikTok Direct Post: live once TIKTOK_CLIENT_KEY + tokens exist.
+    // Public privacy needs TIKTOK_AUDIT_PASSED; without it privacy is forced SELF_ONLY.
     if (platform === "tiktok") {
-      const ready =
-        platformConfigured("TIKTOK_CLIENT_KEY") &&
-        Boolean(brand.tiktok_tokens_encrypted) &&
-        tiktokAuditPassed();
+      const ready = platformConfigured("tiktok") && Boolean(brand.tiktok_tokens_encrypted);
       if (!ready) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
@@ -163,16 +161,30 @@ export class LiveGraphAdapter implements GraphAdapter {
             brand.id,
           ]);
         }
+        const meta = input.styleMeta ?? {};
         const aigc = Boolean(
-          (input as { aigc?: boolean }).aigc ||
-            /aigc|ai[- ]generated/i.test(caption) ||
-            brand.tiktok_privacy_defaults?.aigc_disclosure,
+          meta.aigc ||
+            meta.ai_video_job_id ||
+            (format === "reel" && (meta.aigc || meta.ai_video_job_id || meta.provider)) ||
+            /aigc|ai[- ]generated/i.test(caption),
         );
+        // Without audit, never send public Direct Post — force SELF_ONLY.
+        const basePrivacy = brand.tiktok_privacy_defaults;
+        const privacy = !tiktokAuditPassed()
+          ? {
+              privacy_level: "SELF_ONLY" as const,
+              allow_comment: basePrivacy?.allow_comment ?? true,
+              allow_duet: basePrivacy?.allow_duet ?? true,
+              allow_stitch: basePrivacy?.allow_stitch ?? true,
+              music_usage_confirmed: basePrivacy?.music_usage_confirmed ?? false,
+              aigc_disclosure: basePrivacy?.aigc_disclosure ?? aigc,
+            }
+          : basePrivacy ?? undefined;
         const { publishId, permalink } = await tiktokDirectPost({
           accessToken,
           title: caption,
           mediaUrls,
-          privacy: brand.tiktok_privacy_defaults ?? undefined,
+          privacy,
           aigc,
         });
         return { externalPostId: publishId, permalink };
@@ -182,7 +194,7 @@ export class LiveGraphAdapter implements GraphAdapter {
     // X: live once the app is configured (X_CLIENT_ID) and the brand has connected
     // an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "x") {
-      if (!platformConfigured("X_CLIENT_ID") || !brand.x_tokens_encrypted) {
+      if (!platformConfigured("x") || !brand.x_tokens_encrypted) {
         const { MockGraphAdapter } = await import("./mock.js");
         return new MockGraphAdapter().publish(input);
       }

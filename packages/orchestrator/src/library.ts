@@ -117,6 +117,7 @@ export async function draftPostFromPhoto(
     platform: "instagram",
     pillarId: pillar.id,
     postsPerWeek: pillar.posts_per_week,
+    format: "feed",
   });
   const autopilot = Boolean(pillar.autopilot);
 

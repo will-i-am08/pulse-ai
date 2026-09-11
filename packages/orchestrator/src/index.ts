@@ -111,11 +111,40 @@ export {
 } from "./designComposer.js";
 export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer.js";
 export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms } from "./designQa.js";
-export { routeImageJob, specialtyReplicateGenerate } from "./modelRouter.js";
+export { routeImageJob, specialtyReplicateGenerate, specialtyCostSmsHint } from "./modelRouter.js";
 export type { ImageJob, ImageEngine, RouteDecision } from "./modelRouter.js";
 export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
-export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
+export {
+  createInteraction,
+  claimInteraction,
+  handleInteraction,
+  sendLatestDraft,
+  editLatestDraft,
+  latestDraftedInteraction,
+  sendDraftInstead,
+  claimLatestLead,
+  markLatestAsSpam,
+  maybeAutoPushLead,
+} from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
+export {
+  buildLeadCard,
+  formatLeadCardSms,
+  inferLeadIntent,
+  suggestLeadNextStep,
+} from "./leadCard.js";
+export type { LeadCard, LeadCardInput } from "./leadCard.js";
+export {
+  pushLeadToCrm,
+  setCrmWebhookUrl,
+  clearCrmWebhookUrl,
+  getCrmWebhookUrl,
+  isValidCrmWebhookUrl,
+  sendLeadEmailFallback,
+  latestEscalatedLead,
+  latestActionableInteraction,
+} from "./crmWebhook.js";
+export type { CrmPushResult, CrmPushTrigger, PushLeadOptions } from "./crmWebhook.js";
 export { repurposeUrl } from "./repurpose.js";
 export {
   seedPendingPlan,
@@ -247,6 +276,30 @@ export {
   looksLikeCapRaise,
   parseDollarCap,
 } from "./adSpend.js";
+export {
+  isPersonalAccount,
+  accountTypeOf,
+  personalStrategySkipSms,
+  personalAdsRefuseSms,
+  personalIcpRefuseSms,
+} from "./accountMode.js";
+export {
+  estimateCost,
+  formatCostUsd,
+  costEstimateSmsLine,
+  weeklyAiSpendCapUsd,
+} from "./costEstimate.js";
+export type { CostKind } from "./costEstimate.js";
+export {
+  aiSpendWeekKey,
+  currentWeeklyAiSpendUsd,
+  assertAiSpendAllowed,
+  recordAiSpend,
+} from "./aiSpend.js";
+export {
+  ensureNicheExemplarBootstrap,
+  seedOnboardingNicheExemplars,
+} from "./designBootstrap.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";

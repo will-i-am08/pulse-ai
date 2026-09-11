@@ -5,9 +5,9 @@ import { tiktokAuditPassed } from "./types.js";
 /**
  * TikTok Content Posting API — Direct Post path.
  *
- * Unaudited mode: without TIKTOK_AUDIT_PASSED, Kip must not claim public live
- * posts (graph adapter stays on the mock feed). Documented in
- * docs/PLATFORM_AGGREGATOR_SPIKE.md and STATUS.md.
+ * Public (`PUBLIC_TO_EVERYONE`) Direct Post requires TIKTOK_AUDIT_PASSED.
+ * Without audit, Kip may still live-post with privacy forced to SELF_ONLY
+ * when client key + brand tokens are present. Documented in LIVE_CHECKLIST.
  *
  * Video-first; photo mode is secondary. Set `aigc` when the creative is AI video.
  */
@@ -40,6 +40,36 @@ function creds(): { key: string; secret: string } {
   return { key: env.TIKTOK_CLIENT_KEY, secret: env.TIKTOK_CLIENT_SECRET };
 }
 
+/** Map TikTok API / cap errors to readable messages. */
+export function tiktokMapError(raw: string): string {
+  const msg = raw.slice(0, 400);
+  if (/title|caption|length|too long|characters|max/i.test(msg)) {
+    return `tiktok caption too long (max 2200): ${msg}`;
+  }
+  if (/rate.?limit|quota|spam|too many|cap/i.test(msg)) {
+    return `tiktok rate/cap: posting limit hit — try again later (${msg.slice(0, 120)})`;
+  }
+  if (/privacy|unaudited|scope|audit|SELF_ONLY|public/i.test(msg)) {
+    return `tiktok privacy/audit: ${msg}`;
+  }
+  if (/music|commercial|consent/i.test(msg)) {
+    return `tiktok: music / commercial content consent required — reopen the connect link and confirm privacy settings`;
+  }
+  return `tiktok post: ${msg}`;
+}
+
+/**
+ * Enforce audit gate on privacy: public levels require TIKTOK_AUDIT_PASSED;
+ * otherwise force SELF_ONLY for private Direct Post.
+ */
+export function tiktokEnforcePrivacy(
+  privacy: TikTokPrivacyDefaults,
+): TikTokPrivacyDefaults {
+  if (tiktokAuditPassed()) return privacy;
+  if (privacy.privacy_level === "SELF_ONLY") return privacy;
+  return { ...privacy, privacy_level: "SELF_ONLY" };
+}
+
 export async function tiktokRefresh(refreshToken: string): Promise<TikTokStoredTokens> {
   const { key, secret } = creds();
   const res = await fetch(TOKEN_URL, {
@@ -57,7 +87,7 @@ export async function tiktokRefresh(refreshToken: string): Promise<TikTokStoredT
     unknown
   >;
   if (!res.ok || body.error) {
-    throw new Error(`tiktok refresh: ${JSON.stringify(body).slice(0, 200)}`);
+    throw new Error(tiktokMapError(JSON.stringify(body)));
   }
   const data = (body.data ?? body) as Record<string, unknown>;
   return {
@@ -103,7 +133,7 @@ export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
   body: Record<string, unknown>;
 } {
   const title = (input.title ?? "").slice(0, 2200);
-  const privacy = { ...DEFAULT_TIKTOK_PRIVACY, ...(input.privacy ?? {}) };
+  const privacy = tiktokEnforcePrivacy({ ...DEFAULT_TIKTOK_PRIVACY, ...(input.privacy ?? {}) });
   if (!privacy.music_usage_confirmed) {
     throw new Error(
       "tiktok: music / commercial content consent required — reopen the connect link and confirm privacy settings",
@@ -115,7 +145,9 @@ export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
     throw new Error("tiktok: needs a video (preferred) or photo — text-only posts aren't supported");
   }
 
-  const video = media.find(isVideoUrl) ?? (media.length === 1 && !/\.(jpe?g|png|gif|webp)(\?|$)/i.test(media[0]!) ? media[0] : null);
+  const video =
+    media.find(isVideoUrl) ??
+    (media.length === 1 && !/\.(jpe?g|png|gif|webp)(\?|$)/i.test(media[0]!) ? media[0] : null);
 
   if (video) {
     return {
@@ -128,7 +160,7 @@ export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
           disable_comment: !privacy.allow_comment,
           disable_stitch: !privacy.allow_stitch,
           video_cover_timestamp_ms: 1000,
-          ...(input.aigc || privacy.aigc_disclosure
+          ...(input.aigc
             ? { brand_content_toggle: false, brand_organic_toggle: false, is_aigc: true }
             : {}),
         },
@@ -151,6 +183,7 @@ export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
         privacy_level: privacy.privacy_level,
         disable_comment: !privacy.allow_comment,
         auto_add_music: false,
+        ...(input.aigc ? { is_aigc: true } : {}),
       },
       source_info: {
         source: "PULL_FROM_URL",
@@ -164,18 +197,12 @@ export function tiktokBuildDirectPostBody(input: TikTokPublishInput): {
 }
 
 /**
- * Init a Direct Post. Requires TIKTOK_AUDIT_PASSED for public privacy levels.
- * Unaudited deploys should never call this for PUBLIC_TO_EVERYONE — the graph
- * adapter enforces that gate before reaching here.
+ * Init a Direct Post. Public privacy requires TIKTOK_AUDIT_PASSED; otherwise
+ * privacy is forced to SELF_ONLY inside tiktokBuildDirectPostBody.
  */
 export async function tiktokDirectPost(
   input: TikTokPublishInput,
 ): Promise<{ publishId: string; permalink: string | null }> {
-  if (!tiktokAuditPassed()) {
-    throw new Error(
-      "tiktok: unaudited mode — set TIKTOK_AUDIT_PASSED after Content Posting API audit before public live posts",
-    );
-  }
   const { url, body } = tiktokBuildDirectPostBody(input);
   const res = await fetch(url, {
     method: "POST",
@@ -190,14 +217,7 @@ export async function tiktokDirectPost(
     data?: { publish_id?: string; share_id?: string };
   };
   if (!res.ok || (json.error && json.error.code && json.error.code !== "ok")) {
-    const msg = json.error?.message ?? JSON.stringify(json).slice(0, 240);
-    if (/title|caption|length|too long|characters|max/i.test(msg)) {
-      throw new Error(`tiktok caption too long (max 2200): ${msg}`);
-    }
-    if (/privacy|unaudited|scope|audit/i.test(msg)) {
-      throw new Error(`tiktok privacy/audit: ${msg}`);
-    }
-    throw new Error(`tiktok post: ${msg}`);
+    throw new Error(tiktokMapError(json.error?.message ?? JSON.stringify(json)));
   }
   const publishId = String(json.data?.publish_id ?? json.data?.share_id ?? `tt_${Date.now()}`);
   return { publishId, permalink: null };

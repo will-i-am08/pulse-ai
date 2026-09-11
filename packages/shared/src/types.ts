@@ -22,9 +22,10 @@ export type PublishDestination = (typeof PublishDestination)[number];
 
 /**
  * Platforms that stay on the fake feed even when GRAPH_MODE=live.
- * X is always mock-only until a paid tier is wired.
- * TikTok is mock-only for *public* live until TIKTOK_AUDIT_PASSED is set
- * (Content Posting API audit). LinkedIn goes live once LINKEDIN_CLIENT_ID + tokens exist.
+ * X is always mock-only until a paid tier is wired (still uses platformConfigured
+ * mock fallback for the adapter path when X_CLIENT_ID is missing).
+ * TikTok: public Direct Post needs TIKTOK_AUDIT_PASSED; without it live posts
+ * are forced to SELF_ONLY (private). LinkedIn goes live once LINKEDIN_CLIENT_ID + tokens exist.
  */
 export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x"];
 
@@ -35,10 +36,9 @@ export function tiktokAuditPassed(): boolean {
 }
 
 export function isMockOnlyPlatform(platform: Platform | string): boolean {
-  if (platform === "x") return true;
-  // Unaudited TikTok must not claim live public posts.
-  if (platform === "tiktok" && !tiktokAuditPassed()) return true;
-  return false;
+  // X remains mock-only for live confirmation until paid API is productized.
+  // TikTok is no longer blanket mock-only — unaudited deploys still live-post privately.
+  return platform === "x";
 }
 
 export function isPublishDestination(platform: string): platform is PublishDestination {
@@ -252,8 +252,6 @@ export interface Brand {
   id: string;
   name: string;
   client_phone: string;
-  discord_channel_id: string | null;
-  discord_user_id: string | null;
   owner_user_id: string | null;
   account_type: AccountType | null;
   website: string | null;
@@ -302,6 +300,11 @@ export interface Brand {
   offers: BrandOffers;
   /** Per-capability toggles — ads defaults off until Phase F enables. */
   features?: BrandFeatures;
+  /**
+   * Encrypted (or plain https) Zapier/Make/n8n catch-hook URL for Phase I CRM push.
+   * Prefer encrypted at rest via `encrypt()`.
+   */
+  crm_webhook_url?: string | null;
   ad_account_id?: string | null;
   ad_account_name?: string | null;
   ads_tokens_encrypted?: string | null;
@@ -333,9 +336,8 @@ export interface BrandFeatures {
   ads?: boolean;
   ads_autopilot?: boolean;
   /**
-   * Phase I (scoped later) — when true, qualified leads may POST to the
-   * owner’s CRM webhook (Zapier/Make/etc.). Stub only; no runtime push yet.
-   * See docs/PHASE_I_CRM_SCOPE.md.
+   * Phase I — when true, qualified leads may auto-POST to the owner's
+   * CRM webhook (Zapier/Make/n8n/etc.). See docs/PHASE_I_CRM_SCOPE.md.
    */
   crm_webhook?: boolean;
 }
@@ -613,7 +615,15 @@ export interface Post {
   // from the source rather than compounding edits on an already-styled image.
   source_media_ids: string[] | null;
   // How the image was styled ({ wants_text, headline }) so a re-edit re-applies it.
-  style_meta: { wants_text?: boolean; headline?: string } | null;
+  // aigc / ai_video_job_id mark AI-generated video for TikTok AIGC disclosure.
+  style_meta: {
+    wants_text?: boolean;
+    headline?: string;
+    aigc?: boolean;
+    ai_video_job_id?: string;
+    reel?: boolean;
+    [key: string]: unknown;
+  } | null;
   // Content pillar this post belongs to, and autopilot bookkeeping.
   pillar_id: string | null;
   // feed (single) / carousel (multi-image) / story (24h). Drives how it publishes.
@@ -640,6 +650,12 @@ export interface Post {
   updated_at: string;
 }
 
+/** Per-brand weekly AI generation spend (USD), stored under brands.facts.ai_spend. */
+export interface AiSpendFacts {
+  week_key: string;
+  spent_usd: number;
+}
+
 export interface BusinessFacts {
   /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
   lab?: boolean;
@@ -653,6 +669,8 @@ export interface BusinessFacts {
   policies?: string;
   faqs?: Array<{ q: string; a: string }>;
   differentiators?: string;
+  /** Rolling weekly AI video/specialty spend estimate (ops cost guard). */
+  ai_spend?: AiSpendFacts;
 }
 
 /**
@@ -753,6 +771,8 @@ export interface Interaction {
   sentiment: string | null;
   bucket: InteractionBucket | null;
   status: InteractionStatus;
+  /** Public permalink when the platform provided one. */
+  permalink?: string | null;
   created_at: string;
 }
 

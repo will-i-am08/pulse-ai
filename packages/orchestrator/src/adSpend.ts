@@ -5,6 +5,16 @@ import {
   spendCaps, weeklySpendCents, campaignSpendCents,
 } from "./adsFeatures.js";
 
+/** Best-effort operator SMS on ad cap breach (no-op when OPERATOR_PHONE unset). */
+async function alertOperatorAdCap(brand: Brand, detail: string): Promise<void> {
+  try {
+    const { sendToOperator } = await import("@pulse/gateway");
+    await sendToOperator(`Ad cap breach — "${brand.name}": ${detail}`);
+  } catch (err) {
+    console.error("alertOperatorAdCap failed", err);
+  }
+}
+
 export async function syncAdPerformance(brand: Brand): Promise<{ alerts: string[]; suggestions: string[] }> {
   const alerts: string[] = []; const suggestions: string[] = [];
   if (!adsEnabled(brand) || !isAdsConnected(brand)) return { alerts, suggestions };
@@ -73,6 +83,7 @@ async function pauseForCap(brand: Brand, c: AdCampaign, kind: "weekly" | "campai
   await query(`update ad_campaigns set status='paused' where id=$1`, [c.id]);
   await logAdApproval({ brandId: brand.id, adCampaignId: c.id, action: "cap_breach",
     note: `${kind} cap breach — auto-paused`, after: { status: "paused" } });
+  await alertOperatorAdCap(brand, `${kind} cap — paused ${c.name}`);
 }
 async function pauseAdForPerf(brand: Brand, c: AdCampaign, note: string): Promise<void> {
   if (c.external_campaign_id) {

@@ -12,6 +12,7 @@ import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
 import { resolveBrandPalette } from "./imaging.js";
 import { listRecentDesignMemory, listTopDesignMemory } from "./designMemory.js";
 import { listVisualExemplars } from "./research.js";
+import { ensureNicheExemplarBootstrap } from "./designBootstrap.js";
 import { routeImageJob } from "./modelRouter.js";
 
 /**
@@ -112,12 +113,16 @@ export function layoutForIndex(
 
 /** Gather own memory + niche exemplars for the composer (cold-start aware). */
 export async function gatherDesignContext(brand: Brand): Promise<DesignContext> {
-  const [ownMemory, topMemory, nicheExemplars] = await Promise.all([
+  let nicheExemplars = await listVisualExemplars(brand.id, 8).catch(() => [] as VisualExemplar[]);
+  const [ownMemory, topMemory] = await Promise.all([
     listRecentDesignMemory(brand.id, 6).catch(() => [] as DesignMemoryRef[]),
     listTopDesignMemory(brand.id, 4).catch(() => [] as DesignMemoryRef[]),
-    listVisualExemplars(brand.id, 8).catch(() => [] as VisualExemplar[]),
   ]);
   const coldStart = ownMemory.length === 0 && topMemory.length === 0;
+  if (coldStart && nicheExemplars.length < 3) {
+    await ensureNicheExemplarBootstrap(brand);
+    nicheExemplars = await listVisualExemplars(brand.id, 8).catch(() => nicheExemplars);
+  }
   const tokens = brand.visual ?? {};
   const bootstrapNotes = coldStart
     ? [

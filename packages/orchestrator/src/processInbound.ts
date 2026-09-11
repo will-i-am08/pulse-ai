@@ -56,7 +56,23 @@ import {
   savePositioningDraft,
 } from "./brandContext.js";
 import { storeDesignMemoryRef } from "./designMemory.js";
-import { sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
+import {
+  sendLatestDraft,
+  editLatestDraft,
+  latestDraftedInteraction,
+  sendDraftInstead,
+  claimLatestLead,
+  markLatestAsSpam,
+} from "./engagement.js";
+import {
+  isValidCrmWebhookUrl,
+  setCrmWebhookUrl,
+  clearCrmWebhookUrl,
+  getCrmWebhookUrl,
+  pushLeadToCrm,
+  latestEscalatedLead,
+  latestActionableInteraction,
+} from "./crmWebhook.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
@@ -67,6 +83,12 @@ import {
   proposeContentPlanFromSms,
 } from "./nichePlan.js";
 import { detectResearchFocus, runDeepResearch } from "./research.js";
+import {
+  isPersonalAccount,
+  personalAdsRefuseSms,
+  personalIcpRefuseSms,
+  personalStrategySkipSms,
+} from "./accountMode.js";
 import {
   looksLikeStrategyRequest,
   getProposedStrategyBrief,
@@ -123,7 +145,21 @@ import {
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
 const REPURPOSE_RE = /\b(repurpose|turn (my|this|the) (site|website|page|blog|menu)|make posts? (from|out of)|posts? from (my|this))\b/i;
 
-const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
+/** I1 — approve / send drafted engagement replies (beyond thin A6). */
+const SEND_DRAFT_RE =
+  /^\s*(send|post it|send it|send that|approve that reply|approve the reply|approve it|approve that)\b/i;
+/** "send this instead: …" — replace draft body and post. */
+const SEND_INSTEAD_RE = /^\s*send this instead\s*[:\-–]?\s*(.+)$/is;
+/** Owner claims the escalated lead. */
+const TAKE_LEAD_RE = /^\s*(i'?ll take it|i will take it|i'?ll take this|claim (it|the lead)|i'?ve got (it|this))\s*[.!]?\s*$/i;
+/** Mark latest engagement as spam. */
+const MARK_SPAM_RE = /^\s*(mark (it |that |this )?(as )?spam|it'?s spam|spam)\s*[.!]?\s*$/i;
+/** CRM webhook set / clear / push. */
+const SET_CRM_WEBHOOK_RE = /^\s*(set|save|update)\s+(crm\s+)?webhook\s+(?:to\s+|url\s+)?(\S+)/i;
+const CLEAR_CRM_WEBHOOK_RE = /^\s*(clear|remove|unset|disconnect)\s+(crm\s+)?webhook\b/i;
+const SEND_TO_CRM_RE = /^\s*(send|push|post)\s+(it |this |that )?(to\s+)?(crm|zapier|make|hubspot|pipedrive)\b/i;
+const CRM_SETTINGS_RE =
+  /^\s*(crm\s+(settings|webhook|link|connect)|connect\s+crm|set\s+up\s+crm)\b/i;
 
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
@@ -633,17 +669,108 @@ export async function processInbound(
     }
   }
 
-  // "send" approves the most recent drafted reply to a customer interaction —
-  // but only when there's no pending post (there, "send" would be ambiguous).
-  if (message.body && SEND_DRAFT_RE.test(message.body) && newMedia.length === 0 && !pending) {
-    try {
-      const sent = await sendLatestDraft(brand);
-      if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+  // Phase I SMS verbs for engagement drafts / leads (no pending post).
+  if (message.body && newMedia.length === 0 && !pending) {
+    const instead = message.body.match(SEND_INSTEAD_RE);
+    if (instead?.[1]?.trim()) {
+      try {
+        const sent = await sendDraftInstead(brand, instead[1].trim());
+        if (sent) return { reply: `Sent your version ✅\n\n"${sent}"` };
+        return { reply: 'Nothing drafted to replace — wait for a suggested reply, or say "send this instead: …" after I draft one.' };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          reply: `Tried to send your version but posting failed (${detail}). Say "send this instead: …" again to retry.`,
+        };
+      }
+    }
+
+    if (SEND_DRAFT_RE.test(message.body)) {
+      try {
+        const sent = await sendLatestDraft(brand);
+        if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          reply: `Tried to send that reply but posting failed (${detail}). Say "approve that reply" or "send" again to retry, or tell me a change.`,
+        };
+      }
+    }
+
+    if (TAKE_LEAD_RE.test(message.body)) {
+      const claimed = await claimLatestLead(brand);
+      if (claimed) {
+        const who = claimed.author ? ` from ${claimed.author}` : "";
+        return { reply: `All yours — I've marked that lead${who} as claimed. Ping me if you want it pushed to CRM.` };
+      }
+      return { reply: "I don't have an open lead for you to claim right now." };
+    }
+
+    if (MARK_SPAM_RE.test(message.body)) {
+      const hidden = await markLatestAsSpam(brand);
+      if (hidden) return { reply: "Got it — marked as spam and hidden where I could." };
+      return { reply: "Nothing recent to mark as spam." };
+    }
+
+    const setCrm = message.body.match(SET_CRM_WEBHOOK_RE);
+    if (setCrm?.[3]) {
+      const url = setCrm[3].replace(/[)>,.\]]+$/g, "");
+      if (!isValidCrmWebhookUrl(url)) {
+        return { reply: 'That needs to be an https:// webhook URL (Zapier, Make, n8n, HubSpot, Pipedrive, …).' };
+      }
+      try {
+        await setCrmWebhookUrl(brand.id, url);
+        brand.crm_webhook_url = url;
+        brand.features = { ...(brand.features ?? {}), crm_webhook: true };
+        return { reply: 'CRM webhook saved ✅. I\'ll push qualified leads automatically. Reply "send to CRM" anytime to push the latest lead.' };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't save that webhook (${detail}).` };
+      }
+    }
+
+    if (CLEAR_CRM_WEBHOOK_RE.test(message.body)) {
+      await clearCrmWebhookUrl(brand.id);
+      brand.crm_webhook_url = null;
+      brand.features = { ...(brand.features ?? {}), crm_webhook: false };
+      return { reply: "CRM webhook cleared. I won't push leads until you set one again." };
+    }
+
+    if (SEND_TO_CRM_RE.test(message.body)) {
+      const lead =
+        (await latestEscalatedLead(brand.id)) ?? (await latestActionableInteraction(brand.id));
+      if (!lead) return { reply: "No recent lead to send. When one comes in, say \"send to CRM\"." };
+      // Refresh URL from DB in case brand object is stale.
+      const fresh = await queryOne<Brand>(`select * from brands where id = $1`, [brand.id]);
+      const b = fresh ?? brand;
+      const result = await pushLeadToCrm({
+        brand: b,
+        interaction: lead,
+        trigger: "owner_sms",
+        force: true,
+        emailFallback: true,
+      });
+      if (result.ok) {
+        return {
+          reply: result.emailed
+            ? "Webhook wasn't available — emailed the lead card instead ✅"
+            : "Sent to CRM ✅",
+        };
+      }
       return {
-        reply: `Tried to send that reply but posting failed (${detail}). Say "send" again to retry, or tell me a change.`,
+        reply: `CRM push failed (${result.error ?? "unknown"}). ${
+          getCrmWebhookUrl(b) ? "Check the catch-hook and try again." : 'Set one with "set crm webhook https://…".'
+        }`,
       };
+    }
+
+    if (CRM_SETTINGS_RE.test(message.body)) {
+      const link = connectLinkMessage(brand, "crm");
+      const current = getCrmWebhookUrl(brand);
+      const status = current
+        ? "A CRM webhook is already on file."
+        : "No CRM webhook yet — paste an https catch-hook URL in the link, or text \"set crm webhook https://…\".";
+      return { reply: `${status}\n\n${link}` };
     }
   }
 
@@ -672,6 +799,9 @@ export async function processInbound(
     }
     const adsToggle = looksLikeAdsToggle(message.body);
     if (adsToggle === "enable") {
+      if (isPersonalAccount(brand)) {
+        return { reply: personalAdsRefuseSms() };
+      }
       await setBrandFeatures(brand.id, { ads: true });
       brand.features = { ...(brand.features ?? {}), ads: true };
       await logAdApproval({ brandId: brand.id, action: "enable_ads", note: "SMS enable ads", after: { ads: true } });
@@ -702,7 +832,10 @@ export async function processInbound(
     }
     if (looksLikePastAdsRequest(message.body)) return { reply: await pastAdsAnalysis(brand) };
     if (looksLikeAdLibraryRequest(message.body)) return { reply: await adLibraryBrief(brand, message.body) };
-    if (CONNECT_ADS_RE.test(message.body)) return { reply: connectLinkMessage(brand, "ads") };
+    if (CONNECT_ADS_RE.test(message.body)) {
+      if (isPersonalAccount(brand)) return { reply: personalAdsRefuseSms() };
+      return { reply: connectLinkMessage(brand, "ads") };
+    }
     if (CONNECT_LINKEDIN_RE.test(message.body)) return { reply: connectLinkMessage(brand, "linkedin") };
     if (CONNECT_TIKTOK_RE.test(message.body)) return { reply: connectLinkMessage(brand, "tiktok") };
     if (CONNECT_META_RE.test(message.body)) return { reply: connectLinkMessage(brand, "meta") };
@@ -756,7 +889,7 @@ export async function processInbound(
     if (draftedReply) {
       return {
         reply:
-          'Not quite sure — reply "send" to post the suggested reply, tell me a change, or ignore to leave it.',
+          'Not quite sure — reply "approve that reply" or "send" to post, "send this instead: …", tell me a change, or ignore to leave it.',
       };
     }
     return { reply: await converse(brand, message.body ?? "") };
@@ -773,6 +906,9 @@ export async function processInbound(
 
   // Strategy brief propose.
   if (message.body && newMedia.length === 0 && !pending && looksLikeStrategyRequest(message.body)) {
+    if (isPersonalAccount(brand)) {
+      return { reply: personalStrategySkipSms() };
+    }
     const proposed = await proposeStrategyBrief(brand, message.body);
     if (proposed) return { reply: proposed.summary };
     return {
@@ -979,6 +1115,7 @@ export async function processInbound(
         platform,
         pillarId: pillar?.id ?? null,
         postsPerWeek: pillar?.posts_per_week ?? 0,
+        format: "feed",
       });
       // Autopilot stays Instagram/Facebook. Explicit long-tail picks always
       // wait for "yes" — mock posts must not go out before approval.
@@ -1067,7 +1204,7 @@ export async function processInbound(
         const revised = await editLatestDraft(brand, message.body ?? "");
         if (revised) {
           return {
-            reply: `Updated suggested reply:\n"${revised}"\n\nReply "send" to post it, or tell me another change.`,
+            reply: `Updated suggested reply:\n"${revised}"\n\nReply "approve that reply" or "send" to post it, or tell me another change.`,
           };
         }
         return {
@@ -1336,10 +1473,18 @@ export async function processInbound(
       }
 
       // Brand context objects (ICP / pains / positioning / offers / visual) —
-      // SMS is the source of truth.
+      // SMS is the source of truth. Personal accounts skip ICP/offers research.
       if (message.body && looksLikeBrandContextUpdate(message.body)) {
+        if (
+          isPersonalAccount(brand) &&
+          /\b(icp|pain|positioning|offer|customer|audience)\b/i.test(message.body) &&
+          !/\bvisual\b/i.test(message.body)
+        ) {
+          return { reply: personalIcpRefuseSms() };
+        }
         // Research intents propose drafts; owner confirms later via edit phrases.
         if (/\bresearch\s+(our\s+)?icp\b|\bpropose\s+(an?\s+)?icp\b/i.test(message.body)) {
+          if (isPersonalAccount(brand)) return { reply: personalIcpRefuseSms() };
           const draft = await researchIcp(brand);
           await saveIcpDraft(brand.id, draft);
           const segs = draft.segments?.length ? draft.segments.join("; ") : "still thin — tell me who you serve";
@@ -1348,6 +1493,7 @@ export async function processInbound(
           };
         }
         if (/\bresearch\s+(our\s+)?pain|\bpropose\s+pain/i.test(message.body)) {
+          if (isPersonalAccount(brand)) return { reply: personalIcpRefuseSms() };
           const draft = await researchPainPoints(brand);
           await savePainPointsDraft(brand.id, draft);
           const list = (draft.items ?? []).map((p) => p.text).filter(Boolean).slice(0, 4);
@@ -1358,6 +1504,7 @@ export async function processInbound(
           };
         }
         if (/\bpropose\s+(our\s+)?positioning\b|\bdraft\s+(a\s+)?positioning\b/i.test(message.body)) {
+          if (isPersonalAccount(brand)) return { reply: personalIcpRefuseSms() };
           const draft = await proposePositioning(brand);
           if (draft.one_liner) await savePositioningDraft(brand.id, draft);
           return {

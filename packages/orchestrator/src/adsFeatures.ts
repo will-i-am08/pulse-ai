@@ -9,7 +9,7 @@ const DEFAULT_FEATURES: Required<BrandFeatures> = {
   lead_handoff: true,
   ads: false,
   ads_autopilot: false,
-  crm_webhook: false, // Phase I stub — see docs/PHASE_I_CRM_SCOPE.md
+  crm_webhook: false, // Phase I — see docs/PHASE_I_CRM_SCOPE.md
 };
 const DEFAULT_CAPS: Required<AdsSpendCaps> = { weekly_cents: 50_000, campaign_cents: 20_000 };
 

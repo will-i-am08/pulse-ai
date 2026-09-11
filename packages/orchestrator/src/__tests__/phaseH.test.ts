@@ -9,6 +9,8 @@ import {
   linkedinBuildPostBody,
   tiktokBuildDirectPostBody,
   DEFAULT_TIKTOK_PRIVACY,
+  tiktokEnforcePrivacy,
+  linkedinMapError,
 } from "@pulse/shared";
 import {
   CAPTION_LIMITS,
@@ -46,8 +48,6 @@ function fakeBrand(over: Partial<Brand> = {}): Brand {
     id: "brand-h",
     name: "Phase H Co",
     client_phone: "+61400000099",
-    discord_channel_id: null,
-    discord_user_id: null,
     owner_user_id: null,
     account_type: null,
     website: null,
@@ -134,11 +134,12 @@ describe("Phase H platform enum", () => {
     expect(platformLabel("tiktok")).toBe("TikTok");
   });
 
-  it("treats unaudited TikTok as mock-only until TIKTOK_AUDIT_PASSED", () => {
+  it("treats X as mock-only; TikTok audit gates public not mock-only", () => {
     const prev = process.env.TIKTOK_AUDIT_PASSED;
     delete process.env.TIKTOK_AUDIT_PASSED;
     expect(tiktokAuditPassed()).toBe(false);
-    expect(isMockOnlyPlatform("tiktok")).toBe(true);
+    expect(isMockOnlyPlatform("x")).toBe(true);
+    expect(isMockOnlyPlatform("tiktok")).toBe(false);
     expect(isMockOnlyPlatform("linkedin")).toBe(false);
     process.env.TIKTOK_AUDIT_PASSED = "true";
     expect(tiktokAuditPassed()).toBe(true);
@@ -204,12 +205,19 @@ describe("Phase H SMS connect + cap errors", () => {
     expect(connectLinkMessage(brand, "tiktok")).toMatch(/\/c\//);
   });
 
-  it("maps caption/consent errors to clear SMS", () => {
+  it("maps caption/consent/admin/cap errors to clear SMS", () => {
     expect(platformCapErrorSms("linkedin", "linkedin caption too long (max 3000): …")).toMatch(/3000/);
     expect(platformCapErrorSms("tiktok", "tiktok caption too long (max 2200): …")).toMatch(/2200/);
     expect(platformCapErrorSms("tiktok", "tiktok: music / commercial content consent required")).toMatch(
       /connect TikTok/i,
     );
+    expect(
+      platformCapErrorSms("linkedin", "linkedin: you need to be an admin of that Company Page"),
+    ).toMatch(/admin/i);
+    expect(
+      platformCapErrorSms("linkedin", "linkedin: Marketing Developer Platform / partner approval still pending"),
+    ).toMatch(/partner/i);
+    expect(platformCapErrorSms("tiktok", "tiktok rate/cap: posting limit hit")).toMatch(/limit/i);
   });
 });
 
@@ -248,6 +256,11 @@ describe("Phase H live client shapes", () => {
     expect(video._kip_media_kind).toBe("video");
   });
 
+  it("maps LinkedIn admin / partner errors clearly", () => {
+    expect(linkedinMapError("ACCESS_DENIED: not an organization admin")).toMatch(/admin/i);
+    expect(linkedinMapError("partner application not approved")).toMatch(/partner/i);
+  });
+
   it("builds TikTok Direct Post video body with AIGC and requires music consent", () => {
     expect(() =>
       tiktokBuildDirectPostBody({
@@ -267,5 +280,25 @@ describe("Phase H live client shapes", () => {
     });
     expect(url).toMatch(/video\/init/);
     expect((body.post_info as { is_aigc?: boolean }).is_aigc).toBe(true);
+  });
+
+  it("forces SELF_ONLY privacy when TIKTOK_AUDIT_PASSED is unset", () => {
+    const prev = process.env.TIKTOK_AUDIT_PASSED;
+    delete process.env.TIKTOK_AUDIT_PASSED;
+    const forced = tiktokEnforcePrivacy({
+      ...DEFAULT_TIKTOK_PRIVACY,
+      privacy_level: "PUBLIC_TO_EVERYONE",
+      music_usage_confirmed: true,
+    });
+    expect(forced.privacy_level).toBe("SELF_ONLY");
+    const { body } = tiktokBuildDirectPostBody({
+      accessToken: "t",
+      title: "private until audited",
+      mediaUrls: ["https://cdn.example/v.mp4"],
+      privacy: { ...DEFAULT_TIKTOK_PRIVACY, music_usage_confirmed: true },
+    });
+    expect((body.post_info as { privacy_level: string }).privacy_level).toBe("SELF_ONLY");
+    if (prev === undefined) delete process.env.TIKTOK_AUDIT_PASSED;
+    else process.env.TIKTOK_AUDIT_PASSED = prev;
   });
 });

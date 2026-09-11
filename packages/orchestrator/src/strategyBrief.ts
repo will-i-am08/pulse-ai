@@ -80,6 +80,9 @@ export async function proposeStrategyBrief(
   brand: Brand,
   request?: string,
 ): Promise<{ brief: StrategyBrief; summary: string } | null> {
+  if (brand.account_type === "personal") {
+    return null;
+  }
   const snapshots = await listRecentSnapshots(brand.id, { days: 21, limit: 6 });
   const researchBlock = snapshots.length
     ? snapshots

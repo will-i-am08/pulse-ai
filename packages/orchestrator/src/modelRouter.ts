@@ -1,4 +1,6 @@
 import { getServerEnv } from "@pulse/shared";
+import { costEstimateSmsLine } from "./costEstimate.js";
+import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
 
 /**
  * Phase C9 — model router.
@@ -105,17 +107,24 @@ export function routeImageJob(job: ImageJob): RouteDecision {
 /**
  * Optional specialty Replicate call. Returns null when the model flag is off or
  * the request fails — callers should fall back to the design composer.
+ * When brandId is passed, respects weekly AI spend cap and records estimated cost.
  */
 export async function specialtyReplicateGenerate(
   engine: "ideogram" | "recraft",
   prompt: string,
   aspectRatio = "1:1",
+  opts?: { brandId?: string; brandFacts?: { ai_spend?: { week_key: string; spent_usd: number } } },
 ): Promise<Buffer | null> {
   const decision =
     engine === "ideogram" ? routeImageJob("specialty_poster") : routeImageJob("specialty_illustration");
   if (decision.engine !== engine || !decision.model) return null;
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) return null;
+
+  if (opts?.brandId && opts.brandFacts) {
+    const blocked = assertAiSpendAllowed({ facts: opts.brandFacts }, "specialty");
+    if (blocked) return null;
+  }
 
   try {
     let body: { status?: string; output?: unknown; urls?: { get?: string }; retry_after?: number };
@@ -149,9 +158,18 @@ export async function specialtyReplicateGenerate(
     let out = body!.output;
     if (Array.isArray(out)) out = out[0];
     if (typeof out !== "string") return null;
-    return Buffer.from(await (await fetch(out)).arrayBuffer());
+    const buf = Buffer.from(await (await fetch(out)).arrayBuffer());
+    if (opts?.brandId) {
+      await recordAiSpend(opts.brandId, "specialty").catch(() => {});
+    }
+    return buf;
   } catch (err) {
     console.error(`specialtyReplicateGenerate(${engine}) failed`, err);
     return null;
   }
+}
+
+/** SMS clause for specialty image jobs (Ideogram / Recraft). */
+export function specialtyCostSmsHint(): string {
+  return costEstimateSmsLine("specialty");
 }

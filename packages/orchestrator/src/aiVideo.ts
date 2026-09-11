@@ -12,6 +12,8 @@ import { draftCaption } from "./draftCaption.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars } from "./pillars.js";
 import { storeVideoAsset, storePhotoAsset, extractVideoFrames } from "./video.js";
+import { costEstimateSmsLine, estimateCost } from "./costEstimate.js";
+import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
 
 /**
  * Phase G4 — AI video generation via gateway models (Kling primary, Runway secondary).
@@ -124,7 +126,7 @@ export type QueueAiVideoResult =
 
 /**
  * Queue an AI video job and reply immediately ("I'll text when ready").
- * Cost-capped per brand per calendar month.
+ * Cost-capped per brand per calendar month + weekly AI spend cap (facts.ai_spend).
  */
 export async function queueAiVideoJob(
   brand: Brand,
@@ -137,6 +139,11 @@ export async function queueAiVideoJob(
       ok: false,
       sms: "AI video isn't set up on this workspace yet (need Kling/Runway model env). Send a clip and I'll draft a Reel from that instead.",
     };
+  }
+
+  const weeklyBlock = assertAiSpendAllowed(brand, "video");
+  if (weeklyBlock) {
+    return { ok: false, sms: weeklyBlock };
   }
 
   const spent = await monthSpendCents(brand.id);
@@ -167,10 +174,12 @@ export async function queueAiVideoJob(
     return { ok: false, sms: "Couldn't queue that video just then. Try again in a moment?" };
   }
 
+  await recordAiSpend(brand.id, "video", estimateCost({ kind: "video" }).usd).catch(() => {});
+
   return {
     ok: true,
     job,
-    sms: `On it — generating an AI video (AIGC). I'll text you when it's ready for approval 🎬`,
+    sms: `On it — generating an AI video (AIGC) ${costEstimateSmsLine("video")}. I'll text you when it's ready for approval 🎬`,
   };
 }
 
@@ -367,6 +376,7 @@ export async function processAiVideoJob(
     platform: "instagram",
     pillarId: pillar?.id ?? null,
     postsPerWeek: pillar?.posts_per_week ?? 0,
+    format: "reel",
   });
 
   const post = await queryOne<Post>(
@@ -395,9 +405,21 @@ export async function processAiVideoJob(
   await query(
     `update ai_video_jobs
         set status = 'ready', result_media_id = $2, post_id = $3, model = $4, provider = $5,
-            updated_at = now(), completed_at = now()
+            cost_cents = coalesce(cost_cents, $6), updated_at = now(), completed_at = now()
       where id = $1`,
-    [jobId, mediaId, post?.id ?? null, route.model, route.provider],
+    [jobId, mediaId, post?.id ?? null, route.model, route.provider, estCostCents()],
+  );
+
+  console.info(
+    JSON.stringify({
+      evt: "ai_video_cost",
+      job_id: jobId,
+      brand_id: brand.id,
+      provider: route.provider,
+      model: route.model,
+      cost_cents: job.cost_cents || estCostCents(),
+      status: "ready",
+    }),
   );
 
   if (post) {
@@ -441,7 +463,18 @@ export async function runAiVideoJobDrain(limit = 2): Promise<
   for (const row of rows) {
     try {
       const res = await processAiVideoJob(row.id);
-      if (res) out.push(res);
+      if (res) {
+        console.info(
+          JSON.stringify({
+            evt: "ai_video_drain",
+            job_id: row.id,
+            brand_id: row.brand_id,
+            cost_cents: row.cost_cents,
+            status: "processed",
+          }),
+        );
+        out.push(res);
+      }
     } catch (err) {
       console.error(`runAiVideoJobDrain: job ${row.id}`, err);
       await query(

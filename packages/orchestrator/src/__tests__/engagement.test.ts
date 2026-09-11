@@ -74,7 +74,7 @@ describe("engagement safety rails", () => {
     decide({ bucket: "lead", sentiment: "positive", action: "escalate", reply: "here's our booking link", summary: "wants to book" });
     const res = await handleInteraction(brand, interaction("dm", "can I book for Saturday?"));
     expect(res.publicReply).toBe("here's our booking link");
-    expect(res.ownerMessage).toContain("Lead");
+    expect(res.ownerMessage).toContain("Lead card");
   });
 });
 

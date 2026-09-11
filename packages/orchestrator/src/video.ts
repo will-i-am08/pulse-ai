@@ -524,6 +524,7 @@ export async function draftReelFromVideo(
     platform: "instagram",
     pillarId: pillar?.id ?? null,
     postsPerWeek: pillar?.posts_per_week ?? 0,
+    format: "reel",
   });
 
   // Reels always wait for approval (video is high-stakes / AIGC-adjacent).
@@ -610,6 +611,7 @@ export async function draftReelFromStills(
     platform: "instagram",
     pillarId: pillar.id,
     postsPerWeek: pillar.posts_per_week,
+    format: "reel",
   });
 
   const post = await queryOne<Post>(

@@ -6,6 +6,7 @@ import {
   claimInteraction,
   handleInteraction,
   sendToBrand,
+  maybeAutoPushLead,
 } from "@pulse/gateway";
 import type { EngagementResult } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
@@ -234,6 +235,18 @@ export async function runEngagementLoop(deps: EngagementLoopDeps = realDeps()): 
       logger.error(`engagement loop: routing failed for interaction ${claimed.id}`, {
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+
+    // Phase I: auto-push qualified leads to CRM when enabled.
+    if (res.leadCardPush) {
+      try {
+        const crmSms = await maybeAutoPushLead(brand, claimed);
+        if (crmSms) await deps.sendToBrand(brand.id, crmSms);
+      } catch (err) {
+        logger.error(`engagement loop: CRM push failed for interaction ${claimed.id}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     if (!spiked.has(brand.id)) {

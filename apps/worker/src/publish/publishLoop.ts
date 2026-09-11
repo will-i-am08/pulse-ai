@@ -2,14 +2,14 @@ import { query, getServerEnv, platformLabel } from "@pulse/shared";
 import type { Brand, Post } from "@pulse/shared";
 import { getGraphAdapter, didPublishLive, publishConfirmation } from "@pulse/graph";
 import type { GraphAdapter } from "@pulse/graph";
-import { sendToBrand } from "@pulse/gateway";
+import { sendToBrand, sendToOperator } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
 import { withRetry } from "../lib/retry.js";
 import { resolveMediaUrls } from "../lib/media.js";
 import { checkRateLimit } from "./rateLimit.js";
 import { hasApprovedLog } from "./assertApproved.js";
 import { writeApprovalLog } from "./approvalLog.js";
-import { MAX_PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_BASE_MINUTES, operatorPhone } from "../config.js";
+import { MAX_PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_BASE_MINUTES } from "../config.js";
 
 function brandFacingPublishError(platform: string, message: string): string | null {
   if (platform !== "linkedin" && platform !== "tiktok") return null;
@@ -17,6 +17,15 @@ function brandFacingPublishError(platform: string, message: string): string | nu
   if (/caption too long|too long \(max/i.test(message)) {
     const max = platform === "linkedin" ? 3000 : 2200;
     return `${name} rejected that caption — keep it under ${max} characters, then approve again. Other destinations are unaffected.`;
+  }
+  if (/admin of that Company Page|need to be an admin/i.test(message)) {
+    return `LinkedIn needs a Company Page admin — reconnect with an admin account. Other destinations are unaffected.`;
+  }
+  if (/partner approval|Marketing Developer Platform/i.test(message)) {
+    return `LinkedIn partner approval is still pending — can't go live yet. Other destinations are unaffected.`;
+  }
+  if (/rate\/cap|rate.?limit|posting limit/i.test(message)) {
+    return `${name} hit a posting limit — try again later. Other destinations are unaffected.`;
   }
   if (/music|consent|privacy|unaudited|audit/i.test(message)) {
     return `${name} needs privacy / music consent before I can post. Say "connect TikTok" for a fresh link. Other destinations are unaffected.`;
@@ -129,7 +138,14 @@ async function processPost(post: PostWithBrand, deps: PublishLoopDeps): Promise<
 
   try {
     const result = await withRetry(`publish:${post.id}`, () =>
-      graph.publish({ brand, platform: post.platform, caption: post.caption ?? "", mediaUrls, format: post.format })
+      graph.publish({
+        brand,
+        platform: post.platform,
+        caption: post.caption ?? "",
+        mediaUrls,
+        format: post.format,
+        styleMeta: post.style_meta,
+      })
     );
 
     await query(
@@ -198,9 +214,8 @@ async function handlePublishFailure(
       );
     }
 
-    await send(
-      operatorPhone(),
-      `Publish FAILED for "${brand.name}" (${post.platform}) after ${retryCount} attempts: ${message}`
+    await sendToOperator(
+      `Publish FAILED for "${brand.name}" (${post.platform}) after ${retryCount} attempts: ${message}`,
     ).catch((alertErr) => logger.error("failed to alert operator of publish failure", { error: String(alertErr) }));
     return;
   }

@@ -68,8 +68,13 @@ export async function parkCarouselChoice(brandId: string, photoIds: string[]): P
   );
 }
 
-async function scheduleFor(brand: Brand, pillarId: string | null, postsPerWeek: number): Promise<Date> {
-  return scheduleSlot({ brandId: brand.id, platform: "instagram", pillarId, postsPerWeek });
+async function scheduleFor(
+  brand: Brand,
+  pillarId: string | null,
+  postsPerWeek: number,
+  format?: PostFormat | null,
+): Promise<Date> {
+  return scheduleSlot({ brandId: brand.id, platform: "instagram", pillarId, postsPerWeek, format });
 }
 
 /**
@@ -112,7 +117,7 @@ export async function resolveAsCarousel(
   const pillars = await ensurePillars(brand.id);
   const pillar = await classifyPhotoPillar(brand, pillars, ids[0]!);
   const autopilot = Boolean(pillar?.autopilot);
-  const slot = await scheduleFor(brand, pillar?.id ?? null, pillar?.posts_per_week ?? 0);
+  const slot = await scheduleFor(brand, pillar?.id ?? null, pillar?.posts_per_week ?? 0, 'carousel');
 
   const post = await queryOne<Post>(
     `update posts set caption = $1, media_ids = $2::uuid[], pillar_id = $3, is_auto = $4,
@@ -414,7 +419,7 @@ export async function generateTypedCarousel(
     return { ok: false, qaSms: designQaFailureSms(brand.name) };
   }
 
-  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week);
+  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, 'carousel');
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at)
      values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5)
@@ -467,7 +472,7 @@ export async function draftCarouselFromPhotos(
   // Generated/bot-assembled value still respects autopilot for *photo* bundles,
   // but tip/typed generators above always force pending_approval.
   const autopilot = Boolean(pillar.autopilot);
-  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week);
+  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, 'carousel');
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, source_media_ids, format, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
      values ($1, $2, $3::uuid[], $4::uuid[], 'carousel', $5, $6, $7, 'instagram', $8, $9)
@@ -526,7 +531,7 @@ export async function draftStoryFromPhoto(
   // Store the short overlay as caption — intentional, not a discarded feed caption.
   const caption = [overlay.overlay, overlay.cta].filter(Boolean).join(" · ");
   const mediaIds = [coverId];
-  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week);
+  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, 'story');
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, format, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
      values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, 'story', $6, $7, $8, 'instagram', $9, $10)
@@ -572,7 +577,7 @@ export async function resolveAsSeparate(brand: Brand, draft: Post): Promise<numb
       ]);
       const finalId = edited ?? id;
       const autopilot = Boolean(pillar?.autopilot);
-      const slot = await scheduleFor(brand, pillar?.id ?? null, pillar?.posts_per_week ?? 0);
+      const slot = await scheduleFor(brand, pillar?.id ?? null, pillar?.posts_per_week ?? 0, 'feed');
       await query(
         `insert into posts (brand_id, caption, media_ids, source_media_ids, format, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
          values ($1, $2, $3::uuid[], $4::uuid[], 'feed', $5, $6, $7, 'instagram', $8, $9)`,
