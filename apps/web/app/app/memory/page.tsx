@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { emptyBrandVoiceProfile, type Brand, type BrandVoiceProfile } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
+import { updateMemoryNotesAction } from '@/lib/actions/memory';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Memory | Kip' };
@@ -38,14 +39,18 @@ function brandMd(b: Brand): string {
     .join('\n');
 }
 
-export default async function MemoryPage({ searchParams }: { searchParams: Promise<{ file?: string }> }) {
+export default async function MemoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ file?: string; saved?: string }>;
+}) {
   const user = await currentUser();
   if (!user) redirect('/login');
   const brands = await listBrandsForOwner(user.id);
   const brand = brands[0];
   if (!brand) redirect('/app');
 
-  const { file } = await searchParams;
+  const { file, saved } = await searchParams;
   const active: FileName = (FILES as string[]).includes(file ?? '') ? (file as FileName) : 'memory.md';
   const voice = brand.brand_voice_profile ?? emptyBrandVoiceProfile();
 
@@ -67,19 +72,34 @@ export default async function MemoryPage({ searchParams }: { searchParams: Promi
             ))}
           </nav>
           <div>
-            <div className="file" style={{ whiteSpace: 'pre-wrap' }}>{body}</div>
-            {active === 'voice.md' ? (
-              <p style={{ marginTop: 14 }}>
-                <Link className="pill-dark" href={`/app/brands/${brand.id}/voice`}>
-                  Edit voice profile
-                </Link>
-              </p>
+            {active === 'memory.md' ? (
+              <form action={updateMemoryNotesAction}>
+                {saved && <p className="banner ok">Saved. Kip will use this from now on.</p>}
+                <textarea
+                  name="body"
+                  defaultValue={voice.notes.length ? voice.notes.map((n) => `- ${n}`).join('\n') : ''}
+                  placeholder="One note per line, e.g.&#10;- Almond croissant is the hero pastry&#10;- Never post before 7am"
+                  style={{ minHeight: 280, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 14 }}
+                />
+                <p style={{ marginTop: 12 }}>
+                  <button className="pill-dark" type="submit">Save file</button>
+                </p>
+              </form>
             ) : (
-              <p className="note-card" style={{ marginTop: 14 }}>
-                {active === 'brand.md'
-                  ? 'Brand details come from Connections and signup. Update your number in Connections.'
-                  : 'Kip writes to memory as it learns from your edits. Direct editing here is coming — for now, correct a caption and Kip remembers why.'}
-              </p>
+              <>
+                <div className="file" style={{ whiteSpace: 'pre-wrap' }}>{body}</div>
+                {active === 'voice.md' ? (
+                  <p style={{ marginTop: 14 }}>
+                    <Link className="pill-dark" href={`/app/brands/${brand.id}/voice`}>
+                      Edit voice profile
+                    </Link>
+                  </p>
+                ) : (
+                  <p className="note-card" style={{ marginTop: 14 }}>
+                    Brand details come from Connections and signup. Update your number in Connections.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
