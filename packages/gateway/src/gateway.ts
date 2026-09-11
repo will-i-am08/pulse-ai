@@ -18,6 +18,7 @@ import {
 import { createTwilioChannel } from "@pulse/channel-twilio";
 import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
+import { claimContactCardSent, needsContactCard, releaseContactCardSent } from "./contactCardSent.js";
 
 let channelSingleton: MessageChannel | null = null;
 let channelOverride: MessageChannel | null = null;
@@ -239,29 +240,6 @@ export async function captureMedia(
   return captured;
 }
 
-/** True when this brand has not yet been sent Kip's Twilio MMS contact card. */
-function needsTwilioContactCard(brand: Brand): boolean {
-  const sent = brand.onboarding_state?.kip_contact_card_sent_at;
-  return typeof sent !== "string" || sent.length === 0;
-}
-
-/** Stamp kip_contact_card_sent_at so we only MMS the vCard once per brand. */
-async function markTwilioContactCardSent(brandId: string): Promise<void> {
-  try {
-    await query(
-      `update brands
-          set onboarding_state = jsonb_set(
-                coalesce(onboarding_state, '{}'::jsonb),
-                '{kip_contact_card_sent_at}',
-                to_jsonb(now()::text)
-              )
-        where id = $1`,
-      [brandId],
-    );
-  } catch (err) {
-    console.warn(`sendToBrand: failed to mark contact card sent for ${brandId}`, err);
-  }
-}
 
 /**
  * Send an outbound message via the active channel and log it as an outbound Message row.
@@ -304,9 +282,13 @@ export async function sendToBrand(
 
   // Twilio can't do iMessage Name-and-Photo Sharing — attach a Kip.vcf MMS on
   // the first outbound so the client can save name + cat logo from setup/OTP.
-  const attachTwilioCard = which === "twilio" && channel.name === "twilio-sms" && needsTwilioContactCard(brand);
-  const vcardUrl = attachTwilioCard ? kipContactIdentity().vcardUrl : null;
-  let twilioCardAttached = false;
+  // Claim atomically so concurrent sends (ack + reply) only attach once, and
+  // so onboarding JSON rewrites cannot wipe the flag and re-attach later.
+  let claimedTwilioCard = false;
+  if (which === "twilio" && channel.name === "twilio-sms" && needsContactCard(brand)) {
+    claimedTwilioCard = !!(await claimContactCardSent(brandId));
+  }
+  const vcardUrl = claimedTwilioCard ? kipContactIdentity().vcardUrl : null;
 
   let sentAny = false;
   for (let i = 0; i < parts.length; i++) {
@@ -314,7 +296,6 @@ export async function sendToBrand(
     let partMedia = i === parts.length - 1 ? mediaUrls : undefined;
     if (vcardUrl && i === 0) {
       partMedia = [...(partMedia ?? []), vcardUrl];
-      twilioCardAttached = true;
     }
     if (pace) {
       // Typing pause before each bubble: longer for longer texts (capped),
@@ -331,13 +312,12 @@ export async function sendToBrand(
       sentAny = true;
     } catch (err) {
       console.error(`sendToBrand: send failed after retries for brand ${brandId}`, err);
+      // Release so a later successful outbound can still deliver the vCard.
+      if (claimedTwilioCard && i === 0) {
+        await releaseContactCardSent(brandId);
+        claimedTwilioCard = false;
+      }
       return sentAny;
-    }
-
-    // Only mark after a successful send that actually included the vCard.
-    if (twilioCardAttached && i === 0) {
-      await markTwilioContactCardSent(brandId);
-      twilioCardAttached = false;
     }
 
     try {
