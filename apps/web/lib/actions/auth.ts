@@ -31,6 +31,35 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Brand that should receive this user's login code.
+ * Prefer a brand they own; fall back to the brand whose client_phone matches
+ * (legacy brands created before phone-auth users, or signup that couldn't
+ * insert a second brand for a phone that was already taken).
+ */
+async function resolveBrandForPhone(userId: string, phone: string): Promise<string | null> {
+  const owned = await queryOne<{ id: string }>(
+    'select id from brands where owner_user_id = $1 order by created_at asc limit 1',
+    [userId],
+  );
+  if (owned) return owned.id;
+
+  const byPhone = await queryOne<{ id: string }>(
+    'select id from brands where client_phone = $1 order by created_at asc limit 1',
+    [phone],
+  );
+  if (byPhone) {
+    // Heal ownership so the next login / dashboard lookup is consistent.
+    await query(
+      `update brands set owner_user_id = $1
+        where id = $2 and (owner_user_id is null or owner_user_id <> $1)`,
+      [userId, byPhone.id],
+    ).catch(() => undefined);
+    return byPhone.id;
+  }
+  return null;
+}
+
 /** Queue a fresh login code for a phone, tied to the user + their brand. */
 async function issueCode(
   phone: string,
@@ -65,11 +94,8 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
   const user = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
   if (!user) redirect('/login?error=nouser');
 
-  const brand = await queryOne<{ id: string }>(
-    'select id from brands where owner_user_id = $1 order by created_at asc limit 1',
-    [user!.id],
-  );
-  await issueCode(phone!, user!.id, brand?.id ?? null, 'login');
+  const brandId = await resolveBrandForPhone(user!.id, phone!);
+  await issueCode(phone!, user!.id, brandId, 'login');
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}`);
 }
 
@@ -120,8 +146,39 @@ export async function signupAction(formData: FormData): Promise<void> {
   if (!name) redirect('/signup?error=missing');
   if (!phone) redirect('/signup?error=badphone');
 
-  const existing = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
-  if (existing) redirect('/login?error=exists');
+  const existingUser = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
+  if (existingUser) redirect('/login?error=exists');
+
+  // client_phone is unique — a prior brand (often seeded before phone-auth)
+  // would make the insert fail after the user row already exists, leaving an
+  // account that can never receive login codes.
+  const phoneTaken = await queryOne<{ id: string; owner_user_id: string | null }>(
+    'select id, owner_user_id from brands where client_phone = $1',
+    [phone],
+  );
+  if (phoneTaken) {
+    // If that brand has no phone-auth owner yet, claim it instead of failing.
+    if (!phoneTaken.owner_user_id) {
+      const user = await queryOne<{ id: string }>(
+        'insert into users (phone, email, name) values ($1, $2, $3) returning id',
+        [phone, email, name],
+      );
+      if (!user) redirect('/signup?error=failed');
+      await query(
+        `update brands
+            set owner_user_id = $1,
+                name = coalesce(nullif(name, ''), $2),
+                discord_user_id = coalesce(nullif($3, ''), discord_user_id),
+                account_type = coalesce(account_type, $4),
+                website = coalesce(website, nullif($5, ''))
+          where id = $6`,
+        [user!.id, name, discordUserId, accountType, website, phoneTaken.id],
+      );
+      await issueCode(phone!, user!.id, phoneTaken.id, 'signup');
+      redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
+    }
+    redirect('/signup?error=phoneinuse');
+  }
 
   const user = await queryOne<{ id: string }>(
     'insert into users (phone, email, name) values ($1, $2, $3) returning id',
@@ -129,14 +186,25 @@ export async function signupAction(formData: FormData): Promise<void> {
   );
   if (!user) redirect('/signup?error=failed');
 
-  const brand = await queryOne<{ id: string }>(
-    `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
-     values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
-     returning id`,
-    [name, phone, user!.id, discordUserId || null, accountType, website || null],
-  );
+  let brand: { id: string } | null = null;
+  try {
+    brand = await queryOne<{ id: string }>(
+      `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
+       values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
+       returning id`,
+      [name, phone, user!.id, discordUserId || null, accountType, website || null],
+    );
+  } catch {
+    // Roll back the orphan user so a retry isn't stuck as "exists" with no brand.
+    await query('delete from users where id = $1', [user!.id]).catch(() => undefined);
+    redirect('/signup?error=failed');
+  }
+  if (!brand) {
+    await query('delete from users where id = $1', [user!.id]).catch(() => undefined);
+    redirect('/signup?error=failed');
+  }
 
-  await issueCode(phone!, user!.id, brand?.id ?? null, 'signup');
+  await issueCode(phone!, user!.id, brand!.id, 'signup');
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
 }
 

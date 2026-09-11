@@ -263,24 +263,29 @@ async function markTwilioContactCardSent(brandId: string): Promise<void> {
   }
 }
 
-/** Send an outbound message via the active channel and log it as an outbound Message row. */
+/**
+ * Send an outbound message via the active channel and log it as an outbound Message row.
+ * Returns true when at least one part was handed to the provider successfully.
+ * Callers that must not mark work done on a silent failure (e.g. OTP delivery)
+ * should check the boolean — this function does not throw on send failure.
+ */
 export async function sendToBrand(
   brandId: string,
   body: string,
   mediaUrls?: string[],
   opts?: { pace?: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) {
     console.error(`sendToBrand: brand ${brandId} not found`);
-    return;
+    return false;
   }
   const channel = activeChannel();
   const which = getServerEnv().MESSAGE_CHANNEL;
   const to = which === "discord" ? brand.discord_channel_id : brand.client_phone;
   if (!to) {
     console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
-    return;
+    return false;
   }
 
   const text = sanitizeChatText(body);
@@ -297,6 +302,7 @@ export async function sendToBrand(
   const vcardUrl = attachTwilioCard ? kipContactIdentity().vcardUrl : null;
   let twilioCardAttached = false;
 
+  let sentAny = false;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
     let partMedia = i === parts.length - 1 ? mediaUrls : undefined;
@@ -316,9 +322,10 @@ export async function sendToBrand(
         onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
       });
       providerMessageId = result.providerMessageId;
+      sentAny = true;
     } catch (err) {
       console.error(`sendToBrand: send failed after retries for brand ${brandId}`, err);
-      return;
+      return sentAny;
     }
 
     // Only mark after a successful send that actually included the vCard.
@@ -337,6 +344,7 @@ export async function sendToBrand(
       console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
     }
   }
+  return sentAny;
 }
 
 /**
