@@ -4,7 +4,7 @@ import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
-import { onboardingNext, WRAP_ACK } from "./onboarding.js";
+import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser } from "./onboarding.js";
 import {
   editImageForBrand,
   messageWantsText,
@@ -261,7 +261,9 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
 export async function processInbound(
   ctx: InboundContext,
 ): Promise<{ reply: string; postId?: string; mediaUrl?: string; finishOnboardingBrandId?: string }> {
-  const { brand, message, newMedia } = ctx;
+  // Backfill owner_name from signup so persona/interview never re-ask who they are.
+  const brand = await ensureOwnerNameFromUser(ctx.brand);
+  const { message, newMedia } = ctx;
 
   // Mid-onboarding: run the setup conversation instead of the normal flow.
   // When the interview completes, the ack goes out instantly and the heavy

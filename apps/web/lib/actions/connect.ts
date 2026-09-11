@@ -76,12 +76,17 @@ export async function setPhoneAction(formData: FormData): Promise<void> {
   if (!e164) redirect('/app?phone=invalid');
 
   // Replace the `signup:<id>` placeholder with the real number, and arm the agent
-  // to reach out (Discord now; SMS once a Twilio number is live).
+  // to reach out when setup has never completed. Do not re-arm brands that already
+  // finished onboarding (completed_at survives status parking as "none").
   try {
     await query(
       `update brands set client_phone = $1,
-         onboarding_state = case when onboarding_state->>'status' = 'none'
-                                 then '{"status":"pending"}'::jsonb else onboarding_state end
+         onboarding_state = case
+           when onboarding_state->>'status' = 'none'
+            and onboarding_state->>'completed_at' is null
+           then '{"status":"pending"}'::jsonb
+           else onboarding_state
+         end
        where id = $2`,
       [e164, brand!.id],
     );

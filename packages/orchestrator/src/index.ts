@@ -20,8 +20,11 @@ export {
   archiveLabChatAndRestart,
   listLabChats,
   hardResetLabBrand,
+  ensureOwnerNameFromUser,
 } from "./onboarding.js";
 export type { LabChatSummary } from "./onboarding.js";
+
+export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";
 
 export { runVoiceAnalysis, queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 export { computeTextStats } from "./voice/textStats.js";

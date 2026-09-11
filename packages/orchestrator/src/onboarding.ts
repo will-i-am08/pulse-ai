@@ -11,6 +11,7 @@ import {
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { seedPendingPlan } from "./nichePlan.js";
+import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -62,13 +63,33 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
   }
 }
 
+/**
+ * If facts.owner_name is missing, copy the linked user's signup name (first
+ * token) onto the brand so Kip addresses them correctly without re-asking.
+ */
+export async function ensureOwnerNameFromUser(brand: Brand): Promise<Brand> {
+  if (ownerFirstName(brand)) return brand;
+  if (!brand.owner_user_id) return brand;
+  const user = await queryOne<{ name: string | null }>("select name from users where id = $1", [
+    brand.owner_user_id,
+  ]);
+  const first = firstNameFromDisplayName(user?.name);
+  if (!first) return brand;
+  const facts = { ...(brand.facts ?? {}), owner_name: first };
+  await query("update brands set facts = $1::jsonb where id = $2", [JSON.stringify(facts), brand.id]);
+  return { ...brand, facts };
+}
+
 function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
+  const knownName = ownerFirstName(brand);
   return [
     `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Warm, sharp, human, like texting a switched-on mate.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
-    "Early on, warmly get their first name (by your third message at the latest) so you can address them personally from here on.",
+    knownName
+      ? `You already know their first name is ${knownName}. Greet them by it. Do NOT ask for their name — never re-ask who they are.`
+      : "Early on, warmly get their first name (by your third message at the latest) so you can address them personally from here on.",
     "Make sure you learn their business/niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "HOW YOU TALK (absolute rules):",
     "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
@@ -120,8 +141,19 @@ async function readWebsite(url: string): Promise<string | null> {
 
 /** Begin onboarding: read the website if present, then open the conversation (LLM-generated). */
 export async function startOnboarding(brandId: string): Promise<string> {
-  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  let brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) throw new Error(`startOnboarding: brand ${brandId} not found`);
+  brand = await ensureOwnerNameFromUser(brand);
+
+  const prev = brand.onboarding_state ?? { status: "none" };
+  // Never re-run setup once it has completed — even if status was parked as none.
+  if (prev.status === "done" || typeof prev.completed_at === "string") {
+    const name = ownerFirstName(brand);
+    return name
+      ? `Hey ${name} — we're already set up. Send a photo or tell me what you want to post.`
+      : "Hey — we're already set up. Send a photo or tell me what you want to post.";
+  }
+
   const type: AccountType = brand.account_type ?? "business";
 
   let websiteSummary: string | undefined;
@@ -129,11 +161,13 @@ export async function startOnboarding(brandId: string): Promise<string> {
     websiteSummary = (await readWebsite(brand.website)) ?? undefined;
   }
 
+  const knownName = ownerFirstName(brand);
   const system = interviewerSystem(brand, type, websiteSummary);
   const seed: OnboardingTurnMsg = {
     role: "user",
-    content:
-      "Start the onboarding now: greet them by name, and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.",
+    content: knownName
+      ? `Start the onboarding now: greet them as ${knownName} (you already know their name — do not ask for it), and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.`
+      : "Start the onboarding now: greet them by name, and (if you learned things from their website) briefly reflect that back before asking your first, most useful question.",
   };
   const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
 
@@ -255,8 +289,17 @@ export async function finishOnboarding(brandId: string): Promise<string> {
       ? (transcript.pop() as OnboardingTurnMsg).content
       : "You're all set.";
   const recap = await compileProfile(brand, type, transcript);
-  await saveState(brand.id, { status: "done", type, turns, transcript, answers });
+  await saveState(brand.id, {
+    status: "done",
+    completed_at: new Date().toISOString(),
+    type,
+    turns,
+    transcript,
+    answers,
+  });
   await captureOwnerName(brand, transcript);
+  const latest = (await queryOne<Brand>("select * from brands where id = $1", [brand.id])) ?? brand;
+  await ensureOwnerNameFromUser(latest);
   await captureNicheAndSeedPlan(brand, transcript);
   return (
     `${signoff}\n\n${recap}\n\n${nextStepFor(type, transcript)}\n\n` +
@@ -314,6 +357,7 @@ async function compileProfile(
 
 /** Soft-restart the interview for any brand: fresh transcript via startOnboarding. */
 export async function restartOnboarding(brandId: string): Promise<string> {
+  // Intentional wipe of completed_at — lab "new chat" / redo setup starts clean.
   await query(
     `update brands set onboarding_state = $2::jsonb where id = $1`,
     [brandId, JSON.stringify({ status: "pending" })],

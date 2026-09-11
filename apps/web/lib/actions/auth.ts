@@ -256,25 +256,34 @@ export async function signupAction(formData: FormData): Promise<void> {
       if (!user) throw new Error('user insert returned no row');
 
       let brandId: string | null;
+      // First token of the signup name — seeded so Kip never re-asks who they are.
+      const ownerName = name.trim().split(/\s+/)[0]!;
+      const factsJson = JSON.stringify({ owner_name: ownerName });
       if (phoneTaken) {
         // Claim the pre-existing unowned brand rather than inserting a duplicate.
+        // Fill owner_name only when missing so a prior capture is preserved.
         await tx.query(
           `update brands
               set owner_user_id = $1,
                   name = coalesce(nullif(name, ''), $2),
                   discord_user_id = coalesce(nullif($3, ''), discord_user_id),
                   account_type = coalesce(account_type, $4),
-                  website = coalesce(website, nullif($5, ''))
-            where id = $6`,
-          [user.id, name, discordUserId, accountType, website, phoneTaken.id],
+                  website = coalesce(website, nullif($5, '')),
+                  facts = case
+                    when coalesce(facts->>'owner_name', '') = ''
+                    then coalesce(facts, '{}'::jsonb) || $6::jsonb
+                    else facts
+                  end
+            where id = $7`,
+          [user.id, name, discordUserId, accountType, website, factsJson, phoneTaken.id],
         );
         brandId = phoneTaken.id;
       } else {
         const brand = await tx.queryOne<{ id: string }>(
-          `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
-           values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
+          `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, facts, onboarding_state)
+           values ($1, $2, $3, $4, $5, $6, $7::jsonb, '{"status":"pending"}'::jsonb)
            returning id`,
-          [name, phone, user.id, discordUserId || null, accountType, website || null],
+          [name, phone, user.id, discordUserId || null, accountType, website || null, factsJson],
         );
         brandId = brand?.id ?? null;
       }

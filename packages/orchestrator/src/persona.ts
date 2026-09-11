@@ -5,11 +5,17 @@ import type { Brand } from "@pulse/shared";
 // there is no agency, no operator, no human behind the curtain. Owns the work,
 // owns being an AI, drives the hands-on bits, stays in its lane.
 
+/** First token of a display name (signup / user name), or null if empty. */
+export function firstNameFromDisplayName(name: string | null | undefined): string | null {
+  if (typeof name !== "string") return null;
+  const first = name.trim().split(/\s+/)[0];
+  return first || null;
+}
+
 /** The owner's first name if we've captured it, for personal address. */
 export function ownerFirstName(brand: Brand): string | null {
   const n = (brand.facts as { owner_name?: string } | null)?.owner_name;
-  if (typeof n !== "string" || !n.trim()) return null;
-  return n.trim().split(/\s+/)[0]!;
+  return firstNameFromDisplayName(n);
 }
 
 /** Persona system lines — prepend to any prompt that speaks to the owner. */

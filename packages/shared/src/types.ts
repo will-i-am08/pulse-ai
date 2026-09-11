@@ -173,6 +173,8 @@ export interface OnboardingTurnMsg {
 
 export interface OnboardingState {
   status: OnboardingStatus;
+  /** Set when onboarding first reaches done — survives status parking so we never re-arm setup. */
+  completed_at?: string;
   step?: number;
   turns?: number;
   type?: AccountType;
