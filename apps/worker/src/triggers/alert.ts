@@ -11,7 +11,7 @@ export interface FailedPostSummary {
 
 export interface AlertDeps {
   getFailuresSince: (brandId: string, since: string | null) => Promise<FailedPostSummary[]>;
-  sendToBrand: (brandId: string, body: string) => Promise<void>;
+  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }

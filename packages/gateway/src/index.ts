@@ -2,7 +2,6 @@ export {
   handleInbound,
   resolveBrand,
   resolveBrandByPhone,
-  resolveBrandByDiscord,
   resolveBrandByLinq,
   captureMedia,
   sendToBrand,

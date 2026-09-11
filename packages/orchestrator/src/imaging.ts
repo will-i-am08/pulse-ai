@@ -3,11 +3,110 @@ import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
-import { query, getMedia, putMedia, getServerEnv, sanitizeChatText, type Brand } from "@pulse/shared";
+import {
+  query,
+  getMedia,
+  putMedia,
+  getServerEnv,
+  sanitizeChatText,
+  brandVoiceProfileSchema,
+  type Brand,
+  type VisualProfile,
+} from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { routeImageJob } from "./modelRouter.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
+
+// ─── Brand visual tokens → render palette ────────────────────────────────────
+
+type BrandPalette = {
+  bgFrom: string;
+  bgTo: string;
+  text: string;
+  muted: string;
+  displayFont: "Anton" | "Playfair";
+  bodyFont: "Anton" | "Playfair";
+};
+
+function normalizeHex(raw: string | undefined): string | null {
+  if (!raw) return null;
+  let c = raw.trim();
+  // Named colours we allow without hex.
+  const named: Record<string, string> = {
+    black: "#141414",
+    white: "#ffffff",
+    cream: "#f5f0e8",
+    navy: "#0b1f3a",
+    forest: "#1a3a2a",
+    charcoal: "#2a2a2a",
+  };
+  const lower = c.toLowerCase();
+  if (named[lower]) return named[lower];
+  if (!c.startsWith("#")) c = `#${c}`;
+  if (/^#[0-9a-fA-F]{3}$/.test(c)) {
+    const r = c[1],
+      g = c[2],
+      b = c[3];
+    c = `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return /^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : null;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+
+function relativeLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const lin = [r, g, b].map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * lin[0]! + 0.7152 * lin[1]! + 0.0722 * lin[2]!;
+}
+
+function contrastText(bg: string): string {
+  return relativeLuminance(bg) > 0.45 ? "#1a1a1a" : "#ffffff";
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const m = (x: number, y: number) => Math.round(x + (y - x) * t);
+  const h = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${h(m(A.r, B.r))}${h(m(A.g, B.g))}${h(m(A.b, B.b))}`;
+}
+
+/** Resolve quote-card / tile colours + font roles from VisualProfile (sensible dark defaults). */
+export function resolveBrandPalette(visual?: VisualProfile | null): BrandPalette {
+  const colors = (visual?.colors ?? []).map(normalizeHex).filter((c): c is string => Boolean(c));
+  const bgFrom = colors[0] ?? "#141414";
+  const bgTo = colors[1] ?? (colors[0] ? mixHex(colors[0], "#000000", 0.25) : "#2a2a2a");
+  const text = colors[2] ? colors[2] : contrastText(bgFrom);
+  const muted = mixHex(text, bgFrom, 0.35);
+
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  const wantsSerif = fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f));
+  const wantsSans = fonts.some((f) => /sans|helvetica|arial|montserrat|inter|futura|anton|impact|gothic/.test(f));
+  let displayFont: "Anton" | "Playfair" = "Anton";
+  let bodyFont: "Anton" | "Playfair" = "Playfair";
+  // Serif preference wins when both match (e.g. "Playfair Display").
+  if (wantsSerif) {
+    displayFont = "Playfair";
+    bodyFont = "Playfair";
+  } else if (wantsSans) {
+    displayFont = "Anton";
+    bodyFont = "Anton";
+  }
+
+  return { bgFrom, bgTo, text, muted, displayFont, bodyFont };
+}
 
 // AI image editing via Replicate (Flux Kontext by default). The agent writes a
 // tailored edit instruction from the actual photo + brand, then runs the model.
@@ -17,8 +116,37 @@ type ContentPart = Exclude<Anthropic.MessageParam["content"], string>[number];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Brand visual + learned photo_style cues for Flux edit prompts (Phase C1).
+ * Exported for tests — must include photo_style fields when present on voice.
+ */
+export function brandPhotoStyleBits(brand: Brand): string[] {
+  const visual = brand.visual ?? {};
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const ps = profile.photo_style;
+  return [
+    visual.aesthetic,
+    visual.aesthetic_notes,
+    visual.photo_treatment,
+    visual.colors?.length ? `lean into colours ${visual.colors.join(", ")}` : "",
+    visual.fonts?.length ? `type/brand feel ${visual.fonts.join(", ")}` : "",
+    ps.overall_aesthetic ? `photo style aesthetic: ${ps.overall_aesthetic}` : "",
+    ps.lighting ? `lighting: ${ps.lighting}` : "",
+    ps.composition ? `composition: ${ps.composition}` : "",
+    ps.editing ? `editing grade: ${ps.editing}` : "",
+    ps.colour_palette?.length ? `photo colours: ${ps.colour_palette.join(", ")}` : "",
+    ps.framing ? `framing: ${ps.framing}` : "",
+    ps.common_subjects?.length ? `common subjects: ${ps.common_subjects.join(", ")}` : "",
+    ps.recurring_motifs?.length ? `motifs: ${ps.recurring_motifs.join(", ")}` : "",
+  ].filter((b): b is string => Boolean(b));
+}
+
 /** Vision LLM: given the photo + brand (+ the client's own request), write a Flux Kontext edit instruction. */
-async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: string): Promise<string> {
+export async function generateEditPrompt(
+  brand: Brand,
+  imgBytes: Uint8Array,
+  request?: string,
+): Promise<string> {
   const business = brand.account_type !== "personal";
   // Strip any "add text" intent — text is burned on deterministically by the tile,
   // never by the image model (whose text comes out mangled).
@@ -27,12 +155,14 @@ async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: 
     .replace(/\s{2,}/g, " ")
     .trim();
   const asked = asked0.length > 2 ? asked0 : "";
+  const styleBits = brandPhotoStyleBits(brand);
   const system = [
     "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
-      ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
+      ? "BUSINESS account — FAITHFUL ENHANCEMENT DEFAULT: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
-    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
+    styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
+    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else (still keep business subjects truthful).` : "",
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
@@ -127,6 +257,7 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
   const env = getServerEnv();
   const token = env.REPLICATE_API_TOKEN;
   if (!token) return null;
+  routeImageJob("photo_generate");
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
   try {
     let body: any;
@@ -168,12 +299,19 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
  * new media id, or null if editing is disabled/unavailable (caller falls back to
  * the original photo).
  */
-export async function editImageForBrand(brand: Brand, mediaId: string, request?: string): Promise<string | null> {
+export async function editImageForBrand(
+  brand: Brand,
+  mediaId: string,
+  request?: string,
+  /** When set, skip LLM prompt generation and reuse this grade (photo-bundle consistency). */
+  sharedPrompt?: string,
+): Promise<string | null> {
   if (!getServerEnv().REPLICATE_API_TOKEN) return null;
+  routeImageJob("photo_edit");
   const blob = await getMedia(mediaId);
   if (!blob || !blob.contentType.startsWith("image/")) return null;
   try {
-    const prompt = await generateEditPrompt(brand, blob.bytes, request);
+    const prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
     const edited = await replicateEdit(blob.bytes, prompt);
     const newId = randomUUID();
     await query(
@@ -189,12 +327,85 @@ export async function editImageForBrand(brand: Brand, mediaId: string, request?:
   }
 }
 
+/**
+ * Grade every slide in a photo-bundle with one shared Flux prompt so the swipe
+ * reads as one set (consistent colour/light). Cover may still get a text tile;
+ * interior slides stay photo-only after the shared grade (styled cover + candid rest).
+ */
+export async function gradePhotoBundle(
+  brand: Brand,
+  mediaIds: string[],
+  request?: string,
+): Promise<string[]> {
+  if (mediaIds.length === 0) return [];
+  const first = await getMedia(mediaIds[0]!);
+  if (!first || !first.contentType.startsWith("image/")) return mediaIds;
+  let shared: string | undefined;
+  try {
+    shared = await generateEditPrompt(brand, first.bytes, request);
+  } catch {
+    shared = undefined;
+  }
+  const { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } = await import("./concurrency.js");
+  const graded = await mapWithConcurrency(mediaIds, SLIDE_RENDER_CONCURRENCY, async (id) => {
+    const edited = await editImageForBrand(brand, id, request, shared).catch(() => null);
+    return edited ?? id;
+  });
+  return graded;
+}
+
 // ─── Text tile (Satori + resvg): burn a bold headline onto the image ─────────
 
 /** Does the client's message ask for text on the image? */
 export function messageWantsText(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(text|caption on|words on|title on|headline|writing on)\b/i.test(body);
+  return /\b(text|caption on|words on|title on|headline|writing on|add text|put text|overlay)\b/i.test(body);
+}
+
+/** Explicit "no text on the image" / leave it clean. */
+export function messageWantsNoText(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
+    body,
+  );
+}
+
+/**
+ * Smarter headline-on-photo default (Phase C1).
+ * - Explicit ask → yes; explicit decline → no
+ * - Business: yes when promo/offer language OR short/empty instruction
+ * - Personal: only when asked
+ * - Stories: overlay by default (unless declined)
+ */
+export function shouldOverlayHeadline(
+  brand: Brand,
+  body: string | null | undefined,
+  opts?: { caption?: string; format?: "feed" | "carousel" | "story" | "reel" },
+): boolean {
+  if (messageWantsNoText(body)) return false;
+  if (messageWantsText(body)) return true;
+  if (opts?.format === "story") return true;
+  // Reels: no automatic photo headline (video cover/text overlay is a separate path).
+  if (opts?.format === "reel") return false;
+  if (brand.account_type === "personal") return false;
+
+  const text = `${body ?? ""} ${opts?.caption ?? ""}`;
+  if (/\b(offer|sale|%\s*off|discount|menu|special|launch|new drop|book now|limited|promo|deal)\b/i.test(text)) {
+    return true;
+  }
+  const trimmed = (body ?? "").trim();
+  return trimmed.length < 48;
+}
+
+/** Crop/letterbox a photo into 9:16 story frame (safe for IG Stories). */
+export async function frameStoryImage(imgBytes: Uint8Array): Promise<Buffer> {
+  const width = 1080;
+  const height = 1920;
+  return sharp(Buffer.from(imgBytes))
+    .rotate()
+    .resize({ width, height, fit: "cover", position: "centre" })
+    .jpeg({ quality: 88 })
+    .toBuffer();
 }
 
 /**
@@ -220,7 +431,13 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   return sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42) || brand.name.toUpperCase();
 }
 
-async function renderTile(imgBytes: Uint8Array, headline: string, masthead: string): Promise<Buffer> {
+async function renderTile(
+  imgBytes: Uint8Array,
+  headline: string,
+  masthead: string,
+  visual?: VisualProfile | null,
+): Promise<Buffer> {
+  const palette = resolveBrandPalette(visual);
   const meta = await sharp(Buffer.from(imgBytes)).metadata();
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1350;
@@ -229,6 +446,7 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
   const fontSize = Math.round(width * 0.085);
   const mastheadSize = Math.round(width * 0.062);
   const pad = Math.round(width * 0.05);
+  const scrim = hexToRgb(palette.bgFrom);
 
   const svg = await satori(
     {
@@ -243,9 +461,32 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
           {
             type: "div",
             props: {
-              style: { position: "absolute", top: 0, left: 0, width: `${width}px`, display: "flex", justifyContent: "center", padding: `${Math.round(height * 0.03)}px ${pad}px`, background: "linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0))" },
+              style: {
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: `${width}px`,
+                display: "flex",
+                justifyContent: "center",
+                padding: `${Math.round(height * 0.03)}px ${pad}px`,
+                background: `linear-gradient(to bottom, rgba(${scrim.r},${scrim.g},${scrim.b},0.55), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+              },
               children: [
-                { type: "div", props: { style: { display: "flex", color: "white", fontFamily: "Playfair", fontSize: `${mastheadSize}px`, letterSpacing: "0.02em", textAlign: "center", lineHeight: 1.05 }, children: masthead } },
+                {
+                  type: "div",
+                  props: {
+                    style: {
+                      display: "flex",
+                      color: palette.text,
+                      fontFamily: palette.bodyFont,
+                      fontSize: `${mastheadSize}px`,
+                      letterSpacing: "0.02em",
+                      textAlign: "center",
+                      lineHeight: 1.05,
+                    },
+                    children: masthead,
+                  },
+                },
               ],
             },
           },
@@ -259,13 +500,20 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
                 width: `${width}px`,
                 display: "flex",
                 padding: `${pad}px`,
-                background: "linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0))",
+                background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.85), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
               },
               children: [
                 {
                   type: "div",
                   props: {
-                    style: { display: "flex", color: "white", fontFamily: "Anton", fontSize: `${fontSize}px`, lineHeight: 1.02, textTransform: "uppercase" },
+                    style: {
+                      display: "flex",
+                      color: palette.text,
+                      fontFamily: palette.displayFont,
+                      fontSize: `${fontSize}px`,
+                      lineHeight: 1.02,
+                      textTransform: "uppercase",
+                    },
                     children: headline,
                   },
                 },
@@ -290,10 +538,19 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
 }
 
 /**
- * Render a branded text card (no photo) for a generated filler post — a dark
- * canvas with a centred serif line and the brand name beneath.
+ * Render a branded text card (no photo). Uses VisualProfile colours/fonts when
+ * present; otherwise a sensible dark default (not the only look forever).
  */
-export async function renderQuoteCard(text: string, brandName: string): Promise<Buffer> {
+export async function renderQuoteCard(
+  text: string,
+  brandOrName: Brand | string,
+  visualOverride?: VisualProfile | null,
+): Promise<Buffer> {
+  const brandName = typeof brandOrName === "string" ? brandOrName : brandOrName.name;
+  const visual =
+    visualOverride ?? (typeof brandOrName === "string" ? null : (brandOrName.visual ?? null));
+  const palette = resolveBrandPalette(visual);
+
   const width = 1080;
   const height = 1080;
   const pad = Math.round(width * 0.11);
@@ -308,7 +565,7 @@ export async function renderQuoteCard(text: string, brandName: string): Promise<
           flexDirection: "column",
           width: `${width}px`,
           height: `${height}px`,
-          background: "linear-gradient(145deg, #141414, #2a2a2a)",
+          background: `linear-gradient(145deg, ${palette.bgFrom}, ${palette.bgTo})`,
           padding: `${pad}px`,
           alignItems: "center",
           justifyContent: "center",
@@ -318,14 +575,30 @@ export async function renderQuoteCard(text: string, brandName: string): Promise<
           {
             type: "div",
             props: {
-              style: { display: "flex", color: "#ffffff", fontFamily: "Playfair", fontSize: `${fontSize}px`, lineHeight: 1.2, letterSpacing: "0.01em" },
+              style: {
+                display: "flex",
+                color: palette.text,
+                fontFamily: palette.bodyFont,
+                fontSize: `${fontSize}px`,
+                lineHeight: 1.2,
+                letterSpacing: "0.01em",
+              },
               children: text,
             },
           },
           {
             type: "div",
             props: {
-              style: { display: "flex", position: "absolute", bottom: `${pad}px`, color: "rgba(255,255,255,0.75)", fontFamily: "Anton", fontSize: `${Math.round(width * 0.03)}px`, letterSpacing: "0.12em", textTransform: "uppercase" },
+              style: {
+                display: "flex",
+                position: "absolute",
+                bottom: `${pad}px`,
+                color: palette.muted,
+                fontFamily: palette.displayFont,
+                fontSize: `${Math.round(width * 0.03)}px`,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              },
               children: brandName.toUpperCase(),
             },
           },
@@ -350,7 +623,7 @@ export async function applyTextTile(brand: Brand, mediaId: string, headline: str
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const tiled = await renderTile(blob.bytes, headline, brand.name.toUpperCase());
+    const tiled = await renderTile(blob.bytes, headline, brand.name.toUpperCase(), brand.visual);
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
@@ -361,6 +634,130 @@ export async function applyTextTile(brand: Brand, mediaId: string, headline: str
     return newId;
   } catch (err) {
     console.error(`applyTextTile: failed for media ${mediaId}`, err);
+    return null;
+  }
+}
+
+/**
+ * Story-native creative: force 9:16 cover crop + optional overlay/CTA in the
+ * vertical safe zone (kept off extreme top/bottom edges).
+ */
+export async function applyStoryCreative(
+  brand: Brand,
+  mediaId: string,
+  overlay: string,
+  cta?: string,
+): Promise<string | null> {
+  const blob = await getMedia(mediaId);
+  if (!blob) return null;
+  try {
+    const framed = await frameStoryImage(blob.bytes);
+    const width = 1080;
+    const height = 1920;
+    const safeTop = Math.round(height * 0.18);
+    const safeBottom = Math.round(height * 0.78);
+    const jpeg = await sharp(framed).jpeg({ quality: 90 }).toBuffer();
+    const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    const palette = resolveBrandPalette(brand.visual);
+    const scrim = hexToRgb(palette.bgFrom);
+    const headline = overlay.toUpperCase().slice(0, 48);
+    const ctaLine = (cta ?? "").trim().slice(0, 36);
+
+    const svg = await satori(
+      {
+        type: "div",
+        props: {
+          style: { display: "flex", width: `${width}px`, height: `${height}px`, position: "relative" },
+          children: [
+            {
+              type: "img",
+              props: {
+                src: dataUri,
+                width,
+                height,
+                style: {
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  objectFit: "cover",
+                },
+              },
+            },
+            {
+              type: "div",
+              props: {
+                style: {
+                  position: "absolute",
+                  top: `${safeTop}px`,
+                  left: 0,
+                  width: `${width}px`,
+                  height: `${safeBottom - safeTop}px`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                  padding: `0 ${Math.round(width * 0.08)}px ${Math.round(height * 0.04)}px`,
+                  background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.72), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+                },
+                children: [
+                  {
+                    type: "div",
+                    props: {
+                      style: {
+                        display: "flex",
+                        color: palette.text,
+                        fontFamily: palette.displayFont,
+                        fontSize: `${Math.round(width * 0.09)}px`,
+                        lineHeight: 1.05,
+                        textTransform: "uppercase",
+                      },
+                      children: headline,
+                    },
+                  },
+                  ctaLine
+                    ? {
+                        type: "div",
+                        props: {
+                          style: {
+                            display: "flex",
+                            marginTop: `${Math.round(height * 0.02)}px`,
+                            color: palette.muted,
+                            fontFamily: palette.bodyFont,
+                            fontSize: `${Math.round(width * 0.045)}px`,
+                            letterSpacing: "0.04em",
+                          },
+                          children: ctaLine,
+                        },
+                      }
+                    : null,
+                ].filter(Boolean),
+              },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof satori>[0],
+      {
+        width,
+        height,
+        fonts: [
+          { name: "Anton", data: ANTON, weight: 400, style: "normal" },
+          { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        ],
+      },
+    );
+    const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
+    const out = await sharp(png).jpeg({ quality: 88 }).toBuffer();
+    const newId = randomUUID();
+    await query(
+      `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+       values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
+      [newId, brand.id, newId],
+    );
+    await putMedia(newId, new Uint8Array(out), "image/jpeg");
+    return newId;
+  } catch (err) {
+    console.error(`applyStoryCreative: failed for media ${mediaId}`, err);
     return null;
   }
 }

@@ -6,10 +6,45 @@ import { runTriggerLoop } from "./triggers/triggerLoop.js";
 import { runEngagementLoop } from "./engagement/engagementLoop.js";
 import { runVoiceLoop } from "./voice/voiceLoop.js";
 import { deliverPendingLoginCodes } from "@pulse/gateway";
+import { runGapFillLoop } from "./proactive/gapFill.js";
+import { runChaseLoop } from "./proactive/chase.js";
+import { runCompetitorWatchLoop } from "./proactive/competitorWatch.js";
+import { runNichePlanLoop } from "./proactive/nichePlan.js";
+import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
+import { runLinqInboundLoop } from "./proactive/linqInbound.js";
+import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
+
+/** Overlap-safe interval runner — skips if the previous tick is still in flight. */
+function guardedInterval(
+  name: string,
+  ms: number,
+  fn: () => Promise<void>,
+  opts?: { runSoonMs?: number },
+): ReturnType<typeof setInterval> {
+  let running = false;
+  const tick = () => {
+    if (running) {
+      logger.warn(`${name}: previous tick still running, skipping`);
+      return;
+    }
+    running = true;
+    fn()
+      .catch((err) =>
+        logger.error(`${name} crashed`, {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+        }),
+      )
+      .finally(() => {
+        running = false;
+      });
+  };
+  if (opts?.runSoonMs != null) setTimeout(tick, opts.runSoonMs);
+  return setInterval(tick, ms);
+}
 
 async function main(): Promise<void> {
   const env = getServerEnv(); // fail fast on missing/invalid config
-  logger.info(`worker starting (GRAPH_MODE=${env.GRAPH_MODE}, tz=${env.TZ})`);
+  logger.info(`worker starting (GRAPH_MODE=${env.GRAPH_MODE}, MESSAGE_CHANNEL=${env.MESSAGE_CHANNEL}, tz=${env.TZ})`);
 
   let publishing = false;
   const publishTask = cron.schedule(
@@ -23,12 +58,14 @@ async function main(): Promise<void> {
       try {
         await runPublishLoop();
       } catch (err) {
-        logger.error("publish loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+        logger.error("publish loop crashed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+        });
       } finally {
         publishing = false;
       }
     },
-    { timezone: env.TZ }
+    { timezone: env.TZ },
   );
 
   let triggering = false;
@@ -43,12 +80,14 @@ async function main(): Promise<void> {
       try {
         await runTriggerLoop();
       } catch (err) {
-        logger.error("trigger loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+        logger.error("trigger loop crashed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+        });
       } finally {
         triggering = false;
       }
     },
-    { timezone: env.TZ }
+    { timezone: env.TZ },
   );
 
   let engaging = false;
@@ -63,12 +102,14 @@ async function main(): Promise<void> {
       try {
         await runEngagementLoop();
       } catch (err) {
-        logger.error("engagement loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+        logger.error("engagement loop crashed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+        });
       } finally {
         engaging = false;
       }
     },
-    { timezone: env.TZ }
+    { timezone: env.TZ },
   );
 
   let analysingVoice = false;
@@ -83,33 +124,51 @@ async function main(): Promise<void> {
       try {
         await runVoiceLoop();
       } catch (err) {
-        logger.error("voice loop crashed", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+        logger.error("voice loop crashed", {
+          error: err instanceof Error ? err.stack ?? err.message : String(err),
+        });
       } finally {
         analysingVoice = false;
       }
     },
-    { timezone: env.TZ }
+    { timezone: env.TZ },
   );
 
-  // Passwordless-login code delivery. The bot owns the Discord channel and
-  // delivers there; the worker owns SMS/Linq, so it delivers only then (avoids
-  // a double-send, and activeChannel() would throw for discord here anyway).
-  let loginCodeTimer: ReturnType<typeof setInterval> | null = null;
-  if (env.MESSAGE_CHANNEL !== "discord") {
-    let deliveringCodes = false;
-    loginCodeTimer = setInterval(() => {
-      if (deliveringCodes) return;
-      deliveringCodes = true;
-      deliverPendingLoginCodes()
-        .then((n) => {
-          if (n > 0) logger.info(`delivered ${n} login code(s)`);
-        })
-        .catch((err) => logger.error("login-code delivery crashed", { error: err instanceof Error ? err.message : String(err) }))
-        .finally(() => {
-          deliveringCodes = false;
-        });
-    }, 4000);
-  }
+  // Passwordless-login code delivery via SMS / Linq.
+  let deliveringCodes = false;
+  const loginCodeTimer = setInterval(() => {
+    if (deliveringCodes) return;
+    deliveringCodes = true;
+    deliverPendingLoginCodes()
+      .then((n) => {
+        if (n > 0) logger.info(`delivered ${n} login code(s)`);
+      })
+      .catch((err) =>
+        logger.error("login-code delivery crashed", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      )
+      .finally(() => {
+        deliveringCodes = false;
+      });
+  }, 4000);
+
+  // Proactive SMS loops (moved off Discord).
+  const gapFillTimer = guardedInterval("gap-fill", 2 * 60 * 60 * 1000, runGapFillLoop, {
+    runSoonMs: 20_000,
+  });
+  const chaseTimer = guardedInterval("chase", 60 * 60 * 1000, runChaseLoop);
+  const watchTimer = guardedInterval("competitor-watch", 6 * 60 * 60 * 1000, runCompetitorWatchLoop);
+  const planTimer = guardedInterval("niche-plan", 30 * 1000, runNichePlanLoop);
+  const digestTimer = guardedInterval("weekly-digest", 60 * 60 * 1000, runWeeklyDigestLoop);
+
+  // Linq inbound drain — only meaningful when MESSAGE_CHANNEL=linq, but cheap to poll.
+  const linqTimer = guardedInterval("linq-inbound", 3000, runLinqInboundLoop);
+
+  // AI video job drain (Phase G4) — texts when Kling/Runway jobs finish.
+  const aiVideoTimer = guardedInterval("ai-video", 45_000, runAiVideoLoop, {
+    runSoonMs: 25_000,
+  });
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
@@ -120,17 +179,28 @@ async function main(): Promise<void> {
     triggerTask.stop();
     engagementTask.stop();
     voiceTask.stop();
-    if (loginCodeTimer) clearInterval(loginCodeTimer);
+    clearInterval(loginCodeTimer);
+    clearInterval(gapFillTimer);
+    clearInterval(chaseTimer);
+    clearInterval(watchTimer);
+    clearInterval(planTimer);
+    clearInterval(digestTimer);
+    clearInterval(linqTimer);
+    clearInterval(aiVideoTimer);
     process.exit(0);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  logger.info("worker ready — publish, trigger, engagement, and voice loops scheduled every minute");
+  logger.info(
+    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video",
+  );
 }
 
 main().catch((err) => {
-  logger.error("worker failed to start", { error: err instanceof Error ? err.stack ?? err.message : String(err) });
+  logger.error("worker failed to start", {
+    error: err instanceof Error ? err.stack ?? err.message : String(err),
+  });
   process.exit(1);
 });

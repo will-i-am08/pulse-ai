@@ -20,20 +20,20 @@ pulse-agent/  (pnpm workspaces)
 ├── packages/
 │   ├── shared/           @pulse/shared        types, MessageChannel, env, crypto, db
 │   ├── channel-twilio/   @pulse/channel-twilio Twilio SMS/MMS adapter
-│   ├── gateway/          @pulse/gateway       inbound routing, media capture, outbound send
+│   ├── gateway/          @pulse/gateway       inbound routing, media capture, outbound send (Twilio + Linq)
 │   ├── orchestrator/     @pulse/orchestrator  classify, draft, learn (Anthropic)
 │   └── graph/            @pulse/graph         Meta Graph adapter (mock | live)
 ├── apps/
-│   ├── web/              @pulse/web           Next.js dashboard + inbound webhook → Vercel
-│   └── worker/           @pulse/worker        publish loop + scheduler → Railway
-└── db/migrations/        0001_init.sql        canonical schema (Neon Postgres)
+│   ├── web/              @pulse/web           Next.js dashboard + webhooks → Vercel
+│   └── worker/           @pulse/worker        publish + proactive SMS loops → Railway
+└── db/migrations/        canonical schema (Neon Postgres)
 ```
 
-- **Vercel** hosts the dashboard + inbound webhook (serverless, takes the traffic).
-- **Railway** hosts the persistent worker (publish polling, retry/backoff, proactive triggers).
+- **Vercel** hosts the dashboard + inbound webhooks (Twilio, Linq, Meta).
+- **Railway** hosts the persistent worker (publish, engagement, gap-fill, digests, Linq drain).
 - **Neon** is the Postgres database; media bytes live in Postgres and are served
-  from the dashboard's public `/api/media/[id]` route. Operator auth is a
-  single-user password gate.
+  from the dashboard's public `/api/media/[id]` route.
+- **Channel:** Twilio SMS/MMS primary (`MESSAGE_CHANNEL=twilio`); Linq iMessage end-state.
 
 ## Quick start
 

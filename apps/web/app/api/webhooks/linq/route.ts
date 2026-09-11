@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 // Linq (linqapp.com) inbound webhook — `message.received`. This runs on the
 // serverless function, which has no native image libraries, so it does NO
 // processing: it verifies the Svix-style signature and drops the message onto
-// the `pending_inbound` queue. The bot (with sharp/resvg) processes + replies.
+// the `pending_inbound` queue. The Railway worker drains the queue, processes
+// media, and replies via Linq.
 //
 // Signature: headers webhook-id / webhook-timestamp / webhook-signature; secret
 // is whsec_<base64>; signed content is `{id}.{timestamp}.{rawBody}`.

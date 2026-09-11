@@ -87,7 +87,7 @@ export default async function FeedPage({
         {posts.length === 0 && (
           <p className={styles.empty}>
             {filtered
-              ? `No mock ${platformLabel(platform)} posts yet. In Discord, send a photo, say "${platform === 'x' ? 'X only' : platform === 'threads' ? 'Threads only' : platformLabel(platform)}", then "yes".`
+              ? `No mock ${platformLabel(platform)} posts yet. Text Kip a photo, say "${platform === 'x' ? 'X only' : platform === 'threads' ? 'Threads only' : platformLabel(platform)}", then "yes".`
               : 'Nothing here yet. Send the bot a photo, approve the caption, and it lands here.'}
           </p>
         )}

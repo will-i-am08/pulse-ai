@@ -3,6 +3,8 @@ import sharp from "sharp";
 import { query, queryOne, brandVoiceProfileSchema, getMedia, sanitizeChatText } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { brandContextForPrompt } from "./brandContext.js";
+import { factsForPrompt } from "./businessProfile.js";
 
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -104,6 +106,24 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
     lines.push(`Content mix guidance: ${JSON.stringify(notes.content_mix)}`);
   }
 
+  const facts = factsForPrompt(brand.facts);
+  if (facts && !facts.startsWith("(no business")) {
+    lines.push("Business facts (do not invent beyond these):");
+    lines.push(facts);
+  }
+
+  const ctx = brandContextForPrompt(brand);
+  if (ctx) {
+    lines.push(ctx);
+  } else if (!brand.icp?.segments?.length) {
+    lines.push(
+      "No ICP on file — do not invent a fake customer. Write generally; Kip can offer to research ICP later.",
+    );
+  }
+  lines.push(
+    "Never invent discounts, awards, testimonials, or proof points that are not in offers or business facts.",
+  );
+
   return lines.join("\n");
 }
 
@@ -155,7 +175,31 @@ function heuristicProposedTime(notes: StrategyNote | null): string | null {
   return tomorrow.toISOString();
 }
 
-export async function draftCaption(brandId: string, mediaIds: string[]): Promise<DraftCaptionResult> {
+export type DraftCaptionOpts = {
+  /** Caption for an Instagram Reel (shorter, hookier). */
+  asReel?: boolean;
+  /** Extra user hint (e.g. AI video prompt). */
+  hint?: string;
+};
+
+function pushJpegFrame(content: ContentPart[], jpeg: Buffer): boolean {
+  if (jpeg.byteLength > MAX_IMAGE_BYTES) return false;
+  content.push({
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: "image/jpeg",
+      data: jpeg.toString("base64"),
+    },
+  });
+  return true;
+}
+
+export async function draftCaption(
+  brandId: string,
+  mediaIds: string[],
+  opts?: DraftCaptionOpts,
+): Promise<DraftCaptionResult> {
   const [brand, notes, media] = await Promise.all([
     loadBrand(brandId),
     loadStrategyNotes(brandId),
@@ -196,20 +240,63 @@ export async function draftCaption(brandId: string, mediaIds: string[]): Promise
     });
     attached++;
   }
-  const hasVideo = media.some((m) => m.kind === "video");
 
-  const instruction =
-    attached > 0
-      ? `Write an on-brand caption for the attached photo${attached > 1 ? "s" : ""}.${hasVideo ? " (There is also a video in this batch.)" : ""}`
-      : hasVideo
-        ? "The client sent a video (which you can't view). Draft an on-brand caption suitable for a short video clip — keep it flexible."
-        : "Draft a generic on-brand caption.";
+  // Phase G2: sample frames from videos so captions use actual visual understanding.
+  const videos = media.filter((x) => x.kind === "video");
+  let videoFrames = 0;
+  if (videos.length && attached < MAX_IMAGES) {
+    try {
+      const { extractVideoFrames } = await import("./video.js");
+      for (const v of videos.slice(0, 2)) {
+        if (attached + videoFrames >= MAX_IMAGES) break;
+        const blob = await getMedia(v.id);
+        if (!blob) continue;
+        const remaining = MAX_IMAGES - attached - videoFrames;
+        const frames = await extractVideoFrames(blob.bytes, {
+          count: Math.min(4, remaining),
+          contentType: v.content_type ?? blob.contentType,
+        });
+        for (const frame of frames) {
+          if (attached + videoFrames >= MAX_IMAGES) break;
+          if (pushJpegFrame(content, frame)) videoFrames++;
+        }
+      }
+    } catch (err) {
+      console.error("draftCaption: video frame extract failed", err);
+    }
+  }
+
+  const hasVideo = videos.length > 0;
+  const asReel = Boolean(opts?.asReel) || (hasVideo && attached === 0);
+
+  let instruction: string;
+  if (videoFrames > 0) {
+    instruction = asReel
+      ? `These are sampled frames from the client's video. Write a short Instagram Reel caption about what you actually see — hook in the first line. No "I can't see the video".`
+      : `These are sampled frames from the client's video. Write an on-brand caption about what you actually see.`;
+  } else if (attached > 0) {
+    instruction = asReel
+      ? `Write a short Instagram Reel caption for the attached photo${attached > 1 ? "s" : ""}. Hook first.`
+      : `Write an on-brand caption for the attached photo${attached > 1 ? "s" : ""}.${hasVideo ? " (There is also a video in this batch — frames unavailable.)" : ""}`;
+  } else if (hasVideo) {
+    instruction =
+      "The client sent a video but frames couldn't be extracted. Draft a flexible on-brand Reel caption — keep it general, don't invent specific scenes.";
+  } else {
+    instruction = asReel
+      ? "Draft a short on-brand Instagram Reel caption."
+      : "Draft a generic on-brand caption.";
+  }
+  if (opts?.hint) instruction += ` Context: ${opts.hint.slice(0, 400)}`;
   content.push({ type: "text", text: instruction });
 
+  const system = asReel
+    ? `${buildSystemPrompt(brand, notes)}\nThis is a REEL — keep the caption punchy (1–3 short lines). Lead with a hook.`
+    : buildSystemPrompt(brand, notes);
+
   const caption = await callLLM({
-    system: buildSystemPrompt(brand, notes),
+    system,
     messages: [{ role: "user", content }],
-    maxTokens: 400,
+    maxTokens: asReel ? 220 : 400,
   });
 
   return { caption: sanitizeChatText(caption), proposedTime: heuristicProposedTime(notes) };

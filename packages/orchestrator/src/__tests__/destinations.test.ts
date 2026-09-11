@@ -100,11 +100,24 @@ function fakeBrand(): Brand {
     threads_user_id: null,
     threads_username: null,
     threads_tokens_encrypted: null,
+    linkedin_org_id: null,
+    linkedin_org_name: null,
+    linkedin_tokens_encrypted: null,
+    linkedin_connected_at: null,
+    tiktok_open_id: null,
+    tiktok_display_name: null,
+    tiktok_tokens_encrypted: null,
+    tiktok_connected_at: null,
+    tiktok_privacy_defaults: null,
     meta_connected_at: null,
     voice_guide_md: null,
     voice_analysis_state: { status: "none" },
     facts: {},
     visual: {},
+    icp: {},
+    pain_points: {},
+    positioning: {},
+    offers: {},
     approver: "operator",
     status: "active",
     created_at: new Date().toISOString(),
@@ -322,7 +335,8 @@ describe("no API keys for X or Threads", () => {
 describe("helpers", () => {
   it("mock-only dests publish immediately after yes", () => {
     expect(shouldPublishImmediately(["x"], false)).toBe(true);
-    expect(shouldPublishImmediately(["x", "threads"], false)).toBe(true);
+    // Threads is a live destination once connected — not mock-only.
+    expect(shouldPublishImmediately(["x", "threads"], false)).toBe(false);
     expect(shouldPublishImmediately(["instagram"], false)).toBe(false);
     expect(shouldPublishImmediately(["instagram", "x"], false)).toBe(false);
   });

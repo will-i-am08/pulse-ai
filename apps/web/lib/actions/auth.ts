@@ -225,7 +225,6 @@ export async function signupAction(formData: FormData): Promise<void> {
   const email = emailRaw || null;
   const accountType = String(formData.get('account_type') ?? 'business') === 'personal' ? 'personal' : 'business';
   const website = String(formData.get('website') ?? '').trim();
-  const discordUserId = String(formData.get('discord_user_id') ?? '').trim();
 
   if (!name) redirect('/signup?error=missing');
   if (!phone) redirect('/signup?error=badphone');
@@ -266,24 +265,23 @@ export async function signupAction(formData: FormData): Promise<void> {
           `update brands
               set owner_user_id = $1,
                   name = coalesce(nullif(name, ''), $2),
-                  discord_user_id = coalesce(nullif($3, ''), discord_user_id),
-                  account_type = coalesce(account_type, $4),
-                  website = coalesce(website, nullif($5, '')),
+                  account_type = coalesce(account_type, $3),
+                  website = coalesce(website, nullif($4, '')),
                   facts = case
                     when coalesce(facts->>'owner_name', '') = ''
-                    then coalesce(facts, '{}'::jsonb) || $6::jsonb
+                    then coalesce(facts, '{}'::jsonb) || $5::jsonb
                     else facts
                   end
-            where id = $7`,
-          [user.id, name, discordUserId, accountType, website, factsJson, phoneTaken.id],
+            where id = $6`,
+          [user.id, name, accountType, website, factsJson, phoneTaken.id],
         );
         brandId = phoneTaken.id;
       } else {
         const brand = await tx.queryOne<{ id: string }>(
-          `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, facts, onboarding_state)
-           values ($1, $2, $3, $4, $5, $6, $7::jsonb, '{"status":"pending"}'::jsonb)
+          `insert into brands (name, client_phone, owner_user_id, account_type, website, facts, onboarding_state)
+           values ($1, $2, $3, $4, $5, $6::jsonb, '{"status":"pending"}'::jsonb)
            returning id`,
-          [name, phone, user.id, discordUserId || null, accountType, website || null, factsJson],
+          [name, phone, user.id, accountType, website || null, factsJson],
         );
         brandId = brand?.id ?? null;
       }

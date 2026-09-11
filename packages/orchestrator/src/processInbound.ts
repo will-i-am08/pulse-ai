@@ -7,7 +7,7 @@ import { buildConversationContext } from "./conversationContext.js";
 import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser } from "./onboarding.js";
 import {
   editImageForBrand,
-  messageWantsText,
+  shouldOverlayHeadline,
   messageWantsImageEdit,
   generateHeadline,
   applyTextTile,
@@ -15,7 +15,7 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-import { pickFreshPhoto, pickReusablePhoto, draftPostFromPhoto } from "./library.js";
+import { pickFreshPhoto, pickReusablePhoto, pickFreshPhotos, draftPostFromPhoto } from "./library.js";
 import {
   carouselDecision,
   getPendingCarouselChoice,
@@ -25,16 +25,88 @@ import {
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
 } from "./formats.js";
-import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
+import {
+  draftReelFromVideo,
+  draftReelFromStills,
+  videoEditFallbackSms,
+} from "./video.js";
+import {
+  looksLikeAiVideoRequest,
+  looksLikeMakeReelRequest,
+  queueAiVideoJob,
+} from "./aiVideo.js";
+import {
+  proposeCampaign,
+  activateCampaign,
+  getProposedCampaign,
+  looksLikeCampaignControl,
+  pauseCampaign,
+  resumeCampaign,
+  cancelCampaign,
+} from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
-import { sendLatestDraft } from "./engagement.js";
+import {
+  looksLikeBrandContextUpdate,
+  updateBrandContextFromMessage,
+  researchIcp,
+  researchPainPoints,
+  proposePositioning,
+  saveIcpDraft,
+  savePainPointsDraft,
+  savePositioningDraft,
+} from "./brandContext.js";
+import { storeDesignMemoryRef } from "./designMemory.js";
+import { sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
-import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
+import {
+  getProposedPlan,
+  applyNichePlan,
+  looksLikeContentPlanRequest,
+  proposeContentPlanFromSms,
+} from "./nichePlan.js";
+import { detectResearchFocus, runDeepResearch } from "./research.js";
+import {
+  looksLikeStrategyRequest,
+  getProposedStrategyBrief,
+  proposeStrategyBrief,
+  parseStrategyAccept,
+  looksLikeStrategyRevise,
+  acceptStrategyPieces,
+  reviseStrategyBrief,
+  cancelStrategyBrief,
+} from "./strategyBrief.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
+import { buildPerformanceDigest } from "./performanceDigest.js";
+import {
+  looksLikeDigestRequest,
+  looksLikeMakeMore,
+  looksLikeAnalystBoost,
+  getPerfPending,
+  applyMakeMoreOfThese,
+  handoffBoostOrCampaign,
+  confirmPerfSuggestion,
+  clearPerfPending,
+} from "./performanceActions.js";
+import {
+  connectLinkMessage, isMetaConnected, metaConnectStatusMessage, looksLikeAdsToggle, adsFeatureStatusLine,
+} from "./smsConnect.js";
+import { setBrandFeatures, setSpendCaps, logAdApproval, formatCents } from "./adsFeatures.js";
+import { looksLikeAdLibraryRequest, adLibraryBrief } from "./adLibrary.js";
+import { looksLikePastAdsRequest, pastAdsAnalysis } from "./pastAds.js";
+import { getProposedBoost, confirmBoost, cancelProposedBoost, looksLikeBoostRequest } from "./boost.js";
+import {
+  looksLikePaidCampaignRequest, looksLikeAdCampaignControl, getProposedAdCampaign, getLiveAdCampaign,
+  proposeAdCampaign, confirmAdCampaign, cancelProposedAdCampaign, pauseAdCampaign, resumeAdCampaign,
+  killAdCampaign, proposeBudgetEdit, confirmBudgetEdit, rejectBudgetEdit,
+} from "./adCampaigns.js";
+import {
+  looksLikePauseConfirm, looksLikeScaleConfirm, looksLikeKeepRunning, looksLikeCapRaise, parseDollarCap,
+  getCampaignAwaitingPerfConfirm, confirmPauseSuggestion, confirmScaleSuggestion, clearPerfSuggestion,
+} from "./adSpend.js";
 import {
   parseDestinationChoice,
   persistDestinations,
@@ -45,6 +117,7 @@ import {
   approveSelectedDestinations,
   buildPlatformCaptions,
   selectedDestinations,
+  shouldPublishImmediately,
 } from "./destinations.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
@@ -55,6 +128,21 @@ const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
+
+
+// SMS deep-link connect / disconnect intents.
+const CONNECT_META_RE =
+  /\b(connect|link|reconnect|relink)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|my accounts?)\b|\b(insta(?:gram)?|facebook|fb)\b.{0,30}\b(connect|link|reconnect)\b/i;
+const CONNECT_ADS_RE =
+  /\b(connect|link)\b.{0,40}\b(ad accounts?|ads|meta ads|facebook ads)\b|\b(ad accounts?|ads)\b.{0,30}\b(connect|link)\b/i;
+const CONNECT_LINKEDIN_RE =
+  /\b(connect|link|reconnect)\b.{0,40}\blinkedin\b|\blinkedin\b.{0,30}\b(connect|link|reconnect|company page)\b/i;
+const CONNECT_TIKTOK_RE =
+  /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
+const CONNECT_STATUS_RE =
+  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b/i;
+const DISCONNECT_META_RE =
+  /\b(disconnect|unlink|remove)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|accounts?)\b/i;
 
 // Competitor-intel intent: "what's X doing on ads/socials", "check out the
 // competition", "spy on [name]", "ad library". Routed to a web-search rundown.
@@ -70,6 +158,8 @@ const STORY_CMD_RE =
 const CAROUSEL_CMD_RE =
   /\b(?:(?:make|turn)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
 const SEPARATE_CMD_RE = /\b(separate|separately|individually|split (?:them|up)|different posts?)\b/i;
+const REEL_CMD_RE =
+  /\b(?:(?:make|turn|put)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?reels?|as\s+(?:a\s+)?reels?|reels?\s+this)\b|^\s*reels?\s*[!.?]*$/i;
 
 // The client explicitly asking to reuse an OLD/previously-posted photo. Used
 // photos are only pulled back out on request like this — never automatically.
@@ -343,22 +433,173 @@ export async function processInbound(
     }
   }
 
-  // Accepting the proposed niche plan — "yes" sets up the pillars + schedule.
+  // Strategy brief accept / revise / cancel (before plan — strategy feeds the plan).
+  if (message.body && newMedia.length === 0 && !pending) {
+    const strategyBrief = await getProposedStrategyBrief(brand.id);
+    if (strategyBrief) {
+      if (CANCEL_RE.test(message.body)) {
+        await cancelStrategyBrief(strategyBrief.id);
+        return { reply: "Scrapped that strategy brief. Nothing was saved to your brand objects." };
+      }
+      if (looksLikeStrategyRevise(message.body)) {
+        return { reply: await reviseStrategyBrief(brand, strategyBrief, message.body) };
+      }
+      const accept = parseStrategyAccept(message.body);
+      if (accept) {
+        return { reply: await acceptStrategyPieces(brand, strategyBrief, accept) };
+      }
+    }
+  }
+
+  // Accepting the proposed niche plan — "yes" sets up the pillars + schedule + format bias.
   if (message.body && newMedia.length === 0 && !pending && /^\s*(yes|yep|yeah|yup|love it|looks good|perfect|do it|go for it|sounds good|let'?s go|accept|set it up|run it)\b/i.test(message.body)) {
     const proposedPlan = await getProposedPlan(brand.id);
     if (proposedPlan) {
       await applyNichePlan(brand, proposedPlan);
       return {
-        reply: "Love it, your plan's live 🎉 Pillars and posting schedule are set. Send me photos any time and I'll start filling your slots.",
+        reply: "Love it, your plan's live 🎉 Pillars, cadence, and format bias are set. Gap-fill will follow this plan. Send me photos any time and I'll start filling your slots.",
       };
+    }
+    // Phase F — confirm boost / ad campaign / budget edit before organic perf yes.
+    const proposedBoost = await getProposedBoost(brand.id);
+    if (proposedBoost) return { reply: await confirmBoost(brand, proposedBoost) };
+    const proposedAd = await getProposedAdCampaign(brand.id);
+    if (proposedAd) return { reply: await confirmAdCampaign(brand, proposedAd) };
+    const liveAdBudget = await getLiveAdCampaign(brand.id);
+    if (liveAdBudget?.plan?.pending_budget_cents) {
+      return { reply: await confirmBudgetEdit(brand, liveAdBudget) };
+    }
+    const perfYes = await confirmPerfSuggestion(brand);
+    if (perfYes) return { reply: perfYes };
+  }
+
+  // Phase F — cancel pending boost / ad / budget.
+  if (message.body && newMedia.length === 0 && !pending && CANCEL_RE.test(message.body)) {
+    const proposedBoost = await getProposedBoost(brand.id);
+    if (proposedBoost) return { reply: await cancelProposedBoost(proposedBoost) };
+    const proposedAd = await getProposedAdCampaign(brand.id);
+    if (proposedAd) return { reply: await cancelProposedAdCampaign(proposedAd) };
+    const liveAd = await getLiveAdCampaign(brand.id);
+    if (liveAd?.plan?.pending_budget_cents) return { reply: await rejectBudgetEdit(liveAd) };
+  }
+
+  // Phase F — pause/scale confirm from spend analyst.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const awaiting = await getCampaignAwaitingPerfConfirm(brand.id);
+    if (awaiting) {
+      if (looksLikePauseConfirm(message.body) && awaiting.plan?.pause_suggestion) {
+        return { reply: await confirmPauseSuggestion(brand, awaiting) };
+      }
+      if (looksLikeScaleConfirm(message.body) && awaiting.plan?.scale_suggestion) {
+        return { reply: await confirmScaleSuggestion(brand, awaiting) };
+      }
+      if (looksLikeKeepRunning(message.body)) {
+        return { reply: await clearPerfSuggestion(awaiting) };
+      }
     }
   }
 
-  // "Make it a story / carousel" about the current pending draft (no new photo).
-  if (message.body && newMedia.length === 0 && pending && (STORY_CMD_RE.test(message.body) || CAROUSEL_CMD_RE.test(message.body))) {
+  // Performance analyst follow-ups — "make more of these" / boost / paid campaign.
+  if (message.body && newMedia.length === 0 && !pending) {
+    if (looksLikeMakeMore(message.body)) {
+      return { reply: await applyMakeMoreOfThese(brand) };
+    }
+    if (looksLikeBoostRequest(message.body) || looksLikeAnalystBoost(message.body)) {
+      const wantsCampaign = /\bcampaign\b/i.test(message.body) && !/\bboost\b/i.test(message.body);
+      return {
+        reply: await handoffBoostOrCampaign(brand, {
+          kind: wantsCampaign ? "campaign" : "boost",
+          postId: getPerfPending(brand)?.post_id,
+          request: message.body,
+        }),
+      };
+    }
+    if (looksLikePaidCampaignRequest(message.body)) {
+      return { reply: (await proposeAdCampaign(brand, message.body)).summary };
+    }
+    if (CANCEL_RE.test(message.body) && getPerfPending(brand)) {
+      await clearPerfPending(brand);
+      return { reply: "No worries — left your mix as is. Nothing changed." };
+    }
+  }
+
+  // Phase F — paid campaign pause/resume/kill/budget (before organic campaign verbs).
+  if (message.body && newMedia.length === 0 && !pending) {
+    const adCtrl = looksLikeAdCampaignControl(message.body);
+    if (adCtrl) {
+      const live = await getLiveAdCampaign(brand.id);
+      if (!live) {
+        return { reply: 'No live ads to control right now. Say "run ads" or "boost this" to start one.' };
+      }
+      if (adCtrl === "pause") return { reply: await pauseAdCampaign(brand, live) };
+      if (adCtrl === "resume") return { reply: await resumeAdCampaign(brand, live) };
+      if (adCtrl === "kill") return { reply: await killAdCampaign(brand, live) };
+      if (adCtrl === "budget") return { reply: await proposeBudgetEdit(brand, live, message.body) };
+    }
+  }
+
+  // Campaign pause / resume / cancel (active or paused), with orphan cleanup on cancel.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const ctrl = looksLikeCampaignControl(message.body);
+    if (ctrl === "pause") return { reply: await pauseCampaign(brand) };
+    if (ctrl === "resume") return { reply: await resumeCampaign(brand) };
+    if (ctrl === "cancel") return { reply: await cancelCampaign(brand) };
+  }
+
+  // "Make it a story / carousel / reel" about the current pending draft (no new photo).
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    pending &&
+    (STORY_CMD_RE.test(message.body) ||
+      CAROUSEL_CMD_RE.test(message.body) ||
+      REEL_CMD_RE.test(message.body) ||
+      looksLikeMakeReelRequest(message.body))
+  ) {
     if (STORY_CMD_RE.test(message.body)) {
       await query("update posts set format = 'story' where id = $1 and brand_id = $2", [pending.id, brand.id]);
       return { reply: `Done, switched it to a story. Reply "yes" to approve.`, postId: pending.id };
+    }
+    if (REEL_CMD_RE.test(message.body) || looksLikeMakeReelRequest(message.body)) {
+      const sourceIds = pending.source_media_ids?.length
+        ? pending.source_media_ids
+        : pending.media_ids;
+      const photoIds = (
+        await query<{ id: string }>(
+          `select id from media_assets where brand_id = $1 and kind = 'photo' and id = any($2::uuid[])`,
+          [brand.id, sourceIds],
+        )
+      ).map((r) => r.id);
+      if (photoIds.length >= 1) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = pillars.find((p) => p.id === pending.pillar_id) ?? pillars[0];
+        if (pillar) {
+          const reel = await draftReelFromStills(brand, photoIds, pillar);
+          if (reel.ok) {
+            await query(
+              `update posts set status = 'rejected' where id = $1 and brand_id = $2`,
+              [pending.id, brand.id],
+            ).catch(() => {});
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Turned it into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          return { reply: videoEditFallbackSms(brand.name), postId: pending.id };
+        }
+      }
+      await query("update posts set format = 'reel' where id = $1 and brand_id = $2", [
+        pending.id,
+        brand.id,
+      ]);
+      return {
+        reply: `Done, marked it as a Reel. Reply "yes" to approve.`,
+        postId: pending.id,
+      };
     }
     // carousel needs at least two images
     if (pending.media_ids.length >= 2) {
@@ -395,8 +636,83 @@ export async function processInbound(
   // "send" approves the most recent drafted reply to a customer interaction —
   // but only when there's no pending post (there, "send" would be ambiguous).
   if (message.body && SEND_DRAFT_RE.test(message.body) && newMedia.length === 0 && !pending) {
-    const sent = await sendLatestDraft(brand);
-    if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+    try {
+      const sent = await sendLatestDraft(brand);
+      if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        reply: `Tried to send that reply but posting failed (${detail}). Say "send" again to retry, or tell me a change.`,
+      };
+    }
+  }
+
+  // SMS deep-link connects / disconnect / status (no pending draft required).
+  if (message.body && newMedia.length === 0 && !pending) {
+    if (CONNECT_STATUS_RE.test(message.body)) {
+      return { reply: metaConnectStatusMessage(brand) };
+    }
+    if (DISCONNECT_META_RE.test(message.body)) {
+      if (!isMetaConnected(brand)) {
+        return { reply: "Nothing to disconnect — Instagram/Facebook aren't linked yet. Want a connect link?" };
+      }
+      await query(
+        `update brands set
+           ig_user_id = null, ig_username = null,
+           fb_page_id = null, fb_page_name = null,
+           platform_tokens_encrypted = null,
+           platform_user_token_encrypted = null,
+           meta_connected_at = null
+         where id = $1`,
+        [brand.id],
+      );
+      return {
+        reply: 'Disconnected Instagram + Facebook. Say "connect Instagram" when you want a fresh link.',
+      };
+    }
+    const adsToggle = looksLikeAdsToggle(message.body);
+    if (adsToggle === "enable") {
+      await setBrandFeatures(brand.id, { ads: true });
+      brand.features = { ...(brand.features ?? {}), ads: true };
+      await logAdApproval({ brandId: brand.id, action: "enable_ads", note: "SMS enable ads", after: { ads: true } });
+      const next = brand.ad_account_id ? adsFeatureStatusLine(brand) : connectLinkMessage(brand, "ads");
+      return { reply: `Ads are on. I'll always confirm before spending.\n\n${next}` };
+    }
+    if (adsToggle === "disable") {
+      await setBrandFeatures(brand.id, { ads: false });
+      brand.features = { ...(brand.features ?? {}), ads: false };
+      return { reply: "Ads are off. I won't propose spend until you enable them again." };
+    }
+    const capKind = looksLikeCapRaise(message.body);
+    if (capKind) {
+      const cents = parseDollarCap(message.body);
+      if (cents == null) {
+        return { reply: capKind === "weekly"
+          ? 'Tell me the new weekly cap like "raise weekly cap to $500".'
+          : 'Tell me the new campaign cap like "raise campaign cap to $200".' };
+      }
+      if (capKind === "weekly") {
+        await setSpendCaps(brand.id, { weekly_cents: cents });
+        brand.ads_spend_caps = { ...(brand.ads_spend_caps ?? {}), weekly_cents: cents };
+      } else {
+        await setSpendCaps(brand.id, { campaign_cents: cents });
+        brand.ads_spend_caps = { ...(brand.ads_spend_caps ?? {}), campaign_cents: cents };
+      }
+      return { reply: `Got it — ${capKind} ads cap is now ${formatCents(cents)}.` };
+    }
+    if (looksLikePastAdsRequest(message.body)) return { reply: await pastAdsAnalysis(brand) };
+    if (looksLikeAdLibraryRequest(message.body)) return { reply: await adLibraryBrief(brand, message.body) };
+    if (CONNECT_ADS_RE.test(message.body)) return { reply: connectLinkMessage(brand, "ads") };
+    if (CONNECT_LINKEDIN_RE.test(message.body)) return { reply: connectLinkMessage(brand, "linkedin") };
+    if (CONNECT_TIKTOK_RE.test(message.body)) return { reply: connectLinkMessage(brand, "tiktok") };
+    if (CONNECT_META_RE.test(message.body)) return { reply: connectLinkMessage(brand, "meta") };
+    if (looksLikeDigestRequest(message.body)) {
+      try { return { reply: await buildPerformanceDigest(brand) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
+      }
+    }
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
@@ -411,10 +727,11 @@ export async function processInbound(
     return { reply: await converse(brand, message.body) };
   }
 
+  const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
   const result = await classifyInbound({
     body: message.body,
     hasMedia: newMedia.length > 0,
-    hasPendingPost: pending !== null,
+    hasPendingPost: pending !== null || draftedReply !== null,
   });
 
   await updateMessageType(message.id, toDbMessageType(result.classification));
@@ -427,14 +744,48 @@ export async function processInbound(
     }
     // Mid-conversation: with a draft awaiting the client, an unclear message is
     // most likely a fuzzy edit or approval — ask to clarify rather than
-    // guess-and-act (BUILD_CONTRACTS). With nothing pending, it's just chat.
+    // guess-and-act (BUILD_CONTRACTS). With a drafted engagement reply and no
+    // pending post, prefer clarifying send/edit for that reply.
     if (pending) {
       return {
         reply:
           'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
       };
     }
+    const draftedReply = await latestDraftedInteraction(brand.id);
+    if (draftedReply) {
+      return {
+        reply:
+          'Not quite sure — reply "send" to post the suggested reply, tell me a change, or ignore to leave it.',
+      };
+    }
     return { reply: await converse(brand, message.body ?? "") };
+  }
+
+  // Deep research verbs — niche / customers / competitors / ads → structured brief + snapshot.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const focus = detectResearchFocus(message.body);
+    if (focus) {
+      const { reply } = await runDeepResearch(brand, focus, message.body);
+      return { reply };
+    }
+  }
+
+  // Strategy brief propose.
+  if (message.body && newMedia.length === 0 && !pending && looksLikeStrategyRequest(message.body)) {
+    const proposed = await proposeStrategyBrief(brand, message.body);
+    if (proposed) return { reply: proposed.summary };
+    return {
+      reply:
+        "Couldn't draft a strategy brief just then. Try \"research my niche\" first, then \"propose strategy\".",
+    };
+  }
+
+  // Content plan propose / rebuild (week or month) — apply only on accept.
+  if (message.body && newMedia.length === 0 && !pending && looksLikeContentPlanRequest(message.body)) {
+    // If they're answering a proposed plan with edits, fall through to yes/revise via converse —
+    // but an explicit "propose/rebuild plan" always builds a fresh proposal.
+    return { reply: await proposeContentPlanFromSms(brand, message.body) };
   }
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.
@@ -461,10 +812,61 @@ export async function processInbound(
   switch (result.classification) {
     case "media": {
       const photos = newMedia.filter((m) => m.kind === "photo");
+      const videos = newMedia.filter((m) => m.kind === "video");
       const body = message.body ?? "";
       const cmdStory = STORY_CMD_RE.test(body);
       const cmdCarousel = CAROUSEL_CMD_RE.test(body);
       const cmdSeparate = SEPARATE_CMD_RE.test(body);
+      const cmdReel = REEL_CMD_RE.test(body) || looksLikeMakeReelRequest(body);
+
+      // Client-sent video → Reel with visual understanding (Phase G2).
+      if (videos.length >= 1) {
+        const video = videos[0]!;
+        const drafted = await draftReelFromVideo(brand, video, { body });
+        if (!drafted.ok) {
+          return { reply: drafted.sms };
+        }
+        const when = drafted.post.scheduled_at
+          ? formatSlot(new Date(drafted.post.scheduled_at))
+          : "soon";
+        return {
+          reply: `Here's your Reel 🎬\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+          postId: drafted.post.id,
+          mediaUrl: drafted.coverUrl ?? drafted.mediaUrl ?? undefined,
+        };
+      }
+
+      // Photos + "make a reel" → motion template (Phase G3); fall back to static.
+      if (cmdReel && photos.length >= 1) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = (await classifyPhotoPillar(brand, pillars, photos[0]!.id)) ?? pillars[0];
+        if (pillar) {
+          const reel = await draftReelFromStills(
+            brand,
+            photos.map((p) => p.id),
+            pillar,
+          );
+          if (reel.ok) {
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Turned ${photos.length === 1 ? "it" : "them"} into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          const fromLib = await draftPostFromPhoto(brand, photos[0]!, pillar);
+          if (fromLib) {
+            return {
+              reply: `${videoEditFallbackSms(brand.name)}\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve.`,
+              postId: fromLib.post.id,
+              mediaUrl: fromLib.mediaUrl ?? undefined,
+            };
+          }
+          return { reply: videoEditFallbackSms(brand.name) };
+        }
+      }
 
       // Explicit "put this on my story" → draft the photo(s) as stories.
       if (cmdStory && photos.length >= 1) {
@@ -520,7 +922,16 @@ export async function processInbound(
       }
 
       const originalIds = newMedia.map((m) => m.id);
-      const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
+      const firstPhoto = newMedia.find((m) => m.kind === "photo");
+
+      // C6: caption + photo grade in parallel (independent LLM/vision steps).
+      const [captionResult, editedId] = await Promise.all([
+        draftCaption(brand.id, originalIds),
+        firstPhoto
+          ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const { caption, proposedTime } = captionResult;
 
       // Clear task after a real gap (≥ ~18h): just do it, with a light welcome-back
       // — never hijack a photo with "want to pick up where we left off?".
@@ -531,16 +942,13 @@ export async function processInbound(
 
       // Style the first photo (truthful enhance for business, bolder for personal).
       // If editing is unavailable, we fall back to the original photo.
-      const firstPhoto = newMedia.find((m) => m.kind === "photo");
       let postMediaIds = originalIds;
       let styledUrl: string | undefined;
-      const wantsText = messageWantsText(message.body);
+      // C1: smarter business headline default (not only explicit "add text").
+      const wantsText = shouldOverlayHeadline(brand, message.body, { caption, format: "feed" });
       let headline: string | undefined;
       if (firstPhoto) {
-        let finalId = firstPhoto.id;
-        const editedId = await editImageForBrand(brand, firstPhoto.id, message.body ?? undefined);
-        if (editedId) finalId = editedId;
-        // If the client asked for text on the image, overlay a bold headline.
+        let finalId = editedId ?? firstPhoto.id;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
           const tiledId = await applyTextTile(brand, finalId, headline);
@@ -572,9 +980,11 @@ export async function processInbound(
         pillarId: pillar?.id ?? null,
         postsPerWeek: pillar?.posts_per_week ?? 0,
       });
-      // Autopilot stays Instagram/Facebook. An explicit X/Threads pick always
-      // waits for "yes" — mock posts must not go out before approval.
-      const mockPicked = Boolean(inboundDests?.some((d) => d === "x" || d === "threads"));
+      // Autopilot stays Instagram/Facebook. Explicit long-tail picks always
+      // wait for "yes" — mock posts must not go out before approval.
+      const mockPicked = Boolean(
+        inboundDests?.some((d) => d === "x" || d === "threads" || d === "linkedin" || d === "tiktok"),
+      );
       const autopilot = Boolean(pillar?.autopilot) && !mockPicked;
 
       // Remember the source photo + styling recipe so a later "make the image
@@ -653,6 +1063,13 @@ export async function processInbound(
 
     case "edit": {
       if (!pending) {
+        // Thin A6: owner edit of an engagement reply draft (no post pending).
+        const revised = await editLatestDraft(brand, message.body ?? "");
+        if (revised) {
+          return {
+            reply: `Updated suggested reply:\n"${revised}"\n\nReply "send" to post it, or tell me another change.`,
+          };
+        }
         return {
             reply: "I don't have a pending draft to edit right now. Send a photo or video and I'll draft a caption for it.",
         };
@@ -746,7 +1163,8 @@ export async function processInbound(
 
       const dests = selectedDestinations(pending).filter(isPublishDestination);
       const reply =
-        dests.length > 0 && dests.some((d) => d === "x" || d === "threads")
+        dests.length > 0 &&
+        dests.some((d) => d === "x" || d === "threads" || d === "linkedin" || d === "tiktok")
           ? destinationAck(dests, captions, after, "Updated")
           : `Updated:\n\n"${after}"\n\nReply "yes" to approve.`;
 
@@ -775,7 +1193,22 @@ export async function processInbound(
         postNow,
       });
 
-      const immediate = postNow || dests.every((d) => d === "x" || d === "threads");
+      // Design-memory hook: remember the first creative on owner-approved posts.
+      const firstMedia = pending.media_ids?.[0];
+      if (firstMedia) {
+        void storeDesignMemoryRef({
+          brandId: brand.id,
+          mediaId: firstMedia,
+          postId: pending.id,
+          kind: pending.format === "carousel" ? "carousel_slide" : pending.format === "story" ? "story" : "creative",
+          status: "approved",
+          notes: pending.caption?.slice(0, 120) ?? null,
+        }).catch(() => {
+          /* non-blocking */
+        });
+      }
+
+      const immediate = postNow || shouldPublishImmediately(dests, false);
       const when = immediate
         ? ", going out now"
         : pending.scheduled_at
@@ -812,6 +1245,43 @@ export async function processInbound(
       if (message.body && CAMPAIGN_RE.test(message.body)) {
         const proposal = await proposeCampaign(brand, message.body);
         if (proposal) return { reply: proposal.summary };
+      }
+
+      // "Generate a video" / AI video → queue async job (Phase G4).
+      if (message.body && looksLikeAiVideoRequest(message.body) && newMedia.length === 0) {
+        const queued = await queueAiVideoJob(brand, message.body);
+        return { reply: queued.sms };
+      }
+
+      // "Make a reel" with no media → use fresh banked photos or ask for a clip.
+      if (message.body && looksLikeMakeReelRequest(message.body) && newMedia.length === 0) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
+        const photos = pillar ? await pickFreshPhotos(brand.id, 3) : [];
+        if (pillar && photos.length >= 1) {
+          const reel = await draftReelFromStills(
+            brand,
+            photos.map((p) => p.id),
+            pillar,
+          );
+          if (reel.ok) {
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Made a Reel from your photos 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or send a video clip for a native Reel.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          return {
+            reply: `${videoEditFallbackSms(brand.name)} Or send a video clip and I'll draft a Reel from that.`,
+          };
+        }
+        return {
+          reply:
+            'Send me a video clip (or a few photos) and say "make a reel" — or "generate a video …" for AI video.',
+        };
       }
 
       // Explicit "use an old photo" → pull a previously-posted shot back out (only
@@ -863,6 +1333,41 @@ export async function processInbound(
           }
           return { reply: "I tried to draft one but hit a snag. Mind asking again in a moment?" };
         }
+      }
+
+      // Brand context objects (ICP / pains / positioning / offers / visual) —
+      // SMS is the source of truth.
+      if (message.body && looksLikeBrandContextUpdate(message.body)) {
+        // Research intents propose drafts; owner confirms later via edit phrases.
+        if (/\bresearch\s+(our\s+)?icp\b|\bpropose\s+(an?\s+)?icp\b/i.test(message.body)) {
+          const draft = await researchIcp(brand);
+          await saveIcpDraft(brand.id, draft);
+          const segs = draft.segments?.length ? draft.segments.join("; ") : "still thin — tell me who you serve";
+          return {
+            reply: `Here's a draft ICP based on what I could find: ${segs}. Reply to tweak it (e.g. "update our ICP — …") or confirm what's right.`,
+          };
+        }
+        if (/\bresearch\s+(our\s+)?pain|\bpropose\s+pain/i.test(message.body)) {
+          const draft = await researchPainPoints(brand);
+          await savePainPointsDraft(brand.id, draft);
+          const list = (draft.items ?? []).map((p) => p.text).filter(Boolean).slice(0, 4);
+          return {
+            reply: list.length
+              ? `Possible pain points I heard in the wild:\n${list.map((t) => `• ${t}`).join("\n")}\n\nTell me which to keep, strike, or add.`
+              : "I couldn't surface solid pain language yet — tell me what your customers struggle with and I'll lock it in.",
+          };
+        }
+        if (/\bpropose\s+(our\s+)?positioning\b|\bdraft\s+(a\s+)?positioning\b/i.test(message.body)) {
+          const draft = await proposePositioning(brand);
+          if (draft.one_liner) await savePositioningDraft(brand.id, draft);
+          return {
+            reply: draft.one_liner
+              ? `Positioning draft: "${draft.one_liner}". Say "our positioning is …" to lock a version you like.`
+              : "Need a bit more on who you serve and what you offer before I can draft positioning — fill me in?",
+          };
+        }
+        const ctxReply = await updateBrandContextFromMessage(brand, message.body);
+        if (ctxReply) return { reply: ctxReply };
       }
 
       // Business facts stated by the owner ("we're open till 6 now", "coffee's $5")

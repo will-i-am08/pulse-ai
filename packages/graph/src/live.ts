@@ -1,5 +1,29 @@
-import type { Brand, Interaction, Platform, PostFormat, ServerEnv, XStoredTokens, ThreadsStoredTokens } from "@pulse/shared";
-import { decryptJson, encryptJson, getServerEnv, query, xEnsureToken, xPostTweet, threadsEnsureToken, threadsPublish } from "@pulse/shared";
+import type {
+  Brand,
+  Interaction,
+  Platform,
+  PostFormat,
+  ServerEnv,
+  XStoredTokens,
+  ThreadsStoredTokens,
+  LinkedInStoredTokens,
+  TikTokStoredTokens,
+} from "@pulse/shared";
+import {
+  decryptJson,
+  encryptJson,
+  getServerEnv,
+  query,
+  xEnsureToken,
+  xPostTweet,
+  threadsEnsureToken,
+  threadsPublish,
+  linkedinEnsureToken,
+  linkedinPublishPost,
+  tiktokEnsureToken,
+  tiktokDirectPost,
+  tiktokAuditPassed,
+} from "@pulse/shared";
 import type { GraphAdapter } from "./types.js";
 import { withRetry } from "./retry.js";
 import { countPublished24h } from "./rateStore.js";
@@ -95,6 +119,66 @@ export class LiveGraphAdapter implements GraphAdapter {
       });
     }
 
+    // LinkedIn Company Page: live once LINKEDIN_CLIENT_ID + org tokens exist.
+    if (platform === "linkedin") {
+      if (!platformConfigured("LINKEDIN_CLIENT_ID") || !brand.linkedin_tokens_encrypted || !brand.linkedin_org_id) {
+        const { MockGraphAdapter } = await import("./mock.js");
+        return new MockGraphAdapter().publish(input);
+      }
+      return withRetry(`live:publish:${brand.id}:linkedin`, async () => {
+        const stored = decryptJson<LinkedInStoredTokens>(brand.linkedin_tokens_encrypted!);
+        const { accessToken, refreshed } = await linkedinEnsureToken(stored);
+        if (refreshed) {
+          await query("update brands set linkedin_tokens_encrypted = $1 where id = $2", [
+            encryptJson(refreshed),
+            brand.id,
+          ]);
+        }
+        const { id, permalink } = await linkedinPublishPost({
+          orgId: brand.linkedin_org_id!,
+          accessToken,
+          commentary: caption,
+          mediaUrls,
+        });
+        return { externalPostId: id, permalink };
+      });
+    }
+
+    // TikTok Direct Post: mock until TIKTOK_CLIENT_KEY + tokens + TIKTOK_AUDIT_PASSED.
+    if (platform === "tiktok") {
+      const ready =
+        platformConfigured("TIKTOK_CLIENT_KEY") &&
+        Boolean(brand.tiktok_tokens_encrypted) &&
+        tiktokAuditPassed();
+      if (!ready) {
+        const { MockGraphAdapter } = await import("./mock.js");
+        return new MockGraphAdapter().publish(input);
+      }
+      return withRetry(`live:publish:${brand.id}:tiktok`, async () => {
+        const stored = decryptJson<TikTokStoredTokens>(brand.tiktok_tokens_encrypted!);
+        const { accessToken, refreshed } = await tiktokEnsureToken(stored);
+        if (refreshed) {
+          await query("update brands set tiktok_tokens_encrypted = $1 where id = $2", [
+            encryptJson(refreshed),
+            brand.id,
+          ]);
+        }
+        const aigc = Boolean(
+          (input as { aigc?: boolean }).aigc ||
+            /aigc|ai[- ]generated/i.test(caption) ||
+            brand.tiktok_privacy_defaults?.aigc_disclosure,
+        );
+        const { publishId, permalink } = await tiktokDirectPost({
+          accessToken,
+          title: caption,
+          mediaUrls,
+          privacy: brand.tiktok_privacy_defaults ?? undefined,
+          aigc,
+        });
+        return { externalPostId: publishId, permalink };
+      });
+    }
+
     // X: live once the app is configured (X_CLIENT_ID) and the brand has connected
     // an account. Until then, fall back to the mock feed so nothing breaks.
     if (platform === "x") {
@@ -161,13 +245,26 @@ export class LiveGraphAdapter implements GraphAdapter {
               ...(isVideo(mediaUrl) ? { video_url: mediaUrl } : { image_url: mediaUrl }),
             }),
           );
-        } else {
-          // Single feed post (image or reel-style video).
+        } else if (format === "reel" || isVideo(mediaUrl)) {
+          // Explicit Reel format, or any video on a single-item publish → IG REELS.
+          if (!isVideo(mediaUrl)) {
+            throw new Error("Instagram Reels require a video URL (mp4/mov/m4v)");
+          }
           creationId = await createContainer(
             new URLSearchParams({
               caption,
               access_token: accessToken,
-              ...(isVideo(mediaUrl) ? { video_url: mediaUrl, media_type: "REELS" } : { image_url: mediaUrl }),
+              video_url: mediaUrl,
+              media_type: "REELS",
+            }),
+          );
+        } else {
+          // Single feed image post.
+          creationId = await createContainer(
+            new URLSearchParams({
+              caption,
+              access_token: accessToken,
+              image_url: mediaUrl,
             }),
           );
         }
@@ -229,7 +326,8 @@ export class LiveGraphAdapter implements GraphAdapter {
         return { externalPostId, permalink };
       }
 
-      throw new Error(`Unsupported platform: ${platform satisfies never}`);
+      // linkedin / tiktok / x / threads return earlier; Meta path is IG + FB only.
+      throw new Error(`Unsupported Meta platform: ${platform}`);
     });
   }
 
@@ -238,7 +336,9 @@ export class LiveGraphAdapter implements GraphAdapter {
     externalPostId: string,
     platform: Platform
   ): Promise<Record<string, number>> {
-    if (platform === "x" || platform === "threads") {
+    if (platform === "x" || platform === "threads" || platform === "linkedin" || platform === "tiktok") {
+      // Analyst hooks: gracefully omit live insights until each platform's
+      // insights API is wired — mock numbers keep digests from failing.
       const { MockGraphAdapter } = await import("./mock.js");
       return new MockGraphAdapter().fetchEngagement(brand, externalPostId, platform);
     }

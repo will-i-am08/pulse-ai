@@ -67,14 +67,6 @@ export default async function SignupPage({
           <input className={styles.input} name="website" placeholder="https://…" />
         </label>
 
-        <label className={styles.label}>
-          Your Discord user ID <span className={styles.opt}>(optional — so the bot can message you)</span>
-          <input className={styles.input} name="discord_user_id" placeholder="e.g. 1542889338751156349" />
-          <span className={styles.hint}>
-            Discord → Settings → Advanced → turn on Developer Mode, then right-click your name → Copy User ID.
-          </span>
-        </label>
-
         <PendingSubmitButton idleLabel="Create account" pendingLabel="Creating account…" />
         <p className={styles.alt}>
           Already have an account? <Link href="/login">Log in</Link>

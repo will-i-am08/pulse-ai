@@ -18,10 +18,8 @@ const serverEnvSchema = z.object({
   TWILIO_API_KEY_SECRET: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
   OPERATOR_PHONE: z.string().optional(),
-  // Messaging channel selection + Discord (interim provider)
-  MESSAGE_CHANNEL: z.enum(["twilio", "discord", "linq"]).default("twilio"),
-  DISCORD_BOT_TOKEN: z.string().optional(),
-  DISCORD_TEST_BRAND_PHONE: z.string().optional(),
+  // Messaging channel: Twilio SMS/MMS (primary) or Linq iMessage (end-state).
+  MESSAGE_CHANNEL: z.enum(["twilio", "linq"]).default("twilio"),
   // Linq (linqapp.com) iMessage/RCS/SMS sandbox channel.
   LINQ_API_KEY: z.string().optional(),
   LINQ_WEBHOOK_SECRET: z.string().optional(),
@@ -37,6 +35,17 @@ const serverEnvSchema = z.object({
   REPLICATE_API_TOKEN: z.string().optional(),
   REPLICATE_IMAGE_MODEL: z.string().default("black-forest-labs/flux-kontext-pro"),
   REPLICATE_TEXT_IMAGE_MODEL: z.string().default("black-forest-labs/flux-schnell"),
+  // Optional specialty models (Phase C9). When unset, router falls back to composer.
+  REPLICATE_IDEOGRAM_MODEL: z.string().optional(),
+  REPLICATE_RECRAFT_MODEL: z.string().optional(),
+  // Phase G4 — AI video (Kling primary, Runway secondary). Env-configurable Replicate/fal models.
+  // Provider: "replicate" (default) or "fal". Leave models unset to disable AI video gen.
+  AI_VIDEO_PROVIDER: z.enum(["replicate", "fal"]).default("replicate"),
+  AI_VIDEO_PRIMARY_MODEL: z.string().optional(), // e.g. kwaivgi/kling-v2.1 or fal-ai/kling-video
+  AI_VIDEO_SECONDARY_MODEL: z.string().optional(), // e.g. runwayml/gen4-turbo or fal-ai/runway-gen3
+  AI_VIDEO_COST_CAP_CENTS_MONTH: z.coerce.number().int().positive().default(2000), // ~$20/brand/mo
+  AI_VIDEO_EST_COST_CENTS: z.coerce.number().int().positive().default(50), // estimate per job
+  FAL_KEY: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
@@ -50,6 +59,14 @@ const serverEnvSchema = z.object({
   // Threads connect + live posting enabled.
   THREADS_APP_ID: z.string().optional(),
   THREADS_APP_SECRET: z.string().optional(),
+  // LinkedIn Marketing Developer Platform — Company Page OAuth + Posts API.
+  LINKEDIN_CLIENT_ID: z.string().optional(),
+  LINKEDIN_CLIENT_SECRET: z.string().optional(),
+  // TikTok Content Posting API (Direct Post). Public live also needs TIKTOK_AUDIT_PASSED.
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  /** Set to "true" only after TikTok Content Posting API audit clears. */
+  TIKTOK_AUDIT_PASSED: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   TZ: z.string().default("Australia/Sydney"),

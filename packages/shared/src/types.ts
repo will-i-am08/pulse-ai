@@ -13,18 +13,32 @@ export type MediaKind = (typeof MediaKind)[number];
 export const MediaSource = ["client", "operator", "source"] as const;
 export type MediaSource = (typeof MediaSource)[number];
 
-export const Platform = ["instagram", "facebook", "x", "threads"] as const;
+export const Platform = ["instagram", "facebook", "x", "threads", "linkedin", "tiktok"] as const;
 export type Platform = (typeof Platform)[number];
 
 /** Chat-pickable publish destinations. */
-export const PublishDestination = ["instagram", "facebook", "x", "threads"] as const;
+export const PublishDestination = ["instagram", "facebook", "x", "threads", "linkedin", "tiktok"] as const;
 export type PublishDestination = (typeof PublishDestination)[number];
 
-/** X is still fake-feed only. Threads is live once a real token is connected. */
+/**
+ * Platforms that stay on the fake feed even when GRAPH_MODE=live.
+ * X is always mock-only until a paid tier is wired.
+ * TikTok is mock-only for *public* live until TIKTOK_AUDIT_PASSED is set
+ * (Content Posting API audit). LinkedIn goes live once LINKEDIN_CLIENT_ID + tokens exist.
+ */
 export const MOCK_ONLY_PLATFORMS: readonly Platform[] = ["x"];
 
+/** True when TikTok Content Posting audit has cleared for this deploy. */
+export function tiktokAuditPassed(): boolean {
+  const v = process.env.TIKTOK_AUDIT_PASSED;
+  return v === "true" || v === "1" || v === "yes";
+}
+
 export function isMockOnlyPlatform(platform: Platform | string): boolean {
-  return platform === "x";
+  if (platform === "x") return true;
+  // Unaudited TikTok must not claim live public posts.
+  if (platform === "tiktok" && !tiktokAuditPassed()) return true;
+  return false;
 }
 
 export function isPublishDestination(platform: string): platform is PublishDestination {
@@ -41,14 +55,40 @@ export function platformLabel(platform: string): string {
       return "Instagram";
     case "facebook":
       return "Facebook";
+    case "linkedin":
+      return "LinkedIn";
+    case "tiktok":
+      return "TikTok";
     default:
       return platform;
   }
 }
 
-// The post format the bot varies across. Reels (video) parked for later.
-export const PostFormat = ["feed", "carousel", "story"] as const;
+// The post format the bot varies across — feed, carousel, story, and reel (video).
+export const PostFormat = ["feed", "carousel", "story", "reel"] as const;
 export type PostFormat = (typeof PostFormat)[number];
+
+/** Async AI video generation job (Phase G4). */
+export const AiVideoJobStatus = ["queued", "running", "ready", "failed", "cancelled"] as const;
+export type AiVideoJobStatus = (typeof AiVideoJobStatus)[number];
+
+export interface AiVideoJob {
+  id: string;
+  brand_id: string;
+  prompt: string;
+  status: AiVideoJobStatus;
+  provider: string | null;
+  model: string | null;
+  source_media_ids: string[];
+  result_media_id: string | null;
+  post_id: string | null;
+  cost_cents: number;
+  aigc: boolean;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
 
 export const PostStatus = [
   "draft",
@@ -237,14 +277,185 @@ export interface Brand {
   threads_user_id: string | null;
   threads_username: string | null;
   threads_tokens_encrypted: string | null;
+  // LinkedIn Company Page: org URN + OAuth tokens ({access_token,refresh_token,expires_at}).
+  linkedin_org_id: string | null;
+  linkedin_org_name: string | null;
+  linkedin_tokens_encrypted: string | null;
+  linkedin_connected_at: string | null;
+  // TikTok: open_id + Direct Post tokens; public live gated by TIKTOK_AUDIT_PASSED.
+  tiktok_open_id: string | null;
+  tiktok_display_name: string | null;
+  tiktok_tokens_encrypted: string | null;
+  tiktok_connected_at: string | null;
+  /** Last TikTok privacy/music consent choices from the SMS connect UX. */
+  tiktok_privacy_defaults?: TikTokPrivacyDefaults | null;
   meta_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;
+  /** Ideal customer profile — SMS source of truth. */
+  icp: BrandIcp;
+  /** Researched + owner-confirmed pain points. */
+  pain_points: BrandPainPoints;
+  /** Category + differentiation one-liner. */
+  positioning: BrandPositioning;
+  /** Primary offer stack + claim constraints. */
+  offers: BrandOffers;
+  /** Per-capability toggles — ads defaults off until Phase F enables. */
+  features?: BrandFeatures;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
+  ads_tokens_encrypted?: string | null;
+  ads_connected_at?: string | null;
+  ads_spend_caps?: AdsSpendCaps;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
   updated_at: string;
 }
+
+/** TikTok Direct Post privacy + music consent (required UX). */
+export interface TikTokPrivacyDefaults {
+  privacy_level: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY";
+  allow_comment: boolean;
+  allow_duet: boolean;
+  allow_stitch: boolean;
+  /** Owner confirmed commercial music / branded content rules. */
+  music_usage_confirmed: boolean;
+  /** Disclose AI-generated content when posting AI video. */
+  aigc_disclosure: boolean;
+}
+
+/** Per-brand capability toggles. */
+export interface BrandFeatures {
+  autopilot?: boolean;
+  auto_replies?: boolean;
+  lead_handoff?: boolean;
+  ads?: boolean;
+  ads_autopilot?: boolean;
+  /**
+   * Phase I (scoped later) — when true, qualified leads may POST to the
+   * owner’s CRM webhook (Zapier/Make/etc.). Stub only; no runtime push yet.
+   * See docs/PHASE_I_CRM_SCOPE.md.
+   */
+  crm_webhook?: boolean;
+}
+
+export interface AdsSpendCaps {
+  weekly_cents?: number;
+  campaign_cents?: number;
+}
+
+export const AdObjective = ["awareness", "traffic", "leads", "messages", "sales"] as const;
+export type AdObjective = (typeof AdObjective)[number];
+
+export const AdCampaignStatus = [
+  "proposed", "preview", "active", "paused", "done", "cancelled", "killed",
+] as const;
+export type AdCampaignStatus = (typeof AdCampaignStatus)[number];
+
+export const AdCampaignKind = ["campaign", "boost"] as const;
+export type AdCampaignKind = (typeof AdCampaignKind)[number];
+
+export const AdCreativeSource = ["organic", "static", "carousel", "video"] as const;
+export type AdCreativeSource = (typeof AdCreativeSource)[number];
+
+export interface AdAudience {
+  label?: string;
+  meta_type?: "interest" | "lookalike" | "retargeting" | "broad" | "custom";
+  interests?: string[];
+  geo?: string;
+  age_min?: number;
+  age_max?: number;
+  notes?: string;
+}
+
+export interface AdCreativeSpec {
+  source: AdCreativeSource;
+  primary_text?: string;
+  headline?: string;
+  cta?: string;
+  media_ids?: string[];
+  source_post_id?: string;
+  notes?: string;
+}
+
+export interface AdCampaignPlan {
+  step?: string;
+  pending_budget_cents?: number;
+  scale_suggestion?: string;
+  pause_suggestion?: string;
+  [key: string]: unknown;
+}
+
+export interface AdCampaignMetrics {
+  spend_cents?: number;
+  impressions?: number;
+  clicks?: number;
+  ctr?: number;
+  leads?: number;
+  messages?: number;
+  purchases?: number;
+  cpa_cents?: number;
+  roas?: number;
+  [key: string]: unknown;
+}
+
+export interface AdCampaign {
+  id: string;
+  brand_id: string;
+  name: string;
+  objective: AdObjective;
+  status: AdCampaignStatus;
+  audience: AdAudience;
+  offer_ref: Record<string, unknown>;
+  creative: AdCreativeSpec;
+  budget_cents: number;
+  duration_days: number;
+  weekly_cap_cents: number | null;
+  campaign_cap_cents: number | null;
+  external_campaign_id: string | null;
+  external_adset_id: string | null;
+  external_ad_id: string | null;
+  source_post_id: string | null;
+  kind: AdCampaignKind;
+  metrics: AdCampaignMetrics;
+  plan: AdCampaignPlan;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const AdApprovalAction = [
+  "launch","boost","pause","resume","kill","budget_edit","scale","enable_ads","connect","cap_breach","reject",
+] as const;
+export type AdApprovalAction = (typeof AdApprovalAction)[number];
+
+export interface AdApproval {
+  id: string;
+  brand_id: string;
+  ad_campaign_id: string | null;
+  action: AdApprovalAction;
+  actor: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  note: string | null;
+  message_id: string | null;
+  created_at: string;
+}
+
+export interface AdSpendLog {
+  id: string;
+  brand_id: string;
+  ad_campaign_id: string | null;
+  amount_cents: number;
+  currency: string;
+  source: "sync" | "mock" | "manual" | "estimate";
+  occurred_at: string;
+  meta: Record<string, unknown>;
+  created_at: string;
+}
+
 
 export interface Message {
   id: string;
@@ -306,6 +517,76 @@ export interface CompetitorWatch {
   last_snapshot: string | null;
   last_watched_at: string | null;
   created_at: string;
+}
+
+/** Phase D research snapshot kinds Kip can cite in SMS. */
+export const ResearchSnapshotKind = [
+  "niche",
+  "competitor",
+  "customers",
+  "ads",
+  "strategy",
+  "plan",
+] as const;
+export type ResearchSnapshotKind = (typeof ResearchSnapshotKind)[number];
+
+/** Structured findings persisted with a research snapshot. */
+export interface ResearchFindings {
+  pain_language?: string[];
+  competitor_hooks?: string[];
+  competitor_ctas?: string[];
+  ad_library_angles?: string[];
+  organic_themes?: string[];
+  sources?: string[];
+  notes?: string;
+  [key: string]: unknown;
+}
+
+export interface ResearchSnapshot {
+  id: string;
+  brand_id: string;
+  kind: ResearchSnapshotKind;
+  subject: string | null;
+  summary: string;
+  findings: ResearchFindings;
+  created_at: string;
+}
+
+export const VisualExemplarSource = ["niche", "competitor", "research"] as const;
+export type VisualExemplarSource = (typeof VisualExemplarSource)[number];
+
+/** Public visual exemplar for the design composer (URL or media ref). */
+export interface VisualExemplar {
+  id: string;
+  brand_id: string;
+  snapshot_id: string | null;
+  source: VisualExemplarSource;
+  url: string | null;
+  media_id: string | null;
+  label: string | null;
+  notes: string | null;
+  competitor_name: string | null;
+  created_at: string;
+}
+
+/** Pieces inside a strategy brief pending SMS approval. */
+export interface StrategyBriefPieces {
+  summary?: string;
+  icp?: BrandIcp;
+  pains?: BrandPainPoints;
+  positioning?: BrandPositioning;
+  offers?: BrandOffers;
+}
+
+export type StrategyBriefStatus = "proposed" | "accepted" | "revised" | "cancelled";
+
+export interface StrategyBrief {
+  id: string;
+  brand_id: string;
+  status: StrategyBriefStatus;
+  pieces: StrategyBriefPieces;
+  created_at: string;
+  updated_at: string;
 }
 
 // A connected photo source the agent polls for new media (Phase C auto-pull).
@@ -374,11 +655,87 @@ export interface BusinessFacts {
   differentiators?: string;
 }
 
+/**
+ * Brand visual tokens — colours, type, logo, aesthetic notes, photo treatment.
+ * Not a frozen template theme pack; the design composer (Phase C) reads these
+ * plus design-memory refs to compose on-brand creatives.
+ */
 export interface VisualProfile {
+  /** Brand palette as hex (#RRGGBB) or named CSS colours, primary first. */
   colors?: string[];
+  /** Preferred typeface names / families (notes for composer; renderer maps to embeds). */
   fonts?: string[];
-  aspect_ratio?: string;
+  /** Absolute URL of the brand logo when known. */
+  logo_url?: string;
+  /** Short aesthetic label, e.g. "warm minimal", "bold editorial". */
   aesthetic?: string;
+  /** Free-form design notes the owner or research added. */
+  aesthetic_notes?: string;
+  /** How photos should be treated: lighting, grade, crop bias, etc. */
+  photo_treatment?: string;
+  aspect_ratio?: string;
+}
+
+/** Ideal customer profile — segments, demographics, jobs-to-be-done. */
+export interface BrandIcp {
+  segments?: string[];
+  demographics?: string;
+  jtbd?: string[];
+  notes?: string;
+  /** True when proposed from research rather than owner-authored. */
+  researched?: boolean;
+  confirmed_at?: string;
+  updated_at?: string;
+}
+
+export interface PainPoint {
+  text: string;
+  source?: "research" | "owner";
+  confirmed?: boolean;
+}
+
+export interface BrandPainPoints {
+  items?: PainPoint[];
+  updated_at?: string;
+}
+
+/** Positioning statement — category + differentiation. */
+export interface BrandPositioning {
+  one_liner?: string;
+  category?: string;
+  differentiation?: string;
+  updated_at?: string;
+}
+
+/**
+ * Offer stack. Downstream caption/ad copy must never invent discounts,
+ * awards, or testimonials that are not listed here or in BusinessFacts.
+ */
+export interface BrandOffers {
+  primary?: string;
+  bonuses?: string[];
+  proof?: string[];
+  cta?: string;
+  booking_link?: string;
+  /** Explicit claim constraints, e.g. "no % off unless stated", "no awards". */
+  claim_constraints?: string[];
+  updated_at?: string;
+}
+
+export type DesignMemoryKind = "creative" | "carousel_slide" | "story" | "quote_card";
+export type DesignMemoryStatus = "approved" | "published" | "top";
+
+/** Reference to an approved/published creative for design-memory retrieval. */
+export interface DesignMemoryRef {
+  id: string;
+  brand_id: string;
+  media_id: string | null;
+  post_id: string | null;
+  kind: DesignMemoryKind;
+  status: DesignMemoryStatus;
+  notes: string | null;
+  score: number | null;
+  created_at: string;
 }
 
 export type InteractionKind = "comment" | "dm" | "mention" | "review";
@@ -422,7 +779,7 @@ export interface Campaign {
   brand_id: string;
   name: string;
   goal: string | null;
-  status: "proposed" | "active" | "done" | "cancelled";
+  status: "proposed" | "active" | "paused" | "done" | "cancelled";
   plan: CampaignPlanItem[];
   pause_pillars: boolean;
   starts_at: string | null;
@@ -455,6 +812,8 @@ export interface Pillar {
   autopilot: boolean;
   sort: number;
   schedule_pin: SchedulePin;
+  /** Preferred format for this pillar when set by an accepted content plan. */
+  format_bias?: PostFormat | null;
   last_gap_ping_at: string | null;
   created_at: string;
 }

@@ -46,17 +46,17 @@ function twilioSmsReady(): boolean {
   }
 }
 
-/** Agent-thread fallback is only useful when MESSAGE_CHANNEL is not Twilio SMS. */
+/** Agent-thread fallback is only useful when MESSAGE_CHANNEL is Linq (not Twilio SMS). */
 function agentFallbackAvailable(): boolean {
   try {
-    return getServerEnv().MESSAGE_CHANNEL !== "twilio";
+    return getServerEnv().MESSAGE_CHANNEL === "linq";
   } catch {
     return false;
   }
 }
 
 /**
- * Deliver via Discord/Linq agent thread. Lazy-imported so the login serverless
+ * Deliver via Linq agent thread. Lazy-imported so the login serverless
  * path does not pull @pulse/orchestrator (satori/harfbuzz) into the bundle when
  * Twilio SMS is the delivery path.
  */
@@ -68,10 +68,9 @@ async function deliverViaAgentChannel(brandId: string, body: string): Promise<bo
 
 /**
  * Deliver one login-code body. Prefer Twilio SMS to the login phone (matches the
- * dashboard "we'll text you a code" copy and works even when MESSAGE_CHANNEL is
- * discord and the bot is down). Fall back to the agent thread only when that
- * channel is actually different from Twilio — otherwise we just retry the same
- * failing From-number with backoff and stall the login form.
+ * dashboard "we'll text you a code" copy). Fall back to the Linq agent thread
+ * only when MESSAGE_CHANNEL=linq — otherwise we just retry the same failing
+ * From-number with backoff and stall the login form.
  */
 async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
   if (twilioSmsReady()) {
@@ -132,7 +131,7 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
  *
  * The dashboard writes an encrypted, undelivered `login_codes` row when a user
  * asks for a code; the web app may call this immediately after queueing, and the
- * agent process (Discord bot or worker) also polls as a backup. Best-effort: a
+ * worker also polls as a backup. Best-effort: a
  * send failure leaves the row undelivered so the next tick retries, until it expires.
  */
 export async function deliverPendingLoginCodes(

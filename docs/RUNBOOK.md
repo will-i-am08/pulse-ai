@@ -30,8 +30,8 @@ Everything else can be built and tested against mocks while these clear.
    `ADMIN_PASSWORD=... ADMIN_PHONE=+61... pnpm exec tsx --env-file=.env scripts/create-admin.ts will@jmcalder.com`.
    The break-glass password logs the operator in via the "Operator login" panel on
    `/login`; it reads `OPERATOR_PASSWORD` from the environment.
-   Codes are delivered by whichever process owns the channel — the Discord bot
-   (`MESSAGE_CHANNEL=discord`) or the worker (SMS/Linq).
+   Codes are delivered by the Railway worker over Twilio SMS (or Linq when
+   `MESSAGE_CHANNEL=linq`).
 
 ## 2. Anthropic
 - `ANTHROPIC_API_KEY` from console.anthropic.com.
@@ -60,6 +60,23 @@ When `MESSAGE_CHANNEL=linq`, configure Kip once then share per chat:
    (or let the worker warm it on startup via `ensureContactCard`).
 3. After each chat's first outbound, Linq's `share_contact_card` prompts
    iMessage Name and Photo Sharing — native "Kip" + logo, not a vCard file.
+
+### 3c. Twilio → Linq cutover
+1. Keep Twilio inbound webhook for SMS while testing Linq in parallel on a
+   sandbox brand (`LINQ_TEST_BRAND_ID`).
+2. Point Linq webhooks at `https://<domain>/api/webhooks/linq`. The web app
+   only enqueues; the **worker** drains `pending_inbound` and replies.
+3. Flip `MESSAGE_CHANNEL=linq` on **both** Vercel (web) and Railway (worker)
+   in the same deploy window so send + resolve stay consistent.
+4. Confirm: first outbound shares contact card; inbound photo → draft SMS;
+   login codes still prefer Twilio SMS to the login phone when configured.
+5. Leave Twilio credentials in place as login-code / fallback delivery.
+
+### 3d. SMS deep-link connects
+Owners text “connect Instagram” (or similar). Kip replies with a short-lived
+link (`/c/<token>`, 15 min). Tap → Meta OAuth → choose Page → Kip texts
+confirmation in-thread. Expired links say to ask for a fresh one. Ad-account
+connect is scaffolded (`purpose=ads`) for Phase F.
 
 ## 4. Meta Graph API (do the review in parallel)
 Prerequisites and the App Review permission list are in the build notes; the
@@ -107,5 +124,15 @@ Platform tokens are encrypted at rest with this (AES-256-GCM). Keep it out of gi
 
 ## Approval is absolute
 No code path publishes without a logged `approved` action. Every draft, approval,
-edit, publish, and failure is written to `approval_log`. If you ever see a post
-published without an `approved` row, that's a bug — stop and report it.
+edit, publish, and failure is written to `approval_log`. The worker publish loop
+calls `hasApprovedLog` and **skips** any due post that lacks an `approved` row
+(and logs `publish_failed` with that reason). If you ever see a post published
+without an `approved` row, that's a bug — stop and report it.
+
+## Quiet hours (proactive SMS)
+Near-real-time engagement escalations can still land when a customer writes in,
+but **proactive** owner pings (check-in, chase, weekly digest, competitor watch)
+only fire during sociable local hours — default **8am–7pm** via `isDaytime()`
+(`packages/orchestrator/src/reengagement.ts`). Overnight quiet is intentional so
+a surge detector or webhook doesn't mean 2am marketing nudges. If you change the
+window, keep the same helper so all loops stay consistent.
