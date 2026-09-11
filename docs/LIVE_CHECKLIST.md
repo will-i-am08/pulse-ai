@@ -103,3 +103,53 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 | Enable ads | ✅ | ❌ refused |
 | Niche content plan | ✅ | ✅ lighter |
 | Organic post / Reels | ✅ | ✅ |
+
+---
+
+## Mock fallback (`platformConfigured`)
+
+Every optional destination uses the same live-adapter shape:
+
+```ts
+if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<tokens>) {
+  return new MockGraphAdapter().publish(input);
+}
+```
+
+- **Never** gate that decision with `getServerEnv()` — it throws when unrelated env is missing.
+- Aliases: `linkedin` → `LINKEDIN_CLIENT_ID`, `tiktok` → `TIKTOK_CLIENT_KEY`, `x` → `X_CLIENT_ID`, `threads` → `THREADS_APP_ID`.
+- Brand tokens / org ids are still checked at the call site.
+
+### X / Threads (confirmed)
+
+- When `X_CLIENT_ID` / `THREADS_APP_ID` is unset **or** the brand has not connected, LiveGraphAdapter uses the mock feed.
+- X remains `isMockOnlyPlatform` for owner-facing “did not go live” confirmation until a paid X tier is productized.
+- Threads counts as live once `GRAPH_MODE=live` and a real Threads publish succeeds.
+
+### LinkedIn / TikTok (code gates)
+
+- LinkedIn live when `LINKEDIN_CLIENT_ID` + org tokens; Posts API text/image/multi/video with Images/Videos upload first.
+- TikTok live when `TIKTOK_CLIENT_KEY` + tokens; **`TIKTOK_AUDIT_PASSED`** required for public Direct Post — otherwise privacy forced to **`SELF_ONLY`**.
+- AIGC (`is_aigc`) when `style_meta.aigc` / `ai_video_job_id` / caption marks AI video.
+- Clear SMS for LinkedIn admin/partner errors and TikTok caption/rate/consent caps.
+
+### Ads
+
+- `marketingLive`: create campaign, boost, insights spend when Meta ads token + `ad_account_id` present (no TODO stubs on happy path).
+- SMS choose-ads persists `ad_account_id` via `selectAdAccountFromSmsAction`.
+
+---
+
+## Still requiring external human approval (cannot be coded)
+
+| Gate | Why code cannot finish it |
+| --- | --- |
+| Meta App Review (IG/FB publish, insights, messaging) | Meta human review of use cases / screencast |
+| Meta Marketing API / ads access | Business verification + ads product access |
+| LinkedIn Marketing Developer Platform / partner | LinkedIn app product approval |
+| LinkedIn Company Page admin on the connecting user | Real org ACL on the customer's Page |
+| TikTok Content Posting API audit | TikTok audit of Direct Post for public privacy |
+| X paid API tier (if required for production write) | X developer console / billing |
+| Threads “Threads API” use case on Meta app | Meta app review for Threads |
+| Production OAuth redirect allowlists | Console config on each provider |
+| Twilio AU sender registration | Carrier / Twilio console |
