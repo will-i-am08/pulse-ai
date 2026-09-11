@@ -164,86 +164,10 @@ export {
   cancelStrategyBrief,
 } from "./strategyBrief.js";
 export type { StrategyPieceKey } from "./strategyBrief.js";
-export {
-  analyzePerformance,
-  aggregateAdMetrics,
-  summarizePaidMetrics,
-} from "./insights.js";
-export type {
-  PostPerf,
-  PaidDigestMetrics,
-  PerformanceAnalysis,
-  PerfSuggestion,
-  OrganicWinner,
-} from "./insights.js";
-export {
-  buildPerformanceDigest,
-  buildPerformanceAnalysis,
-  fetchPaidDigestMetrics,
-} from "./performanceDigest.js";
-export {
-  looksLikeDigestRequest,
-  looksLikeMakeMore,
-  looksLikeAnalystBoost,
-  looksLikePerfConfirm,
-  isAdsEnabled,
-  isAdsConnected,
-  applyMakeMoreOfThese,
-  handoffBoostOrCampaign,
-  confirmPerfSuggestion,
-  getPerfPending,
-  savePerfPending,
-  clearPerfPending,
-  queueAdsRecommendation,
-} from "./performanceActions.js";
-export type { PerfPendingAction } from "./performanceActions.js";
-export {
-  connectLinkMessage,
-  metaConnectStatusMessage,
-  isMetaConnected,
-  looksLikeAdsToggle,
-  adsFeatureStatusLine,
-} from "./smsConnect.js";
-export {
-  adsEnabled,
-  brandFeatures,
-  spendCaps,
-  formatCents,
-  setBrandFeatures,
-  setSpendCaps,
-  logAdApproval,
-  assertCanSpend,
-  weeklySpendCents,
-  isAdsConnected as isAdsAccountConnected,
-} from "./adsFeatures.js";
-export { looksLikeAdLibraryRequest, adLibraryBrief } from "./adLibrary.js";
-export { looksLikePastAdsRequest, pastAdsAnalysis } from "./pastAds.js";
-export {
-  looksLikeBoostRequest,
-  proposeBoost,
-  confirmBoost,
-  cancelProposedBoost,
-  getProposedBoost,
-} from "./boost.js";
-export {
-  looksLikePaidCampaignRequest,
-  looksLikeAdCampaignControl,
-  proposeAdCampaign,
-  confirmAdCampaign,
-  getProposedAdCampaign,
-  getLiveAdCampaign,
-  pauseAdCampaign,
-  resumeAdCampaign,
-  killAdCampaign,
-  proposeBudgetEdit,
-  confirmBudgetEdit,
-} from "./adCampaigns.js";
-export {
-  syncAdPerformance,
-  paidDigestSection,
-  looksLikeCapRaise,
-  parseDollarCap,
-} from "./adSpend.js";
+export { analyzePerformance } from "./insights.js";
+export type { PostPerf } from "./insights.js";
+export { buildPerformanceDigest } from "./performanceDigest.js";
+export { connectLinkMessage, metaConnectStatusMessage, isMetaConnected } from "./smsConnect.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";

@@ -70,19 +70,6 @@ export async function buildPerformanceAnalysis(brand: Brand): Promise<Performanc
   const paid = await fetchPaidDigestMetrics(brand);
   const analysis = analyzePerformance(perf, { paid });
 
-  // Prefer Phase F's richer paid SMS block when available (graceful omit if ads off / error).
-  try {
-    const { paidDigestSection } = await import("./adSpend.js");
-    const section = await paidDigestSection(brand);
-    if (section && !analysis.text.includes("Paid this week") && !analysis.text.includes("💸")) {
-      analysis.text += `\n\n${section}`;
-    } else if (section && analysis.text.includes("💸")) {
-      analysis.text = analysis.text.replace(/\n\n💸 Ads this period:.*$/s, `\n\n${section}`);
-    }
-  } catch {
-    /* adSpend / tables may not be ready */
-  }
-
   if (analysis.suggestion) {
     await savePerfPending(brand, analysis.suggestion);
   }
