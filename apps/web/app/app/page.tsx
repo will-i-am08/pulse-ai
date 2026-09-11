@@ -6,7 +6,7 @@ import { listBrandsForOwner } from '@/lib/data/brands';
 import { listRecentMessages } from '@/lib/data/messages';
 import { listUpcomingPosts, listPostsByStatus } from '@/lib/data/posts';
 import { approvePostAction, rejectPostAction } from '@/lib/actions/approvals';
-import { PreviewComposer } from './PreviewComposer';
+import { sendChatMessageAction } from '@/lib/actions/chat';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Thread | Kip' };
@@ -109,7 +109,7 @@ function Aside({
 export default async function ThreadHome({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string; phone?: string }>;
+  searchParams: Promise<{ connect?: string; phone?: string; chat?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -129,8 +129,14 @@ export default async function ThreadHome({
     );
   }
 
-  const { connect, phone } = await searchParams;
-  const banner = connect ? CONNECT_MSG[connect] : phone ? PHONE_MSG[phone] : undefined;
+  const { connect, phone, chat } = await searchParams;
+  const banner = connect
+    ? CONNECT_MSG[connect]
+    : phone
+      ? PHONE_MSG[phone]
+      : chat === 'nochannel'
+        ? { text: 'Add your phone in Connections so Kip has somewhere to reply.', ok: false }
+        : undefined;
 
   const [messages, upcoming, waiting] = await Promise.all([
     listRecentMessages(brand.id, 40),
@@ -166,10 +172,10 @@ export default async function ThreadHome({
           )}
         </div>
         <div className="dock">
-          <PreviewComposer
-            placeholder="Tell Kip what to post, or drop a photo…"
-            note="In-app sending isn’t wired up yet — reply in your SMS or Discord thread and Kip will pick it up. Approvals here work now."
-          />
+          <form className="composer" action={sendChatMessageAction}>
+            <input name="q" placeholder="Tell Kip what to post…" aria-label="Message Kip" required />
+            <button className="pill-dark" type="submit">Send</button>
+          </form>
         </div>
       </section>
       <Aside brand={brand} waiting={waiting} upcoming={upcoming} banner={banner} />
