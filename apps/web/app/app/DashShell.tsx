@@ -1,10 +1,18 @@
 'use client';
 import { useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOutAction } from '@/lib/actions/auth';
 
 type NavItem = { href: string; label: string; match: (p: string) => boolean };
+
+// Renders inside a <Link> and reports that link's own navigation state, so the
+// item you clicked shows a spinner while its (dynamic, DB-backed) page loads —
+// rather than the whole rail sitting there looking dead.
+function NavPending() {
+  const { pending } = useLinkStatus();
+  return pending ? <span className="nav-spin" aria-hidden="true" /> : null;
+}
 
 const NAV: NavItem[] = [
   { href: '/app', label: 'Thread', match: (p) => p === '/app' },
@@ -67,6 +75,7 @@ export function DashShell({ children, isAdmin }: { children: ReactNode; isAdmin:
           {items.map((item) => (
             <Link key={item.href} href={item.href} className={item.match(pathname) ? 'on' : ''} onClick={close}>
               {item.label}
+              <NavPending />
             </Link>
           ))}
         </nav>

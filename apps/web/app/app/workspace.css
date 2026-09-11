@@ -641,6 +641,78 @@
   vertical-align: middle;
 }
 
+/* ── loading skeleton (loading.tsx) + nav pending spinner ─── */
+.desk .sk {
+  border-radius: 10px;
+  background: linear-gradient(90deg, #ececef 25%, #f4f4f6 37%, #ececef 63%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease infinite;
+}
+.desk .sk-h1 {
+  height: 40px;
+  width: min(320px, 55%);
+  margin-bottom: 18px;
+}
+.desk .sk-lead {
+  height: 18px;
+  width: min(440px, 78%);
+  margin-bottom: 34px;
+}
+.desk .sk-list {
+  display: grid;
+  gap: 16px;
+}
+.desk .sk-row {
+  height: 64px;
+  width: 100%;
+}
+.desk .sk-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+@keyframes sk-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* Per-link spinner shown while the clicked nav item's page is loading. */
+.desk .nav-spin {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: 8px;
+  vertical-align: -1px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.65;
+  animation: nav-spin 0.6s linear infinite;
+}
+@keyframes nav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk .sk {
+    animation: none;
+  }
+  .desk .nav-spin {
+    animation-duration: 1.4s;
+  }
+}
+
 /* ── responsive ──────────────────────────────────── */
 @media (max-width: 980px) {
   .desk,
