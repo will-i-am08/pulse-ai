@@ -6,7 +6,8 @@ import { listBrandsForOwner } from '@/lib/data/brands';
 import { listRecentMessages } from '@/lib/data/messages';
 import { listUpcomingPosts, listPostsByStatus } from '@/lib/data/posts';
 import { approvePostAction, rejectPostAction } from '@/lib/actions/approvals';
-import { sendChatMessageAction } from '@/lib/actions/chat';
+import type { ThreadMessageDto } from '@/lib/thread';
+import { LiveThread } from './LiveThread';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Thread | Kip' };
@@ -144,40 +145,17 @@ export default async function ThreadHome({
     listPostsByStatus(brand.id, ['pending_approval']),
   ]);
 
+  const initialMessages: ThreadMessageDto[] = messages.map((m) => ({
+    id: m.id,
+    direction: m.direction === 'inbound' ? 'inbound' : 'outbound',
+    body: m.body,
+    mediaUrl: m.media_ids[0] ? publicMediaUrl(m.media_ids[0]) : null,
+    createdAt: m.created_at,
+  }));
+
   return (
     <>
-      <section className="stage">
-        <div className="chat">
-          {messages.length === 0 ? (
-            <div className="bubble kip">
-              <p>
-                Hi{user.name ? ` ${user.name.split(' ')[0]}` : ''} — I’m Kip. Text me a photo from the
-                floor and I’ll draft a post in your voice. Nothing goes out without your yes.
-              </p>
-            </div>
-          ) : (
-            messages.map((m) => {
-              const mine = m.direction === 'inbound';
-              const img = m.media_ids[0] ? publicMediaUrl(m.media_ids[0]) : null;
-              return (
-                <div key={m.id} className={`bubble ${mine ? 'you' : 'kip'}`}>
-                  {img && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={img} alt="" />
-                  )}
-                  {m.body && <p>{m.body}</p>}
-                </div>
-              );
-            })
-          )}
-        </div>
-        <div className="dock">
-          <form className="composer" action={sendChatMessageAction}>
-            <input name="q" placeholder="Tell Kip what to post…" aria-label="Message Kip" required />
-            <button className="pill-dark" type="submit">Send</button>
-          </form>
-        </div>
-      </section>
+      <LiveThread firstName={user.name?.split(' ')[0] ?? null} initialMessages={initialMessages} />
       <Aside brand={brand} waiting={waiting} upcoming={upcoming} banner={banner} />
     </>
   );
