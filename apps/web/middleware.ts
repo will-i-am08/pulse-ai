@@ -15,8 +15,15 @@ export async function middleware(request: NextRequest) {
   // file runs on the Edge runtime and must not bundle `pg`.
   const authSecret = process.env.AUTH_SECRET;
   if (!authSecret) {
+    // Never throw from middleware — on Vercel that surfaces as a bare
+    // MIDDLEWARE_INVOCATION_FAILED / opaque 404-ish failure for /lab.
+    // Unauthenticated redirect keeps the lab reachable once AUTH_SECRET is set.
     if (!protectedPath) return NextResponse.next();
-    throw new Error('AUTH_SECRET is not set');
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = '';
+    url.searchParams.set('redirectTo', pathname);
+    return NextResponse.redirect(url);
   }
 
   const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value;
