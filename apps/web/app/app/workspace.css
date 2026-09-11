@@ -38,19 +38,22 @@
 /* ── left rail ───────────────────────────────────── */
 .desk .rail {
   background: #f3f3f5;
-  padding: 18px 12px 24px;
+  padding: 18px 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-height: 0;
   height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
 }
 .desk .rail-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .desk .rail .brand {
   display: inline-flex;
@@ -62,6 +65,7 @@
   letter-spacing: -0.02em;
   text-decoration: none;
   padding: 8px 10px 18px;
+  flex: 0 0 auto;
 }
 .desk .rail .brand img {
   width: 28px;
@@ -89,8 +93,10 @@
   background: #fff;
   color: var(--ink);
 }
-.desk .rail .spacer {
-  flex: 1;
+.desk .rail .rail-foot {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding-top: 8px;
 }
 
 /* ── stage (main white panel) ────────────────────── */
@@ -661,14 +667,14 @@
     bottom: 0;
     z-index: 50;
     width: min(300px, 86vw);
-    padding: 18px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding: 18px 14px calc(16px + env(safe-area-inset-bottom, 0px));
     padding-top: max(18px, env(safe-area-inset-top, 0px));
     background: #f7f7f8;
     box-shadow: 16px 0 40px -24px rgba(0, 0, 0, 0.35);
     transform: translateX(-105%);
     transition: transform 0.22s ease;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
+    height: 100%;
   }
   .desk.menu-open .rail {
     transform: translateX(0);
@@ -684,8 +690,8 @@
     color: var(--ink);
     box-shadow: 0 1px 0 var(--line);
   }
-  .desk .rail .spacer {
-    min-height: 24px;
+  .desk .rail .rail-foot {
+    margin-top: 12px;
   }
   .desk .stage,
   .desk.three .stage {

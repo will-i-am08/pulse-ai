@@ -70,8 +70,7 @@ export function DashShell({ children, isAdmin }: { children: ReactNode; isAdmin:
             </Link>
           ))}
         </nav>
-        <div className="spacer" />
-        <form action={signOutAction}>
+        <form className="rail-foot" action={signOutAction}>
           <button className="navb" type="submit">
             Sign out
           </button>
