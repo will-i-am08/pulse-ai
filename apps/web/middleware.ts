@@ -4,7 +4,14 @@ import { verifySessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 // Only the operator console under /app requires a session. The marketing
 // landing (/), privacy, login, and the public webhook + media routes are open.
 function isProtectedPath(pathname: string): boolean {
-  return pathname === '/app' || pathname.startsWith('/app/') || pathname === '/lab' || pathname.startsWith('/lab/');
+  return (
+    pathname === '/app' ||
+    pathname.startsWith('/app/') ||
+    pathname === '/lab' ||
+    pathname.startsWith('/lab/') ||
+    pathname === '/payment' ||
+    pathname.startsWith('/payment/')
+  );
 }
 
 export async function middleware(request: NextRequest) {

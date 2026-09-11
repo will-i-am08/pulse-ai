@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
  * Billing webhook / payment-submitted kickoff.
  *
  * Stripe (or another processor) should call this as soon as payment clears.
- * Payment UI is not wired yet — this is the single entry point that starts
- * greeting + connect-first onboarding over SMS.
+ * The web payment UI also kicks off the same path via submitPaymentAction.
+ * This webhook remains the processor-facing entry point.
  *
  * Expected JSON body (temporary contract until Stripe is integrated):
  *   { "brandId": "<uuid>", "event": "payment_submitted" }

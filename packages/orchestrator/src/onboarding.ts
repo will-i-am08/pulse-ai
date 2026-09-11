@@ -420,6 +420,12 @@ export async function startOnboarding(brandId: string): Promise<string> {
   if (prev.status === "in_progress") {
     return "We're mid set-up — just reply to the last question and I'll keep going.";
   }
+  if (prev.status === "awaiting_connect") {
+    return (
+      "Still waiting on your Instagram + Facebook connect — tap the link I sent, " +
+      'or reply "skip" if you don\'t have them yet.'
+    );
+  }
   if (prev.status === "reading_content") {
     return handleReadingContent(brand, "");
   }

@@ -177,8 +177,14 @@ export async function verifyLoginCode(formData: FormData): Promise<void> {
 
   // Prefer the newest code, but accept any still-valid one for this phone so a
   // slightly older SMS still works if a resend raced mid-delivery.
-  const rows = await query<{ id: string; user_id: string | null; code_encrypted: string; attempts: number }>(
-    `select id, user_id, code_encrypted, attempts from login_codes
+  const rows = await query<{
+    id: string;
+    user_id: string | null;
+    code_encrypted: string;
+    attempts: number;
+    purpose: string | null;
+  }>(
+    `select id, user_id, code_encrypted, attempts, purpose from login_codes
       where phone = $1 and consumed_at is null and expires_at > now()
       order by created_at desc
       limit 5`,
@@ -214,6 +220,30 @@ export async function verifyLoginCode(formData: FormData): Promise<void> {
 
   await query('update login_codes set consumed_at = now() where id = $1', [matched!.id]);
   await setSession(matched!.user_id!);
+
+  // New signups land on the payment UI (no paywall). Returning logins go to /app.
+  // Also send anyone whose brand is still pending payment through /payment.
+  const isSignup = matched!.purpose === 'signup';
+  if (isSignup) {
+    redirect('/payment');
+  }
+
+  const brand = await queryOne<{
+    onboarding_state: { status?: string } | null;
+    facts: { payment?: { submitted_at?: string }; plan_preference?: unknown } | null;
+  }>(
+    `select onboarding_state, facts from brands
+      where owner_user_id = $1
+      order by created_at asc
+      limit 1`,
+    [matched!.user_id!],
+  );
+  const status = brand?.onboarding_state?.status ?? 'none';
+  const paid = Boolean(brand?.facts?.payment?.submitted_at);
+  if (!paid && (status === 'none' || status === 'pending')) {
+    redirect('/payment');
+  }
+
   redirect('/app');
 }
 
@@ -225,6 +255,15 @@ export async function signupAction(formData: FormData): Promise<void> {
   const email = emailRaw || null;
   const accountType = String(formData.get('account_type') ?? 'business') === 'personal' ? 'personal' : 'business';
   const website = String(formData.get('website') ?? '').trim();
+  const planTierRaw = String(formData.get('plan') ?? '').toLowerCase();
+  const planBillingRaw = String(formData.get('billing') ?? '').toLowerCase();
+  const planTier = planTierRaw === 'pro' || planTierRaw === 'max' ? planTierRaw : null;
+  const planInterval =
+    planBillingRaw === 'year' || planBillingRaw === 'annual' || planBillingRaw === 'yearly'
+      ? 'year'
+      : planBillingRaw === 'month' || planBillingRaw === 'monthly'
+        ? 'month'
+        : null;
 
   if (!name) redirect('/signup?error=missing');
   if (!phone) redirect('/signup?error=badphone');
@@ -257,7 +296,15 @@ export async function signupAction(formData: FormData): Promise<void> {
       let brandId: string | null;
       // First token of the signup name — seeded so Kip never re-asks who they are.
       const ownerName = name.trim().split(/\s+/)[0]!;
-      const factsJson = JSON.stringify({ owner_name: ownerName });
+      const facts: Record<string, unknown> = { owner_name: ownerName };
+      if (planTier && planInterval) {
+        facts.plan_preference = {
+          tier: planTier,
+          interval: planInterval,
+          selected_at: new Date().toISOString(),
+        };
+      }
+      const factsJson = JSON.stringify(facts);
       if (phoneTaken) {
         // Claim the pre-existing unowned brand rather than inserting a duplicate.
         // Fill owner_name only when missing so a prior capture is preserved.
@@ -270,7 +317,7 @@ export async function signupAction(formData: FormData): Promise<void> {
                   facts = case
                     when coalesce(facts->>'owner_name', '') = ''
                     then coalesce(facts, '{}'::jsonb) || $5::jsonb
-                    else facts
+                    else coalesce(facts, '{}'::jsonb) || ($5::jsonb - 'owner_name')
                   end
             where id = $6`,
           [user.id, name, accountType, website, factsJson, phoneTaken.id],

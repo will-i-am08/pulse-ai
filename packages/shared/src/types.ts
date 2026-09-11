@@ -656,6 +656,22 @@ export interface AiSpendFacts {
   spent_usd: number;
 }
 
+/** Plan choice collected on the payment UI (no processor wired yet). */
+export interface BrandPlanFacts {
+  tier: "pro" | "max";
+  /** Billing interval — annual is shown as monthly equivalent on the landing page. */
+  interval: "month" | "year";
+  selected_at?: string;
+}
+
+/** Fake / future payment markers on the brand. Not a paywall. */
+export interface BrandPaymentFacts {
+  /** Set when the owner submits the payment UI (Stripe not connected yet). */
+  submitted_at?: string;
+  /** Display-only status until a real processor is plugged in. */
+  status?: "submitted" | "active" | "none";
+}
+
 export interface BusinessFacts {
   /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
   lab?: boolean;
@@ -671,6 +687,12 @@ export interface BusinessFacts {
   differentiators?: string;
   /** Rolling weekly AI video/specialty spend estimate (ops cost guard). */
   ai_spend?: AiSpendFacts;
+  /** Preference chosen on signup / pricing before checkout (may differ from `plan`). */
+  plan_preference?: BrandPlanFacts;
+  /** Confirmed plan after payment UI submit. */
+  plan?: BrandPlanFacts;
+  /** Payment UI / future billing markers — never used to block /app access. */
+  payment?: BrandPaymentFacts;
 }
 
 /**
