@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MockMarketingAdapter, LiveMarketingAdapter } from "../index.js";
+import { MockMarketingAdapter } from "./marketingMock.js";
+import { LiveMarketingAdapter } from "./marketingLive.js";
 
 describe("Marketing adapters (Phase F6)", () => {
   it("MockMarketingAdapter implements happy path without network", async () => {

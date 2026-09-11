@@ -55,10 +55,16 @@ describe("F1 ads feature flag + connect SMS", () => {
     expect(adsEnabled(fakeBrand({ features: { ads: true } }))).toBe(true);
   });
 
-  it("connect link for ads is a real deep link (not coming-soon stub)", () => {
-    vi.stubEnv("APP_BASE_URL", "https://kip.example");
-    vi.stubEnv("TOKEN_ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
-    const msg = connectLinkMessage(fakeBrand(), "ads");
+  it("connect link for ads is a real deep link (not coming-soon stub)", async () => {
+    process.env.APP_BASE_URL = "https://kip.example";
+    process.env.DATABASE_URL = "postgres://localhost/test";
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    process.env.AUTH_SECRET = "test-auth-secret";
+    const { resetServerEnvCache } = await import("@pulse/shared");
+    resetServerEnvCache();
+    const { connectLinkMessage: link } = await import("../smsConnect.js");
+    const msg = link(fakeBrand(), "ads");
     expect(msg).toMatch(/\/c\//);
     expect(msg).not.toMatch(/isn't live yet/i);
     expect(msg).toMatch(/ad account/i);
