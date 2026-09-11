@@ -201,8 +201,11 @@ export {
   connectLinkMessage,
   metaConnectStatusMessage,
   isMetaConnected,
+  isLinkedInConnected,
+  isTikTokConnected,
   looksLikeAdsToggle,
   adsFeatureStatusLine,
+  platformCapErrorSms,
 } from "./smsConnect.js";
 export {
   adsEnabled,
@@ -253,6 +256,7 @@ export {
   slicesForApproval,
   buildPlatformCaptions,
   fitCaption,
+  fitLinkedInProfessional,
   CAPTION_LIMITS,
   DEST_HINT,
 } from "./destinations.js";

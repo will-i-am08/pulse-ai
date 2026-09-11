@@ -23,6 +23,23 @@ describe("smsConnectToken", () => {
     expect(res).toEqual({ ok: true, brandId: "brand-abc", purpose: "meta" });
   });
 
+  it("round-trips linkedin and tiktok purposes", async () => {
+    const { mintSmsConnectToken, verifySmsConnectToken, resetServerEnvCache } = await import("./index.js");
+    resetServerEnvCache();
+    const li = mintSmsConnectToken("brand-abc", "linkedin", 1_000_000);
+    const tt = mintSmsConnectToken("brand-abc", "tiktok", 1_000_000);
+    expect(verifySmsConnectToken(li, 1_000_000 + 1_000)).toEqual({
+      ok: true,
+      brandId: "brand-abc",
+      purpose: "linkedin",
+    });
+    expect(verifySmsConnectToken(tt, 1_000_000 + 1_000)).toEqual({
+      ok: true,
+      brandId: "brand-abc",
+      purpose: "tiktok",
+    });
+  });
+
   it("reports expired distinctly", async () => {
     const { mintSmsConnectToken, verifySmsConnectToken, resetServerEnvCache, SMS_CONNECT_TTL_MS } =
       await import("./index.js");

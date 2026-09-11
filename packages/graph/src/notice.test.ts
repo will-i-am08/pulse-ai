@@ -11,7 +11,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function fakeBrand(): Brand {
+function fakeBrand(over: Partial<Brand> = {}): Brand {
   return {
     id: "brand-1",
     name: "Test Brand",
@@ -64,6 +64,7 @@ function fakeBrand(): Brand {
     status: "active",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    ...over,
   };
 }
 
@@ -102,6 +103,27 @@ describe("mock X and Threads publish", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("publishes LinkedIn and TikTok to the fake graph without network", async () => {
+    const fetchSpy = stubFetch();
+    const li = await new MockGraphAdapter().publish({
+      brand: fakeBrand(),
+      platform: "linkedin",
+      caption: "company update",
+      mediaUrls: ["https://example.test/photo.jpg"],
+    });
+    const tt = await new MockGraphAdapter().publish({
+      brand: fakeBrand(),
+      platform: "tiktok",
+      caption: "short clip",
+      mediaUrls: ["https://example.test/clip.mp4"],
+    });
+    expect(li.externalPostId.startsWith("mock_")).toBe(true);
+    expect(li.permalink).toContain("/linkedin/");
+    expect(tt.externalPostId.startsWith("mock_")).toBe(true);
+    expect(tt.permalink).toContain("/tiktok/");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("LiveGraphAdapter still mocks X — no tokens, no API key, not a live post", async () => {
     const fetchSpy = stubFetch();
     const res = await new LiveGraphAdapter().publish({
@@ -125,14 +147,46 @@ describe("mock X and Threads publish", () => {
     expect(res.externalPostId.startsWith("mock_")).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("LiveGraphAdapter mocks LinkedIn/TikTok when unconfigured or unaudited", async () => {
+    const fetchSpy = stubFetch();
+    const prev = process.env.TIKTOK_AUDIT_PASSED;
+    delete process.env.TIKTOK_AUDIT_PASSED;
+    const li = await new LiveGraphAdapter().publish({
+      brand: fakeBrand(),
+      platform: "linkedin",
+      caption: "no li creds",
+      mediaUrls: ["https://example.test/photo.jpg"],
+    });
+    const tt = await new LiveGraphAdapter().publish({
+      brand: fakeBrand({
+        tiktok_tokens_encrypted: "enc",
+        tiktok_open_id: "oid",
+      }),
+      platform: "tiktok",
+      caption: "unaudited",
+      mediaUrls: ["https://example.test/clip.mp4"],
+    });
+    expect(li.externalPostId.startsWith("mock_")).toBe(true);
+    expect(tt.externalPostId.startsWith("mock_")).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    if (prev === undefined) delete process.env.TIKTOK_AUDIT_PASSED;
+    else process.env.TIKTOK_AUDIT_PASSED = prev;
+  });
 });
 
 describe("publish notice", () => {
-  it("X never counts as live; Threads does once live", () => {
+  it("X never counts as live; Threads does once live; unaudited TikTok does not", () => {
+    const prev = process.env.TIKTOK_AUDIT_PASSED;
+    delete process.env.TIKTOK_AUDIT_PASSED;
     expect(didPublishLive("x", "live")).toBe(false);
     expect(didPublishLive("threads", "live")).toBe(true);
+    expect(didPublishLive("linkedin", "live")).toBe(true);
+    expect(didPublishLive("tiktok", "live")).toBe(false);
     expect(didPublishLive("instagram", "live")).toBe(true);
     expect(didPublishLive("facebook", "mock")).toBe(false);
+    if (prev === undefined) delete process.env.TIKTOK_AUDIT_PASSED;
+    else process.env.TIKTOK_AUDIT_PASSED = prev;
   });
 
   it("names X and that it did not go live", () => {
@@ -143,5 +197,16 @@ describe("publish notice", () => {
     expect(msg).toMatch(/\bX\b/);
     expect(msg).toMatch(/did not go live/i);
     expect(msg.toLowerCase()).not.toMatch(/api key/);
+  });
+
+  it("includes permalink when live LinkedIn confirms", () => {
+    const msg = publishConfirmation("linkedin", {
+      live: true,
+      feedUrl: "https://app.example/feed?platform=linkedin",
+      externalPostId: "urn:li:share:1",
+      permalink: "https://www.linkedin.com/feed/update/urn:li:share:1",
+    });
+    expect(msg).toMatch(/LinkedIn/);
+    expect(msg).toMatch(/linkedin\.com/);
   });
 });

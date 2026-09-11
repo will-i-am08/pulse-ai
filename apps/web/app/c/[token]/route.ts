@@ -13,10 +13,18 @@ function adsConnected(brand: Brand): boolean {
   return Boolean(brand.ad_account_id && brand.ads_tokens_encrypted);
 }
 
+function linkedinConnected(brand: Brand): boolean {
+  return Boolean(brand.linkedin_org_id && brand.linkedin_tokens_encrypted);
+}
+
+function tiktokConnected(brand: Brand): boolean {
+  return Boolean(brand.tiktok_open_id && brand.tiktok_tokens_encrypted);
+}
+
 /**
  * SMS deep-link entry: /c/[token]
  * - expired → clear "ask Kip for a fresh link" page
- * - ads → OAuth (or mock connect when GRAPH_MODE=mock)
+ * - ads / linkedin / tiktok → OAuth (or mock connect when GRAPH_MODE=mock)
  * - already connected → status + optional reconnect
  * - else → Facebook OAuth with brand-scoped SMS state (no dashboard login)
  */
@@ -46,6 +54,57 @@ export async function GET(
       status: 404,
       headers: { 'content-type': 'text/html; charset=utf-8' },
     });
+  }
+
+  if (verified.purpose === 'linkedin') {
+    if (linkedinConnected(brand) && !request.nextUrl.searchParams.has('reconnect')) {
+      const name = brand.linkedin_org_name ?? brand.linkedin_org_id ?? 'your Company Page';
+      return new NextResponse(
+        htmlPage(
+          'LinkedIn connected',
+          `You're linked to ${name}. Kip already knows. Close this and head back to your texts.`,
+          `<p><a href="${base}/c/${token}?reconnect=1">Reconnect a different Company Page</a></p>`,
+        ),
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+    // Mock / unconfigured: one-tap connect without LinkedIn OAuth.
+    if (graphMode === 'mock' || !process.env.LINKEDIN_CLIENT_ID) {
+      return new NextResponse(
+        htmlPage(
+          'Connect LinkedIn Company Page',
+          `Mock mode — tap below to link a demo Company Page for ${brand.name}. Kip will text you the page name.`,
+          `<form method="POST" action="${base}/api/connect/linkedin/mock">
+            <input type="hidden" name="t" value="${token}" />
+            <label style="display:block;margin:1rem 0 .5rem;color:#444">Company Page name
+              <input name="page_name" value="${escapeAttr(brand.name)} Page" style="display:block;width:100%;margin-top:6px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:1rem"/>
+            </label>
+            <button type="submit" style="padding:12px 18px;border-radius:8px;border:0;background:#1a1a1a;color:#fff;font-size:1rem;cursor:pointer">
+              Connect Company Page
+            </button>
+          </form>`,
+        ),
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+    // Live OAuth scaffold — start route exchanges code when credentials exist.
+    return NextResponse.redirect(new URL(`/api/connect/linkedin/start?t=${encodeURIComponent(token)}`, base));
+  }
+
+  if (verified.purpose === 'tiktok') {
+    if (tiktokConnected(brand) && !request.nextUrl.searchParams.has('reconnect')) {
+      const name = brand.tiktok_display_name ?? brand.tiktok_open_id ?? 'your TikTok';
+      return new NextResponse(
+        htmlPage(
+          'TikTok connected',
+          `You're linked as ${name}. Kip already knows. Close this and head back to your texts.`,
+          `<p><a href="${base}/c/${token}?reconnect=1">Reconnect / update privacy</a></p>`,
+        ),
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+    // Consent + privacy confirm is required TikTok UX (even in mock).
+    return NextResponse.redirect(new URL(`/c/tiktok-consent?t=${encodeURIComponent(token)}`, base));
   }
 
   if (verified.purpose === 'ads') {
@@ -97,6 +156,10 @@ export async function GET(
 
   const state = signSmsOauthState(brand.id, 'meta');
   return NextResponse.redirect(loginDialogUrl(state, 'meta'));
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
 function htmlPage(title: string, body: string, extra = ''): string {
