@@ -90,6 +90,9 @@ export async function campaignSpendCents(adCampaignId: string): Promise<number> 
 export async function assertCanSpend(
   brand: Brand, opts: { additionalCents: number; adCampaignId?: string | null },
 ): Promise<string | null> {
+  if (brand.account_type === "personal") {
+    return 'Ads aren\'t available on personal accounts. I can still plan niche content and post organically.';
+  }
   if (!adsEnabled(brand)) {
     return 'Ads are switched off for this brand. Reply "enable ads" to turn them on (I\'ll also need your ad account connected).';
   }
