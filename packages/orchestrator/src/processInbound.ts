@@ -440,6 +440,29 @@ export async function processInbound(
         reply: "Love it, your plan's live 🎉 Pillars, cadence, and format bias are set. Gap-fill will follow this plan. Send me photos any time and I'll start filling your slots.",
       };
     }
+    const perfYes = await confirmPerfSuggestion(brand);
+    if (perfYes) return { reply: perfYes };
+  }
+
+  // Performance analyst follow-ups — "make more of these" / boost soft handoff.
+  if (message.body && newMedia.length === 0 && !pending) {
+    if (looksLikeMakeMore(message.body)) {
+      return { reply: await applyMakeMoreOfThese(brand) };
+    }
+    if (looksLikeAnalystBoost(message.body)) {
+      const wantsCampaign = /\bcampaign\b/i.test(message.body) && !/\bboost\b/i.test(message.body);
+      return {
+        reply: await handoffBoostOrCampaign(brand, {
+          kind: wantsCampaign ? "campaign" : "boost",
+          postId: getPerfPending(brand)?.post_id,
+          request: message.body,
+        }),
+      };
+    }
+    if (CANCEL_RE.test(message.body) && getPerfPending(brand)) {
+      await clearPerfPending(brand);
+      return { reply: "No worries — left your mix as is. Nothing changed." };
+    }
   }
 
   // Campaign pause / resume / cancel (active or paused), with orphan cleanup on cancel.
