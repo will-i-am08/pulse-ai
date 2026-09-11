@@ -2,7 +2,17 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { query, queryOne, encrypt, decrypt, generateLoginCode, normalizePhone } from '@pulse/shared';
+import {
+  query,
+  queryOne,
+  withTransaction,
+  poolExecutor,
+  encrypt,
+  decrypt,
+  generateLoginCode,
+  normalizePhone,
+  type Executor,
+} from '@pulse/shared';
 import { deliverPendingLoginCodes } from '@pulse/gateway';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
@@ -76,10 +86,16 @@ async function issueCode(
   userId: string,
   brandId: string | null,
   purpose: 'login' | 'signup',
+  exec: Executor = poolExecutor,
 ): Promise<void> {
+  // When running inside a transaction the row isn't committed yet, so an
+  // immediate flush (which reads the pool on another connection) wouldn't see
+  // it. The caller flushes after commit instead — see signupAction.
+  const inTransaction = exec !== poolExecutor;
+
   // Throttle: if a code was queued very recently, don't spam the channel — the
   // existing one is still valid.
-  const recent = await queryOne<{ id: string }>(
+  const recent = await exec.queryOne<{ id: string }>(
     `select id from login_codes
       where phone = $1 and consumed_at is null
         and created_at > now() - ($2 || ' seconds')::interval
@@ -89,17 +105,17 @@ async function issueCode(
   if (recent) {
     // Existing code is still valid — retry delivery in case the first attempt
     // failed (bot down, Twilio blip) without minting a second code.
-    await flushLoginCodes();
+    if (!inTransaction) await flushLoginCodes();
     return;
   }
 
   const code = generateLoginCode();
-  await query(
+  await exec.query(
     `insert into login_codes (phone, user_id, brand_id, code_encrypted, purpose, expires_at)
      values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
     [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
   );
-  await flushLoginCodes();
+  if (!inTransaction) await flushLoginCodes();
 }
 
 /** Step 1 of login: look up the phone, queue a code, go to the verify screen. */
@@ -166,61 +182,61 @@ export async function signupAction(formData: FormData): Promise<void> {
   if (existingUser) redirect('/login?error=exists');
 
   // client_phone is unique — a prior brand (often seeded before phone-auth)
-  // would make the insert fail after the user row already exists, leaving an
-  // account that can never receive login codes.
+  // would make a fresh insert fail after the user row already exists. If that
+  // brand has no phone-auth owner yet, we claim it; if it's already owned, the
+  // phone genuinely belongs to another account.
   const phoneTaken = await queryOne<{ id: string; owner_user_id: string | null }>(
     'select id, owner_user_id from brands where client_phone = $1',
     [phone],
   );
-  if (phoneTaken) {
-    // If that brand has no phone-auth owner yet, claim it instead of failing.
-    if (!phoneTaken.owner_user_id) {
-      const user = await queryOne<{ id: string }>(
+  if (phoneTaken?.owner_user_id) redirect('/signup?error=phoneinuse');
+
+  // Atomic: the user, their brand (new or claimed), and the first login code all
+  // commit together or not at all. If anything throws (e.g. a misconfigured
+  // encryption key, or a race on the unique phone index), the whole thing rolls
+  // back — no orphaned user/brand rows left behind to block a genuine retry.
+  try {
+    await withTransaction(async (tx) => {
+      const user = await tx.queryOne<{ id: string }>(
         'insert into users (phone, email, name) values ($1, $2, $3) returning id',
         [phone, email, name],
       );
-      if (!user) redirect('/signup?error=failed');
-      await query(
-        `update brands
-            set owner_user_id = $1,
-                name = coalesce(nullif(name, ''), $2),
-                discord_user_id = coalesce(nullif($3, ''), discord_user_id),
-                account_type = coalesce(account_type, $4),
-                website = coalesce(website, nullif($5, ''))
-          where id = $6`,
-        [user!.id, name, discordUserId, accountType, website, phoneTaken.id],
-      );
-      await issueCode(phone!, user!.id, phoneTaken.id, 'signup');
-      redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
-    }
-    redirect('/signup?error=phoneinuse');
-  }
+      if (!user) throw new Error('user insert returned no row');
 
-  const user = await queryOne<{ id: string }>(
-    'insert into users (phone, email, name) values ($1, $2, $3) returning id',
-    [phone, email, name],
-  );
-  if (!user) redirect('/signup?error=failed');
+      let brandId: string | null;
+      if (phoneTaken) {
+        // Claim the pre-existing unowned brand rather than inserting a duplicate.
+        await tx.query(
+          `update brands
+              set owner_user_id = $1,
+                  name = coalesce(nullif(name, ''), $2),
+                  discord_user_id = coalesce(nullif($3, ''), discord_user_id),
+                  account_type = coalesce(account_type, $4),
+                  website = coalesce(website, nullif($5, ''))
+            where id = $6`,
+          [user.id, name, discordUserId, accountType, website, phoneTaken.id],
+        );
+        brandId = phoneTaken.id;
+      } else {
+        const brand = await tx.queryOne<{ id: string }>(
+          `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
+           values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
+           returning id`,
+          [name, phone, user.id, discordUserId || null, accountType, website || null],
+        );
+        brandId = brand?.id ?? null;
+      }
 
-  let brand: { id: string } | null = null;
-  try {
-    brand = await queryOne<{ id: string }>(
-      `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
-       values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
-       returning id`,
-      [name, phone, user!.id, discordUserId || null, accountType, website || null],
-    );
-  } catch {
-    // Roll back the orphan user so a retry isn't stuck as "exists" with no brand.
-    await query('delete from users where id = $1', [user!.id]).catch(() => undefined);
-    redirect('/signup?error=failed');
-  }
-  if (!brand) {
-    await query('delete from users where id = $1', [user!.id]).catch(() => undefined);
+      await issueCode(phone!, user.id, brandId, 'signup', tx);
+    });
+  } catch (err) {
+    console.error('[signup] failed:', err instanceof Error ? err.message : err);
     redirect('/signup?error=failed');
   }
 
-  await issueCode(phone!, user!.id, brand!.id, 'signup');
+  // The code is committed now — kick immediate delivery so the user doesn't wait
+  // on the poller. issueCode skips this while inside the transaction above.
+  await flushLoginCodes();
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
 }
 
