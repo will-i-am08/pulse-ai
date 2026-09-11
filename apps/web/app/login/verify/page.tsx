@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { verifyLoginCode, requestLoginCode } from '@/lib/actions/auth';
 import { maskPhone } from '@pulse/shared';
 import { BrandLockup } from '../../components/BrandLockup';
+import { PendingSubmitButton } from '../../components/PendingSubmitButton';
 import styles from '../../auth.module.css';
 
 export const metadata = { title: 'Enter code | Kip' };
@@ -69,12 +70,16 @@ export default async function VerifyPage({
             placeholder="123456"
           />
         </label>
-        <button className={styles.button} type="submit">Verify and continue</button>
+        <PendingSubmitButton idleLabel="Verify and continue" pendingLabel="Checking code…" />
       </form>
 
       <form className={styles.resend} action={requestLoginCode}>
         <input type="hidden" name="phone" value={phone} />
-        <button className={styles.buttonGhost} type="submit">Didn’t get it? Send a new code</button>
+        <PendingSubmitButton
+          className={styles.buttonGhost}
+          idleLabel="Didn’t get it? Send a new code"
+          pendingLabel="Sending code…"
+        />
       </form>
     </main>
   );

@@ -32,7 +32,10 @@ async function flushLoginCodes(phone: string): Promise<boolean> {
   }
 }
 
-const CODE_TTL_MINUTES = 10;
+/** How long a code stays valid after it is successfully texted (kept in sync with LOGIN_CODE_TTL_MINUTES in @pulse/gateway). */
+const CODE_TTL_MINUTES = 15;
+/** Upper bound while a code is still queued / undelivered (covers slow SMS). */
+const CODE_QUEUE_TTL_MINUTES = Math.max(30, CODE_TTL_MINUTES * 2);
 const RESEND_THROTTLE_SECONDS = 30;
 const MAX_ATTEMPTS = 5;
 
@@ -121,11 +124,25 @@ async function issueCode(
     return flushLoginCodes(phone);
   }
 
+  // Retire any older outstanding codes so a late SMS for a prior attempt can't
+  // race with the one we're about to send (and so verify always has one winner).
+  await exec.query(
+    `update login_codes
+        set expires_at = least(expires_at, now())
+      where phone = $1
+        and consumed_at is null
+        and expires_at > now()`,
+    [phone],
+  );
+
   const code = generateLoginCode();
+  // Queue TTL is intentionally longer than the post-delivery window: if SMS is
+  // slow, the row must still be alive when delivery finally succeeds (which
+  // then resets expires_at — see deliverPendingLoginCodes).
   await exec.query(
     `insert into login_codes (phone, user_id, brand_id, code_encrypted, purpose, expires_at)
      values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
-    [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
+    [phone, userId, brandId, encrypt(code), purpose, String(CODE_QUEUE_TTL_MINUTES)],
   );
   if (inTransaction) return false;
   return flushLoginCodes(phone);
@@ -158,30 +175,45 @@ export async function verifyLoginCode(formData: FormData): Promise<void> {
   if (!phone) redirect('/login?error=badphone');
   const verifyUrl = `/login/verify?phone=${encodeURIComponent(phone!)}`;
 
-  const row = await queryOne<{ id: string; user_id: string | null; code_encrypted: string; attempts: number }>(
+  // Prefer the newest code, but accept any still-valid one for this phone so a
+  // slightly older SMS still works if a resend raced mid-delivery.
+  const rows = await query<{ id: string; user_id: string | null; code_encrypted: string; attempts: number }>(
     `select id, user_id, code_encrypted, attempts from login_codes
       where phone = $1 and consumed_at is null and expires_at > now()
-      order by created_at desc limit 1`,
+      order by created_at desc
+      limit 5`,
     [phone],
   );
-  if (!row) redirect(`${verifyUrl}&error=expired`);
-  if (row!.attempts >= MAX_ATTEMPTS) redirect(`${verifyUrl}&error=locked`);
+  if (rows.length === 0) redirect(`${verifyUrl}&error=expired`);
 
-  let actual = '';
-  try {
-    actual = decrypt(row!.code_encrypted);
-  } catch {
-    redirect(`${verifyUrl}&error=expired`);
+  const locked = rows.every((r) => r.attempts >= MAX_ATTEMPTS);
+  if (locked) redirect(`${verifyUrl}&error=locked`);
+
+  let matched: (typeof rows)[number] | null = null;
+  for (const row of rows) {
+    if (row.attempts >= MAX_ATTEMPTS) continue;
+    let actual = '';
+    try {
+      actual = decrypt(row.code_encrypted);
+    } catch {
+      continue;
+    }
+    if (input && timingSafeEqual(input, actual)) {
+      matched = row;
+      break;
+    }
   }
 
-  if (!input || !timingSafeEqual(input, actual)) {
-    await query('update login_codes set attempts = attempts + 1 where id = $1', [row!.id]);
+  if (!matched) {
+    // Count the attempt against the newest unlocked row.
+    const newest = rows.find((r) => r.attempts < MAX_ATTEMPTS) ?? rows[0]!;
+    await query('update login_codes set attempts = attempts + 1 where id = $1', [newest.id]);
     redirect(`${verifyUrl}&error=wrong`);
   }
-  if (!row!.user_id) redirect('/login?error=nouser');
+  if (!matched!.user_id) redirect('/login?error=nouser');
 
-  await query('update login_codes set consumed_at = now() where id = $1', [row!.id]);
-  await setSession(row!.user_id!);
+  await query('update login_codes set consumed_at = now() where id = $1', [matched!.id]);
+  await setSession(matched!.user_id!);
   redirect('/app');
 }
 

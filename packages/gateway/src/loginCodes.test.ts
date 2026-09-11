@@ -61,7 +61,7 @@ describe("deliverPendingLoginCodes", () => {
 
   it("sends via Twilio SMS to the login phone when configured", async () => {
     query.mockResolvedValueOnce([pendingRow({ brand_id: null })]);
-    query.mockResolvedValue([]); // message insert + delivered update
+    query.mockResolvedValue([]); // message insert + delivered/expiry updates
     queryOne.mockResolvedValueOnce({ id: "brand-1" }); // resolveBrandId for logging
     decrypt.mockReturnValue("123456");
     twilioSend.mockResolvedValue({ providerMessageId: "SMxxx" });
@@ -76,8 +76,8 @@ describe("deliverPendingLoginCodes", () => {
     });
     expect(sendToBrand).not.toHaveBeenCalled();
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("delivered_at = now()"),
-      ["code-1"],
+      expect.stringContaining("expires_at = now() + ($2 || ' minutes')::interval"),
+      ["code-1", "15"],
     );
   });
 
@@ -162,6 +162,28 @@ describe("deliverPendingLoginCodes", () => {
 
     expect(n).toBe(1);
     expect(query.mock.calls[0]?.[0]).toContain("and phone = $1");
+    expect(query.mock.calls[0]?.[0]).toContain("order by created_at desc");
     expect(query.mock.calls[0]?.[1]).toEqual(["+61480436685"]);
+  });
+
+  it("resets expires_at when the SMS is sent so TTL starts at delivery", async () => {
+    query.mockResolvedValueOnce([pendingRow()]);
+    query.mockResolvedValue([]);
+    decrypt.mockReturnValue("424242");
+    twilioSend.mockResolvedValue({ providerMessageId: "SMzzz" });
+
+    const { deliverPendingLoginCodes, LOGIN_CODE_TTL_MINUTES } = await import("./loginCodes.js");
+    await deliverPendingLoginCodes({ phone: "+61480436685" });
+
+    expect(LOGIN_CODE_TTL_MINUTES).toBe(15);
+    expect(twilioSend.mock.calls[0]?.[0]?.body).toContain("15 minutes");
+    expect(
+      query.mock.calls.some(
+        (c) =>
+          String(c[0]).includes("expires_at = now() + ($2 || ' minutes')::interval") &&
+          Array.isArray(c[1]) &&
+          c[1][1] === "15",
+      ),
+    ).toBe(true);
   });
 });

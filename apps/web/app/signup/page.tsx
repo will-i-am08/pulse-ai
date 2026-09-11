@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { signupAction } from '@/lib/actions/auth';
 import { BrandLockup } from '../components/BrandLockup';
+import { PendingSubmitButton } from '../components/PendingSubmitButton';
 import styles from '../auth.module.css';
 
 export const metadata = { title: 'Sign up | Kip' };
@@ -74,7 +75,7 @@ export default async function SignupPage({
           </span>
         </label>
 
-        <button className={styles.button} type="submit">Create account</button>
+        <PendingSubmitButton idleLabel="Create account" pendingLabel="Creating account…" />
         <p className={styles.alt}>
           Already have an account? <Link href="/login">Log in</Link>
         </p>

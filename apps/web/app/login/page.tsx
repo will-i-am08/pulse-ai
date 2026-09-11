@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requestLoginCode, operatorLoginAction } from '@/lib/actions/auth';
 import { BrandLockup } from '../components/BrandLockup';
+import { PendingSubmitButton } from '../components/PendingSubmitButton';
 import styles from '../auth.module.css';
 
 export const metadata = { title: 'Log in | Kip' };
@@ -45,7 +46,7 @@ export default async function LoginPage({
             placeholder="04xx xxx xxx"
           />
         </label>
-        <button className={styles.button} type="submit">Send me a code</button>
+        <PendingSubmitButton idleLabel="Send me a code" pendingLabel="Sending code…" />
         <p className={styles.alt}>
           New here? <Link href="/signup">Create an account</Link>
         </p>
@@ -59,7 +60,11 @@ export default async function LoginPage({
             Operator password
             <input className={styles.input} type="password" name="password" autoComplete="off" />
           </label>
-          <button className={styles.buttonGhost} type="submit">Sign in as operator</button>
+          <PendingSubmitButton
+            className={styles.buttonGhost}
+            idleLabel="Sign in as operator"
+            pendingLabel="Signing in…"
+          />
           <span className={styles.hint}>Opens the agent lab. Also break-glass if SMS login is down.</span>
         </form>
       </details>
