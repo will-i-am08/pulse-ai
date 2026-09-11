@@ -55,6 +55,7 @@ describe("deliverPendingLoginCodes", () => {
       TWILIO_ACCOUNT_SID: "ACxxx",
       TWILIO_AUTH_TOKEN: "token",
       TWILIO_FROM_NUMBER: "+61400000000",
+      MESSAGE_CHANNEL: "twilio",
     });
   });
 
@@ -80,10 +81,11 @@ describe("deliverPendingLoginCodes", () => {
     );
   });
 
-  it("falls back to sendToBrand when Twilio is not configured", async () => {
+  it("falls back to sendToBrand when Twilio is not configured and channel is discord", async () => {
     getServerEnv.mockReturnValue({
       TWILIO_ACCOUNT_SID: undefined,
       TWILIO_FROM_NUMBER: undefined,
+      MESSAGE_CHANNEL: "discord",
     });
     query.mockResolvedValueOnce([pendingRow({ brand_id: null })]);
     query.mockResolvedValue([]);
@@ -96,10 +98,34 @@ describe("deliverPendingLoginCodes", () => {
 
     expect(n).toBe(1);
     expect(twilioSend).not.toHaveBeenCalled();
-    expect(sendToBrand).toHaveBeenCalledWith("brand-1", expect.stringContaining("123456"));
+    expect(sendToBrand).toHaveBeenCalledWith(
+      "brand-1",
+      expect.stringContaining("123456"),
+      undefined,
+      { pace: false },
+    );
+  });
+
+  it("does not retry via sendToBrand when Twilio SMS fails and MESSAGE_CHANNEL is twilio", async () => {
+    twilioSend.mockRejectedValue(new Error("From number invalid"));
+    query.mockResolvedValueOnce([pendingRow()]);
+    decrypt.mockReturnValue("654321");
+
+    const { deliverPendingLoginCodes } = await import("./loginCodes.js");
+    const n = await deliverPendingLoginCodes(() => new Date());
+
+    expect(n).toBe(0);
+    expect(sendToBrand).not.toHaveBeenCalled();
+    expect(query.mock.calls.some((c) => String(c[0]).includes("delivered_at = now()"))).toBe(false);
   });
 
   it("does not mark delivered when both Twilio and sendToBrand fail", async () => {
+    getServerEnv.mockReturnValue({
+      TWILIO_ACCOUNT_SID: "ACxxx",
+      TWILIO_AUTH_TOKEN: "token",
+      TWILIO_FROM_NUMBER: "+61400000000",
+      MESSAGE_CHANNEL: "discord",
+    });
     twilioSend.mockRejectedValue(new Error("twilio down"));
     sendToBrand.mockResolvedValue(false);
     query.mockResolvedValueOnce([pendingRow()]);
@@ -113,7 +139,7 @@ describe("deliverPendingLoginCodes", () => {
   });
 
   it("skips rows with no resolvable brand when Twilio is unavailable", async () => {
-    getServerEnv.mockReturnValue({});
+    getServerEnv.mockReturnValue({ MESSAGE_CHANNEL: "discord" });
     query.mockResolvedValueOnce([pendingRow({ brand_id: null, phone: "+61400000001", id: "code-3" })]);
     queryOne.mockResolvedValueOnce(null);
     decrypt.mockReturnValue("111111");
@@ -123,5 +149,19 @@ describe("deliverPendingLoginCodes", () => {
 
     expect(n).toBe(0);
     expect(sendToBrand).not.toHaveBeenCalled();
+  });
+
+  it("can scope delivery to a single phone", async () => {
+    query.mockResolvedValueOnce([pendingRow()]);
+    query.mockResolvedValue([]);
+    decrypt.mockReturnValue("999999");
+    twilioSend.mockResolvedValue({ providerMessageId: "SMyyy" });
+
+    const { deliverPendingLoginCodes } = await import("./loginCodes.js");
+    const n = await deliverPendingLoginCodes({ phone: "+61480436685" });
+
+    expect(n).toBe(1);
+    expect(query.mock.calls[0]?.[0]).toContain("and phone = $1");
+    expect(query.mock.calls[0]?.[1]).toEqual(["+61480436685"]);
   });
 });

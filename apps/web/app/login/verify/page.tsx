@@ -12,13 +12,19 @@ const ERRORS: Record<string, string> = {
   locked: 'Too many tries. Send a new code and try again.',
 };
 
+const WARNINGS: Record<string, string> = {
+  undelivered:
+    'We couldn’t text your code just now. Tap “Send a new code” in a moment — if it keeps failing, Kip’s SMS line may be misconfigured.',
+};
+
 export default async function VerifyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phone?: string; error?: string; new?: string }>;
+  searchParams: Promise<{ phone?: string; error?: string; new?: string; warn?: string }>;
 }) {
-  const { phone, error, new: isNew } = await searchParams;
+  const { phone, error, new: isNew, warn } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
+  const warning = !msg && warn ? (WARNINGS[warn] ?? null) : null;
 
   if (!phone) {
     return (
@@ -41,9 +47,13 @@ export default async function VerifyPage({
       <form className={styles.card} action={verifyLoginCode}>
         <h1 className={styles.h1}>Enter your code</h1>
         <p className={styles.sub}>
-          {isNew ? 'Welcome! ' : ''}Kip just messaged a 6-digit code to {maskPhone(phone)}.
+          {isNew ? 'Welcome! ' : ''}
+          {warning
+            ? `We prepared a 6-digit code for ${maskPhone(phone)}, but the text didn’t go through yet.`
+            : `Kip just messaged a 6-digit code to ${maskPhone(phone)}.`}
         </p>
         {msg && <p className={styles.error}>{msg}</p>}
+        {warning && <p className={styles.error}>{warning}</p>}
         <input type="hidden" name="phone" value={phone} />
         <label className={styles.label}>
           Code

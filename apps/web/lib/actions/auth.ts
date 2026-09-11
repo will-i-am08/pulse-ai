@@ -13,15 +13,22 @@ import {
   normalizePhone,
   type Executor,
 } from '@pulse/shared';
-import { deliverPendingLoginCodes } from '@pulse/gateway';
+// Subpath import — avoid pulling @pulse/gateway's orchestrator re-exports
+// (satori/harfbuzz) into the login serverless bundle.
+import { deliverPendingLoginCodes } from '@pulse/gateway/login-codes';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
-/** Kick delivery now so login doesn't wait on the worker/bot poller. */
-async function flushLoginCodes(): Promise<void> {
+/**
+ * Kick delivery for this phone now so login doesn't wait on the worker poller.
+ * Scoped to one phone so a backlog of undeliverable codes can't stall the form.
+ */
+async function flushLoginCodes(phone: string): Promise<boolean> {
   try {
-    await deliverPendingLoginCodes();
+    const sent = await deliverPendingLoginCodes({ phone });
+    return sent > 0;
   } catch (err) {
     console.error('issueCode: immediate login-code delivery failed; poller will retry', err);
+    return false;
   }
 }
 
@@ -80,14 +87,18 @@ async function resolveBrandForPhone(userId: string, phone: string): Promise<stri
   return null;
 }
 
-/** Queue a fresh login code for a phone, tied to the user + their brand. */
+/**
+ * Queue a fresh login code for a phone, tied to the user + their brand.
+ * Returns whether the code was handed to the messaging provider successfully.
+ * Inside a transaction, delivery is deferred to the caller (row not visible yet).
+ */
 async function issueCode(
   phone: string,
   userId: string,
   brandId: string | null,
   purpose: 'login' | 'signup',
   exec: Executor = poolExecutor,
-): Promise<void> {
+): Promise<boolean> {
   // When running inside a transaction the row isn't committed yet, so an
   // immediate flush (which reads the pool on another connection) wouldn't see
   // it. The caller flushes after commit instead — see signupAction.
@@ -95,8 +106,8 @@ async function issueCode(
 
   // Throttle: if a code was queued very recently, don't spam the channel — the
   // existing one is still valid.
-  const recent = await exec.queryOne<{ id: string }>(
-    `select id from login_codes
+  const recent = await exec.queryOne<{ id: string; delivered_at: string | null }>(
+    `select id, delivered_at from login_codes
       where phone = $1 and consumed_at is null
         and created_at > now() - ($2 || ' seconds')::interval
       order by created_at desc limit 1`,
@@ -105,8 +116,9 @@ async function issueCode(
   if (recent) {
     // Existing code is still valid — retry delivery in case the first attempt
     // failed (bot down, Twilio blip) without minting a second code.
-    if (!inTransaction) await flushLoginCodes();
-    return;
+    if (inTransaction) return false;
+    if (recent.delivered_at) return true;
+    return flushLoginCodes(phone);
   }
 
   const code = generateLoginCode();
@@ -115,7 +127,15 @@ async function issueCode(
      values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
     [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
   );
-  if (!inTransaction) await flushLoginCodes();
+  if (inTransaction) return false;
+  return flushLoginCodes(phone);
+}
+
+function verifyRedirect(phone: string, opts?: { new?: boolean; delivered?: boolean }): never {
+  const params = new URLSearchParams({ phone });
+  if (opts?.new) params.set('new', '1');
+  if (opts?.delivered === false) params.set('warn', 'undelivered');
+  redirect(`/login/verify?${params.toString()}`);
 }
 
 /** Step 1 of login: look up the phone, queue a code, go to the verify screen. */
@@ -127,8 +147,8 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
   if (!user) redirect('/login?error=nouser');
 
   const brandId = await resolveBrandForPhone(user!.id, phone!);
-  await issueCode(phone!, user!.id, brandId, 'login');
-  redirect(`/login/verify?phone=${encodeURIComponent(phone!)}`);
+  const delivered = await issueCode(phone!, user!.id, brandId, 'login');
+  verifyRedirect(phone!, { delivered });
 }
 
 /** Step 2 of login: verify the code and start the session. */
@@ -236,8 +256,8 @@ export async function signupAction(formData: FormData): Promise<void> {
 
   // The code is committed now — kick immediate delivery so the user doesn't wait
   // on the poller. issueCode skips this while inside the transaction above.
-  await flushLoginCodes();
-  redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
+  const delivered = await flushLoginCodes(phone!);
+  verifyRedirect(phone!, { new: true, delivered });
 }
 
 /** Same-origin path only — blocks open redirects. */

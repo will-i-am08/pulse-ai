@@ -1,6 +1,11 @@
 import { query, queryOne, decrypt, getServerEnv, type LoginCode } from "@pulse/shared";
 import { createTwilioChannel } from "@pulse/channel-twilio";
-import { sendToBrand } from "./gateway.js";
+
+export type DeliverLoginCodesOptions = {
+  /** Only attempt codes for this E.164 phone (login/signup flush). */
+  phone?: string;
+  now?: () => Date;
+};
 
 /**
  * Resolve which brand should receive a login code for this phone.
@@ -38,10 +43,32 @@ function twilioSmsReady(): boolean {
   }
 }
 
+/** Agent-thread fallback is only useful when MESSAGE_CHANNEL is not Twilio SMS. */
+function agentFallbackAvailable(): boolean {
+  try {
+    return getServerEnv().MESSAGE_CHANNEL !== "twilio";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deliver via Discord/Linq agent thread. Lazy-imported so the login serverless
+ * path does not pull @pulse/orchestrator (satori/harfbuzz) into the bundle when
+ * Twilio SMS is the delivery path.
+ */
+async function deliverViaAgentChannel(brandId: string, body: string): Promise<boolean> {
+  const { sendToBrand } = await import("./gateway.js");
+  // OTP is not a chat bubble — skip typing pauses.
+  return sendToBrand(brandId, body, undefined, { pace: false });
+}
+
 /**
  * Deliver one login-code body. Prefer Twilio SMS to the login phone (matches the
  * dashboard "we'll text you a code" copy and works even when MESSAGE_CHANNEL is
- * discord and the bot is down). Fall back to the agent thread via sendToBrand.
+ * discord and the bot is down). Fall back to the agent thread only when that
+ * channel is actually different from Twilio — otherwise we just retry the same
+ * failing From-number with backoff and stall the login form.
  */
 async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
   if (twilioSmsReady()) {
@@ -62,11 +89,29 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
       }
       return true;
     } catch (err) {
+      if (!agentFallbackAvailable()) {
+        console.error(
+          `deliverPendingLoginCodes: Twilio SMS failed for ${row.phone}; no alternate channel`,
+          err,
+        );
+        return false;
+      }
       console.error(
         `deliverPendingLoginCodes: Twilio SMS failed for ${row.phone}; trying agent channel`,
         err,
       );
     }
+  }
+
+  if (!agentFallbackAvailable() && !twilioSmsReady()) {
+    console.warn(
+      `deliverPendingLoginCodes: Twilio SMS not configured and MESSAGE_CHANNEL is twilio; cannot deliver code ${row.id}`,
+    );
+    return false;
+  }
+
+  if (!agentFallbackAvailable()) {
+    return false;
   }
 
   const brandId = await resolveBrandId(row);
@@ -76,7 +121,7 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
     );
     return false;
   }
-  return sendToBrand(brandId, body);
+  return deliverViaAgentChannel(brandId, body);
 }
 
 /**
@@ -87,15 +132,32 @@ async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
  * agent process (Discord bot or worker) also polls as a backup. Best-effort: a
  * send failure leaves the row undelivered so the next tick retries, until it expires.
  */
-export async function deliverPendingLoginCodes(now: () => Date = () => new Date()): Promise<number> {
-  const rows = await query<LoginCode>(
-    `select * from login_codes
-      where delivered_at is null
-        and consumed_at is null
-        and expires_at > now()
-      order by created_at asc
-      limit 20`,
-  );
+export async function deliverPendingLoginCodes(
+  nowOrOpts: (() => Date) | DeliverLoginCodesOptions = () => new Date(),
+): Promise<number> {
+  const opts: DeliverLoginCodesOptions =
+    typeof nowOrOpts === "function" ? { now: nowOrOpts } : nowOrOpts;
+  const now = opts.now ?? (() => new Date());
+
+  const rows = opts.phone
+    ? await query<LoginCode>(
+        `select * from login_codes
+          where delivered_at is null
+            and consumed_at is null
+            and expires_at > now()
+            and phone = $1
+          order by created_at asc
+          limit 5`,
+        [opts.phone],
+      )
+    : await query<LoginCode>(
+        `select * from login_codes
+          where delivered_at is null
+            and consumed_at is null
+            and expires_at > now()
+          order by created_at asc
+          limit 20`,
+      );
   let sent = 0;
   for (const row of rows) {
     let code: string;
