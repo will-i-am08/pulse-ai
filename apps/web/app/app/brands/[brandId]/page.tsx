@@ -22,7 +22,8 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ br
   const pendingReplies = await listPendingReplies(brandId);
 
   return (
-    <section>
+    <section className="stage">
+      <div className="page">
       <div className="page-header">
         <div>
           <h1>{brand.name}</h1>
@@ -136,6 +137,7 @@ export default async function BrandDetailPage({ params }: { params: Promise<{ br
           ))}
         </ul>
       )}
+      </div>
     </section>
   );
 }

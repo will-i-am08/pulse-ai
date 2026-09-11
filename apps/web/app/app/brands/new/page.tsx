@@ -2,8 +2,9 @@ import { createBrandAction } from '@/lib/actions/brands';
 
 export default function NewBrandPage() {
   return (
-    <section>
-      <h1>Add a brand</h1>
+    <section className="stage">
+      <div className="page">
+      <h1 className="page-h1">Add a brand</h1>
 
       <form action={createBrandAction} className="form">
         <fieldset>
@@ -61,6 +62,7 @@ export default function NewBrandPage() {
           Create brand
         </button>
       </form>
+      </div>
     </section>
   );
 }

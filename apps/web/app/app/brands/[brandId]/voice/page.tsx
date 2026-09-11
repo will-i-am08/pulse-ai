@@ -14,7 +14,8 @@ export default async function BrandVoicePage({ params }: { params: Promise<{ bra
   const voice = brand.brand_voice_profile;
 
   return (
-    <section>
+    <section className="stage">
+      <div className="page">
       <div className="page-header">
         <div>
           <h1>{brand.name}</h1>
@@ -67,6 +68,7 @@ export default async function BrandVoicePage({ params }: { params: Promise<{ bra
           Save voice profile
         </button>
       </form>
+      </div>
     </section>
   );
 }
