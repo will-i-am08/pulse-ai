@@ -91,7 +91,22 @@ import {
   confirmPerfSuggestion,
   clearPerfPending,
 } from "./performanceActions.js";
-import { connectLinkMessage, isMetaConnected, metaConnectStatusMessage } from "./smsConnect.js";
+import {
+  connectLinkMessage, isMetaConnected, metaConnectStatusMessage, looksLikeAdsToggle, adsFeatureStatusLine,
+} from "./smsConnect.js";
+import { setBrandFeatures, setSpendCaps, logAdApproval, formatCents } from "./adsFeatures.js";
+import { looksLikeAdLibraryRequest, adLibraryBrief } from "./adLibrary.js";
+import { looksLikePastAdsRequest, pastAdsAnalysis } from "./pastAds.js";
+import { getProposedBoost, confirmBoost, cancelProposedBoost, looksLikeBoostRequest } from "./boost.js";
+import {
+  looksLikePaidCampaignRequest, looksLikeAdCampaignControl, getProposedAdCampaign, getLiveAdCampaign,
+  proposeAdCampaign, confirmAdCampaign, cancelProposedAdCampaign, pauseAdCampaign, resumeAdCampaign,
+  killAdCampaign, proposeBudgetEdit, confirmBudgetEdit, rejectBudgetEdit,
+} from "./adCampaigns.js";
+import {
+  looksLikePauseConfirm, looksLikeScaleConfirm, looksLikeKeepRunning, looksLikeCapRaise, parseDollarCap,
+  getCampaignAwaitingPerfConfirm, confirmPauseSuggestion, confirmScaleSuggestion, clearPerfSuggestion,
+} from "./adSpend.js";
 import {
   parseDestinationChoice,
   persistDestinations,
@@ -440,16 +455,51 @@ export async function processInbound(
         reply: "Love it, your plan's live 🎉 Pillars, cadence, and format bias are set. Gap-fill will follow this plan. Send me photos any time and I'll start filling your slots.",
       };
     }
+    // Phase F — confirm boost / ad campaign / budget edit before organic perf yes.
+    const proposedBoost = await getProposedBoost(brand.id);
+    if (proposedBoost) return { reply: await confirmBoost(brand, proposedBoost) };
+    const proposedAd = await getProposedAdCampaign(brand.id);
+    if (proposedAd) return { reply: await confirmAdCampaign(brand, proposedAd) };
+    const liveAdBudget = await getLiveAdCampaign(brand.id);
+    if (liveAdBudget?.plan?.pending_budget_cents) {
+      return { reply: await confirmBudgetEdit(brand, liveAdBudget) };
+    }
     const perfYes = await confirmPerfSuggestion(brand);
     if (perfYes) return { reply: perfYes };
   }
 
-  // Performance analyst follow-ups — "make more of these" / boost soft handoff.
+  // Phase F — cancel pending boost / ad / budget.
+  if (message.body && newMedia.length === 0 && !pending && CANCEL_RE.test(message.body)) {
+    const proposedBoost = await getProposedBoost(brand.id);
+    if (proposedBoost) return { reply: await cancelProposedBoost(proposedBoost) };
+    const proposedAd = await getProposedAdCampaign(brand.id);
+    if (proposedAd) return { reply: await cancelProposedAdCampaign(proposedAd) };
+    const liveAd = await getLiveAdCampaign(brand.id);
+    if (liveAd?.plan?.pending_budget_cents) return { reply: await rejectBudgetEdit(liveAd) };
+  }
+
+  // Phase F — pause/scale confirm from spend analyst.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const awaiting = await getCampaignAwaitingPerfConfirm(brand.id);
+    if (awaiting) {
+      if (looksLikePauseConfirm(message.body) && awaiting.plan?.pause_suggestion) {
+        return { reply: await confirmPauseSuggestion(brand, awaiting) };
+      }
+      if (looksLikeScaleConfirm(message.body) && awaiting.plan?.scale_suggestion) {
+        return { reply: await confirmScaleSuggestion(brand, awaiting) };
+      }
+      if (looksLikeKeepRunning(message.body)) {
+        return { reply: await clearPerfSuggestion(awaiting) };
+      }
+    }
+  }
+
+  // Performance analyst follow-ups — "make more of these" / boost / paid campaign.
   if (message.body && newMedia.length === 0 && !pending) {
     if (looksLikeMakeMore(message.body)) {
       return { reply: await applyMakeMoreOfThese(brand) };
     }
-    if (looksLikeAnalystBoost(message.body)) {
+    if (looksLikeBoostRequest(message.body) || looksLikeAnalystBoost(message.body)) {
       const wantsCampaign = /\bcampaign\b/i.test(message.body) && !/\bboost\b/i.test(message.body);
       return {
         reply: await handoffBoostOrCampaign(brand, {
@@ -459,9 +509,27 @@ export async function processInbound(
         }),
       };
     }
+    if (looksLikePaidCampaignRequest(message.body)) {
+      return { reply: (await proposeAdCampaign(brand, message.body)).summary };
+    }
     if (CANCEL_RE.test(message.body) && getPerfPending(brand)) {
       await clearPerfPending(brand);
       return { reply: "No worries — left your mix as is. Nothing changed." };
+    }
+  }
+
+  // Phase F — paid campaign pause/resume/kill/budget (before organic campaign verbs).
+  if (message.body && newMedia.length === 0 && !pending) {
+    const adCtrl = looksLikeAdCampaignControl(message.body);
+    if (adCtrl) {
+      const live = await getLiveAdCampaign(brand.id);
+      if (!live) {
+        return { reply: 'No live ads to control right now. Say "run ads" or "boost this" to start one.' };
+      }
+      if (adCtrl === "pause") return { reply: await pauseAdCampaign(brand, live) };
+      if (adCtrl === "resume") return { reply: await resumeAdCampaign(brand, live) };
+      if (adCtrl === "kill") return { reply: await killAdCampaign(brand, live) };
+      if (adCtrl === "budget") return { reply: await proposeBudgetEdit(brand, live, message.body) };
     }
   }
 
@@ -597,20 +665,45 @@ export async function processInbound(
         reply: 'Disconnected Instagram + Facebook. Say "connect Instagram" when you want a fresh link.',
       };
     }
-    if (CONNECT_ADS_RE.test(message.body)) {
-      return { reply: connectLinkMessage(brand, "ads") };
+    const adsToggle = looksLikeAdsToggle(message.body);
+    if (adsToggle === "enable") {
+      await setBrandFeatures(brand.id, { ads: true });
+      brand.features = { ...(brand.features ?? {}), ads: true };
+      await logAdApproval({ brandId: brand.id, action: "enable_ads", note: "SMS enable ads", after: { ads: true } });
+      const next = brand.ad_account_id ? adsFeatureStatusLine(brand) : connectLinkMessage(brand, "ads");
+      return { reply: `Ads are on. I'll always confirm before spending.\n\n${next}` };
     }
-    if (CONNECT_META_RE.test(message.body)) {
-      return { reply: connectLinkMessage(brand, "meta") };
+    if (adsToggle === "disable") {
+      await setBrandFeatures(brand.id, { ads: false });
+      brand.features = { ...(brand.features ?? {}), ads: false };
+      return { reply: "Ads are off. I won't propose spend until you enable them again." };
     }
+    const capKind = looksLikeCapRaise(message.body);
+    if (capKind) {
+      const cents = parseDollarCap(message.body);
+      if (cents == null) {
+        return { reply: capKind === "weekly"
+          ? 'Tell me the new weekly cap like "raise weekly cap to $500".'
+          : 'Tell me the new campaign cap like "raise campaign cap to $200".' };
+      }
+      if (capKind === "weekly") {
+        await setSpendCaps(brand.id, { weekly_cents: cents });
+        brand.ads_spend_caps = { ...(brand.ads_spend_caps ?? {}), weekly_cents: cents };
+      } else {
+        await setSpendCaps(brand.id, { campaign_cents: cents });
+        brand.ads_spend_caps = { ...(brand.ads_spend_caps ?? {}), campaign_cents: cents };
+      }
+      return { reply: `Got it — ${capKind} ads cap is now ${formatCents(cents)}.` };
+    }
+    if (looksLikePastAdsRequest(message.body)) return { reply: await pastAdsAnalysis(brand) };
+    if (looksLikeAdLibraryRequest(message.body)) return { reply: await adLibraryBrief(brand, message.body) };
+    if (CONNECT_ADS_RE.test(message.body)) return { reply: connectLinkMessage(brand, "ads") };
+    if (CONNECT_META_RE.test(message.body)) return { reply: connectLinkMessage(brand, "meta") };
     if (looksLikeDigestRequest(message.body)) {
-      try {
-        return { reply: await buildPerformanceDigest(brand) };
-      } catch (err) {
+      try { return { reply: await buildPerformanceDigest(brand) }; }
+      catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        return {
-          reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit, or ask "how did we do this week?" later.`,
-        };
+        return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
       }
     }
   }

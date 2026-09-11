@@ -9,10 +9,14 @@ function metaConnected(brand: Brand): boolean {
   return Boolean(brand.ig_user_id && brand.fb_page_id && brand.platform_tokens_encrypted);
 }
 
+function adsConnected(brand: Brand): boolean {
+  return Boolean(brand.ad_account_id && brand.ads_tokens_encrypted);
+}
+
 /**
  * SMS deep-link entry: /c/[token]
  * - expired → clear "ask Kip for a fresh link" page
- * - ads → scaffold page
+ * - ads → OAuth (or mock connect when GRAPH_MODE=mock)
  * - already connected → status + optional reconnect
  * - else → Facebook OAuth with brand-scoped SMS state (no dashboard login)
  */
@@ -23,6 +27,7 @@ export async function GET(
   const { token } = await ctx.params;
   const verified = verifySmsConnectToken(token);
   const base = (process.env.APP_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+  const graphMode = process.env.GRAPH_MODE ?? 'mock';
 
   if (!verified.ok) {
     const msg =
@@ -44,13 +49,37 @@ export async function GET(
   }
 
   if (verified.purpose === 'ads') {
-    return new NextResponse(
-      htmlPage(
-        'Ad account connect',
-        "Ad account connect is coming soon. Kip will text you when it's ready — no need to do anything here.",
-      ),
-      { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
-    );
+    if (adsConnected(brand) && !request.nextUrl.searchParams.has('reconnect')) {
+      const name = brand.ad_account_name ?? brand.ad_account_id ?? 'your ad account';
+      return new NextResponse(
+        htmlPage(
+          'Ad account connected',
+          `You're linked to ${name}. Kip already knows. Close this and head back to your texts.`,
+          `<p><a href="${base}/c/${token}?reconnect=1">Reconnect a different ad account</a></p>`,
+        ),
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+
+    // Mock mode: one-tap connect without Meta OAuth so SMS flows work end-to-end.
+    if (graphMode === 'mock' || !process.env.META_APP_ID) {
+      return new NextResponse(
+        htmlPage(
+          'Connect ad account',
+          `Mock mode — tap below to link a demo ad account for ${brand.name}. Kip will text you a confirmation.`,
+          `<form method="POST" action="${base}/api/connect/ads/mock">
+            <input type="hidden" name="t" value="${token}" />
+            <button type="submit" style="padding:12px 18px;border-radius:8px;border:0;background:#1a1a1a;color:#fff;font-size:1rem;cursor:pointer">
+              Connect mock ad account
+            </button>
+          </form>`,
+        ),
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+
+    const state = signSmsOauthState(brand.id, 'ads');
+    return NextResponse.redirect(loginDialogUrl(state, 'ads'));
   }
 
   if (metaConnected(brand) && !request.nextUrl.searchParams.has('reconnect')) {
@@ -67,7 +96,7 @@ export async function GET(
   }
 
   const state = signSmsOauthState(brand.id, 'meta');
-  return NextResponse.redirect(loginDialogUrl(state));
+  return NextResponse.redirect(loginDialogUrl(state, 'meta'));
 }
 
 function htmlPage(title: string, body: string, extra = ''): string {

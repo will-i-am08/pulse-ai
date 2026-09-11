@@ -84,13 +84,15 @@ export async function buildPerformanceDigest(brand: Brand): Promise<string> {
 }
 
 /**
- * Phase E4 stub: join paid metrics when ads are enabled + connected.
- * Gracefully returns null when ads are off, disconnected, or tables aren't ready.
+ * Phase E4 + F5: join paid metrics when ads are enabled + connected.
+ * Syncs Marketing API insights when possible, then aggregates stored metrics.
  */
 export async function fetchPaidDigestMetrics(brand: Brand): Promise<PaidDigestMetrics | null> {
   if (!isAdsEnabled(brand)) return null;
   if (!isAdsConnected(brand)) return null;
   try {
+    const { syncAdPerformance } = await import("./adSpend.js");
+    await syncAdPerformance(brand).catch(() => undefined);
     const rows = await query<{ metrics: AdCampaignMetrics }>(
       `select metrics from ad_campaigns
         where brand_id = $1

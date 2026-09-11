@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { query, queryOne, encrypt, type Brand } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { verifyState } from '@/lib/meta/state';
-import { exchangeCodeForToken, toLongLivedUserToken, listManagedPages } from '@/lib/meta/oauth';
+import {
+  exchangeCodeForToken,
+  toLongLivedUserToken,
+  listManagedPages,
+  listAdAccounts,
+} from '@/lib/meta/oauth';
 import { verifySmsOauthState, mintSmsConnectToken } from '@/lib/sms-connect/token';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +39,19 @@ export async function GET(request: NextRequest) {
     try {
       const shortToken = await exchangeCodeForToken(code);
       const userToken = await toLongLivedUserToken(shortToken);
+
+      // Ads purpose → pick an ad account (not a Page).
+      if (sms.purpose === 'ads') {
+        await query('update brands set platform_user_token_encrypted = $1 where id = $2', [
+          encrypt(userToken),
+          brand.id,
+        ]);
+        const accounts = await listAdAccounts(userToken);
+        if (accounts.length === 0) return back('/c/done?status=nopages');
+        const pickToken = mintSmsConnectToken(brand.id, 'ads');
+        return back(`/c/choose-ads?t=${encodeURIComponent(pickToken)}`);
+      }
+
       await query('update brands set platform_user_token_encrypted = $1 where id = $2', [
         encrypt(userToken),
         brand.id,
@@ -42,7 +60,6 @@ export async function GET(request: NextRequest) {
       const pages = await listManagedPages(userToken);
       if (pages.length === 0) return back('/c/done?status=nopages');
 
-      // Fresh token for the page-pick step (OAuth state may be near expiry).
       const pickToken = mintSmsConnectToken(brand.id, 'meta');
       return back(`/c/choose?t=${encodeURIComponent(pickToken)}`);
     } catch (err) {

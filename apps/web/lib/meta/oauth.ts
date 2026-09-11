@@ -15,6 +15,15 @@ export const META_SCOPES = [
   'business_management',
 ].join(',');
 
+/** Scopes for ad-account SMS connect (Marketing API). */
+export const META_ADS_SCOPES = [
+  'public_profile',
+  'business_management',
+  'ads_management',
+  'ads_read',
+  'pages_show_list',
+].join(',');
+
 const GV = () => process.env.META_GRAPH_VERSION || 'v21.0';
 const APP_ID = () => {
   const v = process.env.META_APP_ID;
@@ -34,18 +43,22 @@ export function redirectUri(): string {
 }
 
 /** Where we send the user to authorize. */
-export function loginDialogUrl(state: string): string {
+export function loginDialogUrl(state: string, purpose: 'meta' | 'ads' = 'meta'): string {
   const u = new URL(`https://www.facebook.com/${GV()}/dialog/oauth`);
   u.searchParams.set('client_id', APP_ID());
   u.searchParams.set('redirect_uri', redirectUri());
   u.searchParams.set('state', state);
   u.searchParams.set('response_type', 'code');
   // Facebook Login for Business drives permissions from a saved configuration
-  // (config_id). When one is set we use it; otherwise fall back to raw scopes
-  // (classic Facebook Login).
+  // (config_id). When one is set we use it for meta; ads always requests Marketing scopes.
   const configId = process.env.META_LOGIN_CONFIG_ID;
-  if (configId) u.searchParams.set('config_id', configId);
-  else u.searchParams.set('scope', META_SCOPES);
+  if (purpose === 'ads') {
+    u.searchParams.set('scope', META_ADS_SCOPES);
+  } else if (configId) {
+    u.searchParams.set('config_id', configId);
+  } else {
+    u.searchParams.set('scope', META_SCOPES);
+  }
   return u.toString();
 }
 
@@ -101,6 +114,28 @@ export async function listManagedPages(userToken: string): Promise<ManagedPage[]
     name: String(p.name ?? 'Untitled Page'),
     igUserId: p.instagram_business_account?.id ? String(p.instagram_business_account.id) : null,
     igUsername: p.instagram_business_account?.username ? String(p.instagram_business_account.username) : null,
+  }));
+}
+
+export type ManagedAdAccount = {
+  id: string;
+  accountId: string;
+  name: string;
+  currency: string | null;
+};
+
+/** Ad accounts the user can manage (Marketing API). */
+export async function listAdAccounts(userToken: string): Promise<ManagedAdAccount[]> {
+  const body = await graphGet<{ data: any[] }>('me/adaccounts', {
+    fields: 'id,account_id,name,currency,account_status',
+    limit: '50',
+    access_token: userToken,
+  });
+  return (body.data ?? []).map((a) => ({
+    id: String(a.id),
+    accountId: String(a.account_id ?? a.id),
+    name: String(a.name ?? 'Ad Account'),
+    currency: a.currency ? String(a.currency) : null,
   }));
 }
 
