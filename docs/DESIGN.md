@@ -17,6 +17,7 @@ The cat is the logo. Charcoal strokes (`#202020`) on a circular off-white field 
 | `apps/web/public/brand/kip-logo.png` | Master (2000×2000). Headers, lockups, Open Graph. |
 | `apps/web/public/brand/kip-logo-1024.png` | App stores and Meta app icon. |
 | `apps/web/public/brand/kip-logo-transparent.png` | Stroke-only cat, for rebuilding the disc. |
+| `apps/web/public/brand/kip-contact-avatar.png` | Messaging contact card (Linq / Twilio vCard). Opaque `#f4f1ea` square — transparent corners turn black in iMessage. |
 | `apps/web/app/icon.png` | Favicon (512). |
 | `apps/web/app/apple-icon.png` | Apple touch icon (180). |
 

@@ -31,7 +31,7 @@ const serverEnvSchema = z.object({
   LINQ_FROM_NUMBER: z.string().optional(),
   // Contact card identity shared into iMessage chats (Name and Photo Sharing).
   KIP_CONTACT_FIRST_NAME: z.string().default("Kip"),
-  // Public HTTPS image for the contact card. Defaults to APP_BASE_URL + /brand/kip-logo.png.
+  // Public HTTPS image for the contact card. Defaults to APP_BASE_URL + /brand/kip-contact-avatar.png (opaque off-white).
   KIP_CONTACT_IMAGE_URL: z.string().url().optional(),
   // Replicate (AI image editing). If unset, image editing is skipped.
   REPLICATE_API_TOKEN: z.string().optional(),

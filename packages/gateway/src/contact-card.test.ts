@@ -36,13 +36,13 @@ describe("buildKipVCard", () => {
     const vcf = buildKipVCard({
       firstName: "Kip",
       phone: "+61400000000",
-      imageUrl: "https://example.com/brand/kip-logo-1024.png",
+      imageUrl: "https://example.com/brand/kip-contact-avatar.png",
       url: "https://example.com",
     });
     expect(vcf).toContain("BEGIN:VCARD");
     expect(vcf).toContain("FN:Kip");
     expect(vcf).toContain("TEL;TYPE=CELL,VOICE:+61400000000");
-    expect(vcf).toContain("PHOTO;VALUE=URI:https://example.com/brand/kip-logo-1024.png");
+    expect(vcf).toContain("PHOTO;VALUE=URI:https://example.com/brand/kip-contact-avatar.png");
     expect(vcf).toContain("END:VCARD");
   });
 
@@ -118,7 +118,7 @@ describe("LinqChannel contact card", () => {
               {
                 phone_number: "+61411111111",
                 first_name: "Kip",
-                image_url: "https://kip.example/brand/kip-logo-1024.png",
+                image_url: "https://kip.example/brand/kip-contact-avatar.png",
                 is_active: true,
               },
             ],
@@ -184,7 +184,7 @@ describe("LinqChannel contact card", () => {
         const body = JSON.parse(String(init.body));
         expect(body.first_name).toBe("Kip");
         expect(body.phone_number).toBe("+61411111111");
-        expect(body.image_url).toContain("kip-logo");
+        expect(body.image_url).toContain("kip-contact-avatar");
         return new Response(
           JSON.stringify({
             phone_number: body.phone_number,
