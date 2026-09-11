@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
     const long = await exchangeForLongLived(short.access_token);
     const me = await getMe(long.access_token);
     const expiresAt = Date.now() + long.expires_in * 1000;
+    // Store the id from GET /me, NOT short.user_id — the token-exchange user_id is a
+    // different (app-scoped) id and the publish endpoint (/{id}/threads) rejects it.
     await query('update brands set threads_user_id = $1, threads_username = $2, threads_tokens_encrypted = $3 where id = $4', [
-      short.user_id || me.id,
+      me.id || short.user_id,
       me.username,
       encryptJson({ access_token: long.access_token, expires_at: expiresAt }),
       brand.id,

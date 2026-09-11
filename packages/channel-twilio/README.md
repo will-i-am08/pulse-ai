@@ -13,7 +13,13 @@ Reads `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` via `getSe
 from `@pulse/shared`. Env is validated lazily inside each method, so importing this package
 does not require Twilio env vars to be set.
 
+**Contact card:** the gateway attaches `${APP_BASE_URL}/api/contact/kip.vcf` as MMS media
+on the first outbound to each brand (see `@pulse/gateway` `sendToBrand`), so clients can
+save "Kip" + the profile photo instead of a bare number. This channel just forwards
+`mediaUrls` to Twilio's `mediaUrl`.
+
 ## Tests
 
 `pnpm --filter @pulse/channel-twilio test` (vitest) — covers `parseInbound` for the 0-media
-and 2-media cases, plus a defensive case for a malformed `NumMedia` count.
+and 2-media cases, a defensive case for a malformed `NumMedia` count, and that `send`
+passes a Kip.vcf `mediaUrl` through to Twilio.

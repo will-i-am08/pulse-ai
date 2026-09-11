@@ -26,6 +26,13 @@ const serverEnvSchema = z.object({
   LINQ_API_KEY: z.string().optional(),
   LINQ_WEBHOOK_SECRET: z.string().optional(),
   LINQ_TEST_BRAND_ID: z.string().optional(), // first inbound auto-links to this brand
+  // Linq sending line (E.164). Required to configure Kip's iMessage contact card
+  // (name + profile photo) so recipients see "Kip" instead of a bare number.
+  LINQ_FROM_NUMBER: z.string().optional(),
+  // Contact card identity shared into iMessage chats (Name and Photo Sharing).
+  KIP_CONTACT_FIRST_NAME: z.string().default("Kip"),
+  // Public HTTPS image for the contact card. Defaults to APP_BASE_URL + /brand/kip-logo.png.
+  KIP_CONTACT_IMAGE_URL: z.string().url().optional(),
   // Replicate (AI image editing). If unset, image editing is skipped.
   REPLICATE_API_TOKEN: z.string().optional(),
   REPLICATE_IMAGE_MODEL: z.string().default("black-forest-labs/flux-kontext-pro"),
@@ -62,4 +69,9 @@ export function getServerEnv(): ServerEnv {
   }
   cached = parsed.data;
   return cached;
+}
+
+/** Clear the cached env parse — for tests that mutate process.env between cases. */
+export function resetServerEnvCache(): void {
+  cached = null;
 }

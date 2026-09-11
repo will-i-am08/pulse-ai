@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { processInbound, finishOnboarding } from "@pulse/orchestrator";
 import {
   getServerEnv,
+  kipContactIdentity,
   query,
   queryOne,
   putMedia,
@@ -238,24 +239,53 @@ export async function captureMedia(
   return captured;
 }
 
-/** Send an outbound message via the active channel and log it as an outbound Message row. */
+/** True when this brand has not yet been sent Kip's Twilio MMS contact card. */
+function needsTwilioContactCard(brand: Brand): boolean {
+  const sent = brand.onboarding_state?.kip_contact_card_sent_at;
+  return typeof sent !== "string" || sent.length === 0;
+}
+
+/** Stamp kip_contact_card_sent_at so we only MMS the vCard once per brand. */
+async function markTwilioContactCardSent(brandId: string): Promise<void> {
+  try {
+    await query(
+      `update brands
+          set onboarding_state = jsonb_set(
+                coalesce(onboarding_state, '{}'::jsonb),
+                '{kip_contact_card_sent_at}',
+                to_jsonb(now()::text)
+              )
+        where id = $1`,
+      [brandId],
+    );
+  } catch (err) {
+    console.warn(`sendToBrand: failed to mark contact card sent for ${brandId}`, err);
+  }
+}
+
+/**
+ * Send an outbound message via the active channel and log it as an outbound Message row.
+ * Returns true when at least one part was handed to the provider successfully.
+ * Callers that must not mark work done on a silent failure (e.g. OTP delivery)
+ * should check the boolean — this function does not throw on send failure.
+ */
 export async function sendToBrand(
   brandId: string,
   body: string,
   mediaUrls?: string[],
   opts?: { pace?: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) {
     console.error(`sendToBrand: brand ${brandId} not found`);
-    return;
+    return false;
   }
   const channel = activeChannel();
   const which = getServerEnv().MESSAGE_CHANNEL;
   const to = which === "discord" ? brand.discord_channel_id : brand.client_phone;
   if (!to) {
     console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
-    return;
+    return false;
   }
 
   const text = sanitizeChatText(body);
@@ -266,9 +296,20 @@ export async function sendToBrand(
   // Never split captioned media: the text + image ride together as one MMS.
   const parts = pace && (!mediaUrls || mediaUrls.length === 0) ? splitIntoBubbles(text) : [text];
 
+  // Twilio can't do iMessage Name-and-Photo Sharing — attach a Kip.vcf MMS on
+  // the first outbound so the client can save name + cat logo from setup/OTP.
+  const attachTwilioCard = which === "twilio" && channel.name === "twilio-sms" && needsTwilioContactCard(brand);
+  const vcardUrl = attachTwilioCard ? kipContactIdentity().vcardUrl : null;
+  let twilioCardAttached = false;
+
+  let sentAny = false;
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
-    const partMedia = i === parts.length - 1 ? mediaUrls : undefined;
+    let partMedia = i === parts.length - 1 ? mediaUrls : undefined;
+    if (vcardUrl && i === 0) {
+      partMedia = [...(partMedia ?? []), vcardUrl];
+      twilioCardAttached = true;
+    }
     if (pace) {
       // Typing pause before each bubble: longer for longer texts (capped),
       // plus a breath between consecutive bubbles.
@@ -281,9 +322,16 @@ export async function sendToBrand(
         onRetry: (err, attempt) => console.warn(`sendToBrand: send retry ${attempt} for brand ${brandId}`, err),
       });
       providerMessageId = result.providerMessageId;
+      sentAny = true;
     } catch (err) {
       console.error(`sendToBrand: send failed after retries for brand ${brandId}`, err);
-      return;
+      return sentAny;
+    }
+
+    // Only mark after a successful send that actually included the vCard.
+    if (twilioCardAttached && i === 0) {
+      await markTwilioContactCardSent(brandId);
+      twilioCardAttached = false;
     }
 
     try {
@@ -296,6 +344,7 @@ export async function sendToBrand(
       console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
     }
   }
+  return sentAny;
 }
 
 /**
