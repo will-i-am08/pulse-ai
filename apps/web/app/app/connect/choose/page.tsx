@@ -35,7 +35,8 @@ export default async function ChoosePage({
   const firstIgIndex = pages.findIndex((p) => p.igUserId);
 
   return (
-    <section>
+    <section className="stage">
+      <div className="page">
       <div className="page-header">
         <h1>Choose the account to connect</h1>
       </div>
@@ -95,6 +96,7 @@ export default async function ChoosePage({
             <button className="btn-primary" type="submit">Connect this account</button>
           </form>
         )}
+      </div>
       </div>
     </section>
   );

@@ -1,28 +1,13 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { BrandLockup } from '../components/BrandLockup';
-import { signOutAction } from '@/lib/actions/auth';
+import { currentUser } from '@/lib/auth/current-user';
+import { DashShell } from './DashShell';
+import './workspace.css';
 
 // The operator console is authed and per-request (reads the DB, uses cookies),
 // so it must never be statically prerendered at build time.
 export const dynamic = 'force-dynamic';
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="shell">
-      <header className="topbar">
-        <BrandLockup href="/app" className="brandmark" size={24} />
-        <nav style={{ display: 'flex', gap: 16, alignItems: 'center', marginLeft: 24, flex: 1 }}>
-          <Link href="/app">Home</Link>
-          <Link href="/app/plan">Calendar</Link>
-        </nav>
-        <form action={signOutAction}>
-          <button type="submit" className="btn-ghost">
-            Sign out
-          </button>
-        </form>
-      </header>
-      <main className="content">{children}</main>
-    </div>
-  );
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  const user = await currentUser();
+  return <DashShell isAdmin={Boolean(user?.is_admin)}>{children}</DashShell>;
 }

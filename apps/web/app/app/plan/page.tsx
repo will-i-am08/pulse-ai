@@ -95,9 +95,11 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const brandId = await ownerBrandId(user.id);
   if (!brandId) {
     return (
-      <section>
-        <div className="page-header"><h1>Content calendar</h1></div>
-        <p className="empty">Finish setting up your account first.</p>
+      <section className="stage">
+        <div className="page">
+          <div className="page-header"><h1>Content calendar</h1></div>
+          <p className="empty">Finish setting up your account first.</p>
+        </div>
       </section>
     );
   }
@@ -116,7 +118,8 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
   const today = new Date();
 
   return (
-    <section>
+    <section className="stage">
+      <div className="page">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h1>Content calendar</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -169,6 +172,7 @@ export default async function PlanPage({ searchParams }: { searchParams: Promise
             </form>
           ))}
         </div>
+      </div>
       </div>
     </section>
   );

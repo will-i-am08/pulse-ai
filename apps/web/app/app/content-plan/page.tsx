@@ -28,7 +28,8 @@ export default async function ContentPlanPage() {
   };
 
   return (
-    <section>
+    <section className="stage">
+      <div className="page">
       <div className="page-header">
         <h1>Your content plan</h1>
       </div>
@@ -90,6 +91,7 @@ export default async function ContentPlanPage() {
           ) : null}
         </>
       )}
+      </div>
     </section>
   );
 }
