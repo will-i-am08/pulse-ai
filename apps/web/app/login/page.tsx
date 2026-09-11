@@ -17,10 +17,14 @@ const ERRORS: Record<string, string> = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; redirectTo?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, redirectTo } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
+  const next =
+    redirectTo && redirectTo.startsWith('/') && !redirectTo.startsWith('//')
+      ? redirectTo
+      : '/lab';
 
   return (
     <main className={styles.wrap}>
@@ -47,15 +51,16 @@ export default async function LoginPage({
         </p>
       </form>
 
-      <details className={styles.operator}>
+      <details className={styles.operator} open={next === '/lab' || next.startsWith('/lab/')}>
         <summary>Operator login</summary>
         <form className={styles.operatorForm} action={operatorLoginAction}>
+          <input type="hidden" name="redirectTo" value={next} />
           <label className={styles.label}>
             Operator password
             <input className={styles.input} type="password" name="password" autoComplete="off" />
           </label>
           <button className={styles.buttonGhost} type="submit">Sign in as operator</button>
-          <span className={styles.hint}>Break-glass access if the messaging channel is down.</span>
+          <span className={styles.hint}>Opens the agent lab. Also break-glass if SMS login is down.</span>
         </form>
       </details>
     </main>

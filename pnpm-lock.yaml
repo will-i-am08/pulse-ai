@@ -29,6 +29,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@pulse/channel-lab':
+        specifier: workspace:*
+        version: link:../../packages/channel-lab
       '@pulse/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
@@ -140,6 +143,22 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+
+  packages/channel-lab:
+    dependencies:
+      '@pulse/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.2
+        version: 22.10.2
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@22.10.2)
 
   packages/channel-twilio:
     dependencies:

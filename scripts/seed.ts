@@ -53,6 +53,37 @@ async function main(): Promise<void> {
   }
 
   console.log(`✅ Seeded brand "Demo Cafe" — id ${brandId}`);
+
+
+  // Lab brand — Twilio-free agent testing workspace (facts.lab = true).
+  const labVoice = {
+    ...emptyBrandVoiceProfile(),
+    tone: ["warm", "direct"],
+    dos: ["keep it short"],
+    donts: ["no jargon"],
+    example_captions: ["Fresh out of the lab."],
+    emoji_policy: "sparing" as const,
+    hashtag_policy: "none",
+  };
+  const lab = await queryOne<{ id: string }>(
+    `insert into brands (name, client_phone, approver, status, brand_voice_profile, facts, onboarding_state)
+     values ($1, $2, 'operator', 'active', $3::jsonb, $4::jsonb, $5::jsonb)
+     on conflict (client_phone) do update
+       set name = excluded.name,
+           brand_voice_profile = excluded.brand_voice_profile,
+           facts = brands.facts || excluded.facts,
+           onboarding_state = coalesce(brands.onboarding_state, excluded.onboarding_state)
+     returning id`,
+    [
+      "Lab Cafe",
+      "+15550000001",
+      JSON.stringify(labVoice),
+      JSON.stringify({ lab: true, owner_name: "Alex" }),
+      JSON.stringify({ status: "pending" }),
+    ],
+  );
+  if (!lab) throw new Error("lab brand upsert returned no row");
+  console.log(`✅ Seeded lab brand "Lab Cafe" — id ${lab.id} (facts.lab=true, phone +15550000001)`);
 }
 
 main()

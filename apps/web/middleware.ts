@@ -4,7 +4,7 @@ import { verifySessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 // Only the operator console under /app requires a session. The marketing
 // landing (/), privacy, login, and the public webhook + media routes are open.
 function isProtectedPath(pathname: string): boolean {
-  return pathname === '/app' || pathname.startsWith('/app/');
+  return pathname === '/app' || pathname.startsWith('/app/') || pathname === '/lab' || pathname.startsWith('/lab/');
 }
 
 export async function middleware(request: NextRequest) {
@@ -15,8 +15,15 @@ export async function middleware(request: NextRequest) {
   // file runs on the Edge runtime and must not bundle `pg`.
   const authSecret = process.env.AUTH_SECRET;
   if (!authSecret) {
+    // Never throw from middleware — on Vercel that surfaces as a bare
+    // MIDDLEWARE_INVOCATION_FAILED / opaque 404-ish failure for /lab.
+    // Unauthenticated redirect keeps the lab reachable once AUTH_SECRET is set.
     if (!protectedPath) return NextResponse.next();
-    throw new Error('AUTH_SECRET is not set');
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = '';
+    url.searchParams.set('redirectTo', pathname);
+    return NextResponse.redirect(url);
   }
 
   const cookieValue = request.cookies.get(SESSION_COOKIE_NAME)?.value;
@@ -31,8 +38,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (authed && pathname === '/login') {
+    const raw = request.nextUrl.searchParams.get('redirectTo');
+    const next =
+      raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.includes('\\')
+        ? raw
+        : '/app';
     const url = request.nextUrl.clone();
-    url.pathname = '/app';
+    url.pathname = next;
     url.search = '';
     return NextResponse.redirect(url);
   }

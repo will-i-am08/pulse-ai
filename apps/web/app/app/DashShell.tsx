@@ -29,7 +29,11 @@ export function DashShell({ children, isAdmin }: { children: ReactNode; isAdmin:
   const close = () => setOpen(false);
 
   const items = isAdmin
-    ? [...NAV, { href: '/app/operator', label: 'Operator', match: (p: string) => p.startsWith('/app/operator') }]
+    ? [
+        ...NAV,
+        { href: '/lab', label: 'Lab', match: (p: string) => p === '/lab' || p.startsWith('/lab/') },
+        { href: '/app/operator', label: 'Operator', match: (p: string) => p.startsWith('/app/operator') },
+      ]
     : NAV;
 
   return (

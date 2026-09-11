@@ -273,16 +273,22 @@ export async function sendToBrand(
   brandId: string,
   body: string,
   mediaUrls?: string[],
-  opts?: { pace?: boolean },
+  opts?: { pace?: boolean; channel?: MessageChannel },
 ): Promise<boolean> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) {
     console.error(`sendToBrand: brand ${brandId} not found`);
     return false;
   }
-  const channel = activeChannel();
+  const channel = opts?.channel ?? activeChannel();
   const which = getServerEnv().MESSAGE_CHANNEL;
-  const to = which === "discord" ? brand.discord_channel_id : brand.client_phone;
+  // Lab (and any explicitly passed non-discord channel) always addresses by phone.
+  const to =
+    channel.name === "lab"
+      ? brand.client_phone
+      : which === "discord"
+        ? brand.discord_channel_id
+        : brand.client_phone;
   if (!to) {
     console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
     return false;
@@ -353,21 +359,29 @@ export async function sendToBrand(
  * an unknown sender or any internal failure is logged and results in a null
  * response rather than a crash.
  */
+export type HandleInboundOpts = {
+  channel?: MessageChannel;
+  resolveBrand?: (from: string) => Promise<Brand | null>;
+};
+
 export async function handleInbound(
   inbound: InboundMessage,
+  opts?: HandleInboundOpts,
 ): Promise<{ brandId: string | null; messageId: string | null }> {
   // Liveness from the first millisecond: keeper targets the sender address
   // directly (Discord channel id / sender phone both equal inbound.from), so it
   // can start before brand resolution. Twilio SMS no-ops here (paced sends +
   // holding text below are its stand-in). Never let typing break the pipeline.
+  const channel = opts?.channel ?? activeChannel();
+  const resolve = opts?.resolveBrand ?? resolveBrand;
   let keeper: TypingKeeper | null = null;
   try {
     try {
-      keeper = startTypingKeeper(activeChannel(), inbound.from);
+      keeper = startTypingKeeper(channel, inbound.from);
     } catch {
       keeper = null;
     }
-    const brand = await resolveBrand(inbound.from);
+    const brand = await resolve(inbound.from);
     if (!brand) {
       console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
       return { brandId: null, messageId: null };
@@ -386,8 +400,6 @@ export async function handleInbound(
         return { brandId: brand.id, messageId: seen.id };
       }
     }
-
-    const channel = activeChannel();
 
     const newMedia = await captureMedia(brand.id, channel, inbound.media);
 
@@ -418,6 +430,7 @@ export async function handleInbound(
     if (photoAckSent) {
       await sendToBrand(brand.id, "Got it, styling your photo and writing your caption, one sec ✨", undefined, {
         pace: false,
+        channel,
       }).catch(() => {});
     }
 
@@ -429,25 +442,27 @@ export async function handleInbound(
     try {
       if (!photoAckSent && typeof channel.sendTyping !== "function") {
         slowTimer = setTimeout(() => {
-          sendToBrand(brand.id, "On it, one sec…", undefined, { pace: false }).catch(() => {});
+          sendToBrand(brand.id, "On it, one sec…", undefined, { pace: false, channel }).catch(() => {});
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
       const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({ brand, message, newMedia });
       if (reply) {
-        await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined);
+        await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined, { channel });
       }
       // Onboarding just completed: the ack is already with the owner. Now do
       // the slow compile and deliver the rundown as a second message.
       if (finishOnboardingBrandId) {
         try {
           const rundown = await finishOnboarding(finishOnboardingBrandId);
-          await sendToBrand(finishOnboardingBrandId, rundown);
+          await sendToBrand(finishOnboardingBrandId, rundown, undefined, { channel });
         } catch (err) {
           console.error(`handleInbound: finishOnboarding failed for brand ${finishOnboardingBrandId}`, err);
           await sendToBrand(
             finishOnboardingBrandId,
             "Writing your voice up hit a snag on my end. Your answers are saved, I'll have the rundown to you shortly.",
+            undefined,
+            { channel },
           ).catch(() => {});
         }
       }
@@ -456,7 +471,7 @@ export async function handleInbound(
       // the client should never be left with silence.
       console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
       try {
-        await sendToBrand(brand.id, "Sorry, I had trouble with that one just now. Mind sending it again?");
+        await sendToBrand(brand.id, "Sorry, I had trouble with that one just now. Mind sending it again?", undefined, { channel });
       } catch {
         /* best-effort: the send itself may also be down */
       }
