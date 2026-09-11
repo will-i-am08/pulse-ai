@@ -94,12 +94,12 @@ describe("mock X and Threads publish", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("LiveGraphAdapter still mocks Threads", async () => {
+  it("LiveGraphAdapter mocks Threads when the brand has no connected token", async () => {
     const fetchSpy = stubFetch();
     const res = await new LiveGraphAdapter().publish({
       brand: fakeBrand(),
       platform: "threads",
-      caption: "still mock",
+      caption: "no token yet",
       mediaUrls: ["https://example.test/photo.jpg"],
     });
     expect(res.externalPostId.startsWith("mock_")).toBe(true);
@@ -108,9 +108,9 @@ describe("mock X and Threads publish", () => {
 });
 
 describe("publish notice", () => {
-  it("X and Threads never count as live", () => {
+  it("X never counts as live; Threads does once live", () => {
     expect(didPublishLive("x", "live")).toBe(false);
-    expect(didPublishLive("threads", "live")).toBe(false);
+    expect(didPublishLive("threads", "live")).toBe(true);
     expect(didPublishLive("instagram", "live")).toBe(true);
     expect(didPublishLive("facebook", "mock")).toBe(false);
   });
