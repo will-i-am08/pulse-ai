@@ -160,7 +160,10 @@ export async function requestLoginCode(formData: FormData): Promise<void> {
   const phone = normalizePhone(String(formData.get('phone') ?? ''));
   if (!phone) redirect('/login?error=badphone');
 
-  const user = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
+  const user = await queryOne<{ id: string }>(
+    'select id from users where phone = $1 and deleted_at is null',
+    [phone],
+  );
   if (!user) redirect('/login?error=nouser');
 
   const brandId = await resolveBrandForPhone(user!.id, phone!);

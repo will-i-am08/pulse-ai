@@ -12,7 +12,7 @@ export async function currentUser(): Promise<User | null> {
   const userId = await verifySessionValue(value, secret);
   if (!userId) return null;
   const rows = await query<User>(
-    'select id, email, phone, name, is_admin, created_at from users where id = $1',
+    'select id, email, phone, name, is_admin, created_at from users where id = $1 and deleted_at is null',
     [userId],
   );
   return rows[0] ?? null;
