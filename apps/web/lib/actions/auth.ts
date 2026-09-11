@@ -3,7 +3,17 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { query, queryOne, encrypt, decrypt, generateLoginCode, normalizePhone } from '@pulse/shared';
+import { deliverPendingLoginCodes } from '@pulse/gateway';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
+
+/** Kick delivery now so login doesn't wait on the worker/bot poller. */
+async function flushLoginCodes(): Promise<void> {
+  try {
+    await deliverPendingLoginCodes();
+  } catch (err) {
+    console.error('issueCode: immediate login-code delivery failed; poller will retry', err);
+  }
+}
 
 const CODE_TTL_MINUTES = 10;
 const RESEND_THROTTLE_SECONDS = 30;
@@ -76,7 +86,12 @@ async function issueCode(
       order by created_at desc limit 1`,
     [phone, String(RESEND_THROTTLE_SECONDS)],
   );
-  if (recent) return;
+  if (recent) {
+    // Existing code is still valid — retry delivery in case the first attempt
+    // failed (bot down, Twilio blip) without minting a second code.
+    await flushLoginCodes();
+    return;
+  }
 
   const code = generateLoginCode();
   await query(
@@ -84,6 +99,7 @@ async function issueCode(
      values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
     [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
   );
+  await flushLoginCodes();
 }
 
 /** Step 1 of login: look up the phone, queue a code, go to the verify screen. */

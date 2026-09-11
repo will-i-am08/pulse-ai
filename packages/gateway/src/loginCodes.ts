@@ -1,4 +1,5 @@
-import { query, queryOne, decrypt, type LoginCode } from "@pulse/shared";
+import { query, queryOne, decrypt, getServerEnv, type LoginCode } from "@pulse/shared";
+import { createTwilioChannel } from "@pulse/channel-twilio";
 import { sendToBrand } from "./gateway.js";
 
 /**
@@ -24,14 +25,67 @@ async function resolveBrandId(row: LoginCode): Promise<string | null> {
   return null;
 }
 
+/** True when we can SMS a login code without depending on MESSAGE_CHANNEL. */
+function twilioSmsReady(): boolean {
+  try {
+    const env = getServerEnv();
+    const hasCreds = Boolean(
+      env.TWILIO_AUTH_TOKEN || (env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET),
+    );
+    return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_FROM_NUMBER && hasCreds);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Deliver pending passwordless-login codes through the agent channel.
+ * Deliver one login-code body. Prefer Twilio SMS to the login phone (matches the
+ * dashboard "we'll text you a code" copy and works even when MESSAGE_CHANNEL is
+ * discord and the bot is down). Fall back to the agent thread via sendToBrand.
+ */
+async function deliverCodeBody(row: LoginCode, body: string): Promise<boolean> {
+  if (twilioSmsReady()) {
+    try {
+      const result = await createTwilioChannel().send({ to: row.phone, body });
+      const brandId = row.brand_id ?? (await resolveBrandId(row));
+      if (brandId) {
+        await query(
+          `insert into messages (brand_id, direction, channel, body, provider_message_sid)
+           values ($1, 'outbound', 'twilio-sms', $2, $3)`,
+          [brandId, body, result.providerMessageId],
+        ).catch((err) =>
+          console.error(
+            `deliverPendingLoginCodes: SMS sent but failed to log outbound row`,
+            err,
+          ),
+        );
+      }
+      return true;
+    } catch (err) {
+      console.error(
+        `deliverPendingLoginCodes: Twilio SMS failed for ${row.phone}; trying agent channel`,
+        err,
+      );
+    }
+  }
+
+  const brandId = await resolveBrandId(row);
+  if (!brandId) {
+    console.warn(
+      `deliverPendingLoginCodes: no brand for phone ${row.phone} (code ${row.id}); cannot deliver`,
+    );
+    return false;
+  }
+  return sendToBrand(brandId, body);
+}
+
+/**
+ * Deliver pending passwordless-login codes through SMS (preferred) or the agent channel.
  *
  * The dashboard writes an encrypted, undelivered `login_codes` row when a user
- * asks for a code; the agent process (the one that actually holds the channel —
- * the Discord bot, or the worker for SMS/Linq) calls this to decrypt and send
- * it into the user's own thread. Best-effort: a send failure leaves the row
- * undelivered so the next tick retries, until it expires.
+ * asks for a code; the web app may call this immediately after queueing, and the
+ * agent process (Discord bot or worker) also polls as a backup. Best-effort: a
+ * send failure leaves the row undelivered so the next tick retries, until it expires.
  */
 export async function deliverPendingLoginCodes(now: () => Date = () => new Date()): Promise<number> {
   const rows = await query<LoginCode>(
@@ -44,13 +98,6 @@ export async function deliverPendingLoginCodes(now: () => Date = () => new Date(
   );
   let sent = 0;
   for (const row of rows) {
-    const brandId = await resolveBrandId(row);
-    if (!brandId) {
-      console.warn(
-        `deliverPendingLoginCodes: no brand for phone ${row.phone} (code ${row.id}); cannot deliver`,
-      );
-      continue;
-    }
     let code: string;
     try {
       code = decrypt(row.code_encrypted);
@@ -65,11 +112,8 @@ export async function deliverPendingLoginCodes(now: () => Date = () => new Date(
       `Enter it on the dashboard to sign in — it expires in about ${minutes} minute${minutes === 1 ? "" : "s"}. ` +
       `If you didn't try to log in, ignore this.`;
     try {
-      const ok = await sendToBrand(brandId, body);
-      if (!ok) {
-        // sendToBrand logs the reason; leave undelivered for retry.
-        continue;
-      }
+      const ok = await deliverCodeBody(row, body);
+      if (!ok) continue;
       await query(`update login_codes set delivered_at = now() where id = $1`, [row.id]);
       sent += 1;
     } catch {

@@ -3,17 +3,44 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const query = vi.fn();
 const queryOne = vi.fn();
 const decrypt = vi.fn();
+const getServerEnv = vi.fn();
 const sendToBrand = vi.fn();
+const twilioSend = vi.fn();
 
 vi.mock("@pulse/shared", () => ({
   query: (...args: unknown[]) => query(...args),
   queryOne: (...args: unknown[]) => queryOne(...args),
   decrypt: (...args: unknown[]) => decrypt(...args),
+  getServerEnv: (...args: unknown[]) => getServerEnv(...args),
+}));
+
+vi.mock("@pulse/channel-twilio", () => ({
+  createTwilioChannel: () => ({
+    name: "twilio-sms",
+    send: (...args: unknown[]) => twilioSend(...args),
+  }),
 }));
 
 vi.mock("./gateway.js", () => ({
   sendToBrand: (...args: unknown[]) => sendToBrand(...args),
 }));
+
+function pendingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "code-1",
+    phone: "+61480436685",
+    user_id: "user-1",
+    brand_id: "brand-1",
+    code_encrypted: "enc",
+    purpose: "login",
+    attempts: 0,
+    delivered_at: null,
+    consumed_at: null,
+    expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+    created_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
 describe("deliverPendingLoginCodes", () => {
   beforeEach(() => {
@@ -21,27 +48,44 @@ describe("deliverPendingLoginCodes", () => {
     query.mockReset();
     queryOne.mockReset();
     decrypt.mockReset();
+    getServerEnv.mockReset();
     sendToBrand.mockReset();
+    twilioSend.mockReset();
+    getServerEnv.mockReturnValue({
+      TWILIO_ACCOUNT_SID: "ACxxx",
+      TWILIO_AUTH_TOKEN: "token",
+      TWILIO_FROM_NUMBER: "+61400000000",
+    });
   });
 
-  it("resolves brand by client_phone when brand_id is null, then delivers", async () => {
-    const expires = new Date(Date.now() + 10 * 60_000).toISOString();
-    query.mockResolvedValueOnce([
-      {
-        id: "code-1",
-        phone: "+61480436685",
-        user_id: "user-1",
-        brand_id: null,
-        code_encrypted: "enc",
-        purpose: "login",
-        attempts: 0,
-        delivered_at: null,
-        consumed_at: null,
-        expires_at: expires,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    // backfill update
+  it("sends via Twilio SMS to the login phone when configured", async () => {
+    query.mockResolvedValueOnce([pendingRow({ brand_id: null })]);
+    query.mockResolvedValue([]); // message insert + delivered update
+    queryOne.mockResolvedValueOnce({ id: "brand-1" }); // resolveBrandId for logging
+    decrypt.mockReturnValue("123456");
+    twilioSend.mockResolvedValue({ providerMessageId: "SMxxx" });
+
+    const { deliverPendingLoginCodes } = await import("./loginCodes.js");
+    const n = await deliverPendingLoginCodes(() => new Date());
+
+    expect(n).toBe(1);
+    expect(twilioSend).toHaveBeenCalledWith({
+      to: "+61480436685",
+      body: expect.stringContaining("123456"),
+    });
+    expect(sendToBrand).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("delivered_at = now()"),
+      ["code-1"],
+    );
+  });
+
+  it("falls back to sendToBrand when Twilio is not configured", async () => {
+    getServerEnv.mockReturnValue({
+      TWILIO_ACCOUNT_SID: undefined,
+      TWILIO_FROM_NUMBER: undefined,
+    });
+    query.mockResolvedValueOnce([pendingRow({ brand_id: null })]);
     query.mockResolvedValue([]);
     queryOne.mockResolvedValueOnce({ id: "brand-1" });
     decrypt.mockReturnValue("123456");
@@ -51,36 +95,15 @@ describe("deliverPendingLoginCodes", () => {
     const n = await deliverPendingLoginCodes(() => new Date());
 
     expect(n).toBe(1);
-    expect(queryOne).toHaveBeenCalledWith(
-      expect.stringContaining("client_phone"),
-      ["+61480436685"],
-    );
+    expect(twilioSend).not.toHaveBeenCalled();
     expect(sendToBrand).toHaveBeenCalledWith("brand-1", expect.stringContaining("123456"));
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("delivered_at = now()"),
-      ["code-1"],
-    );
   });
 
-  it("does not mark delivered when sendToBrand returns false", async () => {
-    const expires = new Date(Date.now() + 10 * 60_000).toISOString();
-    query.mockResolvedValueOnce([
-      {
-        id: "code-2",
-        phone: "+61411111111",
-        user_id: "user-2",
-        brand_id: "brand-2",
-        code_encrypted: "enc",
-        purpose: "login",
-        attempts: 0,
-        delivered_at: null,
-        consumed_at: null,
-        expires_at: expires,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    decrypt.mockReturnValue("654321");
+  it("does not mark delivered when both Twilio and sendToBrand fail", async () => {
+    twilioSend.mockRejectedValue(new Error("twilio down"));
     sendToBrand.mockResolvedValue(false);
+    query.mockResolvedValueOnce([pendingRow()]);
+    decrypt.mockReturnValue("654321");
 
     const { deliverPendingLoginCodes } = await import("./loginCodes.js");
     const n = await deliverPendingLoginCodes(() => new Date());
@@ -89,24 +112,11 @@ describe("deliverPendingLoginCodes", () => {
     expect(query.mock.calls.some((c) => String(c[0]).includes("delivered_at = now()"))).toBe(false);
   });
 
-  it("skips rows with no resolvable brand", async () => {
-    const expires = new Date(Date.now() + 10 * 60_000).toISOString();
-    query.mockResolvedValueOnce([
-      {
-        id: "code-3",
-        phone: "+61400000001",
-        user_id: "user-3",
-        brand_id: null,
-        code_encrypted: "enc",
-        purpose: "login",
-        attempts: 0,
-        delivered_at: null,
-        consumed_at: null,
-        expires_at: expires,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+  it("skips rows with no resolvable brand when Twilio is unavailable", async () => {
+    getServerEnv.mockReturnValue({});
+    query.mockResolvedValueOnce([pendingRow({ brand_id: null, phone: "+61400000001", id: "code-3" })]);
     queryOne.mockResolvedValueOnce(null);
+    decrypt.mockReturnValue("111111");
 
     const { deliverPendingLoginCodes } = await import("./loginCodes.js");
     const n = await deliverPendingLoginCodes(() => new Date());
