@@ -5,14 +5,11 @@ import {
   spendCaps, weeklySpendCents, campaignSpendCents,
 } from "./adsFeatures.js";
 
-/** Best-effort operator SMS on ad cap breach (no-op when OPERATOR_PHONE unset). */
+/** Best-effort operator note on ad cap breach (worker SMS via returned alerts). */
 async function alertOperatorAdCap(brand: Brand, detail: string): Promise<void> {
-  try {
-    const { sendToOperator } = await import("@pulse/gateway");
-    await sendToOperator(`Ad cap breach — "${brand.name}": ${detail}`);
-  } catch (err) {
-    console.error("alertOperatorAdCap failed", err);
-  }
+  // Orchestrator must not import @pulse/gateway (cycle). Cap SMS to the brand
+  // owner goes through returned `alerts`; OPERATOR_PHONE is notified by the worker.
+  console.warn(`ad cap breach brand=${brand.id} ${brand.name}: ${detail}`);
 }
 
 export async function syncAdPerformance(brand: Brand): Promise<{ alerts: string[]; suggestions: string[] }> {
