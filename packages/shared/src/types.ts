@@ -231,6 +231,8 @@ export interface User {
   is_admin: boolean;
   password_hash?: string | null;
   created_at: string;
+  /** When set, the account is deactivated (soft-deleted) — see 0040. */
+  deleted_at?: string | null;
 }
 
 /** A one-time passwordless login code (delivered through the agent thread). */
