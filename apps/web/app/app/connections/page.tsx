@@ -42,6 +42,16 @@ function hasRealPhone(b: Brand): boolean {
   return Boolean(b.client_phone && !b.client_phone.startsWith('signup:'));
 }
 
+/** Plain-language labels for the connected Meta accounts (IG + Facebook Page). */
+function metaAccountSummary(b: Brand): string {
+  const parts: string[] = [];
+  if (b.ig_username) parts.push(`Instagram @${b.ig_username}`);
+  else if (b.ig_user_id) parts.push('Instagram');
+  if (b.fb_page_name) parts.push(`Facebook Page “${b.fb_page_name}”`);
+  else if (b.fb_page_id) parts.push('Facebook Page');
+  return parts.join(' · ') || 'Connected';
+}
+
 export default async function ConnectionsPage({
   searchParams,
 }: {
@@ -77,11 +87,17 @@ export default async function ConnectionsPage({
         <article className="row">
           <div className="setup-head">
             <span>Instagram &amp; Facebook</span>
-            <span className={connected ? 'done' : 'need'}>{connected ? 'Connected' : 'Needs you'}</span>
+            <span className={connected ? 'done' : 'need'}>
+              {connected
+                ? brand.ig_username
+                  ? `@${brand.ig_username}`
+                  : brand.fb_page_name ?? 'Connected'
+                : 'Needs you'}
+            </span>
           </div>
           <p className="empty">
             {connected
-              ? `${brand.fb_page_name ?? 'your Page'}${brand.ig_username ? ` · @${brand.ig_username}` : ''}`
+              ? metaAccountSummary(brand)
               : 'Sign in with Facebook and choose the Page Kip should post to.'}
           </p>
           <p>
@@ -106,9 +122,15 @@ export default async function ConnectionsPage({
         <article className="row">
           <div className="setup-head">
             <span>X (optional)</span>
-            <span className={brand.x_username ? 'done' : 'need'}>{brand.x_username ? 'Connected' : 'Off'}</span>
+            <span className={brand.x_username ? 'done' : 'need'}>
+              {brand.x_username ? `@${brand.x_username}` : 'Off'}
+            </span>
           </div>
-          {brand.x_username && <p className="empty">Posting to @{brand.x_username}.</p>}
+          <p className="empty">
+            {brand.x_username
+              ? `Connected as @${brand.x_username}.`
+              : 'Optional. Connect an X account Kip may post to.'}
+          </p>
           <p>
             <a className="pill-dark" href="/api/connect/x/start">{brand.x_username ? 'Reconnect' : 'Connect X'}</a>
           </p>
@@ -117,9 +139,15 @@ export default async function ConnectionsPage({
         <article className="row">
           <div className="setup-head">
             <span>Threads (optional)</span>
-            <span className={brand.threads_username ? 'done' : 'need'}>{brand.threads_username ? 'Connected' : 'Off'}</span>
+            <span className={brand.threads_username ? 'done' : 'need'}>
+              {brand.threads_username ? `@${brand.threads_username}` : 'Off'}
+            </span>
           </div>
-          {brand.threads_username && <p className="empty">Posting to @{brand.threads_username}.</p>}
+          <p className="empty">
+            {brand.threads_username
+              ? `Connected as @${brand.threads_username}.`
+              : 'Optional. Connect a Threads account Kip may post to.'}
+          </p>
           <p>
             <a className="pill-dark" href="/api/connect/threads/start">
               {brand.threads_username ? 'Reconnect' : 'Connect Threads'}
