@@ -240,6 +240,14 @@ export interface Brand {
   meta_connected_at: string | null;
   facts: BusinessFacts;
   visual: VisualProfile;
+  /** Ideal customer profile — SMS source of truth. */
+  icp: BrandIcp;
+  /** Researched + owner-confirmed pain points. */
+  pain_points: BrandPainPoints;
+  /** Category + differentiation one-liner. */
+  positioning: BrandPositioning;
+  /** Primary offer stack + claim constraints. */
+  offers: BrandOffers;
   approver: Approver;
   status: BrandStatus;
   created_at: string;
@@ -374,11 +382,87 @@ export interface BusinessFacts {
   differentiators?: string;
 }
 
+/**
+ * Brand visual tokens — colours, type, logo, aesthetic notes, photo treatment.
+ * Not a frozen template theme pack; the design composer (Phase C) reads these
+ * plus design-memory refs to compose on-brand creatives.
+ */
 export interface VisualProfile {
+  /** Brand palette as hex (#RRGGBB) or named CSS colours, primary first. */
   colors?: string[];
+  /** Preferred typeface names / families (notes for composer; renderer maps to embeds). */
   fonts?: string[];
-  aspect_ratio?: string;
+  /** Absolute URL of the brand logo when known. */
+  logo_url?: string;
+  /** Short aesthetic label, e.g. "warm minimal", "bold editorial". */
   aesthetic?: string;
+  /** Free-form design notes the owner or research added. */
+  aesthetic_notes?: string;
+  /** How photos should be treated: lighting, grade, crop bias, etc. */
+  photo_treatment?: string;
+  aspect_ratio?: string;
+}
+
+/** Ideal customer profile — segments, demographics, jobs-to-be-done. */
+export interface BrandIcp {
+  segments?: string[];
+  demographics?: string;
+  jtbd?: string[];
+  notes?: string;
+  /** True when proposed from research rather than owner-authored. */
+  researched?: boolean;
+  confirmed_at?: string;
+  updated_at?: string;
+}
+
+export interface PainPoint {
+  text: string;
+  source?: "research" | "owner";
+  confirmed?: boolean;
+}
+
+export interface BrandPainPoints {
+  items?: PainPoint[];
+  updated_at?: string;
+}
+
+/** Positioning statement — category + differentiation. */
+export interface BrandPositioning {
+  one_liner?: string;
+  category?: string;
+  differentiation?: string;
+  updated_at?: string;
+}
+
+/**
+ * Offer stack. Downstream caption/ad copy must never invent discounts,
+ * awards, or testimonials that are not listed here or in BusinessFacts.
+ */
+export interface BrandOffers {
+  primary?: string;
+  bonuses?: string[];
+  proof?: string[];
+  cta?: string;
+  booking_link?: string;
+  /** Explicit claim constraints, e.g. "no % off unless stated", "no awards". */
+  claim_constraints?: string[];
+  updated_at?: string;
+}
+
+export type DesignMemoryKind = "creative" | "carousel_slide" | "story" | "quote_card";
+export type DesignMemoryStatus = "approved" | "published" | "top";
+
+/** Reference to an approved/published creative for design-memory retrieval. */
+export interface DesignMemoryRef {
+  id: string;
+  brand_id: string;
+  media_id: string | null;
+  post_id: string | null;
+  kind: DesignMemoryKind;
+  status: DesignMemoryStatus;
+  notes: string | null;
+  score: number | null;
+  created_at: string;
 }
 
 export type InteractionKind = "comment" | "dm" | "mention" | "review";

@@ -27,6 +27,17 @@ import {
 } from "./formats.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
+import {
+  looksLikeBrandContextUpdate,
+  updateBrandContextFromMessage,
+  researchIcp,
+  researchPainPoints,
+  proposePositioning,
+  saveIcpDraft,
+  savePainPointsDraft,
+  savePositioningDraft,
+} from "./brandContext.js";
+import { storeDesignMemoryRef } from "./designMemory.js";
 import { sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
@@ -848,6 +859,21 @@ export async function processInbound(
         postNow,
       });
 
+      // Design-memory hook: remember the first creative on owner-approved posts.
+      const firstMedia = pending.media_ids?.[0];
+      if (firstMedia) {
+        void storeDesignMemoryRef({
+          brandId: brand.id,
+          mediaId: firstMedia,
+          postId: pending.id,
+          kind: pending.format === "carousel" ? "carousel_slide" : pending.format === "story" ? "story" : "creative",
+          status: "approved",
+          notes: pending.caption?.slice(0, 120) ?? null,
+        }).catch(() => {
+          /* non-blocking */
+        });
+      }
+
       const immediate = postNow || dests.every((d) => d === "x" || d === "threads");
       const when = immediate
         ? ", going out now"
@@ -936,6 +962,41 @@ export async function processInbound(
           }
           return { reply: "I tried to draft one but hit a snag. Mind asking again in a moment?" };
         }
+      }
+
+      // Brand context objects (ICP / pains / positioning / offers / visual) —
+      // SMS is the source of truth.
+      if (message.body && looksLikeBrandContextUpdate(message.body)) {
+        // Research intents propose drafts; owner confirms later via edit phrases.
+        if (/\bresearch\s+(our\s+)?icp\b|\bpropose\s+(an?\s+)?icp\b/i.test(message.body)) {
+          const draft = await researchIcp(brand);
+          await saveIcpDraft(brand.id, draft);
+          const segs = draft.segments?.length ? draft.segments.join("; ") : "still thin — tell me who you serve";
+          return {
+            reply: `Here's a draft ICP based on what I could find: ${segs}. Reply to tweak it (e.g. "update our ICP — …") or confirm what's right.`,
+          };
+        }
+        if (/\bresearch\s+(our\s+)?pain|\bpropose\s+pain/i.test(message.body)) {
+          const draft = await researchPainPoints(brand);
+          await savePainPointsDraft(brand.id, draft);
+          const list = (draft.items ?? []).map((p) => p.text).filter(Boolean).slice(0, 4);
+          return {
+            reply: list.length
+              ? `Possible pain points I heard in the wild:\n${list.map((t) => `• ${t}`).join("\n")}\n\nTell me which to keep, strike, or add.`
+              : "I couldn't surface solid pain language yet — tell me what your customers struggle with and I'll lock it in.",
+          };
+        }
+        if (/\bpropose\s+(our\s+)?positioning\b|\bdraft\s+(a\s+)?positioning\b/i.test(message.body)) {
+          const draft = await proposePositioning(brand);
+          if (draft.one_liner) await savePositioningDraft(brand.id, draft);
+          return {
+            reply: draft.one_liner
+              ? `Positioning draft: "${draft.one_liner}". Say "our positioning is …" to lock a version you like.`
+              : "Need a bit more on who you serve and what you offer before I can draft positioning — fill me in?",
+          };
+        }
+        const ctxReply = await updateBrandContextFromMessage(brand, message.body);
+        if (ctxReply) return { reply: ctxReply };
       }
 
       // Business facts stated by the owner ("we're open till 6 now", "coffee's $5")

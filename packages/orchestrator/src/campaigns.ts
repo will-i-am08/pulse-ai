@@ -10,6 +10,7 @@ import {
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { renderQuoteCard } from "./imaging.js";
+import { brandContextForPrompt } from "./brandContext.js";
 
 const WINDOW_HOURS = [11, 13, 19]; // spread campaign posts across the day
 
@@ -47,10 +48,13 @@ export async function proposeCampaign(
   request: string,
 ): Promise<{ campaign: Campaign; summary: string } | null> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const ctx = brandContextForPrompt(brand);
   const system = [
     `You plan a short social-media campaign for "${brand.name}".`,
     profile.tone.length ? `Brand tone: ${profile.tone.join(", ")}.` : "",
+    ctx || "",
     "From the client's request, design a coherent campaign with a clear arc (tease → build → launch/offer → last call).",
+    "Use positioning, ICP, and offers when present. NEVER invent discounts, awards, or testimonials not listed in offers/facts.",
     'Output ONLY JSON: {"name":"<short campaign name>","goal":"<one line>","duration_days":<int 5-21>,"items":[{"day":<int from 0>,"angle":"<the angle of this post>","caption":"<full caption>","card":"<punchy 4-12 word line for a text card>"}]}',
     "Use 4-8 items spread across the duration. Keep captions on-brand and specific to the request.",
   ]
@@ -111,7 +115,7 @@ export async function activateCampaign(
 
     const mediaId = randomUUID();
     try {
-      const img = await renderQuoteCard(item.card, brand.name);
+      const img = await renderQuoteCard(item.card, brand);
       await query(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
          values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,

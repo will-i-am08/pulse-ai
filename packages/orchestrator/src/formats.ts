@@ -184,7 +184,7 @@ export async function generateTipCarousel(
   try {
     for (const slide of slides) {
       const id = randomUUID();
-      const img = await renderQuoteCard(slide, brand.name);
+      const img = await renderQuoteCard(slide, brand);
       await query(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
          values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,

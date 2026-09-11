@@ -5,7 +5,7 @@ import { callLLM } from "./llm.js";
 // FAQs. Powers auto-replies to customers and post generation. The
 // owner edits it just by telling the agent ("we're open till 6 now").
 
-const FACT_SIGNAL = /\b(hour|open|clos|price|cost|\$|book|appointment|address|located|deliver|refund|policy|faq|menu|we (offer|sell|do)|our (hours|prices|address)|my name|call me|name'?s|i'?m\s+[a-z]+)\b/i;
+const FACT_SIGNAL = /\b(hour|open|clos|price|cost|\$|book|appointment|address|located|deliver|refund|policy|faq|menu|we (offer|sell|do)|our (hours|prices|address)|my name|call me|name'?s|i'?m\s+[a-z]+|service\s+area|we'?re\s+at|find\s+us)\b/i;
 
 /** Does this owner message look like it's stating business facts? */
 export function looksLikeBusinessFact(body: string | null | undefined): boolean {
@@ -70,6 +70,7 @@ export async function updateFactsFromMessage(brand: Brand, message: string): Pro
 export function factsForPrompt(facts: BusinessFacts | null | undefined): string {
   if (!facts) return "(no business details on file yet)";
   const lines: string[] = [];
+  if (facts.owner_name) lines.push(`Owner: ${facts.owner_name}`);
   if (facts.hours) lines.push(`Hours: ${facts.hours}`);
   if (facts.address) lines.push(`Address: ${facts.address}`);
   if (facts.service_area) lines.push(`Service area: ${facts.service_area}`);

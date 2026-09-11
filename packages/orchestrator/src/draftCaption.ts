@@ -3,6 +3,8 @@ import sharp from "sharp";
 import { query, queryOne, brandVoiceProfileSchema, getMedia, sanitizeChatText } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { brandContextForPrompt } from "./brandContext.js";
+import { factsForPrompt } from "./businessProfile.js";
 
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -103,6 +105,24 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
   if (notes?.content_mix && Object.keys(notes.content_mix).length) {
     lines.push(`Content mix guidance: ${JSON.stringify(notes.content_mix)}`);
   }
+
+  const facts = factsForPrompt(brand.facts);
+  if (facts && !facts.startsWith("(no business")) {
+    lines.push("Business facts (do not invent beyond these):");
+    lines.push(facts);
+  }
+
+  const ctx = brandContextForPrompt(brand);
+  if (ctx) {
+    lines.push(ctx);
+  } else if (!brand.icp?.segments?.length) {
+    lines.push(
+      "No ICP on file — do not invent a fake customer. Write generally; Kip can offer to research ICP later.",
+    );
+  }
+  lines.push(
+    "Never invent discounts, awards, testimonials, or proof points that are not in offers or business facts.",
+  );
 
   return lines.join("\n");
 }

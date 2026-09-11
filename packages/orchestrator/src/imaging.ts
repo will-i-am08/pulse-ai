@@ -3,11 +3,108 @@ import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
-import { query, getMedia, putMedia, getServerEnv, sanitizeChatText, type Brand } from "@pulse/shared";
+import {
+  query,
+  getMedia,
+  putMedia,
+  getServerEnv,
+  sanitizeChatText,
+  type Brand,
+  type VisualProfile,
+} from "@pulse/shared";
 import { callLLM } from "./llm.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
+
+// ─── Brand visual tokens → render palette ────────────────────────────────────
+
+type BrandPalette = {
+  bgFrom: string;
+  bgTo: string;
+  text: string;
+  muted: string;
+  displayFont: "Anton" | "Playfair";
+  bodyFont: "Anton" | "Playfair";
+};
+
+function normalizeHex(raw: string | undefined): string | null {
+  if (!raw) return null;
+  let c = raw.trim();
+  // Named colours we allow without hex.
+  const named: Record<string, string> = {
+    black: "#141414",
+    white: "#ffffff",
+    cream: "#f5f0e8",
+    navy: "#0b1f3a",
+    forest: "#1a3a2a",
+    charcoal: "#2a2a2a",
+  };
+  const lower = c.toLowerCase();
+  if (named[lower]) return named[lower];
+  if (!c.startsWith("#")) c = `#${c}`;
+  if (/^#[0-9a-fA-F]{3}$/.test(c)) {
+    const r = c[1],
+      g = c[2],
+      b = c[3];
+    c = `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return /^#[0-9a-fA-F]{6}$/.test(c) ? c.toLowerCase() : null;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  };
+}
+
+function relativeLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const lin = [r, g, b].map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * lin[0]! + 0.7152 * lin[1]! + 0.0722 * lin[2]!;
+}
+
+function contrastText(bg: string): string {
+  return relativeLuminance(bg) > 0.45 ? "#1a1a1a" : "#ffffff";
+}
+
+function mixHex(a: string, b: string, t: number): string {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const m = (x: number, y: number) => Math.round(x + (y - x) * t);
+  const h = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${h(m(A.r, B.r))}${h(m(A.g, B.g))}${h(m(A.b, B.b))}`;
+}
+
+/** Resolve quote-card / tile colours + font roles from VisualProfile (sensible dark defaults). */
+export function resolveBrandPalette(visual?: VisualProfile | null): BrandPalette {
+  const colors = (visual?.colors ?? []).map(normalizeHex).filter((c): c is string => Boolean(c));
+  const bgFrom = colors[0] ?? "#141414";
+  const bgTo = colors[1] ?? (colors[0] ? mixHex(colors[0], "#000000", 0.25) : "#2a2a2a");
+  const text = colors[2] ? colors[2] : contrastText(bgFrom);
+  const muted = mixHex(text, bgFrom, 0.35);
+
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  const wantsSerif = fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f));
+  const wantsSans = fonts.some((f) => /sans|helvetica|arial|montserrat|inter|futura|anton|impact|gothic/.test(f));
+  let displayFont: "Anton" | "Playfair" = "Anton";
+  let bodyFont: "Anton" | "Playfair" = "Playfair";
+  // Serif preference wins when both match (e.g. "Playfair Display").
+  if (wantsSerif) {
+    displayFont = "Playfair";
+    bodyFont = "Playfair";
+  } else if (wantsSans) {
+    displayFont = "Anton";
+    bodyFont = "Anton";
+  }
+
+  return { bgFrom, bgTo, text, muted, displayFont, bodyFont };
+}
 
 // AI image editing via Replicate (Flux Kontext by default). The agent writes a
 // tailored edit instruction from the actual photo + brand, then runs the model.
@@ -27,11 +124,19 @@ async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: 
     .replace(/\s{2,}/g, " ")
     .trim();
   const asked = asked0.length > 2 ? asked0 : "";
+  const visual = brand.visual ?? {};
+  const styleBits = [
+    visual.aesthetic,
+    visual.aesthetic_notes,
+    visual.photo_treatment,
+    visual.colors?.length ? `lean into colours ${visual.colors.join(", ")}` : "",
+  ].filter(Boolean);
   const system = [
     "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
       ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
+    styleBits.length ? `Brand visual direction: ${styleBits.join("; ")}.` : "",
     asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
@@ -220,7 +325,13 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   return sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42) || brand.name.toUpperCase();
 }
 
-async function renderTile(imgBytes: Uint8Array, headline: string, masthead: string): Promise<Buffer> {
+async function renderTile(
+  imgBytes: Uint8Array,
+  headline: string,
+  masthead: string,
+  visual?: VisualProfile | null,
+): Promise<Buffer> {
+  const palette = resolveBrandPalette(visual);
   const meta = await sharp(Buffer.from(imgBytes)).metadata();
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1350;
@@ -229,6 +340,7 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
   const fontSize = Math.round(width * 0.085);
   const mastheadSize = Math.round(width * 0.062);
   const pad = Math.round(width * 0.05);
+  const scrim = hexToRgb(palette.bgFrom);
 
   const svg = await satori(
     {
@@ -243,9 +355,32 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
           {
             type: "div",
             props: {
-              style: { position: "absolute", top: 0, left: 0, width: `${width}px`, display: "flex", justifyContent: "center", padding: `${Math.round(height * 0.03)}px ${pad}px`, background: "linear-gradient(to bottom, rgba(0,0,0,0.5), rgba(0,0,0,0))" },
+              style: {
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: `${width}px`,
+                display: "flex",
+                justifyContent: "center",
+                padding: `${Math.round(height * 0.03)}px ${pad}px`,
+                background: `linear-gradient(to bottom, rgba(${scrim.r},${scrim.g},${scrim.b},0.55), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+              },
               children: [
-                { type: "div", props: { style: { display: "flex", color: "white", fontFamily: "Playfair", fontSize: `${mastheadSize}px`, letterSpacing: "0.02em", textAlign: "center", lineHeight: 1.05 }, children: masthead } },
+                {
+                  type: "div",
+                  props: {
+                    style: {
+                      display: "flex",
+                      color: palette.text,
+                      fontFamily: palette.bodyFont,
+                      fontSize: `${mastheadSize}px`,
+                      letterSpacing: "0.02em",
+                      textAlign: "center",
+                      lineHeight: 1.05,
+                    },
+                    children: masthead,
+                  },
+                },
               ],
             },
           },
@@ -259,13 +394,20 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
                 width: `${width}px`,
                 display: "flex",
                 padding: `${pad}px`,
-                background: "linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0))",
+                background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.85), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
               },
               children: [
                 {
                   type: "div",
                   props: {
-                    style: { display: "flex", color: "white", fontFamily: "Anton", fontSize: `${fontSize}px`, lineHeight: 1.02, textTransform: "uppercase" },
+                    style: {
+                      display: "flex",
+                      color: palette.text,
+                      fontFamily: palette.displayFont,
+                      fontSize: `${fontSize}px`,
+                      lineHeight: 1.02,
+                      textTransform: "uppercase",
+                    },
                     children: headline,
                   },
                 },
@@ -290,10 +432,19 @@ async function renderTile(imgBytes: Uint8Array, headline: string, masthead: stri
 }
 
 /**
- * Render a branded text card (no photo) for a generated filler post — a dark
- * canvas with a centred serif line and the brand name beneath.
+ * Render a branded text card (no photo). Uses VisualProfile colours/fonts when
+ * present; otherwise a sensible dark default (not the only look forever).
  */
-export async function renderQuoteCard(text: string, brandName: string): Promise<Buffer> {
+export async function renderQuoteCard(
+  text: string,
+  brandOrName: Brand | string,
+  visualOverride?: VisualProfile | null,
+): Promise<Buffer> {
+  const brandName = typeof brandOrName === "string" ? brandOrName : brandOrName.name;
+  const visual =
+    visualOverride ?? (typeof brandOrName === "string" ? null : (brandOrName.visual ?? null));
+  const palette = resolveBrandPalette(visual);
+
   const width = 1080;
   const height = 1080;
   const pad = Math.round(width * 0.11);
@@ -308,7 +459,7 @@ export async function renderQuoteCard(text: string, brandName: string): Promise<
           flexDirection: "column",
           width: `${width}px`,
           height: `${height}px`,
-          background: "linear-gradient(145deg, #141414, #2a2a2a)",
+          background: `linear-gradient(145deg, ${palette.bgFrom}, ${palette.bgTo})`,
           padding: `${pad}px`,
           alignItems: "center",
           justifyContent: "center",
@@ -318,14 +469,30 @@ export async function renderQuoteCard(text: string, brandName: string): Promise<
           {
             type: "div",
             props: {
-              style: { display: "flex", color: "#ffffff", fontFamily: "Playfair", fontSize: `${fontSize}px`, lineHeight: 1.2, letterSpacing: "0.01em" },
+              style: {
+                display: "flex",
+                color: palette.text,
+                fontFamily: palette.bodyFont,
+                fontSize: `${fontSize}px`,
+                lineHeight: 1.2,
+                letterSpacing: "0.01em",
+              },
               children: text,
             },
           },
           {
             type: "div",
             props: {
-              style: { display: "flex", position: "absolute", bottom: `${pad}px`, color: "rgba(255,255,255,0.75)", fontFamily: "Anton", fontSize: `${Math.round(width * 0.03)}px`, letterSpacing: "0.12em", textTransform: "uppercase" },
+              style: {
+                display: "flex",
+                position: "absolute",
+                bottom: `${pad}px`,
+                color: palette.muted,
+                fontFamily: palette.displayFont,
+                fontSize: `${Math.round(width * 0.03)}px`,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              },
               children: brandName.toUpperCase(),
             },
           },
@@ -350,7 +517,7 @@ export async function applyTextTile(brand: Brand, mediaId: string, headline: str
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const tiled = await renderTile(blob.bytes, headline, brand.name.toUpperCase());
+    const tiled = await renderTile(blob.bytes, headline, brand.name.toUpperCase(), brand.visual);
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)

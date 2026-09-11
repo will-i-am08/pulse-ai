@@ -21,6 +21,8 @@ export {
   listLabChats,
   hardResetLabBrand,
   ensureOwnerNameFromUser,
+  extractVisualHintsFromHtml,
+  seedVisualProfileFromWebsite,
 } from "./onboarding.js";
 export type { LabChatSummary } from "./onboarding.js";
 
@@ -50,6 +52,30 @@ export {
 } from "./formats.js";
 export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
+export {
+  looksLikeBrandContextUpdate,
+  detectBrandContextKind,
+  updateBrandContextFromMessage,
+  brandContextForPrompt,
+  mergeIcp,
+  mergePainPoints,
+  mergePositioning,
+  mergeOffers,
+  mergeVisual,
+  researchIcp,
+  researchPainPoints,
+  proposePositioning,
+  saveIcpDraft,
+  savePainPointsDraft,
+  savePositioningDraft,
+} from "./brandContext.js";
+export {
+  storeDesignMemoryRef,
+  listRecentDesignMemory,
+  listTopDesignMemory,
+  updateDesignMemoryStatus,
+} from "./designMemory.js";
+export { resolveBrandPalette, renderQuoteCard, editImageForBrand, applyTextTile } from "./imaging.js";
 export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";

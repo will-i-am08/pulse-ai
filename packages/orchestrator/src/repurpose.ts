@@ -99,7 +99,7 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
       const img =
         item.visual === "photo" && item.photo_prompt
           ? await generatePhotoImage(ref ? `${item.photo_prompt}. ${ref}` : item.photo_prompt)
-          : await renderQuoteCard(item.card ?? item.caption.slice(0, 60), brand.name);
+          : await renderQuoteCard(item.card ?? item.caption.slice(0, 60), brand);
       if (!img) continue;
       await query(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)

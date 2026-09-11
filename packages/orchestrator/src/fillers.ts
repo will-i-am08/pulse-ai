@@ -4,6 +4,7 @@ import { callLLM } from "./llm.js";
 import { renderQuoteCard } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
+import { brandContextForPrompt } from "./brandContext.js";
 
 /**
  * Generate a text-only filler post for a pillar (used when a slot is starving and
@@ -15,9 +16,12 @@ export async function generateFillerPost(
   pillar: Pillar,
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const ctx = brandContextForPrompt(brand);
   const system = [
     `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
+    ctx || "",
+    "Never invent discounts, awards, or testimonials not in offers/facts.",
     "Output ONLY JSON: {\"caption\":\"<the full post caption, no hashtags unless natural>\",\"card\":\"<a punchy 4-12 word line to display big on a text card>\"}",
     "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
   ]
@@ -39,7 +43,7 @@ export async function generateFillerPost(
 
   const mediaId = randomUUID();
   try {
-    const img = await renderQuoteCard(card, brand.name);
+    const img = await renderQuoteCard(card, brand);
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
        values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,

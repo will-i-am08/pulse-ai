@@ -8,6 +8,7 @@ import {
   type Brand,
   type OnboardingState,
   type OnboardingTurnMsg,
+  type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { seedPendingPlan } from "./nichePlan.js";
@@ -114,7 +115,7 @@ function toMessages(transcript: OnboardingTurnMsg[]): { role: "user" | "assistan
 }
 
 /** Strip a web page to rough text, then summarise the brand from it (best-effort). */
-async function readWebsite(url: string): Promise<string | null> {
+async function readWebsite(url: string): Promise<{ summary: string; html: string } | null> {
   try {
     const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     const res = await fetch(withProto, { headers: { "User-Agent": "PulseBot/1.0" } });
@@ -128,14 +129,118 @@ async function readWebsite(url: string): Promise<string | null> {
       .trim()
       .slice(0, 6000);
     if (text.length < 40) return null;
-    return await callLLM({
+    const summary = await callLLM({
       system:
         "You extract a brand summary from website text. In 3-5 sentences, describe what the business/person does, who they serve, and the tone of their writing. Plain text only.",
       messages: [{ role: "user", content: `Website text:\n"""${text}"""\n\nSummarise the brand.` }],
       maxTokens: 300,
     });
+    return { summary, html };
   } catch {
     return null;
+  }
+}
+
+/** Pull logo URL + theme-color hints from raw HTML (best-effort, no network). */
+export function extractVisualHintsFromHtml(html: string, baseUrl?: string): {
+  logo_url?: string;
+  theme_colors: string[];
+} {
+  const theme_colors: string[] = [];
+  const theme = html.match(
+    /<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i,
+  ) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']theme-color["']/i);
+  if (theme?.[1]) theme_colors.push(theme[1].trim());
+
+  const ms = html.match(
+    /<meta[^>]+name=["']msapplication-TileColor["'][^>]+content=["']([^"']+)["']/i,
+  );
+  if (ms?.[1]) theme_colors.push(ms[1].trim());
+
+  // Common logo patterns in img src / og:image as fallback.
+  let logo_url: string | undefined;
+  const logoImg =
+    html.match(/<img[^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/i) ??
+    html.match(/<img[^>]+src=["']([^"']+)["'][^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["']/i) ??
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+  if (logoImg?.[1]) {
+    const raw = logoImg[1].trim();
+    if (/^https?:\/\//i.test(raw)) logo_url = raw;
+    else if (baseUrl) {
+      try {
+        logo_url = new URL(raw, /^https?:\/\//i.test(baseUrl) ? baseUrl : `https://${baseUrl}`).href;
+      } catch {
+        /* ignore bad URL */
+      }
+    }
+  }
+  return { logo_url, theme_colors };
+}
+
+/**
+ * Seed brands.visual from website HTML + LLM extraction when possible.
+ * Best-effort — empty visual is fine; owner can set prefs by SMS later.
+ */
+export async function seedVisualProfileFromWebsite(
+  brand: Brand,
+  html: string,
+  websiteSummary?: string,
+): Promise<void> {
+  try {
+    const hints = extractVisualHintsFromHtml(html, brand.website ?? undefined);
+    const snippet = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 4000);
+
+    const raw = await callLLM({
+      system:
+        "Extract brand visual tokens from website context. Output ONLY JSON matching: " +
+        '{"colors":["#hex"],"fonts":[""],"aesthetic":"","aesthetic_notes":"","photo_treatment":""}. ' +
+        "Prefer 2-4 real hex colours when you can infer them. Keep fonts as family names. " +
+        "photo_treatment is a short note on how their photos look (lighting, grade). " +
+        "Omit fields you cannot support — never invent a fake palette from thin air.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            `Brand: ${brand.name}`,
+            websiteSummary ? `Summary: ${websiteSummary}` : "",
+            hints.theme_colors.length ? `Theme colours found: ${hints.theme_colors.join(", ")}` : "",
+            hints.logo_url ? `Logo URL candidate: ${hints.logo_url}` : "",
+            `Page text excerpt:\n"""${snippet}"""`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        },
+      ],
+      maxTokens: 280,
+    });
+
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as VisualProfile;
+    const visual: VisualProfile = {
+      ...(brand.visual ?? {}),
+      ...(parsed.colors?.length ? { colors: parsed.colors } : {}),
+      ...(parsed.fonts?.length ? { fonts: parsed.fonts } : {}),
+      ...(parsed.aesthetic ? { aesthetic: parsed.aesthetic } : {}),
+      ...(parsed.aesthetic_notes ? { aesthetic_notes: parsed.aesthetic_notes } : {}),
+      ...(parsed.photo_treatment ? { photo_treatment: parsed.photo_treatment } : {}),
+      ...(hints.logo_url ? { logo_url: hints.logo_url } : {}),
+      ...(hints.theme_colors.length && !parsed.colors?.length
+        ? { colors: hints.theme_colors }
+        : {}),
+    };
+    if (!Object.keys(visual).length) return;
+    await query(`update brands set visual = $1::jsonb where id = $2`, [
+      JSON.stringify(visual),
+      brand.id,
+    ]);
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -157,8 +262,15 @@ export async function startOnboarding(brandId: string): Promise<string> {
   const type: AccountType = brand.account_type ?? "business";
 
   let websiteSummary: string | undefined;
+  let websiteHtml: string | undefined;
   if (brand.website) {
-    websiteSummary = (await readWebsite(brand.website)) ?? undefined;
+    const read = await readWebsite(brand.website);
+    if (read) {
+      websiteSummary = read.summary;
+      websiteHtml = read.html;
+      // Seed visual tokens early so quote cards / tiles can use brand colours ASAP.
+      await seedVisualProfileFromWebsite(brand, websiteHtml, websiteSummary);
+    }
   }
 
   const knownName = ownerFirstName(brand);
@@ -482,6 +594,11 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
             brand_voice_profile = $3::jsonb,
             voice_guide_md = null,
             facts = $4::jsonb,
+            visual = '{}'::jsonb,
+            icp = '{}'::jsonb,
+            pain_points = '{}'::jsonb,
+            positioning = '{}'::jsonb,
+            offers = '{}'::jsonb,
             contact_card_sent_at = null
       where id = $1`,
     [
@@ -491,4 +608,5 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
       JSON.stringify(facts),
     ],
   );
+  await query(`delete from design_memory where brand_id = $1`, [brandId]);
 }

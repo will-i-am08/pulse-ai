@@ -85,7 +85,10 @@ export function visualReference(brand: Brand, hasRealPhotos = false): string {
   const v = brand.visual ?? {};
   const bits: string[] = [];
   if (v.aesthetic) bits.push(v.aesthetic);
+  if (v.aesthetic_notes) bits.push(v.aesthetic_notes);
+  if (v.photo_treatment) bits.push(`photo treatment: ${v.photo_treatment}`);
   if (v.colors?.length) bits.push(`colours ${v.colors.join(", ")}`);
+  if (v.fonts?.length) bits.push(`fonts ${v.fonts.join(", ")}`);
   if (bits.length) return `Match the brand's real aesthetic — ${bits.join("; ")}.`;
   if (hasRealPhotos) return "Match the natural look and feel of the brand's own photography — real, unstocky.";
   return "";
