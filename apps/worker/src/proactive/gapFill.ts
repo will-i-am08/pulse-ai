@@ -9,6 +9,7 @@ import {
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
   generateTipCarousel,
+  generateTypedCarousel,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -67,8 +68,21 @@ export async function runGapFillLoop(): Promise<void> {
             );
             kind = "carousel from your photos";
           } else {
-            drafted = await generateTipCarousel(brand, pillar);
-            kind = "tip carousel";
+            const kinds = ["tip", "steps", "before_after", "menu_offer"] as const;
+            const pick = kinds[Math.floor(Date.now() / 86_400_000) % kinds.length]!;
+            const typed = await generateTypedCarousel(brand, pillar, pick);
+            if (typed && typed.ok === false) {
+              await sendToBrand(brand.id, typed.qaSms);
+              await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
+              break;
+            }
+            if (typed && typed.ok) {
+              drafted = { post: typed.post, mediaUrl: typed.mediaUrl };
+              kind = `${pick.replace("_", "/")} carousel`;
+            } else {
+              drafted = await generateTipCarousel(brand, pillar);
+              kind = "tip carousel";
+            }
           }
         } else if (fmt === "story") {
           const p = await pickFreshPhoto(brand.id);

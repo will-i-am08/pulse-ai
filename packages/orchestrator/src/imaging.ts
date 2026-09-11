@@ -9,10 +9,12 @@ import {
   putMedia,
   getServerEnv,
   sanitizeChatText,
+  brandVoiceProfileSchema,
   type Brand,
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { routeImageJob } from "./modelRouter.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
@@ -114,8 +116,37 @@ type ContentPart = Exclude<Anthropic.MessageParam["content"], string>[number];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Brand visual + learned photo_style cues for Flux edit prompts (Phase C1).
+ * Exported for tests — must include photo_style fields when present on voice.
+ */
+export function brandPhotoStyleBits(brand: Brand): string[] {
+  const visual = brand.visual ?? {};
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const ps = profile.photo_style;
+  return [
+    visual.aesthetic,
+    visual.aesthetic_notes,
+    visual.photo_treatment,
+    visual.colors?.length ? `lean into colours ${visual.colors.join(", ")}` : "",
+    visual.fonts?.length ? `type/brand feel ${visual.fonts.join(", ")}` : "",
+    ps.overall_aesthetic ? `photo style aesthetic: ${ps.overall_aesthetic}` : "",
+    ps.lighting ? `lighting: ${ps.lighting}` : "",
+    ps.composition ? `composition: ${ps.composition}` : "",
+    ps.editing ? `editing grade: ${ps.editing}` : "",
+    ps.colour_palette?.length ? `photo colours: ${ps.colour_palette.join(", ")}` : "",
+    ps.framing ? `framing: ${ps.framing}` : "",
+    ps.common_subjects?.length ? `common subjects: ${ps.common_subjects.join(", ")}` : "",
+    ps.recurring_motifs?.length ? `motifs: ${ps.recurring_motifs.join(", ")}` : "",
+  ].filter((b): b is string => Boolean(b));
+}
+
 /** Vision LLM: given the photo + brand (+ the client's own request), write a Flux Kontext edit instruction. */
-async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: string): Promise<string> {
+export async function generateEditPrompt(
+  brand: Brand,
+  imgBytes: Uint8Array,
+  request?: string,
+): Promise<string> {
   const business = brand.account_type !== "personal";
   // Strip any "add text" intent — text is burned on deterministically by the tile,
   // never by the image model (whose text comes out mangled).
@@ -124,20 +155,14 @@ async function generateEditPrompt(brand: Brand, imgBytes: Uint8Array, request?: 
     .replace(/\s{2,}/g, " ")
     .trim();
   const asked = asked0.length > 2 ? asked0 : "";
-  const visual = brand.visual ?? {};
-  const styleBits = [
-    visual.aesthetic,
-    visual.aesthetic_notes,
-    visual.photo_treatment,
-    visual.colors?.length ? `lean into colours ${visual.colors.join(", ")}` : "",
-  ].filter(Boolean);
+  const styleBits = brandPhotoStyleBits(brand);
   const system = [
     "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
-      ? "BUSINESS account: keep the real subject/product/place truthful, but make it look genuinely professionally shot — strong clean studio-grade lighting, rich true colour, tidy background, polished composition."
+      ? "BUSINESS account — FAITHFUL ENHANCEMENT DEFAULT: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
-    styleBits.length ? `Brand visual direction: ${styleBits.join("; ")}.` : "",
-    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else.` : "",
+    styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
+    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else (still keep business subjects truthful).` : "",
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
@@ -232,6 +257,7 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
   const env = getServerEnv();
   const token = env.REPLICATE_API_TOKEN;
   if (!token) return null;
+  routeImageJob("photo_generate");
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
   try {
     let body: any;
@@ -273,12 +299,19 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
  * new media id, or null if editing is disabled/unavailable (caller falls back to
  * the original photo).
  */
-export async function editImageForBrand(brand: Brand, mediaId: string, request?: string): Promise<string | null> {
+export async function editImageForBrand(
+  brand: Brand,
+  mediaId: string,
+  request?: string,
+  /** When set, skip LLM prompt generation and reuse this grade (photo-bundle consistency). */
+  sharedPrompt?: string,
+): Promise<string | null> {
   if (!getServerEnv().REPLICATE_API_TOKEN) return null;
+  routeImageJob("photo_edit");
   const blob = await getMedia(mediaId);
   if (!blob || !blob.contentType.startsWith("image/")) return null;
   try {
-    const prompt = await generateEditPrompt(brand, blob.bytes, request);
+    const prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
     const edited = await replicateEdit(blob.bytes, prompt);
     const newId = randomUUID();
     await query(
@@ -294,12 +327,83 @@ export async function editImageForBrand(brand: Brand, mediaId: string, request?:
   }
 }
 
+/**
+ * Grade every slide in a photo-bundle with one shared Flux prompt so the swipe
+ * reads as one set (consistent colour/light). Cover may still get a text tile;
+ * interior slides stay photo-only after the shared grade (styled cover + candid rest).
+ */
+export async function gradePhotoBundle(
+  brand: Brand,
+  mediaIds: string[],
+  request?: string,
+): Promise<string[]> {
+  if (mediaIds.length === 0) return [];
+  const first = await getMedia(mediaIds[0]!);
+  if (!first || !first.contentType.startsWith("image/")) return mediaIds;
+  let shared: string | undefined;
+  try {
+    shared = await generateEditPrompt(brand, first.bytes, request);
+  } catch {
+    shared = undefined;
+  }
+  const { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } = await import("./concurrency.js");
+  const graded = await mapWithConcurrency(mediaIds, SLIDE_RENDER_CONCURRENCY, async (id) => {
+    const edited = await editImageForBrand(brand, id, request, shared).catch(() => null);
+    return edited ?? id;
+  });
+  return graded;
+}
+
 // ─── Text tile (Satori + resvg): burn a bold headline onto the image ─────────
 
 /** Does the client's message ask for text on the image? */
 export function messageWantsText(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(text|caption on|words on|title on|headline|writing on)\b/i.test(body);
+  return /\b(text|caption on|words on|title on|headline|writing on|add text|put text|overlay)\b/i.test(body);
+}
+
+/** Explicit "no text on the image" / leave it clean. */
+export function messageWantsNoText(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
+    body,
+  );
+}
+
+/**
+ * Smarter headline-on-photo default (Phase C1).
+ * - Explicit ask → yes; explicit decline → no
+ * - Business: yes when promo/offer language OR short/empty instruction
+ * - Personal: only when asked
+ * - Stories: overlay by default (unless declined)
+ */
+export function shouldOverlayHeadline(
+  brand: Brand,
+  body: string | null | undefined,
+  opts?: { caption?: string; format?: "feed" | "carousel" | "story" },
+): boolean {
+  if (messageWantsNoText(body)) return false;
+  if (messageWantsText(body)) return true;
+  if (opts?.format === "story") return true;
+  if (brand.account_type === "personal") return false;
+
+  const text = `${body ?? ""} ${opts?.caption ?? ""}`;
+  if (/\b(offer|sale|%\s*off|discount|menu|special|launch|new drop|book now|limited|promo|deal)\b/i.test(text)) {
+    return true;
+  }
+  const trimmed = (body ?? "").trim();
+  return trimmed.length < 48;
+}
+
+/** Crop/letterbox a photo into 9:16 story frame (safe for IG Stories). */
+export async function frameStoryImage(imgBytes: Uint8Array): Promise<Buffer> {
+  const width = 1080;
+  const height = 1920;
+  return sharp(Buffer.from(imgBytes))
+    .rotate()
+    .resize({ width, height, fit: "cover", position: "centre" })
+    .jpeg({ quality: 88 })
+    .toBuffer();
 }
 
 /**
@@ -528,6 +632,130 @@ export async function applyTextTile(brand: Brand, mediaId: string, headline: str
     return newId;
   } catch (err) {
     console.error(`applyTextTile: failed for media ${mediaId}`, err);
+    return null;
+  }
+}
+
+/**
+ * Story-native creative: force 9:16 cover crop + optional overlay/CTA in the
+ * vertical safe zone (kept off extreme top/bottom edges).
+ */
+export async function applyStoryCreative(
+  brand: Brand,
+  mediaId: string,
+  overlay: string,
+  cta?: string,
+): Promise<string | null> {
+  const blob = await getMedia(mediaId);
+  if (!blob) return null;
+  try {
+    const framed = await frameStoryImage(blob.bytes);
+    const width = 1080;
+    const height = 1920;
+    const safeTop = Math.round(height * 0.18);
+    const safeBottom = Math.round(height * 0.78);
+    const jpeg = await sharp(framed).jpeg({ quality: 90 }).toBuffer();
+    const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    const palette = resolveBrandPalette(brand.visual);
+    const scrim = hexToRgb(palette.bgFrom);
+    const headline = overlay.toUpperCase().slice(0, 48);
+    const ctaLine = (cta ?? "").trim().slice(0, 36);
+
+    const svg = await satori(
+      {
+        type: "div",
+        props: {
+          style: { display: "flex", width: `${width}px`, height: `${height}px`, position: "relative" },
+          children: [
+            {
+              type: "img",
+              props: {
+                src: dataUri,
+                width,
+                height,
+                style: {
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: `${width}px`,
+                  height: `${height}px`,
+                  objectFit: "cover",
+                },
+              },
+            },
+            {
+              type: "div",
+              props: {
+                style: {
+                  position: "absolute",
+                  top: `${safeTop}px`,
+                  left: 0,
+                  width: `${width}px`,
+                  height: `${safeBottom - safeTop}px`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                  padding: `0 ${Math.round(width * 0.08)}px ${Math.round(height * 0.04)}px`,
+                  background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.72), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+                },
+                children: [
+                  {
+                    type: "div",
+                    props: {
+                      style: {
+                        display: "flex",
+                        color: palette.text,
+                        fontFamily: palette.displayFont,
+                        fontSize: `${Math.round(width * 0.09)}px`,
+                        lineHeight: 1.05,
+                        textTransform: "uppercase",
+                      },
+                      children: headline,
+                    },
+                  },
+                  ctaLine
+                    ? {
+                        type: "div",
+                        props: {
+                          style: {
+                            display: "flex",
+                            marginTop: `${Math.round(height * 0.02)}px`,
+                            color: palette.muted,
+                            fontFamily: palette.bodyFont,
+                            fontSize: `${Math.round(width * 0.045)}px`,
+                            letterSpacing: "0.04em",
+                          },
+                          children: ctaLine,
+                        },
+                      }
+                    : null,
+                ].filter(Boolean),
+              },
+            },
+          ],
+        },
+      } as unknown as Parameters<typeof satori>[0],
+      {
+        width,
+        height,
+        fonts: [
+          { name: "Anton", data: ANTON, weight: 400, style: "normal" },
+          { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        ],
+      },
+    );
+    const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
+    const out = await sharp(png).jpeg({ quality: 88 }).toBuffer();
+    const newId = randomUUID();
+    await query(
+      `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+       values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
+      [newId, brand.id, newId],
+    );
+    await putMedia(newId, new Uint8Array(out), "image/jpeg");
+    return newId;
+  } catch (err) {
+    console.error(`applyStoryCreative: failed for media ${mediaId}`, err);
     return null;
   }
 }

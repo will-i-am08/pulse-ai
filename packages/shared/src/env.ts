@@ -35,6 +35,9 @@ const serverEnvSchema = z.object({
   REPLICATE_API_TOKEN: z.string().optional(),
   REPLICATE_IMAGE_MODEL: z.string().default("black-forest-labs/flux-kontext-pro"),
   REPLICATE_TEXT_IMAGE_MODEL: z.string().default("black-forest-labs/flux-schnell"),
+  // Optional specialty models (Phase C9). When unset, router falls back to composer.
+  REPLICATE_IDEOGRAM_MODEL: z.string().optional(),
+  REPLICATE_RECRAFT_MODEL: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),

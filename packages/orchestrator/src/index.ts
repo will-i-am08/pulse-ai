@@ -46,10 +46,15 @@ export { gapNudgeMessage } from "./nudges.js";
 export {
   chooseNextFormat,
   generateTipCarousel,
+  generateTypedCarousel,
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
+  draftStoryOverlay,
   classifyStoryTone,
+  weightsFromFormatMix,
+  carouselDecision,
 } from "./formats.js";
+export type { TypedCarouselKind } from "./formats.js";
 export {
   proposeCampaign,
   activateCampaign,
@@ -85,7 +90,30 @@ export {
   listTopDesignMemory,
   updateDesignMemoryStatus,
 } from "./designMemory.js";
-export { resolveBrandPalette, renderQuoteCard, editImageForBrand, applyTextTile } from "./imaging.js";
+export {
+  resolveBrandPalette,
+  renderQuoteCard,
+  editImageForBrand,
+  applyTextTile,
+  applyStoryCreative,
+  shouldOverlayHeadline,
+  messageWantsText,
+  brandPhotoStyleBits,
+  gradePhotoBundle,
+} from "./imaging.js";
+export {
+  composeSlide,
+  composeAndStoreSlide,
+  gatherDesignContext,
+  pickLayoutVariant,
+  layoutForIndex,
+  rolesForCarouselKind,
+} from "./designComposer.js";
+export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer.js";
+export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms } from "./designQa.js";
+export { routeImageJob, specialtyReplicateGenerate } from "./modelRouter.js";
+export type { ImageJob, ImageEngine, RouteDecision } from "./modelRouter.js";
+export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
 export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";

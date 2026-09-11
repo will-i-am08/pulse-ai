@@ -7,7 +7,7 @@ import { buildConversationContext } from "./conversationContext.js";
 import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser } from "./onboarding.js";
 import {
   editImageForBrand,
-  messageWantsText,
+  shouldOverlayHeadline,
   messageWantsImageEdit,
   generateHeadline,
   applyTextTile,
@@ -673,7 +673,16 @@ export async function processInbound(
       }
 
       const originalIds = newMedia.map((m) => m.id);
-      const { caption, proposedTime } = await draftCaption(brand.id, originalIds);
+      const firstPhoto = newMedia.find((m) => m.kind === "photo");
+
+      // C6: caption + photo grade in parallel (independent LLM/vision steps).
+      const [captionResult, editedId] = await Promise.all([
+        draftCaption(brand.id, originalIds),
+        firstPhoto
+          ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const { caption, proposedTime } = captionResult;
 
       // Clear task after a real gap (≥ ~18h): just do it, with a light welcome-back
       // — never hijack a photo with "want to pick up where we left off?".
@@ -684,16 +693,13 @@ export async function processInbound(
 
       // Style the first photo (truthful enhance for business, bolder for personal).
       // If editing is unavailable, we fall back to the original photo.
-      const firstPhoto = newMedia.find((m) => m.kind === "photo");
       let postMediaIds = originalIds;
       let styledUrl: string | undefined;
-      const wantsText = messageWantsText(message.body);
+      // C1: smarter business headline default (not only explicit "add text").
+      const wantsText = shouldOverlayHeadline(brand, message.body, { caption, format: "feed" });
       let headline: string | undefined;
       if (firstPhoto) {
-        let finalId = firstPhoto.id;
-        const editedId = await editImageForBrand(brand, firstPhoto.id, message.body ?? undefined);
-        if (editedId) finalId = editedId;
-        // If the client asked for text on the image, overlay a bold headline.
+        let finalId = editedId ?? firstPhoto.id;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
           const tiledId = await applyTextTile(brand, finalId, headline);

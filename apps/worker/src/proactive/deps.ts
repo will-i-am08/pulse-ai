@@ -13,6 +13,7 @@ export {
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
   generateTipCarousel,
+  generateTypedCarousel,
   isDaytime,
   dueCompetitorWatches,
   competitorWeeklyUpdate,
