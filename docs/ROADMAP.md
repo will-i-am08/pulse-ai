@@ -21,7 +21,7 @@ This spec captures the target product and the phased build to get there. Decisio
 
 The **outbound** half is done:
 
-- SMS/Discord agent: text a photo → drafted on-brand caption → approve → publish (Instagram live; Facebook pending App Review).
+- SMS agent: text a photo → drafted on-brand caption → approve → publish (Instagram live; Facebook pending App Review).
 - Brand-voice learning (corrections fold into the voice profile).
 - AI image editing (styling, magazine tiles, quote cards) + follow-up "make the photo brighter" re-edits.
 - Content **pillars** with photo auto-classification.
@@ -106,7 +106,7 @@ A living profile captured at onboarding and editable by chat:
 
 ## Experience & packaging
 
-- **One thread.** Everything reaches the owner in their single channel (Discord now; SMS when the Twilio number lands): drafts to approve, escalations, lead summaries, and a periodic recap. The dashboard/calendar stays optional.
+- **One thread.** Everything reaches the owner in their SMS/Linq thread: drafts to approve, escalations, lead summaries, and a periodic recap. The dashboard/calendar stays optional.
 - **Near-real-time.** Webhook-driven; the agent reacts within minutes, not on a batch.
 - **All-in, toggled.** One price, every capability included. Per-brand feature toggles (`brands.features jsonb`): `autopilot`, `auto_replies`, `lead_handoff`, `ads`. Levels (presence → engagement → results → ads) are switches, not tiers.
 

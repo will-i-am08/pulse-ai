@@ -14,7 +14,7 @@ export interface CheckinDeps {
   getLastInboundAt: (brandId: string) => Promise<string | null>;
   getActionable: (brandId: string) => Promise<Actionable | null>;
   isDaytime: (now: Date) => boolean;
-  sendToBrand: (brandId: string, body: string) => Promise<void>;
+  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }

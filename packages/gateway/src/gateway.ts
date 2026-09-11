@@ -31,7 +31,7 @@ export interface TypingKeeper {
 /**
  * Keep a channel's "... is typing" indicator alive while async work runs.
  * Best-effort: channels without sendTyping (plain SMS) no-op. The indicator
- * interval is per-channel (Discord expires after ~10s, Linq after ~85-90s).
+ * interval is per-channel (Linq after ~85-90s; others ~10s).
  * Never throws; stopping is idempotent.
  */
 export function startTypingKeeper(channel: MessageChannel, to: string): TypingKeeper {
@@ -104,22 +104,18 @@ export function splitIntoBubbles(body: string, softMax = 320): string[] {
 }
 
 /**
- * Set the active channel explicitly. The Discord bot process calls this at
- * startup with a client-bound DiscordChannel (Discord can't be built from env
- * alone — it needs a live gateway connection).
+ * Set the active channel explicitly (e.g. lab channel in tests / dashboard).
+ * Production Twilio/Linq channels are built from env via activeChannel().
  */
 export function setActiveChannel(channel: MessageChannel): void {
   channelOverride = channel;
 }
 
-/** The active messaging channel. Twilio is built from env; Discord is injected by the bot. */
+/** The active messaging channel — Twilio (default) or Linq from MESSAGE_CHANNEL. */
 export function activeChannel(): MessageChannel {
   if (channelOverride) return channelOverride;
   if (!channelSingleton) {
     const which = getServerEnv().MESSAGE_CHANNEL;
-    if (which === "discord") {
-      throw new Error("MESSAGE_CHANNEL=discord but no channel injected — the Discord bot must call setActiveChannel()");
-    }
     channelSingleton = which === "linq" ? createLinqChannel() : createTwilioChannel();
   }
   return channelSingleton;
@@ -128,7 +124,6 @@ export function activeChannel(): MessageChannel {
 /** Resolve a brand by the inbound sender address, using the active channel's addressing. */
 export async function resolveBrand(from: string): Promise<Brand | null> {
   const which = getServerEnv().MESSAGE_CHANNEL;
-  if (which === "discord") return resolveBrandByDiscord(from);
   if (which === "linq") return resolveBrandByLinq(from);
   return resolveBrandByPhone(from);
 }
@@ -163,29 +158,6 @@ export async function resolveBrandByPhone(from: string): Promise<Brand | null> {
     return await queryOne<Brand>("select * from brands where client_phone = $1", [from]);
   } catch (err) {
     console.error(`resolveBrandByPhone: lookup failed for ${from}`, err);
-    return null;
-  }
-}
-
-/**
- * Resolve a brand by Discord channel/DM id. If none is linked yet, fall back to
- * the configured test brand and stamp this channel onto it, so a first DM just
- * works during testing.
- */
-export async function resolveBrandByDiscord(channelId: string): Promise<Brand | null> {
-  if (!channelId) return null;
-  try {
-    const existing = await queryOne<Brand>("select * from brands where discord_channel_id = $1", [channelId]);
-    if (existing) return existing;
-
-    const fallbackPhone = getServerEnv().DISCORD_TEST_BRAND_PHONE;
-    if (!fallbackPhone) return null;
-    const fb = await queryOne<Brand>("select * from brands where client_phone = $1", [fallbackPhone]);
-    if (!fb) return null;
-    await query("update brands set discord_channel_id = $1 where id = $2", [channelId, fb.id]);
-    return { ...fb, discord_channel_id: channelId };
-  } catch (err) {
-    console.error(`resolveBrandByDiscord: lookup failed for ${channelId}`, err);
     return null;
   }
 }
@@ -259,22 +231,16 @@ export async function sendToBrand(
     return false;
   }
   const channel = opts?.channel ?? activeChannel();
-  const which = getServerEnv().MESSAGE_CHANNEL;
-  // Lab (and any explicitly passed non-discord channel) always addresses by phone.
-  const to =
-    channel.name === "lab"
-      ? brand.client_phone
-      : which === "discord"
-        ? brand.discord_channel_id
-        : brand.client_phone;
+  // Twilio, Linq, and lab all address the owner by phone (E.164).
+  const to = brand.client_phone;
   if (!to) {
-    console.error(`sendToBrand: brand ${brandId} has no address for the active channel`);
+    console.error(`sendToBrand: brand ${brandId} has no client_phone`);
     return false;
   }
 
   const text = sanitizeChatText(body);
-  // Channels with a native typing indicator (Discord, Linq/iMessage) already
-  // show liveness — pacing is the SMS stand-in (SMS has no typing signal).
+  // Channels with a native typing indicator (Linq/iMessage) already show
+  // liveness — pacing is the SMS stand-in (SMS has no typing signal).
   const hasNativeTyping = typeof channel.sendTyping === "function";
   const pace = (opts?.pace ?? true) && !hasNativeTyping;
   // Never split captioned media: the text + image ride together as one MMS.
@@ -285,7 +251,7 @@ export async function sendToBrand(
   // Claim atomically so concurrent sends (ack + reply) only attach once, and
   // so onboarding JSON rewrites cannot wipe the flag and re-attach later.
   let claimedTwilioCard = false;
-  if (which === "twilio" && channel.name === "twilio-sms" && needsContactCard(brand)) {
+  if (channel.name === "twilio-sms" && needsContactCard(brand)) {
     claimedTwilioCard = !!(await claimContactCardSent(brandId));
   }
   const vcardUrl = claimedTwilioCard ? kipContactIdentity().vcardUrl : null;
@@ -349,9 +315,9 @@ export async function handleInbound(
   opts?: HandleInboundOpts,
 ): Promise<{ brandId: string | null; messageId: string | null }> {
   // Liveness from the first millisecond: keeper targets the sender address
-  // directly (Discord channel id / sender phone both equal inbound.from), so it
-  // can start before brand resolution. Twilio SMS no-ops here (paced sends +
-  // holding text below are its stand-in). Never let typing break the pipeline.
+  // directly (sender phone equals inbound.from), so it can start before brand
+  // resolution. Twilio SMS no-ops here (paced sends + holding text below are
+  // its stand-in). Never let typing break the pipeline.
   const channel = opts?.channel ?? activeChannel();
   const resolve = opts?.resolveBrand ?? resolveBrand;
   let keeper: TypingKeeper | null = null;
@@ -367,9 +333,9 @@ export async function handleInbound(
       return { brandId: null, messageId: null };
     }
 
-    // Idempotency: a provider (Discord reconnect, Twilio retry) can redeliver the
-    // same message. If we've already stored this provider id, skip — otherwise we'd
-    // draft, generate, and reply twice.
+    // Idempotency: a provider (Twilio/Linq retry) can redeliver the same message.
+    // If we've already stored this provider id, skip — otherwise we'd draft,
+    // generate, and reply twice.
     if (inbound.providerMessageId) {
       const seen = await queryOne<{ id: string }>(
         "select id from messages where provider_message_sid = $1 limit 1",

@@ -27,7 +27,7 @@ import {
 } from "./formats.js";
 import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
-import { sendLatestDraft } from "./engagement.js";
+import { sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
@@ -35,6 +35,8 @@ import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
+import { buildPerformanceDigest } from "./performanceDigest.js";
+import { connectLinkMessage, isMetaConnected, metaConnectStatusMessage } from "./smsConnect.js";
 import {
   parseDestinationChoice,
   persistDestinations,
@@ -55,6 +57,20 @@ const SEND_DRAFT_RE = /^\s*(send|post it|send it|send that)\b/i;
 const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
+
+// Natural-language performance digest (replaces Discord !digest).
+const DIGEST_RE =
+  /\b(how did (we|i|things) do|how(?:'?s| is| are) (we|things|performance) (doing|going)|weekly (recap|digest|report|summary)|performance (digest|report|recap)|what(?:'?s| is) (working|performing)|engagement (report|recap|this week))\b/i;
+
+// SMS deep-link connect / disconnect intents.
+const CONNECT_META_RE =
+  /\b(connect|link|reconnect|relink)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|my accounts?)\b|\b(insta(?:gram)?|facebook|fb)\b.{0,30}\b(connect|link|reconnect)\b/i;
+const CONNECT_ADS_RE =
+  /\b(connect|link)\b.{0,40}\b(ad accounts?|ads|meta ads|facebook ads)\b|\b(ad accounts?|ads)\b.{0,30}\b(connect|link)\b/i;
+const CONNECT_STATUS_RE =
+  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb) connected\b/i;
+const DISCONNECT_META_RE =
+  /\b(disconnect|unlink|remove)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|accounts?)\b/i;
 
 // Competitor-intel intent: "what's X doing on ads/socials", "check out the
 // competition", "spy on [name]", "ad library". Routed to a web-search rundown.
@@ -395,8 +411,49 @@ export async function processInbound(
   // "send" approves the most recent drafted reply to a customer interaction —
   // but only when there's no pending post (there, "send" would be ambiguous).
   if (message.body && SEND_DRAFT_RE.test(message.body) && newMedia.length === 0 && !pending) {
-    const sent = await sendLatestDraft(brand);
-    if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+    try {
+      const sent = await sendLatestDraft(brand);
+      if (sent) return { reply: `Sent ✅\n\n"${sent}"` };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        reply: `Tried to send that reply but posting failed (${detail}). Say "send" again to retry, or tell me a change.`,
+      };
+    }
+  }
+
+  // SMS deep-link connects / disconnect / status (no pending draft required).
+  if (message.body && newMedia.length === 0 && !pending) {
+    if (CONNECT_STATUS_RE.test(message.body)) {
+      return { reply: metaConnectStatusMessage(brand) };
+    }
+    if (DISCONNECT_META_RE.test(message.body)) {
+      if (!isMetaConnected(brand)) {
+        return { reply: "Nothing to disconnect — Instagram/Facebook aren't linked yet. Want a connect link?" };
+      }
+      await query(
+        `update brands set
+           ig_user_id = null, ig_username = null,
+           fb_page_id = null, fb_page_name = null,
+           platform_tokens_encrypted = null,
+           platform_user_token_encrypted = null,
+           meta_connected_at = null
+         where id = $1`,
+        [brand.id],
+      );
+      return {
+        reply: 'Disconnected Instagram + Facebook. Say "connect Instagram" when you want a fresh link.',
+      };
+    }
+    if (CONNECT_ADS_RE.test(message.body)) {
+      return { reply: connectLinkMessage(brand, "ads") };
+    }
+    if (CONNECT_META_RE.test(message.body)) {
+      return { reply: connectLinkMessage(brand, "meta") };
+    }
+    if (DIGEST_RE.test(message.body)) {
+      return { reply: await buildPerformanceDigest(brand) };
+    }
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
@@ -411,10 +468,11 @@ export async function processInbound(
     return { reply: await converse(brand, message.body) };
   }
 
+  const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
   const result = await classifyInbound({
     body: message.body,
     hasMedia: newMedia.length > 0,
-    hasPendingPost: pending !== null,
+    hasPendingPost: pending !== null || draftedReply !== null,
   });
 
   await updateMessageType(message.id, toDbMessageType(result.classification));
@@ -427,11 +485,19 @@ export async function processInbound(
     }
     // Mid-conversation: with a draft awaiting the client, an unclear message is
     // most likely a fuzzy edit or approval — ask to clarify rather than
-    // guess-and-act (BUILD_CONTRACTS). With nothing pending, it's just chat.
+    // guess-and-act (BUILD_CONTRACTS). With a drafted engagement reply and no
+    // pending post, prefer clarifying send/edit for that reply.
     if (pending) {
       return {
         reply:
           'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
+      };
+    }
+    const draftedReply = await latestDraftedInteraction(brand.id);
+    if (draftedReply) {
+      return {
+        reply:
+          'Not quite sure — reply "send" to post the suggested reply, tell me a change, or ignore to leave it.',
       };
     }
     return { reply: await converse(brand, message.body ?? "") };
@@ -653,6 +719,13 @@ export async function processInbound(
 
     case "edit": {
       if (!pending) {
+        // Thin A6: owner edit of an engagement reply draft (no post pending).
+        const revised = await editLatestDraft(brand, message.body ?? "");
+        if (revised) {
+          return {
+            reply: `Updated suggested reply:\n"${revised}"\n\nReply "send" to post it, or tell me another change.`,
+          };
+        }
         return {
             reply: "I don't have a pending draft to edit right now. Send a photo or video and I'll draft a caption for it.",
         };

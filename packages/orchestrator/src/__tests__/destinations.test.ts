@@ -322,7 +322,8 @@ describe("no API keys for X or Threads", () => {
 describe("helpers", () => {
   it("mock-only dests publish immediately after yes", () => {
     expect(shouldPublishImmediately(["x"], false)).toBe(true);
-    expect(shouldPublishImmediately(["x", "threads"], false)).toBe(true);
+    // Threads is a live destination once connected — not mock-only.
+    expect(shouldPublishImmediately(["x", "threads"], false)).toBe(false);
     expect(shouldPublishImmediately(["instagram"], false)).toBe(false);
     expect(shouldPublishImmediately(["instagram", "x"], false)).toBe(false);
   });

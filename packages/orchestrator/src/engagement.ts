@@ -1,4 +1,5 @@
 import { query, queryOne, sanitizeChatText, type Brand, type Interaction, type InteractionKind } from "@pulse/shared";
+import { getGraphAdapter } from "@pulse/graph";
 import { callLLM } from "./llm.js";
 import { factsForPrompt } from "./businessProfile.js";
 
@@ -80,9 +81,9 @@ async function recordReply(interaction: Interaction, body: string, status: "draf
 /**
  * Atomically claim a 'new' interaction for triage by moving it to 'triaging'.
  * Returns the claimed row, or null if another consumer got there first (or it
- * is no longer new). Both the worker engagement loop and the Discord bot
- * poller must claim before calling handleInteraction — never triage a row
- * you haven't claimed, or the owner gets double replies.
+ * is no longer new). The worker engagement loop must claim before calling
+ * handleInteraction — never triage a row you haven't claimed, or the owner
+ * gets double replies.
  */
 export async function claimInteraction(id: string): Promise<Interaction | null> {
   return queryOne<Interaction>(
@@ -151,19 +152,89 @@ export async function handleInteraction(brand: Brand, interaction: Interaction):
   }
 }
 
-/** Approve + "send" the most recent drafted reply for a brand (owner said "send"). */
-export async function sendLatestDraft(brand: Brand): Promise<string | null> {
-  const draft = await queryOne<Interaction>(
+/** Latest drafted customer-reply interaction for this brand, or null. */
+export async function latestDraftedInteraction(brandId: string): Promise<Interaction | null> {
+  return queryOne<Interaction>(
     `select * from interactions where brand_id = $1 and status = 'drafted' order by created_at desc limit 1`,
-    [brand.id],
+    [brandId],
   );
+}
+
+/**
+ * Approve + "send" the most recent drafted reply for a brand (owner said "send").
+ * Posts through the graph adapter when possible so SMS approve actually lands
+ * on IG/FB, not just the local row.
+ */
+export async function sendLatestDraft(brand: Brand): Promise<string | null> {
+  const draft = await latestDraftedInteraction(brand.id);
   if (!draft) return null;
   const reply = await queryOne<{ id: string; body: string }>(
     `select id, body from interaction_replies where interaction_id = $1 and actor = 'agent' order by created_at desc limit 1`,
     [draft.id],
   );
   if (!reply) return null;
-  await query(`update interaction_replies set status = 'sent' where id = $1`, [reply.id]);
+
+  const body = sanitizeChatText(reply.body);
+  let externalReplyId: string | null = null;
+  try {
+    const graph = getGraphAdapter();
+    if (graph.reply) {
+      const posted = await graph.reply({ brand, interaction: draft, body });
+      externalReplyId = posted.externalReplyId;
+    }
+  } catch (err) {
+    // Surface a clear failure so the owner can retry — don't mark sent.
+    console.error(`sendLatestDraft: graph.reply failed for interaction ${draft.id}`, err);
+    throw err;
+  }
+
+  await query(`update interaction_replies set status = 'sent', external_reply_id = $1 where id = $2`, [
+    externalReplyId,
+    reply.id,
+  ]);
   await setStatus(draft.id, "auto_replied");
-  return sanitizeChatText(reply.body);
+  return body;
+}
+
+/**
+ * Revise the most recent drafted customer-reply per an owner SMS edit
+ * ("make it shorter", "add our hours"). Keeps status 'drafted' and returns
+ * the new suggested text for the owner to "send".
+ */
+export async function editLatestDraft(brand: Brand, instruction: string): Promise<string | null> {
+  const draft = await latestDraftedInteraction(brand.id);
+  if (!draft) return null;
+  const current = await queryOne<{ id: string; body: string }>(
+    `select id, body from interaction_replies
+      where interaction_id = $1 and actor = 'agent' and status = 'draft'
+      order by created_at desc limit 1`,
+    [draft.id],
+  );
+  if (!current) return null;
+
+  let revised: string;
+  try {
+    const raw = await callLLM({
+      system: [
+        `You revise a suggested public reply for "${brand.name}" per the owner's instruction.`,
+        "Output ONLY the revised reply text — no preamble, no surrounding quotes.",
+        "Keep it short and natural for Instagram/Facebook.",
+        `Business details:\n${factsForPrompt(brand.facts)}`,
+      ].join("\n"),
+      messages: [
+        {
+          role: "user",
+          content: `Current reply:\n"""${current.body}"""\n\nOwner's edit instruction:\n"""${instruction}"""\n\nRewrite the reply.`,
+        },
+      ],
+      maxTokens: 300,
+    });
+    revised = sanitizeChatText(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!revised) return null;
+
+  await query(`update interaction_replies set body = $1 where id = $2`, [revised, current.id]);
+  return revised;
 }

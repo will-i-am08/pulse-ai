@@ -10,3 +10,4 @@ export * from "./sanitize.js";
 export * from "./kipContact.js";
 export * from "./x.js";
 export * from "./threads.js";
+export * from "./smsConnectToken.js";

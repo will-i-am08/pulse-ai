@@ -6,7 +6,7 @@ const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
 
 export interface ReminderDeps {
   getLastMediaReceivedAt: (brandId: string) => Promise<string | null>;
-  sendToBrand: (brandId: string, body: string) => Promise<void>;
+  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }

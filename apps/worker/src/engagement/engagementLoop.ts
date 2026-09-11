@@ -14,8 +14,8 @@ import { logger } from "../lib/logger.js";
  * Production engagement loop (Phase A) — runs every minute from src/index.ts.
  *
  * Picks up `interactions` rows ingested by the Meta webhook (status 'new'),
- * atomically claims each one (so the Discord bot poller can never
- * double-triage it), runs the orchestrator policy engine, then routes:
+ * atomically claims each one (so overlapping ticks never double-triage),
+ * runs the orchestrator policy engine, then routes:
  *  - auto-replies + qualified lead answers → posted back to the platform
  *  - drafts + escalations + lead hand-offs → the owner's thread
  *  - spam → hidden on the platform, owner never bothered
@@ -34,7 +34,7 @@ const SPIKE_PREFIX = "🚨 Sentiment spike";
 
 export interface RouteDeps {
   graph: GraphAdapter;
-  sendToBrand: (brandId: string, body: string) => Promise<void>;
+  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
 }
 
 export interface EngagementLoopDeps extends RouteDeps {

@@ -81,11 +81,11 @@ describe("deliverPendingLoginCodes", () => {
     );
   });
 
-  it("falls back to sendToBrand when Twilio is not configured and channel is discord", async () => {
+  it("falls back to sendToBrand when Twilio is not configured and channel is linq", async () => {
     getServerEnv.mockReturnValue({
       TWILIO_ACCOUNT_SID: undefined,
       TWILIO_FROM_NUMBER: undefined,
-      MESSAGE_CHANNEL: "discord",
+      MESSAGE_CHANNEL: "linq",
     });
     query.mockResolvedValueOnce([pendingRow({ brand_id: null })]);
     query.mockResolvedValue([]);
@@ -124,7 +124,7 @@ describe("deliverPendingLoginCodes", () => {
       TWILIO_ACCOUNT_SID: "ACxxx",
       TWILIO_AUTH_TOKEN: "token",
       TWILIO_FROM_NUMBER: "+61400000000",
-      MESSAGE_CHANNEL: "discord",
+      MESSAGE_CHANNEL: "linq",
     });
     twilioSend.mockRejectedValue(new Error("twilio down"));
     sendToBrand.mockResolvedValue(false);
@@ -139,7 +139,7 @@ describe("deliverPendingLoginCodes", () => {
   });
 
   it("skips rows with no resolvable brand when Twilio is unavailable", async () => {
-    getServerEnv.mockReturnValue({ MESSAGE_CHANNEL: "discord" });
+    getServerEnv.mockReturnValue({ MESSAGE_CHANNEL: "linq" });
     query.mockResolvedValueOnce([pendingRow({ brand_id: null, phone: "+61400000001", id: "code-3" })]);
     queryOne.mockResolvedValueOnce(null);
     decrypt.mockReturnValue("111111");

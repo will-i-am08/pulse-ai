@@ -54,6 +54,6 @@ export function connectionSummary(brand: Brand): string {
 
   const parts = [connected.length ? `Connected and live: ${connected.join(", ")}.` : "Nothing is connected yet."];
   if (missing.length) parts.push(`Not set up yet (offer to connect if it's relevant): ${missing.join(", ")}.`);
-  parts.push("X and Threads can be posted to the fake feed only — no live account and no API key.");
+  parts.push("X and Threads can be connected when configured; otherwise they post to the fake feed only.");
   return parts.join(" ");
 }

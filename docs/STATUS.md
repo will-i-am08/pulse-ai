@@ -40,8 +40,13 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 - Performance analysis (`insights.ts`), competitor intel + weekly watch (`competitors.ts`), niche research → content plan (`nichePlan.ts`), URL repurposing (`repurpose.ts`).
 
 **Infra & dashboard**
-- Neon + 23 migrations; Railway worker (publish + trigger + engagement + review loops, overlap-guarded, graceful shutdown); Next.js dashboard (brands, approvals, voice, history, content-plan, feed); password-gated operator auth; `/privacy`, `/terms`, `/data-deletion`.
+- Neon + migrations; Railway worker (publish + trigger + engagement + voice +
+  gap-fill / chase / competitor watch / niche plan / weekly digest + Linq inbound,
+  overlap-guarded, graceful shutdown); Next.js dashboard; passwordless phone auth;
+  `/privacy`, `/terms`, `/data-deletion`.
 - User-facing rename to **Kip** done.
+- **SMS cutover (Phase A):** Discord package removed; `MESSAGE_CHANNEL=twilio|linq`
+  only; proactive loops live on the worker; SMS deep-link Meta connect at `/c/[token]`.
 
 ---
 
@@ -51,8 +56,8 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 |---|---|
 | Live Meta publishing | **Code complete** — the `TODO(live)` gaps (IG permalink, FB video routing, FB reach) are now implemented to Meta's documented shapes, best-effort wrapped so they degrade rather than fail. Only remaining step is confirming against the **first real published post** (e.g. the App Review screencast). |
 | X & Threads | **Real integrations built** — OAuth connect + live publish for both (X via API v2, Threads via Meta). They fall back to the mock feed only until the app is configured (`X_CLIENT_ID` / `THREADS_APP_ID`) and a brand connects an account, via the `platformConfigured()` guard. |
-| Closed-loop learning digest (Phase D) | `analyzePerformance` exists; not wired to a weekly trigger. |
-| Channel end-state | Discord live now; Twilio built + tested (not primary); **Linq** (end state) sandbox only. |
+| Closed-loop learning digest (Phase D) | `analyzePerformance` + weekly SMS digest + NL “how did we do?” wired. |
+| Channel end-state | **Twilio SMS primary**; **Linq** end-state supported (`MESSAGE_CHANNEL=linq`). Discord removed. |
 | ~~Google Photos/Drive auto-import~~ | **Cut** with the Google descope. Migrations `0012`/`0015` (`content_sources`) are now dead schema. |
 
 ---
@@ -68,7 +73,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 | Meta — add `pages_manage_posts` + trim to the 7 scopes | ⬜ | Now unblocked by verification |
 | Meta — screencast + App Review submission | ⬜ **next up** | No longer blocked — then flip app to Live |
 | ~~Google GBP API access~~ | ✂️ **descoped** | Google cut — not social media |
-| Twilio AU sender registration | ⬜ | Needed when moving off Discord to SMS |
+| Twilio AU sender registration | ⬜ | Needed for reliable AU SMS delivery |
 | Internal typecheck + tests | ✅ green (2026-09-09) | `pnpm -r typecheck` clean across all 8 packages; **110 tests pass** (graph 6, orchestrator 72, gateway 14, worker 18) |
 
 ---
@@ -85,8 +90,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 
 ## 🔲 To do
 
-1. **Ads / boost-top-posts** (Phase D) — not started.
-2. **Wire the closed-loop learning digest** to a weekly trigger.
+2. **Wire ads / boost** (Phase F) — ad-account SMS connect scaffolded; builder not started.
 3. **Confirm live publish end-to-end** against a real connected account (permalink/reach fields, FB video) — one real post during the App Review screencast covers it.
 
 ---
@@ -98,6 +102,6 @@ The build team has run out ahead of the paperwork. Extra features earn nothing u
 | # | Move | Why first |
 |---|---|---|
 | 1 | **Submit Meta App Review** — upload app icon, add `pages_manage_posts`, trim to 7 scopes, record screencast, submit | Business Verification is ✅ done, so this is unblocked. It's the last gate before a **Live** app any client can connect. |
-| 2 | **Run the beta on Meta Testers + Discord** | Testers need no review — onboard a paying cohort today against the built engine while App Review clears. Proof + cash now. |
+| 2 | **Run the beta on Meta Testers + Twilio SMS** | Testers need no review — onboard a paying cohort today against the built engine while App Review clears. Proof + cash now. |
 | 3 | **On approval → flip app to Live**, set `GRAPH_MODE=live` with real tokens | Real posting to IG + FB goes hot; first real client onboards end-to-end. |
 | 4 | (Post-approval) learning digest → ads | Real feature work, sequenced after the thing that lets clients pay. _(Google removal + Supabase→Neon docs — done 2026-09-09.)_ |

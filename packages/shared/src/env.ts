@@ -18,10 +18,8 @@ const serverEnvSchema = z.object({
   TWILIO_API_KEY_SECRET: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
   OPERATOR_PHONE: z.string().optional(),
-  // Messaging channel selection + Discord (interim provider)
-  MESSAGE_CHANNEL: z.enum(["twilio", "discord", "linq"]).default("twilio"),
-  DISCORD_BOT_TOKEN: z.string().optional(),
-  DISCORD_TEST_BRAND_PHONE: z.string().optional(),
+  // Messaging channel: Twilio SMS/MMS (primary) or Linq iMessage (end-state).
+  MESSAGE_CHANNEL: z.enum(["twilio", "linq"]).default("twilio"),
   // Linq (linqapp.com) iMessage/RCS/SMS sandbox channel.
   LINQ_API_KEY: z.string().optional(),
   LINQ_WEBHOOK_SECRET: z.string().optional(),

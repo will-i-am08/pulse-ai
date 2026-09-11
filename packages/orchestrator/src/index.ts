@@ -50,7 +50,7 @@ export {
 } from "./formats.js";
 export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
-export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft } from "./engagement.js";
+export { createInteraction, claimInteraction, handleInteraction, sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export { repurposeUrl } from "./repurpose.js";
 export {
@@ -76,6 +76,8 @@ export {
 } from "./competitors.js";
 export { analyzePerformance } from "./insights.js";
 export type { PostPerf } from "./insights.js";
+export { buildPerformanceDigest } from "./performanceDigest.js";
+export { connectLinkMessage, metaConnectStatusMessage, isMetaConnected } from "./smsConnect.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";

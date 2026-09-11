@@ -259,7 +259,7 @@ export async function persistEditedCaptions(
 
 /**
  * Mark the draft approved and clone it once per extra picked channel.
- * Never sets publishing/published — the worker / Discord loop does that.
+ * Never sets publishing/published — the worker publish loop does that.
  * Never asks for an API key.
  */
 export async function approveSelectedDestinations(opts: {

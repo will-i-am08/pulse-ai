@@ -6,7 +6,7 @@ import { withRetry } from "../lib/retry.js";
 
 export interface ReportDeps {
   graph: GraphAdapter;
-  sendToBrand: (brandId: string, body: string) => Promise<void>;
+  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }
