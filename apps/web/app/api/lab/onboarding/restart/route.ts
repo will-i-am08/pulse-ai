@@ -4,7 +4,7 @@ export const maxDuration = 120;
 
 import { NextResponse, type NextRequest } from "next/server";
 import { sendToBrand } from "@pulse/gateway";
-import { restartOnboarding } from "@pulse/orchestrator";
+import { archiveLabChatAndRestart } from "@pulse/orchestrator";
 import { isErrorResponse, requireLabOperator } from "@/lib/lab/auth";
 import { getOrCreateLabBrand, requireLabBrand } from "@/lib/lab/brand";
 import { labChannelContext } from "@/lib/lab/channel";
@@ -18,9 +18,10 @@ export async function POST(request: NextRequest) {
     ? await requireLabBrand(payload.brandId)
     : await getOrCreateLabBrand();
 
-  const greeting = await restartOnboarding(brand.id);
+  // Archive current thread (browsable later), clear live memory, restart interview.
+  const { greeting, archivedChatId } = await archiveLabChatAndRestart(brand.id);
   const { channel } = labChannelContext(brand);
   await sendToBrand(brand.id, greeting, undefined, { pace: false, channel });
 
-  return NextResponse.json({ ok: true, greeting });
+  return NextResponse.json({ ok: true, greeting, archivedChatId });
 }

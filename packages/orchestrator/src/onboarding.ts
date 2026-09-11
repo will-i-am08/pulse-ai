@@ -321,6 +321,91 @@ export async function restartOnboarding(brandId: string): Promise<string> {
   return startOnboarding(brandId);
 }
 
+export type LabChatSummary = {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  started_at: string;
+  archived_at: string | null;
+  message_count: number;
+};
+
+/**
+ * Archive the current lab SMS thread (so it stays browsable), wipe live
+ * messages so Kip has no memory of them, then soft-restart onboarding.
+ * Does NOT create a new brand — same lab brand, new chat.
+ */
+export async function archiveLabChatAndRestart(brandId: string): Promise<{
+  greeting: string;
+  archivedChatId: string | null;
+}> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`archiveLabChatAndRestart: brand ${brandId} not found`);
+  if (!brand.facts?.lab) {
+    throw new Error(`archiveLabChatAndRestart: brand ${brandId} is not a lab brand (facts.lab)`);
+  }
+
+  const countRow = await queryOne<{ count: string }>(
+    `select count(*)::text as count from messages where brand_id = $1`,
+    [brandId],
+  );
+  const messageCount = Number(countRow?.count ?? 0);
+  let archivedChatId: string | null = null;
+
+  if (messageCount > 0) {
+    const started = await queryOne<{ min: string | null }>(
+      `select min(created_at)::text as min from messages where brand_id = $1`,
+      [brandId],
+    );
+    const startedAt = started?.min ? new Date(started.min) : new Date();
+    const title = `Chat · ${startedAt.toLocaleString("en-AU", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })}`;
+
+    const chat = await queryOne<{ id: string }>(
+      `insert into lab_chats (brand_id, title, status, started_at, archived_at, message_count)
+       values ($1, $2, 'archived', $3, now(), $4)
+       returning id`,
+      [brandId, title, startedAt.toISOString(), messageCount],
+    );
+    if (!chat) throw new Error("archiveLabChatAndRestart: failed to create lab_chats row");
+    archivedChatId = chat.id;
+
+    await query(
+      `insert into lab_chat_messages (
+         id, chat_id, brand_id, direction, channel, body, media_ids, type, provider_message_sid, created_at
+       )
+       select id, $2, brand_id, direction, channel, body, media_ids, type, provider_message_sid, created_at
+         from messages
+        where brand_id = $1`,
+      [brandId, chat.id],
+    );
+
+    await query(
+      `update lab_notes set lab_chat_id = $2
+        where brand_id = $1 and lab_chat_id is null`,
+      [brandId, chat.id],
+    );
+
+    // Wipe live thread so conversation context / memory is empty for the new chat.
+    await query(`delete from messages where brand_id = $1`, [brandId]);
+  }
+
+  const greeting = await restartOnboarding(brandId);
+  return { greeting, archivedChatId };
+}
+
+export async function listLabChats(brandId: string): Promise<LabChatSummary[]> {
+  return query<LabChatSummary>(
+    `select id, title, status, started_at::text, archived_at::text, message_count
+       from lab_chats
+      where brand_id = $1
+      order by coalesce(archived_at, started_at) desc`,
+    [brandId],
+  );
+}
+
 /**
  * Hard-reset a lab brand only (facts.lab === true): wipe thread + notes + drafts,
  * clear voice/strategy derived from onboarding, re-arm pending onboarding.
@@ -333,6 +418,8 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   }
 
   await query(`delete from lab_notes where brand_id = $1`, [brandId]);
+  await query(`delete from lab_chat_messages where brand_id = $1`, [brandId]);
+  await query(`delete from lab_chats where brand_id = $1`, [brandId]);
   await query(`delete from corrections where brand_id = $1`, [brandId]);
   await query(`delete from approval_log where brand_id = $1`, [brandId]);
   await query(`delete from posts where brand_id = $1`, [brandId]);

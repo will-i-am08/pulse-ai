@@ -240,9 +240,19 @@ export async function signupAction(formData: FormData): Promise<void> {
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
 }
 
+/** Same-origin path only — blocks open redirects. */
+function safeAppPath(raw: FormDataEntryValue | null, fallback: string): string {
+  const value = String(raw ?? '').trim();
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+    return fallback;
+  }
+  return value;
+}
+
 /**
  * Operator break-glass: if the messaging channel is down, the admin can still
  * sign in with OPERATOR_PASSWORD. Never exposed to normal users.
+ * Lands in the agent lab by default (or ?redirectTo= when safe).
  */
 export async function operatorLoginAction(formData: FormData): Promise<void> {
   const password = String(formData.get('password') ?? '');
@@ -255,7 +265,7 @@ export async function operatorLoginAction(formData: FormData): Promise<void> {
   );
   if (!admin) redirect('/login?error=noadmin');
   await setSession(admin!.id);
-  redirect('/app');
+  redirect(safeAppPath(formData.get('redirectTo'), '/lab'));
 }
 
 export async function signOutAction(): Promise<void> {

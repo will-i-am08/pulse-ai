@@ -38,8 +38,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (authed && pathname === '/login') {
+    const raw = request.nextUrl.searchParams.get('redirectTo');
+    const next =
+      raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.includes('\\')
+        ? raw
+        : '/app';
     const url = request.nextUrl.clone();
-    url.pathname = '/app';
+    url.pathname = next;
     url.search = '';
     return NextResponse.redirect(url);
   }

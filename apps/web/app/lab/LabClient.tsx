@@ -50,18 +50,31 @@ type BrandInfo = {
   facts: Record<string, unknown> | null;
 };
 
+type ChatSummary = {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  started_at: string;
+  archived_at: string | null;
+  message_count: number;
+};
+
 type ThreadPayload = {
   brand: BrandInfo;
   messages: ThreadMessage[];
   actions: ActionRow[];
   posts: PostRow[];
   onboardingNotes: Note[];
+  chats?: ChatSummary[];
+  activeChatId?: string | null;
+  readOnly?: boolean;
 };
 
 type NoteTarget = { type: string; id: string; label: string };
 
 export function LabClient() {
   const [thread, setThread] = useState<ThreadPayload | null>(null);
+  const [viewChatId, setViewChatId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
@@ -73,28 +86,32 @@ export function LabClient() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/lab/thread", { cache: "no-store" });
+      const qs = viewChatId ? `?chatId=${encodeURIComponent(viewChatId)}` : "";
+      const res = await fetch(`/api/lab/thread${qs}`, { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
       setThread((await res.json()) as ThreadPayload);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load thread");
     }
-  }, []);
+  }, [viewChatId]);
 
   useEffect(() => {
     void load();
+    if (viewChatId) return;
     const id = setInterval(() => void load(), 4000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, viewChatId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages.length]);
 
+  const readOnly = Boolean(viewChatId) || Boolean(thread?.readOnly);
+
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!thread || busy) return;
+    if (!thread || busy || readOnly) return;
     if (!text.trim() && files.length === 0) return;
     setBusy(true);
     setError(null);
@@ -118,7 +135,13 @@ export function LabClient() {
 
   async function restartOnboarding() {
     if (!thread || busy) return;
-    if (!confirm("Restart onboarding interview for this lab brand?")) return;
+    if (
+      !confirm(
+        "Start a new chat? The current thread will be saved so you can reopen it. Kip won’t remember it.",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/lab/onboarding/restart", {
@@ -127,6 +150,7 @@ export function LabClient() {
         body: JSON.stringify({ brandId: thread.brand.id }),
       });
       if (!res.ok) throw new Error(await res.text());
+      setViewChatId(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Restart failed");
@@ -146,6 +170,7 @@ export function LabClient() {
         body: JSON.stringify({ brandId: thread.brand.id }),
       });
       if (!res.ok) throw new Error(await res.text());
+      setViewChatId(null);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reset failed");
@@ -205,11 +230,31 @@ export function LabClient() {
           </p>
         </div>
         <div className={styles.actions}>
+          <label className={styles.chatPicker}>
+            <span>Chat</span>
+            <select
+              value={viewChatId ?? ""}
+              onChange={(e) => setViewChatId(e.target.value || null)}
+              disabled={busy}
+            >
+              <option value="">Live chat</option>
+              {(thread?.chats ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title} ({c.message_count})
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="button" className={styles.btn} onClick={() => void load()} disabled={busy}>
             Refresh
           </button>
-          <button type="button" className={styles.btn} onClick={() => void restartOnboarding()} disabled={busy}>
-            Restart onboarding
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => void restartOnboarding()}
+            disabled={busy || readOnly}
+          >
+            New chat
           </button>
           <button type="button" className={styles.btnDanger} onClick={() => void hardReset()} disabled={busy}>
             Hard reset
@@ -218,6 +263,15 @@ export function LabClient() {
       </header>
 
       {error && <p className={styles.error}>{error}</p>}
+      {readOnly && (
+        <p className={styles.banner}>
+          Viewing a saved chat (read-only). Switch to{" "}
+          <button type="button" className={styles.linkish} onClick={() => setViewChatId(null)}>
+            Live chat
+          </button>{" "}
+          to keep testing.
+        </p>
+      )}
 
       <div className={styles.grid}>
         <section className={styles.threadPane}>
@@ -254,9 +308,11 @@ export function LabClient() {
                     {m.notes.map((n) => (
                       <li key={n.id}>
                         <span>{n.body}</span>
-                        <button type="button" onClick={() => void deleteNote(n.id)}>
-                          ×
-                        </button>
+                        {!readOnly && (
+                          <button type="button" onClick={() => void deleteNote(n.id)}>
+                            ×
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -266,41 +322,45 @@ export function LabClient() {
             <div ref={bottomRef} />
           </div>
 
-          <form className={styles.composer} onSubmit={(e) => void sendMessage(e)}>
-            {files.length > 0 && (
-              <p className={styles.fileHint}>
-                {files.length} file{files.length === 1 ? "" : "s"} attached{" "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFiles([]);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
-                >
-                  clear
-                </button>
-              </p>
-            )}
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Text the agent…"
-              rows={3}
-              disabled={busy}
-            />
-            <div className={styles.composerRow}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          {readOnly ? (
+            <div className={styles.composerDisabled}>Saved chat — switch to Live chat to send.</div>
+          ) : (
+            <form className={styles.composer} onSubmit={(e) => void sendMessage(e)}>
+              {files.length > 0 && (
+                <p className={styles.fileHint}>
+                  {files.length} file{files.length === 1 ? "" : "s"} attached{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiles([]);
+                      if (fileRef.current) fileRef.current.value = "";
+                    }}
+                  >
+                    clear
+                  </button>
+                </p>
+              )}
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Text the agent…"
+                rows={3}
+                disabled={busy}
               />
-              <button type="submit" className={styles.btnPrimary} disabled={busy}>
-                {busy ? "Sending…" : "Send"}
-              </button>
-            </div>
-          </form>
+              <div className={styles.composerRow}>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+                />
+                <button type="submit" className={styles.btnPrimary} disabled={busy}>
+                  {busy ? "Sending…" : "Send"}
+                </button>
+              </div>
+            </form>
+          )}
         </section>
 
         <aside className={styles.rail}>
@@ -333,9 +393,11 @@ export function LabClient() {
                   {a.notes?.map((n) => (
                     <p key={n.id} className={styles.inlineNote}>
                       {n.body}{" "}
-                      <button type="button" onClick={() => void deleteNote(n.id)}>
-                        ×
-                      </button>
+                      {!readOnly && (
+                        <button type="button" onClick={() => void deleteNote(n.id)}>
+                          ×
+                        </button>
+                      )}
                     </p>
                   ))}
                 </li>
@@ -364,9 +426,11 @@ export function LabClient() {
                   {p.notes?.map((n) => (
                     <p key={n.id} className={styles.inlineNote}>
                       {n.body}{" "}
-                      <button type="button" onClick={() => void deleteNote(n.id)}>
-                        ×
-                      </button>
+                      {!readOnly && (
+                        <button type="button" onClick={() => void deleteNote(n.id)}>
+                          ×
+                        </button>
+                      )}
                     </p>
                   ))}
                 </li>
@@ -382,16 +446,18 @@ export function LabClient() {
                 {thread!.onboardingNotes.map((n) => (
                   <li key={n.id}>
                     <span>{n.body}</span>
-                    <button type="button" onClick={() => void deleteNote(n.id)}>
-                      ×
-                    </button>
+                    {!readOnly && (
+                      <button type="button" onClick={() => void deleteNote(n.id)}>
+                        ×
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             </div>
           )}
 
-          {noteTarget && (
+          {noteTarget && !readOnly && (
             <div className={styles.noteComposer}>
               <p>
                 Comment on <strong>{noteTarget.label}</strong>
@@ -406,7 +472,12 @@ export function LabClient() {
                 <button type="button" className={styles.btn} onClick={() => setNoteTarget(null)}>
                   Cancel
                 </button>
-                <button type="button" className={styles.btnPrimary} onClick={() => void saveNote()} disabled={busy}>
+                <button
+                  type="button"
+                  className={styles.btnPrimary}
+                  onClick={() => void saveNote()}
+                  disabled={busy}
+                >
                   Save note
                 </button>
               </div>
