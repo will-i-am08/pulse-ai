@@ -44,6 +44,8 @@ export async function approvePostAction(formData: FormData): Promise<void> {
   });
 
   revalidatePath(`/app/brands/${brandId}`);
+  revalidatePath('/app');
+  revalidatePath('/app/approvals');
 }
 
 /**
@@ -81,6 +83,8 @@ export async function editAndApprovePostAction(formData: FormData): Promise<void
   });
 
   revalidatePath(`/app/brands/${brandId}`);
+  revalidatePath('/app');
+  revalidatePath('/app/approvals');
 }
 
 /** Reject → status='rejected', log 'rejected'. */
@@ -103,4 +107,6 @@ export async function rejectPostAction(formData: FormData): Promise<void> {
   });
 
   revalidatePath(`/app/brands/${brandId}`);
+  revalidatePath('/app');
+  revalidatePath('/app/approvals');
 }

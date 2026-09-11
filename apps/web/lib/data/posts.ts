@@ -23,6 +23,98 @@ export async function listUpcomingPosts(brandId: string, limit = 8): Promise<Pos
   );
 }
 
+function engagementNumber(engagement: Record<string, unknown>, ...keys: string[]): number {
+  for (const key of keys) {
+    const value = engagement[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
+}
+
+export type PerformanceTopPost = {
+  id: string;
+  caption: string | null;
+  published_at: string | null;
+  likes: number;
+  comments: number;
+  reach: number;
+};
+
+export type BrandPerformance = {
+  days: number;
+  postsPublished: number;
+  likes: number;
+  comments: number;
+  reach: number;
+  saves: number;
+  shares: number;
+  topPosts: PerformanceTopPost[];
+};
+
+/** Aggregate stored engagement for published posts in the last N days. */
+export async function getBrandPerformance(brandId: string, days = 30): Promise<BrandPerformance> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const posts = await query<Post>(
+    `select * from posts
+      where brand_id = $1
+        and status = 'published'
+        and published_at is not null
+        and published_at >= $2
+      order by published_at desc
+      limit 100`,
+    [brandId, since]
+  );
+
+  let likes = 0;
+  let comments = 0;
+  let reach = 0;
+  let saves = 0;
+  let shares = 0;
+
+  const scored = posts.map((post) => {
+    const engagement = (post.engagement ?? {}) as Record<string, unknown>;
+    const postLikes = engagementNumber(engagement, 'likes', 'like_count');
+    const postComments = engagementNumber(engagement, 'comments', 'comments_count');
+    const postReach = engagementNumber(engagement, 'reach', 'views', 'impressions', 'post_impressions_unique');
+    const postSaves = engagementNumber(engagement, 'saves', 'saved');
+    const postShares = engagementNumber(engagement, 'shares');
+    likes += postLikes;
+    comments += postComments;
+    reach += postReach;
+    saves += postSaves;
+    shares += postShares;
+    return {
+      id: post.id,
+      caption: post.caption,
+      published_at: post.published_at,
+      likes: postLikes,
+      comments: postComments,
+      reach: postReach,
+      score: postLikes + postComments * 3 + postReach * 0.01,
+    };
+  });
+
+  const topPosts = [...scored]
+    .sort((a, b) => b.score - a.score || (b.published_at ?? '').localeCompare(a.published_at ?? ''))
+    .slice(0, 3)
+    .map(({ score: _score, ...rest }) => rest);
+
+  return {
+    days,
+    postsPublished: posts.length,
+    likes,
+    comments,
+    reach,
+    saves,
+    shares,
+    topPosts,
+  };
+}
+
 export async function getPost(postId: string): Promise<Post | null> {
   return queryOne<Post>(`select * from posts where id = $1`, [postId]);
 }
