@@ -52,7 +52,7 @@ export async function runGapFillLoop(): Promise<void> {
       const have = Number(row?.n ?? 0);
       if (have >= pillar.posts_per_week) continue;
 
-      const fmt = await chooseNextFormat(brand.id);
+      const fmt = await chooseNextFormat(brand.id, pillar.id);
       let drafted: { post: Post; mediaUrl: string | null } | null = null;
       let kind = "post";
       let auto = false;

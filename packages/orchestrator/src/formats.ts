@@ -100,10 +100,14 @@ export async function resolveAsCarousel(brand: Brand, draft: Post): Promise<{ po
 // ─── Format variety ─────────────────────────────────────────────────────────
 
 /**
- * Pick the next format to keep the feed varied, biased toward carousels (best
- * saves/reach). Avoids repeating the most-recent format so the week mixes up.
+ * Pick the next format to keep the feed varied. Prefers the accepted content
+ * plan / pillar format_bias when present; otherwise carousel-leaning defaults.
+ * Avoids immediately repeating the most-recent format.
  */
-export async function chooseNextFormat(brandId: string): Promise<PostFormat> {
+export async function chooseNextFormat(
+  brandId: string,
+  pillarId?: string | null,
+): Promise<PostFormat> {
   const recent = await query<{ format: PostFormat }>(
     `select format from posts
       where brand_id = $1 and status in ('pending_approval','approved','scheduled','published')
@@ -111,20 +115,70 @@ export async function chooseNextFormat(brandId: string): Promise<PostFormat> {
     [brandId],
   );
   const last = recent[0]?.format;
-  // Carousel-leaning weights.
-  const weights: Array<[PostFormat, number]> = [
-    ["carousel", 5],
-    ["feed", 3],
-    ["story", 2],
-  ];
+
+  let preferred: PostFormat | null = null;
+  if (pillarId) {
+    try {
+      const row = await queryOne<{ format_bias: PostFormat | null }>(
+        `select format_bias from pillars where id = $1 and brand_id = $2`,
+        [pillarId, brandId],
+      );
+      if (row?.format_bias && ["feed", "carousel", "story"].includes(row.format_bias)) {
+        preferred = row.format_bias;
+      }
+    } catch {
+      /* column may be missing pre-migration */
+    }
+  }
+
+  if (!preferred) {
+    try {
+      const accepted = await queryOne<{ plan: { pillars?: Array<{ format_bias?: PostFormat }> } | null }>(
+        `select plan from content_plans where brand_id = $1 and status = 'accepted'
+          order by updated_at desc limit 1`,
+        [brandId],
+      );
+      const biases = (accepted?.plan?.pillars ?? [])
+        .map((p) => p.format_bias)
+        .filter((f): f is PostFormat => f === "feed" || f === "carousel" || f === "story");
+      if (biases.length) {
+        // Majority bias from the accepted plan.
+        const counts: Record<string, number> = {};
+        for (const b of biases) counts[b] = (counts[b] ?? 0) + 1;
+        preferred = (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] as PostFormat) ?? null;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Weights: boost preferred format from the accepted plan when present.
+  const weights: Array<[PostFormat, number]> = preferred
+    ? [
+        [preferred, 7],
+        ...(
+          [
+            ["carousel", 3],
+            ["feed", 2],
+            ["story", 1],
+          ] as Array<[PostFormat, number]>
+        ).filter(([f]) => f !== preferred),
+      ]
+    : [
+        ["carousel", 5],
+        ["feed", 3],
+        ["story", 2],
+      ];
+
   const pool = weights.filter(([f]) => f !== last); // never immediately repeat
-  const total = pool.reduce((s, [, w]) => s + w, 0);
+  const use = pool.length ? pool : weights;
+  const total = use.reduce((s, [, w]) => s + w, 0);
   let r = Math.random() * total;
-  for (const [f, w] of pool) {
+  for (const [f, w] of use) {
     r -= w;
     if (r <= 0) return f;
   }
-  return "carousel";
+  return preferred ?? "carousel";
 }
 
 /**

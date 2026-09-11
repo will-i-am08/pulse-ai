@@ -50,7 +50,17 @@ export {
   draftStoryFromPhoto,
   classifyStoryTone,
 } from "./formats.js";
-export { proposeCampaign, activateCampaign, getProposedCampaign, hasActivePausingCampaign } from "./campaigns.js";
+export {
+  proposeCampaign,
+  activateCampaign,
+  getProposedCampaign,
+  getLiveCampaign,
+  hasActivePausingCampaign,
+  looksLikeCampaignControl,
+  pauseCampaign,
+  resumeCampaign,
+  cancelCampaign,
+} from "./campaigns.js";
 export { updateFactsFromMessage, looksLikeBusinessFact, factsForPrompt } from "./businessProfile.js";
 export {
   looksLikeBrandContextUpdate,
@@ -83,6 +93,7 @@ export {
   seedPendingPlan,
   pendingPlans,
   getProposedPlan,
+  getAcceptedPlan,
   researchNichePlan,
   researchNichePlanFallback,
   buildPlanWithFallback,
@@ -90,6 +101,8 @@ export {
   markPlanFailed,
   planTextSummary,
   applyNichePlan,
+  looksLikeContentPlanRequest,
+  proposeContentPlanFromSms,
 } from "./nichePlan.js";
 export {
   competitorIntel,
@@ -100,6 +113,29 @@ export {
   competitorWeeklyUpdate,
   markWatchSwept,
 } from "./competitors.js";
+export {
+  isBlockedHost,
+  safePublicUrl,
+  detectResearchFocus,
+  runDeepResearch,
+  saveResearchSnapshot,
+  listRecentSnapshots,
+  storeVisualExemplars,
+  listVisualExemplars,
+  persistCompetitorResearch,
+} from "./research.js";
+export type { ResearchFocus } from "./research.js";
+export {
+  looksLikeStrategyRequest,
+  getProposedStrategyBrief,
+  proposeStrategyBrief,
+  parseStrategyAccept,
+  looksLikeStrategyRevise,
+  acceptStrategyPieces,
+  reviseStrategyBrief,
+  cancelStrategyBrief,
+} from "./strategyBrief.js";
+export type { StrategyPieceKey } from "./strategyBrief.js";
 export { analyzePerformance } from "./insights.js";
 export type { PostPerf } from "./insights.js";
 export { buildPerformanceDigest } from "./performanceDigest.js";
@@ -116,3 +152,4 @@ export {
   CAPTION_LIMITS,
   DEST_HINT,
 } from "./destinations.js";
+

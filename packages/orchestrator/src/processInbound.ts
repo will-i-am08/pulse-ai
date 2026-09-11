@@ -25,7 +25,15 @@ import {
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
 } from "./formats.js";
-import { proposeCampaign, activateCampaign, getProposedCampaign } from "./campaigns.js";
+import {
+  proposeCampaign,
+  activateCampaign,
+  getProposedCampaign,
+  looksLikeCampaignControl,
+  pauseCampaign,
+  resumeCampaign,
+  cancelCampaign,
+} from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
 import {
   looksLikeBrandContextUpdate,
@@ -42,7 +50,23 @@ import { sendLatestDraft, editLatestDraft, latestDraftedInteraction } from "./en
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
 import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
-import { getProposedPlan, applyNichePlan } from "./nichePlan.js";
+import {
+  getProposedPlan,
+  applyNichePlan,
+  looksLikeContentPlanRequest,
+  proposeContentPlanFromSms,
+} from "./nichePlan.js";
+import { detectResearchFocus, runDeepResearch } from "./research.js";
+import {
+  looksLikeStrategyRequest,
+  getProposedStrategyBrief,
+  proposeStrategyBrief,
+  parseStrategyAccept,
+  looksLikeStrategyRevise,
+  acceptStrategyPieces,
+  reviseStrategyBrief,
+  cancelStrategyBrief,
+} from "./strategyBrief.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
@@ -370,15 +394,41 @@ export async function processInbound(
     }
   }
 
-  // Accepting the proposed niche plan — "yes" sets up the pillars + schedule.
+  // Strategy brief accept / revise / cancel (before plan — strategy feeds the plan).
+  if (message.body && newMedia.length === 0 && !pending) {
+    const strategyBrief = await getProposedStrategyBrief(brand.id);
+    if (strategyBrief) {
+      if (CANCEL_RE.test(message.body)) {
+        await cancelStrategyBrief(strategyBrief.id);
+        return { reply: "Scrapped that strategy brief. Nothing was saved to your brand objects." };
+      }
+      if (looksLikeStrategyRevise(message.body)) {
+        return { reply: await reviseStrategyBrief(brand, strategyBrief, message.body) };
+      }
+      const accept = parseStrategyAccept(message.body);
+      if (accept) {
+        return { reply: await acceptStrategyPieces(brand, strategyBrief, accept) };
+      }
+    }
+  }
+
+  // Accepting the proposed niche plan — "yes" sets up the pillars + schedule + format bias.
   if (message.body && newMedia.length === 0 && !pending && /^\s*(yes|yep|yeah|yup|love it|looks good|perfect|do it|go for it|sounds good|let'?s go|accept|set it up|run it)\b/i.test(message.body)) {
     const proposedPlan = await getProposedPlan(brand.id);
     if (proposedPlan) {
       await applyNichePlan(brand, proposedPlan);
       return {
-        reply: "Love it, your plan's live 🎉 Pillars and posting schedule are set. Send me photos any time and I'll start filling your slots.",
+        reply: "Love it, your plan's live 🎉 Pillars, cadence, and format bias are set. Gap-fill will follow this plan. Send me photos any time and I'll start filling your slots.",
       };
     }
+  }
+
+  // Campaign pause / resume / cancel (active or paused), with orphan cleanup on cancel.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const ctrl = looksLikeCampaignControl(message.body);
+    if (ctrl === "pause") return { reply: await pauseCampaign(brand) };
+    if (ctrl === "resume") return { reply: await resumeCampaign(brand) };
+    if (ctrl === "cancel") return { reply: await cancelCampaign(brand) };
   }
 
   // "Make it a story / carousel" about the current pending draft (no new photo).
@@ -512,6 +562,32 @@ export async function processInbound(
       };
     }
     return { reply: await converse(brand, message.body ?? "") };
+  }
+
+  // Deep research verbs — niche / customers / competitors / ads → structured brief + snapshot.
+  if (message.body && newMedia.length === 0 && !pending) {
+    const focus = detectResearchFocus(message.body);
+    if (focus) {
+      const { reply } = await runDeepResearch(brand, focus, message.body);
+      return { reply };
+    }
+  }
+
+  // Strategy brief propose.
+  if (message.body && newMedia.length === 0 && !pending && looksLikeStrategyRequest(message.body)) {
+    const proposed = await proposeStrategyBrief(brand, message.body);
+    if (proposed) return { reply: proposed.summary };
+    return {
+      reply:
+        "Couldn't draft a strategy brief just then. Try \"research my niche\" first, then \"propose strategy\".",
+    };
+  }
+
+  // Content plan propose / rebuild (week or month) — apply only on accept.
+  if (message.body && newMedia.length === 0 && !pending && looksLikeContentPlanRequest(message.body)) {
+    // If they're answering a proposed plan with edits, fall through to yes/revise via converse —
+    // but an explicit "propose/rebuild plan" always builds a fresh proposal.
+    return { reply: await proposeContentPlanFromSms(brand, message.body) };
   }
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.

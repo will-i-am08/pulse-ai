@@ -316,6 +316,76 @@ export interface CompetitorWatch {
   created_at: string;
 }
 
+/** Phase D research snapshot kinds Kip can cite in SMS. */
+export const ResearchSnapshotKind = [
+  "niche",
+  "competitor",
+  "customers",
+  "ads",
+  "strategy",
+  "plan",
+] as const;
+export type ResearchSnapshotKind = (typeof ResearchSnapshotKind)[number];
+
+/** Structured findings persisted with a research snapshot. */
+export interface ResearchFindings {
+  pain_language?: string[];
+  competitor_hooks?: string[];
+  competitor_ctas?: string[];
+  ad_library_angles?: string[];
+  organic_themes?: string[];
+  sources?: string[];
+  notes?: string;
+  [key: string]: unknown;
+}
+
+export interface ResearchSnapshot {
+  id: string;
+  brand_id: string;
+  kind: ResearchSnapshotKind;
+  subject: string | null;
+  summary: string;
+  findings: ResearchFindings;
+  created_at: string;
+}
+
+export const VisualExemplarSource = ["niche", "competitor", "research"] as const;
+export type VisualExemplarSource = (typeof VisualExemplarSource)[number];
+
+/** Public visual exemplar for the design composer (URL or media ref). */
+export interface VisualExemplar {
+  id: string;
+  brand_id: string;
+  snapshot_id: string | null;
+  source: VisualExemplarSource;
+  url: string | null;
+  media_id: string | null;
+  label: string | null;
+  notes: string | null;
+  competitor_name: string | null;
+  created_at: string;
+}
+
+/** Pieces inside a strategy brief pending SMS approval. */
+export interface StrategyBriefPieces {
+  summary?: string;
+  icp?: BrandIcp;
+  pains?: BrandPainPoints;
+  positioning?: BrandPositioning;
+  offers?: BrandOffers;
+}
+
+export type StrategyBriefStatus = "proposed" | "accepted" | "revised" | "cancelled";
+
+export interface StrategyBrief {
+  id: string;
+  brand_id: string;
+  status: StrategyBriefStatus;
+  pieces: StrategyBriefPieces;
+  created_at: string;
+  updated_at: string;
+}
+
 // A connected photo source the agent polls for new media (Phase C auto-pull).
 export const ContentSourceKind = ["dropbox"] as const;
 export type ContentSourceKind = (typeof ContentSourceKind)[number];
@@ -506,7 +576,7 @@ export interface Campaign {
   brand_id: string;
   name: string;
   goal: string | null;
-  status: "proposed" | "active" | "done" | "cancelled";
+  status: "proposed" | "active" | "paused" | "done" | "cancelled";
   plan: CampaignPlanItem[];
   pause_pillars: boolean;
   starts_at: string | null;
@@ -539,6 +609,8 @@ export interface Pillar {
   autopilot: boolean;
   sort: number;
   schedule_pin: SchedulePin;
+  /** Preferred format for this pillar when set by an accepted content plan. */
+  format_bias?: PostFormat | null;
   last_gap_ping_at: string | null;
   created_at: string;
 }
