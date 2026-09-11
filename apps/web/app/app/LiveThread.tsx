@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { sendChatMessageAction } from '@/lib/actions/chat';
 import type { ThreadMessageDto } from '@/lib/thread';
 
@@ -26,10 +26,23 @@ function nearBottom(el: HTMLElement, px = 80): boolean {
 export function LiveThread({ firstName, initialMessages }: Props) {
   const [messages, setMessages] = useState<LiveThreadMessage[]>(initialMessages);
   const [pending, startTransition] = useTransition();
+  const [text, setText] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState<string | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const stickToBottom = useRef(true);
   const lastIdsRef = useRef(initialMessages.map((m) => m.id).join(','));
+
+  const clearPhoto = useCallback(() => {
+    setPhotoPreview((url) => {
+      if (url) URL.revokeObjectURL(url);
+      return null;
+    });
+    setPhotoName(null);
+    if (fileRef.current) fileRef.current.value = '';
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -99,11 +112,26 @@ export function LiveThread({ firstName, initialMessages }: Props) {
     stickToBottom.current = nearBottom(el);
   }
 
+  function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      clearPhoto();
+      return;
+    }
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoName(file.name);
+  }
+
   function onSubmit(formData: FormData) {
+    // Guard the empty submit that a bare Enter/Send could otherwise fire.
+    if (!text.trim() && !photoName) return;
     stickToBottom.current = true;
     startTransition(async () => {
       await sendChatMessageAction(formData);
       formRef.current?.reset();
+      setText('');
+      clearPhoto();
       // Pull immediately, then again shortly after Kip's reply lands.
       await load();
       window.setTimeout(() => void load(), 1200);
@@ -137,15 +165,64 @@ export function LiveThread({ firstName, initialMessages }: Props) {
         )}
       </div>
       <div className="dock">
+        {photoPreview && (
+          <div className="composer-preview">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoPreview} alt={photoName ?? 'Selected photo'} />
+            <span className="composer-preview-name">{photoName}</span>
+            <button
+              type="button"
+              className="composer-preview-remove"
+              onClick={clearPhoto}
+              aria-label="Remove photo"
+              disabled={pending}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <form className="composer" ref={formRef} action={onSubmit}>
           <input
-            name="q"
-            placeholder="Tell Kip what to post…"
-            aria-label="Message Kip"
-            required
+            ref={fileRef}
+            type="file"
+            name="photo"
+            accept="image/*"
+            hidden
+            onChange={onPhotoChange}
             disabled={pending}
           />
-          <button className="pill-dark" type="submit" disabled={pending} aria-busy={pending}>
+          <button
+            type="button"
+            className="composer-attach"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach a photo"
+            disabled={pending}
+          >
+            {/* paperclip */}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <input
+            name="q"
+            placeholder={photoName ? 'Add a note (optional)…' : 'Tell Kip what to post…'}
+            aria-label="Message Kip"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={pending}
+          />
+          <button
+            className="pill-dark"
+            type="submit"
+            disabled={pending || (!text.trim() && !photoName)}
+            aria-busy={pending}
+          >
             {pending ? 'Sending…' : 'Send'}
           </button>
         </form>
