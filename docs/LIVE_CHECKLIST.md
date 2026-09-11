@@ -7,7 +7,7 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 
 ## Pre-flight
 
-- [ ] Neon migrations applied through `0038_ops_polish.sql` (`pnpm exec tsx --env-file=.env scripts/migrate.ts`)
+- [ ] Neon migrations applied through `0039_ops_polish.sql` (`pnpm exec tsx --env-file=.env scripts/migrate.ts`)
 - [ ] `TOKEN_ENCRYPTION_KEY`, `AUTH_SECRET`, `DATABASE_URL` set on **Vercel + Railway**
 - [ ] `APP_BASE_URL` = public HTTPS dashboard URL
 - [ ] Worker running (publish + proactive + retention loops)

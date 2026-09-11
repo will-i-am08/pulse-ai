@@ -1,4 +1,4 @@
--- 0038_ops_polish.sql — drop unused Discord brand columns (SMS-only) + retention notes.
+-- 0039_ops_polish.sql — drop unused Discord brand columns (SMS-only) + retention notes.
 -- Discord channel was removed in Phase A; these columns are dead weight.
 
 drop index if exists idx_brands_discord;
