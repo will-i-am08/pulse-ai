@@ -300,6 +300,38 @@ export async function sendToBrand(
 }
 
 /**
+ * SMS the operator phone (OPERATOR_PHONE) when set — publish failures, ad cap
+ * breaches, etc. No-ops (returns false) when OPERATOR_PHONE is unset so local
+ * / CI envs never throw. Does not create a brand Message row.
+ */
+export async function sendToOperator(
+  body: string,
+  opts?: { channel?: MessageChannel },
+): Promise<boolean> {
+  let phone: string | undefined;
+  try {
+    phone = getServerEnv().OPERATOR_PHONE;
+  } catch {
+    phone = process.env.OPERATOR_PHONE || undefined;
+  }
+  if (!phone) {
+    console.warn("sendToOperator: OPERATOR_PHONE unset — skipping alert");
+    return false;
+  }
+  const channel = opts?.channel ?? activeChannel();
+  const text = sanitizeChatText(body);
+  try {
+    await withBackoff(() => channel.send({ to: phone!, body: text }), {
+      onRetry: (err, attempt) => console.warn(`sendToOperator: send retry ${attempt}`, err),
+    });
+    return true;
+  } catch (err) {
+    console.error("sendToOperator: send failed after retries", err);
+    return false;
+  }
+}
+
+/**
  * Handle a normalised inbound message end-to-end: route to brand, persist,
  * capture media, and hand off to the orchestrator. Never throws —
  * an unknown sender or any internal failure is logged and results in a null

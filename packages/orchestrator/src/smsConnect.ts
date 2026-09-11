@@ -41,9 +41,13 @@ export function metaConnectStatusMessage(brand: Brand): string {
   return lines.join(" ");
 }
 
-export type ConnectPurpose = "meta" | "ads" | "linkedin" | "tiktok";
+export type ConnectPurpose = "meta" | "ads" | "linkedin" | "tiktok" | "crm";
 
 export function connectLinkMessage(brand: Brand, purpose: ConnectPurpose): string {
+  if (purpose === "crm") {
+    const link = smsConnectUrl(brand.id, "crm");
+    return `CRM webhook settings (expires in 15 min):\n${link}\n\nOr text me: set crm webhook https://hooks.zapier.com/…`;
+  }
   if (purpose === "ads") {
     if (isAdsConnected(brand)) {
       const link = smsConnectUrl(brand.id, "ads");
@@ -103,6 +107,15 @@ export function platformCapErrorSms(platform: string, errMessage: string): strin
     return max
       ? `${name} rejected that caption — it has to be under ${max} characters. Shorten it and say "yes" again.`
       : `${name} rejected that caption as too long. Shorten it and try again.`;
+  }
+  if (/admin of that Company Page|need to be an admin/i.test(errMessage)) {
+    return `LinkedIn needs a Company Page admin — reconnect with an admin account. Say "connect LinkedIn" for a fresh link.`;
+  }
+  if (/partner approval|Marketing Developer Platform/i.test(errMessage)) {
+    return `LinkedIn app partner approval is still pending — organic posts can't go live until LinkedIn clears it.`;
+  }
+  if (/rate\/cap|rate.?limit|posting limit/i.test(errMessage)) {
+    return `${name} hit a posting limit — wait a bit and try again.`;
   }
   if (/music|consent|privacy|unaudited|audit/i.test(errMessage)) {
     return `${name} needs a privacy / music consent refresh before I can post. Say "connect TikTok" for a fresh link.`;

@@ -45,6 +45,14 @@ const serverEnvSchema = z.object({
   AI_VIDEO_SECONDARY_MODEL: z.string().optional(), // e.g. runwayml/gen4-turbo or fal-ai/runway-gen3
   AI_VIDEO_COST_CAP_CENTS_MONTH: z.coerce.number().int().positive().default(2000), // ~$20/brand/mo
   AI_VIDEO_EST_COST_CENTS: z.coerce.number().int().positive().default(50), // estimate per job
+  // Soft USD estimates shown in SMS before billable AI jobs (also feed weekly AI spend tracking).
+  COST_IMAGE_USD: z.coerce.number().nonnegative().default(0.04),
+  COST_VIDEO_USD: z.coerce.number().nonnegative().default(0.5),
+  COST_SPECIALTY_USD: z.coerce.number().nonnegative().default(0.12),
+  /** Hard weekly cap on AI video/specialty spend per brand (USD). Stored in brands.facts.ai_spend. */
+  AI_WEEKLY_SPEND_CAP_USD: z.coerce.number().positive().default(10),
+  /** Purge design_memory / research_snapshots older than this many days (worker weekly). */
+  RETENTION_DAYS: z.coerce.number().int().min(30).default(180),
   FAL_KEY: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),

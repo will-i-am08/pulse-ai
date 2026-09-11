@@ -1,4 +1,4 @@
-import { query, schedulePinSchema, type Platform, type SchedulePin } from "@pulse/shared";
+import { query, schedulePinSchema, type Platform, type PostFormat, type SchedulePin } from "@pulse/shared";
 
 // Smart scheduler: slot a post into the next good time window that respects the
 // autopilot guardrails. Times are computed in the process's local timezone
@@ -10,6 +10,12 @@ import { query, schedulePinSchema, type Platform, type SchedulePin } from "@puls
 // same time every week. A pillar with a pinned slot (schedule_pin — set when
 // the client asks for e.g. "BTS every Tuesday at 6pm") always posts at that
 // exact day+time instead.
+//
+// Calendar format conflicts: when `format` is passed, a candidate day that
+// already has an approved/scheduled (or pending_approval) post in the *same*
+// format is skipped — we nudge to the next open slot instead of stacking two
+// carousels (or two Reels, etc.) on one day. Different formats on the same day
+// are fine (subject to the daily cap + spacing).
 
 // Good posting hours per platform (local time, 24h).
 const PLATFORM_WINDOWS: Record<Platform, number[]> = {
@@ -26,7 +32,7 @@ const MIN_SPACING_HOURS = 3; // never post two things within this window
 const LEAD_MINUTES = 30; // earliest a slot may be from "now"
 const HORIZON_DAYS = 28; // how far out we'll look before giving up
 
-type Committed = { scheduled_at: string; pillar_id: string | null };
+type Committed = { scheduled_at: string; pillar_id: string | null; format: PostFormat | null };
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -60,7 +66,7 @@ function shuffled<T>(arr: T[], rand: () => number): T[] {
 async function committedPosts(brandId: string, now: Date): Promise<Committed[]> {
   const since = new Date(now.getTime() - MIN_SPACING_HOURS * 3600_000).toISOString();
   return query<Committed>(
-    `select scheduled_at, pillar_id from posts
+    `select scheduled_at, pillar_id, format from posts
       where brand_id = $1
         and status in ('pending_approval','approved','scheduled')
         and scheduled_at is not null
@@ -109,17 +115,25 @@ async function loadPin(pillarId: string): Promise<SchedulePin | null> {
   }
 }
 
-type SlotTime = { t: Date; pillar: string | null };
+type SlotTime = { t: Date; pillar: string | null; format: PostFormat | null };
 
-/** Shared guardrail check: may `cand` hold a post for this pillar? */
+/** Shared guardrail check: may `cand` hold a post for this pillar/format? */
 function slotIsFree(
   cand: Date,
   times: SlotTime[],
-  opts: { pillarId: string | null; postsPerWeek: number },
+  opts: { pillarId: string | null; postsPerWeek: number; format?: PostFormat | null },
 ): boolean {
   // Daily cap
   const sameDay = times.filter((x) => dayKey(x.t) === dayKey(cand)).length;
   if (sameDay >= DAILY_CAP) return false;
+
+  // Same-day same-format conflict — pick the next slot instead of stacking.
+  if (opts.format) {
+    const sameFormatSameDay = times.some(
+      (x) => dayKey(x.t) === dayKey(cand) && x.format === opts.format,
+    );
+    if (sameFormatSameDay) return false;
+  }
 
   // Minimum spacing
   const tooClose = times.some(
@@ -147,8 +161,9 @@ function slotIsFree(
 
 /**
  * Find the next open slot for a post in this pillar. Honours: platform windows,
- * daily cap, minimum spacing, per-pillar weekly cadence, and no two of the same
- * pillar back-to-back.
+ * daily cap, minimum spacing, per-pillar weekly cadence, no two of the same
+ * pillar back-to-back, and (when `format` is set) no second post of the same
+ * format on the same calendar day.
  *
  * Pinned pillars (the client asked for a fixed day+time) post at that exact
  * slot — no jitter. Everything else shuffles windows per day with a random
@@ -160,6 +175,8 @@ export async function scheduleSlot(opts: {
   platform: Platform;
   pillarId: string | null;
   postsPerWeek: number; // this pillar's weekly cap (0 = no cap)
+  /** When set, skip days that already have this format approved/scheduled. */
+  format?: PostFormat | null;
   now?: Date;
   random?: () => number; // injectable source for tests; defaults to Math.random
   pin?: SchedulePin | null; // explicit pin; looked up from the pillar when omitted
@@ -169,8 +186,12 @@ export async function scheduleSlot(opts: {
   const windows = PLATFORM_WINDOWS[opts.platform] ?? PLATFORM_WINDOWS.instagram;
   const hours = [...windows].sort((a, b) => a - b);
   const committed = await committedPosts(opts.brandId, now);
-  const times: SlotTime[] = committed.map((c) => ({ t: new Date(c.scheduled_at), pillar: c.pillar_id }));
-  const guard = { pillarId: opts.pillarId, postsPerWeek: opts.postsPerWeek };
+  const times: SlotTime[] = committed.map((c) => ({
+    t: new Date(c.scheduled_at),
+    pillar: c.pillar_id,
+    format: c.format,
+  }));
+  const guard = { pillarId: opts.pillarId, postsPerWeek: opts.postsPerWeek, format: opts.format ?? null };
 
   const earliest = new Date(now.getTime() + LEAD_MINUTES * 60_000);
 

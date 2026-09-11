@@ -5,6 +5,13 @@ import {
   spendCaps, weeklySpendCents, campaignSpendCents,
 } from "./adsFeatures.js";
 
+/** Best-effort operator note on ad cap breach (worker SMS via returned alerts). */
+async function alertOperatorAdCap(brand: Brand, detail: string): Promise<void> {
+  // Orchestrator must not import @pulse/gateway (cycle). Cap SMS to the brand
+  // owner goes through returned `alerts`; OPERATOR_PHONE is notified by the worker.
+  console.warn(`ad cap breach brand=${brand.id} ${brand.name}: ${detail}`);
+}
+
 export async function syncAdPerformance(brand: Brand): Promise<{ alerts: string[]; suggestions: string[] }> {
   const alerts: string[] = []; const suggestions: string[] = [];
   if (!adsEnabled(brand) || !isAdsConnected(brand)) return { alerts, suggestions };
@@ -73,6 +80,7 @@ async function pauseForCap(brand: Brand, c: AdCampaign, kind: "weekly" | "campai
   await query(`update ad_campaigns set status='paused' where id=$1`, [c.id]);
   await logAdApproval({ brandId: brand.id, adCampaignId: c.id, action: "cap_breach",
     note: `${kind} cap breach — auto-paused`, after: { status: "paused" } });
+  await alertOperatorAdCap(brand, `${kind} cap — paused ${c.name}`);
 }
 async function pauseAdForPerf(brand: Brand, c: AdCampaign, note: string): Promise<void> {
   if (c.external_campaign_id) {

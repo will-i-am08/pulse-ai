@@ -12,6 +12,8 @@ export interface GraphAdapter {
     caption: string;
     mediaUrls: string[];
     format?: PostFormat;
+    /** Post style_meta — used for TikTok AIGC disclosure when aigc/ai_video_job_id set. */
+    styleMeta?: Record<string, unknown> | null;
   }): Promise<{ externalPostId: string; permalink: string | null }>;
 
   fetchEngagement(

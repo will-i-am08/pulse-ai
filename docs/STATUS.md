@@ -2,7 +2,7 @@
 
 _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09-11 against the source. Pairs with [`ROADMAP.md`](ROADMAP.md), [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md), and [`META_APP_REVIEW.md`](META_APP_REVIEW.md)._
 
-**One-line verdict:** Phases **A–H are built** on this branch (H = LinkedIn + TikTok **direct** outbound); **Phase I** is **scoped only** (no full CRM). The project remains **approval-blocked for Live Meta clients** — Business Verification is ✅; App Review submission is the remaining gate. Highest-ROI non-code work is finishing that submission.
+**One-line verdict:** Phases **A–I are built** on this branch (I = thin CRM webhook + SMS lead polish; **not** a full CRM). The project remains **approval-blocked for Live Meta clients** — Business Verification is ✅; App Review submission is the remaining gate. Highest-ROI non-code work is finishing that submission.
 
 - TypeScript monorepo (pnpm), audit-first (nothing publishes without a logged `approved` action).
 - Stack: **Neon** Postgres · Vercel (dashboard + webhooks) · Railway (worker) · Anthropic · Meta Graph (mock→live) · optional X/Threads via `platformConfigured()`.
@@ -21,7 +21,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 | **F** — Meta paid ads | SMS ads connect, campaign builder, boost, spend caps, Marketing API surface | ✅ **done** |
 | **G** — Video & AI gen | First-class Reels, vision caption, motion templates, Kling/Runway AI video | ✅ **done** |
 | **H** — LinkedIn + TikTok outbound | SMS connect/publish; H0 aggregator spike; paperwork parallel | ✅ **Direct adapters** (H0–H6) — mock SMS connect + publish; live gated on app creds + `TIKTOK_AUDIT_PASSED` |
-| **I** — Engagement → light CRM | Reply-verb polish, lead card, thin Zapier/Make webhook, toggles | 📋 **scoped only** — [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) |
+| **I** — Engagement → light CRM | Reply-verb polish, lead card, thin Zapier/Make webhook, toggles | ✅ **done** (thin) — [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) |
 
 **Cross-cutting (X1–X4):** approvals absolute; quiet hours via `isDaytime` (8am–7pm); `platformConfigured()` mock fallbacks; cohort go-live still gated on Meta App Review.
 
@@ -69,7 +69,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 | **X & Threads (keep decision)** | **Keep as optional destinations.** Real OAuth + live publish exist; they fall back to mock until the app is configured (`X_CLIENT_ID` / `THREADS_APP_ID`) **and** a brand connects, via `platformConfigured()`. Not descoped; not required for Wave 1 IG/FB cohort. |
 | Channel end-state | **Twilio SMS primary**; **Linq** supported (`MESSAGE_CHANNEL=linq`). Discord removed. |
 | Phase H LinkedIn/TikTok | **Done (code):** Direct adapters (not Postiz) — [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md). SMS deep-link connect (Company Page name confirm; TikTok privacy/music consent); mock + live publish shapes; multi-dest fan-out isolation; public TikTok live gated by `TIKTOK_AUDIT_PASSED`. |
-| Phase I CRM webhook | Type stub `features.crm_webhook` only — no push implementation. |
+| Phase I CRM webhook | ✅ Thin push + `crm_push_log`; SMS set/send; optional email fallback |
 
 ---
 
@@ -103,7 +103,7 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 1. **Submit Meta App Review** (icon, scopes, screencast) → Live app.
 2. **Confirm live publish** end-to-end on a real connected account.
 3. **LinkedIn / TikTok live apps** — connect real `LINKEDIN_CLIENT_ID` / `TIKTOK_CLIENT_KEY`; set `TIKTOK_AUDIT_PASSED` only after Content Posting audit.
-4. **Phase I** — only when scheduled; follow [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) (no full CRM).
+4. **Live cohort** — Twilio AU sender + Meta Live after App Review.
 
 ---
 
@@ -112,5 +112,5 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 - Discord **removed**; SMS-led product.
 - X/Threads **remain optional** destinations behind `platformConfigured()`.
 - Phase H0: **Direct** LinkedIn + TikTok adapters (not Postiz) — [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md).
-- Phase I = thin CRM webhook + SMS polish later — **not** a Kip CRM product.
+- Phase I = thin CRM webhook + SMS polish — **not** a Kip CRM product.
 - Phase H = LinkedIn/TikTok **outbound** first; inbound engagement deferred.

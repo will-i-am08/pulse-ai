@@ -301,7 +301,11 @@ export async function runDeepResearch(
     bullets.push(`Looked at: ${findings.sources.slice(0, 4).join(", ")}`);
   }
 
-  const reply = [summary, bullets.length ? `\n${bullets.map((b) => `• ${b}`).join("\n")}` : "", `\n\nSaved. Say "propose strategy" when you want ICP + positioning + offer framing from this — I won't change your brand objects until you accept.`]
+  const replyTail =
+    brand.account_type === "personal"
+      ? `\n\nSaved. Say "propose a content plan" for a lighter niche plan — I skip ICP/ads framing on personal accounts.`
+      : `\n\nSaved. Say "propose strategy" when you want ICP + positioning + offer framing from this — I won't change your brand objects until you accept.`;
+  const reply = [summary, bullets.length ? `\n${bullets.map((b) => `• ${b}`).join("\n")}` : "", replyTail]
     .filter(Boolean)
     .join("");
 

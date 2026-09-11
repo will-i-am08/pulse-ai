@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getServerEnv } from "./env.js";
 
 /** What an SMS deep-link connect token unlocks. */
-export type SmsConnectPurpose = "meta" | "ads" | "linkedin" | "tiktok";
+export type SmsConnectPurpose = "meta" | "ads" | "linkedin" | "tiktok" | "crm";
 
 export type SmsConnectPayload = {
   brandId: string;
@@ -15,7 +15,7 @@ export const SMS_CONNECT_TTL_MS = 15 * 60 * 1000;
 
 const DOMAIN = "sms-connect.v1:";
 
-const PURPOSES: readonly SmsConnectPurpose[] = ["meta", "ads", "linkedin", "tiktok"];
+const PURPOSES: readonly SmsConnectPurpose[] = ["meta", "ads", "linkedin", "tiktok", "crm"];
 
 function isPurpose(p: string): p is SmsConnectPurpose {
   return (PURPOSES as readonly string[]).includes(p);

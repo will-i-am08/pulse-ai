@@ -2,7 +2,7 @@
 
 **The promise:** a small business owner sends a photo (or nothing at all) and never thinks about social media again. Kip runs the whole presence — posting, replies, leads — on autopilot, on brand, in one text thread.
 
-This spec captures the target product and the phased build. **Authoritative build state:** [`STATUS.md`](STATUS.md). Phase I CRM scope (later): [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md).
+This spec captures the target product and the phased build. **Authoritative build state:** [`STATUS.md`](STATUS.md). Phase I CRM (thin webhook): [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md).
 
 ---
 
@@ -11,8 +11,8 @@ This spec captures the target product and the phased build. **Authoritative buil
 > **Status note (audited 2026-09-11):** foundation Phases **A–G are built** on the
 > Kip foundation branch. **Discord is removed** — channel is SMS only
 > (`MESSAGE_CHANNEL=twilio|linq`). Google Business Profile remains **descoped**.
-> **Phase H** (LinkedIn + TikTok outbound) is Wave 3 next. **Phase I** (light CRM
-> webhook + engagement polish) is **scoped only** — do not build a full CRM.
+> **Phase H** (LinkedIn + TikTok outbound) and **Phase I** (thin CRM webhook +
+> engagement polish) are built — do not expand I into a full CRM.
 > Live client connect is still **Meta App Review–gated**. See STATUS for the
 > phase scoreboard.
 
@@ -23,7 +23,7 @@ This spec captures the target product and the phased build. **Authoritative buil
 - Inbound engagement policy + thin A6 SMS `send`/edit for drafted replies.
 - Performance analyst digests on SMS; optional X/Threads behind `platformConfigured()`.
 
-**Next:** Meta App Review → Live cohort → Phase H LinkedIn/TikTok → Phase I CRM webhook polish.
+**Next:** Meta App Review → Live cohort.
 
 ---
 
@@ -108,7 +108,7 @@ A living profile captured at onboarding and editable by chat:
 | **F — Meta paid** | Ads connect · campaign builder · spend caps · boost | ✅ **done** | Marketing API App Review |
 | **G — Video + AI gen** | Reels · vision caption · motion · Kling/Runway | ✅ **done** | — |
 | **H — LinkedIn + TikTok** | Outbound SMS connect/publish · H0 aggregator spike (**Direct**, not Postiz) | 🟡 **landing** — see STATUS + [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md) | A + deep links; paperwork parallel |
-| **I — Light CRM** | Reply polish · lead card · Zapier/Make webhook · toggles | 📋 **scoped only** — see [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) | After A–H wave |
+| **I — Light CRM** | Reply polish · lead card · Zapier/Make webhook · toggles | ✅ **done** (thin) — see [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) | After A–H wave |
 
 **Acceptance snapshot (selected):**
 - **A:** comment/DM gets auto/draft/escalate in minutes; owner can `"send"` a drafted reply from SMS.

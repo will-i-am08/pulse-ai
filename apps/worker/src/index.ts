@@ -13,6 +13,8 @@ import { runNichePlanLoop } from "./proactive/nichePlan.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
 import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
+import { runRetentionPurgeLoop } from "./proactive/retention.js";
+import { runAdsSyncLoop } from "./proactive/adsSync.js";
 
 /** Overlap-safe interval runner — skips if the previous tick is still in flight. */
 function guardedInterval(
@@ -170,6 +172,20 @@ async function main(): Promise<void> {
     runSoonMs: 25_000,
   });
 
+  // Meta ads insights + spend-cap enforcement (Phase F).
+  const adsSyncTimer = guardedInterval("ads-sync", 30 * 60 * 1000, runAdsSyncLoop, {
+    runSoonMs: 60_000,
+  });
+
+  // Weekly data retention purge (design_memory + research_snapshots > RETENTION_DAYS).
+  // Cron: Mondays 03:15 local — cheap, overlap-safe via guardedInterval on a long period.
+  const retentionTimer = guardedInterval(
+    "retention-purge",
+    7 * 24 * 60 * 60 * 1000,
+    runRetentionPurgeLoop,
+    { runSoonMs: 90_000 },
+  );
+
   let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
@@ -187,6 +203,8 @@ async function main(): Promise<void> {
     clearInterval(digestTimer);
     clearInterval(linqTimer);
     clearInterval(aiVideoTimer);
+    clearInterval(adsSyncTimer);
+    clearInterval(retentionTimer);
     process.exit(0);
   };
 
@@ -194,7 +212,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   logger.info(
-    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video",
+    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video, ads-sync, retention",
   );
 }
 

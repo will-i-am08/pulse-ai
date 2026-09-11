@@ -9,7 +9,7 @@ const DEFAULT_FEATURES: Required<BrandFeatures> = {
   lead_handoff: true,
   ads: false,
   ads_autopilot: false,
-  crm_webhook: false, // Phase I stub — see docs/PHASE_I_CRM_SCOPE.md
+  crm_webhook: false, // Phase I — see docs/PHASE_I_CRM_SCOPE.md
 };
 const DEFAULT_CAPS: Required<AdsSpendCaps> = { weekly_cents: 50_000, campaign_cents: 20_000 };
 
@@ -90,6 +90,9 @@ export async function campaignSpendCents(adCampaignId: string): Promise<number> 
 export async function assertCanSpend(
   brand: Brand, opts: { additionalCents: number; adCampaignId?: string | null },
 ): Promise<string | null> {
+  if (brand.account_type === "personal") {
+    return 'Ads aren\'t available on personal accounts. I can still plan niche content and post organically.';
+  }
   if (!adsEnabled(brand)) {
     return 'Ads are switched off for this brand. Reply "enable ads" to turn them on (I\'ll also need your ad account connected).';
   }

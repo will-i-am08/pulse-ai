@@ -80,7 +80,6 @@ export async function runTriggerLoop(now: () => Date = () => new Date()): Promis
         case "alert":
           await runAlert(brand, trigger, {
             getFailuresSince,
-            sendToBrand,
             markSent,
             now,
           });

@@ -17,7 +17,7 @@ const now = new Date(2026, 8, 7, 8, 0, 0); // Mon 7 Sep 2026, 08:00 local
 const steady = () => 0.999999;
 
 beforeEach(() => mockedQuery.mockReset());
-function committed(rows: Array<{ scheduled_at: string; pillar_id: string | null }>) {
+function committed(rows: Array<{ scheduled_at: string; pillar_id: string | null; format?: string | null }>) {
   mockedQuery.mockResolvedValue(rows);
 }
 
@@ -48,6 +48,42 @@ describe("scheduleSlot guardrails", () => {
     const slot = await scheduleSlot({ brandId: "b1", platform: "instagram", pillarId: null, postsPerWeek: 0, now, random: steady });
     expect(slot.getDate()).toBe(8); // next day
     expect(slot.getHours()).toBe(11);
+  });
+
+  it("skips a day that already has the same format (calendar conflict)", async () => {
+    // One carousel already on Mon → another carousel should land Tuesday (spacing OK on Mon 19 but format blocks the day).
+    committed([
+      { scheduled_at: new Date(2026, 8, 7, 11, 0, 0).toISOString(), pillar_id: "x", format: "carousel" },
+    ]);
+    const slot = await scheduleSlot({
+      brandId: "b1",
+      platform: "instagram",
+      pillarId: null,
+      postsPerWeek: 0,
+      format: "carousel",
+      now,
+      random: steady,
+    });
+    expect(slot.getDate()).toBe(8);
+    expect(slot.getHours()).toBe(11);
+  });
+
+  it("allows a different format on the same day", async () => {
+    committed([
+      { scheduled_at: new Date(2026, 8, 7, 11, 0, 0).toISOString(), pillar_id: "x", format: "carousel" },
+    ]);
+    const slot = await scheduleSlot({
+      brandId: "b1",
+      platform: "instagram",
+      pillarId: null,
+      postsPerWeek: 0,
+      format: "feed",
+      now,
+      random: steady,
+    });
+    // 11:00 taken by spacing → 13:59 or 19:59; steady shuffle keeps order so 13 blocked by spacing, 19 wins.
+    expect(slot.getDate()).toBe(7);
+    expect(slot.getHours()).toBe(19);
   });
 });
 

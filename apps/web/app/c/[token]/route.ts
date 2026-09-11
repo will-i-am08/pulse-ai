@@ -141,6 +141,11 @@ export async function GET(
     return NextResponse.redirect(loginDialogUrl(state, 'ads'));
   }
 
+  // Phase I — CRM webhook settings (paste catch-hook URL).
+  if (verified.purpose === 'crm') {
+    return NextResponse.redirect(new URL(`/c/crm?t=${encodeURIComponent(token)}`, base));
+  }
+
   if (metaConnected(brand) && !request.nextUrl.searchParams.has('reconnect')) {
     const ig = brand.ig_username ? `@${brand.ig_username}` : 'Instagram';
     const fb = brand.fb_page_name ?? 'Facebook';

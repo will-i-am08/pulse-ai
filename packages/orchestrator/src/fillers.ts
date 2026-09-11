@@ -60,6 +60,7 @@ export async function generateFillerPost(
     platform: "instagram",
     pillarId: pillar.id,
     postsPerWeek: pillar.posts_per_week,
+    format: "feed",
   });
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)

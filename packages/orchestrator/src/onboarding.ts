@@ -84,14 +84,24 @@ export async function ensureOwnerNameFromUser(brand: Brand): Promise<Brand> {
 function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: string): string {
   const kind = type === "personal" ? "personal social-media account" : "business";
   const knownName = ownerFirstName(brand);
+  const personalBits =
+    type === "personal"
+      ? [
+          "This is a PERSONAL account — skip ICP, ads, and offer/pricing discovery entirely.",
+          "Focus on niche/vibe, tone, never-dos, and accounts they admire. Keep the niche plan light.",
+          "Do not ask who their customers are, what they sell, or about promotions.",
+        ]
+      : [
+          "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
+        ];
   return [
     `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Warm, sharp, human, like texting a switched-on mate.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
-    "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
+    ...personalBits,
     knownName
       ? `You already know their first name is ${knownName}. Greet them by it. Do NOT ask for their name — never re-ask who they are.`
       : "Early on, warmly get their first name (by your third message at the latest) so you can address them personally from here on.",
-    "Make sure you learn their business/niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
+    "Make sure you learn their niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "HOW YOU TALK (absolute rules):",
     "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
     "- Short. Your question stays under 25 words. Most messages are 1-2 sentences.",
@@ -102,7 +112,9 @@ function interviewerSystem(brand: Brand, type: AccountType, websiteSummary?: str
     "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
     "- Never re-ask something you already know (including from the website).",
     "FINISH:",
-    "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
+    type === "personal"
+      ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like. Then wrap up. Do not ask about customers, ads, or offers."
+      : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
     "- Typical finish: 5 to 8 turns. Never pad to fill turns, never rush.",
     `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short, warm sign-off. Tailor the next step: personal accounts get the photo ask, business or faceless accounts are told their first ideas are coming.`,
   ]
@@ -413,10 +425,18 @@ export async function finishOnboarding(brandId: string): Promise<string> {
   const latest = (await queryOne<Brand>("select * from brands where id = $1", [brand.id])) ?? brand;
   await ensureOwnerNameFromUser(latest);
   await captureNicheAndSeedPlan(brand, transcript);
-  return (
-    `${signoff}\n\n${recap}\n\n${nextStepFor(type, transcript)}\n\n` +
-    `One more thing: I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`
-  );
+  // Cold-start design: seed niche exemplar URLs so first compose isn't empty-handed.
+  try {
+    const { seedOnboardingNicheExemplars } = await import("./designBootstrap.js");
+    await seedOnboardingNicheExemplars(brand.id);
+  } catch {
+    /* table may not exist yet */
+  }
+  const planLine =
+    type === "personal"
+      ? `One more thing: I'm putting together a light niche plan for you. I'll send it over in a couple of minutes 👀`
+      : `One more thing: I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`;
+  return `${signoff}\n\n${recap}\n\n${nextStepFor(type, transcript)}\n\n${planLine}`;
 }
 
 /** Compile the whole conversation into a stored BrandVoiceProfile + strategy notes; return a short recap. */

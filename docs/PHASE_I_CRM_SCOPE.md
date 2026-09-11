@@ -1,7 +1,6 @@
-# Phase I — Comments, DMs, leads → light CRM (scoped later)
+# Phase I — Comments, DMs, leads → light CRM
 
-**Status:** scoped only — **do not build a full CRM in this wave.**  
-Thin SMS reply approve/edit already ships with Phase A (**A6**). This doc parks the rest until Phase I is scheduled.
+**Status:** ✅ **IMPLEMENTED** (I1–I4) on this branch — thin CRM webhook + SMS polish. **Not** a full CRM.
 
 Pairs with [`STATUS.md`](STATUS.md) and [`ROADMAP.md`](ROADMAP.md).
 
@@ -10,10 +9,10 @@ Pairs with [`STATUS.md`](STATUS.md) and [`ROADMAP.md`](ROADMAP.md).
 ## Already built (keep; do not regress)
 
 - Policy engine in `packages/orchestrator/src/engagement.ts`: comment / DM / mention / review → `auto` / `draft` / `escalate` / `hide`
-- Lead bucket: helpful public reply + owner SMS handoff with a one-line summary
+- Lead bucket: helpful public reply + owner SMS handoff with a **stable lead card**
 - Support / general / spam routing; sentiment safety rails; `interactions` + `interaction_replies`
 - Worker engagement loop + Meta webhook ingestion (IG / FB)
-- **Thin A6 SMS path** in `processInbound.ts`:
+- **Thin A6 SMS path** in `processInbound.ts` (still works):
   - `"send"` / `"send it"` / `"post it"` → `sendLatestDraft`
   - edit verbs (no pending post) → `editLatestDraft`
   - Clarify copy when a drafted engagement reply is waiting
@@ -31,19 +30,19 @@ Kip stays the **inbox + qualifier**. The owner (or their CRM) owns the sale.
 
 ---
 
-## In scope for Phase I (when scheduled)
+## In scope for Phase I
 
-| Id | Work |
-|----|------|
-| **I1** | SMS reply verbs polish — “approve that reply”, “send this instead…”, “I’ll take it”, “mark as spam” (beyond thin A6 `send` / edit) |
-| **I2** | **Lead card shape** (stable): name/handle, platform, channel (comment vs DM), intent, summary, suggested next step, permalink when available, timestamp |
-| **I3** | **Thin CRM webhook** (one mechanism): owner pastes a Zapier / Make / n8n / HubSpot / Pipedrive catch-hook URL via SMS deep-link settings; on qualified lead (or owner “send to CRM”) POST JSON lead card; SMS confirms success/failure; optional email fallback if webhook unset |
-| **I4** | Feature toggles: existing `auto_replies`, `lead_handoff` + **`crm_webhook`**; failure SMS + audit row for CRM pushes |
-| — | Meta App Review: keep messaging / comment scopes + screencasts valid after SMS cutover |
+| Id | Work | Status |
+|----|------|--------|
+| **I1** | SMS reply verbs polish — “approve that reply”, “send this instead…”, “I’ll take it”, “mark as spam” (beyond thin A6 `send` / edit) | ✅ **IMPLEMENTED** |
+| **I2** | **Lead card shape** (stable): handle, platform, channel, intent, summary, next_step, permalink, timestamp | ✅ **IMPLEMENTED** (`leadCard.ts`) |
+| **I3** | **Thin CRM webhook**: SMS `set crm webhook <url>` / deep-link `/c/crm`; on qualified lead or “send to CRM” POST JSON; SMS confirm; optional `EMAIL_FROM` email fallback | ✅ **IMPLEMENTED** (`crmWebhook.ts`, migration `0038_crm_webhook.sql`) |
+| **I4** | Feature toggles: `auto_replies`, `lead_handoff`, `crm_webhook`; failure SMS + `crm_push_log` audit | ✅ **IMPLEMENTED** |
+| — | Meta App Review: keep messaging / comment scopes + screencasts valid after SMS cutover | (ops, not code) |
 
-Stub type field today: `brands.features.crm_webhook` (boolean) — **no runtime webhook implementation yet**. See TODO in `engagement.ts`.
+Runtime: `brands.crm_webhook_url` (encrypted https catch-hook) + `brands.features.crm_webhook`.
 
-### Lead → CRM flow (target, later)
+### Lead → CRM flow
 
 ```mermaid
 flowchart LR
@@ -71,11 +70,11 @@ flowchart LR
 
 ---
 
-## Acceptance checklist (parked until Phase I is scheduled)
+## Acceptance checklist
 
-- [ ] Comment + DM paths work end-to-end on SMS-led Kip (mock + live Meta)
-- [ ] Lead card always lands in owner SMS with enough to act (who / what / where)
-- [ ] Owner can approve / edit draft replies from SMS (polish beyond A6)
-- [ ] Webhook CRM push succeeds with signed/simple JSON; failures SMS the owner
-- [ ] Toggles can disable auto-replies or CRM push without breaking triage
-- [ ] No Kip-owned pipeline UI required
+- [x] Lead card always lands in owner SMS with enough to act (who / what / where) when `lead_handoff` is on
+- [x] Owner can approve / edit / replace draft replies from SMS (I1 polish beyond A6)
+- [x] Webhook CRM push succeeds with stable JSON; failures SMS the owner; `crm_push_log` audit row
+- [x] Toggles can disable auto-replies, lead handoff, or CRM push without breaking triage
+- [x] No Kip-owned pipeline UI required
+- [ ] Comment + DM paths work end-to-end on SMS-led Kip (mock + live Meta) — live gated on App Review

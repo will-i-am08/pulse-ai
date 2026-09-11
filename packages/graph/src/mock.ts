@@ -39,6 +39,7 @@ export class MockGraphAdapter implements GraphAdapter {
     caption: string;
     mediaUrls: string[];
     format?: PostFormat;
+    styleMeta?: Record<string, unknown> | null;
   }): Promise<{ externalPostId: string; permalink: string | null }> {
     const { brand, platform, caption, mediaUrls } = input;
     const format: PostFormat = input.format ?? "feed";

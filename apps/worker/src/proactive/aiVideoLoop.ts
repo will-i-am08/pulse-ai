@@ -10,6 +10,7 @@ export async function runAiVideoLoop(): Promise<void> {
     const results = await runAiVideoJobDrain(2);
     for (const r of results) {
       try {
+        logger.info(`ai-video: ready for brand ${r.brandId}`);
         await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
       } catch (err) {
         logger.error(`ai-video: failed to SMS brand ${r.brandId}`, {

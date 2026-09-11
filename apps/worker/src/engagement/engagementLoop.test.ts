@@ -13,8 +13,6 @@ function fakeBrand(): Brand {
     id: "brand-1",
     name: "Test Brand",
     client_phone: "+61400000000",
-    discord_channel_id: null,
-    discord_user_id: null,
     owner_user_id: null,
     account_type: null,
     website: null,

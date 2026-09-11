@@ -16,8 +16,6 @@ function fakeBrand(over: Partial<Brand> = {}): Brand {
     id: "brand-1",
     name: "Test Brand",
     client_phone: "+61400000000",
-    discord_channel_id: null,
-    discord_user_id: null,
     owner_user_id: null,
     account_type: null,
     website: null,
@@ -148,10 +146,10 @@ describe("mock X and Threads publish", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("LiveGraphAdapter mocks LinkedIn/TikTok when unconfigured or unaudited", async () => {
+  it("LiveGraphAdapter mocks LinkedIn/TikTok when app creds missing", async () => {
     const fetchSpy = stubFetch();
-    const prev = process.env.TIKTOK_AUDIT_PASSED;
-    delete process.env.TIKTOK_AUDIT_PASSED;
+    delete process.env.LINKEDIN_CLIENT_ID;
+    delete process.env.TIKTOK_CLIENT_KEY;
     const li = await new LiveGraphAdapter().publish({
       brand: fakeBrand(),
       platform: "linkedin",
@@ -164,25 +162,24 @@ describe("mock X and Threads publish", () => {
         tiktok_open_id: "oid",
       }),
       platform: "tiktok",
-      caption: "unaudited",
+      caption: "no client key",
       mediaUrls: ["https://example.test/clip.mp4"],
     });
     expect(li.externalPostId.startsWith("mock_")).toBe(true);
     expect(tt.externalPostId.startsWith("mock_")).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
-    if (prev === undefined) delete process.env.TIKTOK_AUDIT_PASSED;
-    else process.env.TIKTOK_AUDIT_PASSED = prev;
   });
 });
 
 describe("publish notice", () => {
-  it("X never counts as live; Threads does once live; unaudited TikTok does not", () => {
+  it("X never counts as live; Threads/LinkedIn/TikTok can once live", () => {
     const prev = process.env.TIKTOK_AUDIT_PASSED;
     delete process.env.TIKTOK_AUDIT_PASSED;
     expect(didPublishLive("x", "live")).toBe(false);
     expect(didPublishLive("threads", "live")).toBe(true);
     expect(didPublishLive("linkedin", "live")).toBe(true);
-    expect(didPublishLive("tiktok", "live")).toBe(false);
+    // Unaudited TikTok may still live-post privately (SELF_ONLY) — not mock-only.
+    expect(didPublishLive("tiktok", "live")).toBe(true);
     expect(didPublishLive("instagram", "live")).toBe(true);
     expect(didPublishLive("facebook", "mock")).toBe(false);
     if (prev === undefined) delete process.env.TIKTOK_AUDIT_PASSED;

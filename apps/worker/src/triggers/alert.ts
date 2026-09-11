@@ -1,7 +1,7 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
+import { sendToOperator } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
-import { operatorPhone } from "../config.js";
 
 export interface FailedPostSummary {
   id: string;
@@ -11,7 +11,9 @@ export interface FailedPostSummary {
 
 export interface AlertDeps {
   getFailuresSince: (brandId: string, since: string | null) => Promise<FailedPostSummary[]>;
-  sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
+  /** @deprecated Prefer sendToOperator — kept for tests that inject a spy. */
+  sendToBrand?: (brandId: string, body: string) => Promise<boolean | void>;
+  sendToOperator?: (body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
 }
@@ -32,7 +34,11 @@ export async function runAlert(brand: Brand, trigger: ProactiveTrigger, deps: Al
   const lines = failures.map((f) => `- ${f.platform}: ${f.last_error ?? "unknown error"} (post ${f.id})`);
   const body = `Publish failures for "${brand.name}" since last check:\n${lines.join("\n")}`;
   logger.warn(`alerting operator: ${failures.length} failed post(s) for brand ${brand.id}`);
-  await deps.sendToBrand(operatorPhone(), body);
+  if (deps.sendToOperator) {
+    await deps.sendToOperator(body);
+  } else {
+    await sendToOperator(body);
+  }
   await deps.markSent(trigger.id);
 }
 

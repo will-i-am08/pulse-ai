@@ -116,6 +116,7 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
       platform: "instagram",
       pillarId: pillar?.id ?? null,
       postsPerWeek: pillar?.posts_per_week ?? 0,
+      format: "feed",
     });
     const post = await queryOne<{ id: string }>(
       `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
