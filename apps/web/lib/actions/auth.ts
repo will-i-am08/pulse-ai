@@ -2,7 +2,17 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { query, queryOne, encrypt, decrypt, generateLoginCode, normalizePhone } from '@pulse/shared';
+import {
+  query,
+  queryOne,
+  withTransaction,
+  poolExecutor,
+  encrypt,
+  decrypt,
+  generateLoginCode,
+  normalizePhone,
+  type Executor,
+} from '@pulse/shared';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
 const CODE_TTL_MINUTES = 10;
@@ -37,10 +47,11 @@ async function issueCode(
   userId: string,
   brandId: string | null,
   purpose: 'login' | 'signup',
+  exec: Executor = poolExecutor,
 ): Promise<void> {
   // Throttle: if a code was queued very recently, don't spam the channel — the
   // existing one is still valid.
-  const recent = await queryOne<{ id: string }>(
+  const recent = await exec.queryOne<{ id: string }>(
     `select id from login_codes
       where phone = $1 and consumed_at is null
         and created_at > now() - ($2 || ' seconds')::interval
@@ -50,7 +61,7 @@ async function issueCode(
   if (recent) return;
 
   const code = generateLoginCode();
-  await query(
+  await exec.query(
     `insert into login_codes (phone, user_id, brand_id, code_encrypted, purpose, expires_at)
      values ($1, $2, $3, $4, $5, now() + ($6 || ' minutes')::interval)`,
     [phone, userId, brandId, encrypt(code), purpose, String(CODE_TTL_MINUTES)],
@@ -123,20 +134,32 @@ export async function signupAction(formData: FormData): Promise<void> {
   const existing = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
   if (existing) redirect('/login?error=exists');
 
-  const user = await queryOne<{ id: string }>(
-    'insert into users (phone, email, name) values ($1, $2, $3) returning id',
-    [phone, email, name],
-  );
-  if (!user) redirect('/signup?error=failed');
+  // Atomic: the user, their brand, and the first login code all commit together
+  // or not at all. If anything throws (e.g. a misconfigured encryption key, or a
+  // race on the unique phone index), the whole thing rolls back — no orphaned
+  // user/brand rows left behind to block a genuine retry.
+  try {
+    await withTransaction(async (tx) => {
+      const user = await tx.queryOne<{ id: string }>(
+        'insert into users (phone, email, name) values ($1, $2, $3) returning id',
+        [phone, email, name],
+      );
+      if (!user) throw new Error('user insert returned no row');
 
-  const brand = await queryOne<{ id: string }>(
-    `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
-     values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
-     returning id`,
-    [name, phone, user!.id, discordUserId || null, accountType, website || null],
-  );
+      const brand = await tx.queryOne<{ id: string }>(
+        `insert into brands (name, client_phone, owner_user_id, discord_user_id, account_type, website, onboarding_state)
+         values ($1, $2, $3, $4, $5, $6, '{"status":"pending"}'::jsonb)
+         returning id`,
+        [name, phone, user.id, discordUserId || null, accountType, website || null],
+      );
 
-  await issueCode(phone!, user!.id, brand?.id ?? null, 'signup');
+      await issueCode(phone!, user.id, brand?.id ?? null, 'signup', tx);
+    });
+  } catch (err) {
+    console.error('[signup] failed:', err instanceof Error ? err.message : err);
+    redirect('/signup?error=failed');
+  }
+
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
 }
 

@@ -46,3 +46,50 @@ export async function queryOne<T = Record<string, unknown>>(
   const rows = await query<T>(text, params);
   return rows[0] ?? null;
 }
+
+/**
+ * A query runner scoped to a single connection — same shape as the pool-level
+ * `query`/`queryOne`, so helpers can accept either the pool or a transaction.
+ */
+export interface Executor {
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  queryOne<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T | null>;
+}
+
+/** The pool itself, presented as an Executor (the default for helpers). */
+export const poolExecutor: Executor = { query, queryOne };
+
+/**
+ * Run `fn` inside a single transaction on one pooled connection. Commits if it
+ * resolves, rolls back if it throws (then re-throws). All statements must go
+ * through the passed-in `tx` — queries on the module-level pool run on other
+ * connections and are NOT part of the transaction.
+ */
+export async function withTransaction<T>(fn: (tx: Executor) => Promise<T>): Promise<T> {
+  const client = await db().connect();
+  const tx: Executor = {
+    async query<R = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<R[]> {
+      const res = await client.query(text, params as unknown[]);
+      return res.rows as R[];
+    },
+    async queryOne<R = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<R | null> {
+      const rows = await tx.query<R>(text, params);
+      return rows[0] ?? null;
+    },
+  };
+  try {
+    await client.query("begin");
+    const out = await fn(tx);
+    await client.query("commit");
+    return out;
+  } catch (err) {
+    try {
+      await client.query("rollback");
+    } catch {
+      // The connection may already be broken; the pool will discard it on release.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
