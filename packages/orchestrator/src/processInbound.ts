@@ -15,7 +15,7 @@ import {
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-import { pickFreshPhoto, pickReusablePhoto, draftPostFromPhoto } from "./library.js";
+import { pickFreshPhoto, pickReusablePhoto, pickFreshPhotos, draftPostFromPhoto } from "./library.js";
 import {
   carouselDecision,
   getPendingCarouselChoice,
@@ -25,6 +25,16 @@ import {
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
 } from "./formats.js";
+import {
+  draftReelFromVideo,
+  draftReelFromStills,
+  videoEditFallbackSms,
+} from "./video.js";
+import {
+  looksLikeAiVideoRequest,
+  looksLikeMakeReelRequest,
+  queueAiVideoJob,
+} from "./aiVideo.js";
 import {
   proposeCampaign,
   activateCampaign,
@@ -121,6 +131,8 @@ const STORY_CMD_RE =
 const CAROUSEL_CMD_RE =
   /\b(?:(?:make|turn)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
 const SEPARATE_CMD_RE = /\b(separate|separately|individually|split (?:them|up)|different posts?)\b/i;
+const REEL_CMD_RE =
+  /\b(?:(?:make|turn|put)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?reels?|as\s+(?:a\s+)?reels?|reels?\s+this)\b|^\s*reels?\s*[!.?]*$/i;
 
 // The client explicitly asking to reuse an OLD/previously-posted photo. Used
 // photos are only pulled back out on request like this — never automatically.
@@ -431,11 +443,60 @@ export async function processInbound(
     if (ctrl === "cancel") return { reply: await cancelCampaign(brand) };
   }
 
-  // "Make it a story / carousel" about the current pending draft (no new photo).
-  if (message.body && newMedia.length === 0 && pending && (STORY_CMD_RE.test(message.body) || CAROUSEL_CMD_RE.test(message.body))) {
+  // "Make it a story / carousel / reel" about the current pending draft (no new photo).
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    pending &&
+    (STORY_CMD_RE.test(message.body) ||
+      CAROUSEL_CMD_RE.test(message.body) ||
+      REEL_CMD_RE.test(message.body) ||
+      looksLikeMakeReelRequest(message.body))
+  ) {
     if (STORY_CMD_RE.test(message.body)) {
       await query("update posts set format = 'story' where id = $1 and brand_id = $2", [pending.id, brand.id]);
       return { reply: `Done, switched it to a story. Reply "yes" to approve.`, postId: pending.id };
+    }
+    if (REEL_CMD_RE.test(message.body) || looksLikeMakeReelRequest(message.body)) {
+      const sourceIds = pending.source_media_ids?.length
+        ? pending.source_media_ids
+        : pending.media_ids;
+      const photoIds = (
+        await query<{ id: string }>(
+          `select id from media_assets where brand_id = $1 and kind = 'photo' and id = any($2::uuid[])`,
+          [brand.id, sourceIds],
+        )
+      ).map((r) => r.id);
+      if (photoIds.length >= 1) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = pillars.find((p) => p.id === pending.pillar_id) ?? pillars[0];
+        if (pillar) {
+          const reel = await draftReelFromStills(brand, photoIds, pillar);
+          if (reel.ok) {
+            await query(
+              `update posts set status = 'rejected' where id = $1 and brand_id = $2`,
+              [pending.id, brand.id],
+            ).catch(() => {});
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Turned it into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          return { reply: videoEditFallbackSms(brand.name), postId: pending.id };
+        }
+      }
+      await query("update posts set format = 'reel' where id = $1 and brand_id = $2", [
+        pending.id,
+        brand.id,
+      ]);
+      return {
+        reply: `Done, marked it as a Reel. Reply "yes" to approve.`,
+        postId: pending.id,
+      };
     }
     // carousel needs at least two images
     if (pending.media_ids.length >= 2) {
@@ -614,10 +675,61 @@ export async function processInbound(
   switch (result.classification) {
     case "media": {
       const photos = newMedia.filter((m) => m.kind === "photo");
+      const videos = newMedia.filter((m) => m.kind === "video");
       const body = message.body ?? "";
       const cmdStory = STORY_CMD_RE.test(body);
       const cmdCarousel = CAROUSEL_CMD_RE.test(body);
       const cmdSeparate = SEPARATE_CMD_RE.test(body);
+      const cmdReel = REEL_CMD_RE.test(body) || looksLikeMakeReelRequest(body);
+
+      // Client-sent video → Reel with visual understanding (Phase G2).
+      if (videos.length >= 1) {
+        const video = videos[0]!;
+        const drafted = await draftReelFromVideo(brand, video, { body });
+        if (!drafted.ok) {
+          return { reply: drafted.sms };
+        }
+        const when = drafted.post.scheduled_at
+          ? formatSlot(new Date(drafted.post.scheduled_at))
+          : "soon";
+        return {
+          reply: `Here's your Reel 🎬\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+          postId: drafted.post.id,
+          mediaUrl: drafted.coverUrl ?? drafted.mediaUrl ?? undefined,
+        };
+      }
+
+      // Photos + "make a reel" → motion template (Phase G3); fall back to static.
+      if (cmdReel && photos.length >= 1) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = (await classifyPhotoPillar(brand, pillars, photos[0]!.id)) ?? pillars[0];
+        if (pillar) {
+          const reel = await draftReelFromStills(
+            brand,
+            photos.map((p) => p.id),
+            pillar,
+          );
+          if (reel.ok) {
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Turned ${photos.length === 1 ? "it" : "them"} into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          const fromLib = await draftPostFromPhoto(brand, photos[0]!, pillar);
+          if (fromLib) {
+            return {
+              reply: `${videoEditFallbackSms(brand.name)}\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve.`,
+              postId: fromLib.post.id,
+              mediaUrl: fromLib.mediaUrl ?? undefined,
+            };
+          }
+          return { reply: videoEditFallbackSms(brand.name) };
+        }
+      }
 
       // Explicit "put this on my story" → draft the photo(s) as stories.
       if (cmdStory && photos.length >= 1) {
@@ -993,6 +1105,43 @@ export async function processInbound(
       if (message.body && CAMPAIGN_RE.test(message.body)) {
         const proposal = await proposeCampaign(brand, message.body);
         if (proposal) return { reply: proposal.summary };
+      }
+
+      // "Generate a video" / AI video → queue async job (Phase G4).
+      if (message.body && looksLikeAiVideoRequest(message.body) && newMedia.length === 0) {
+        const queued = await queueAiVideoJob(brand, message.body);
+        return { reply: queued.sms };
+      }
+
+      // "Make a reel" with no media → use fresh banked photos or ask for a clip.
+      if (message.body && looksLikeMakeReelRequest(message.body) && newMedia.length === 0) {
+        const pillars = await ensurePillars(brand.id);
+        const pillar = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
+        const photos = pillar ? await pickFreshPhotos(brand.id, 3) : [];
+        if (pillar && photos.length >= 1) {
+          const reel = await draftReelFromStills(
+            brand,
+            photos.map((p) => p.id),
+            pillar,
+          );
+          if (reel.ok) {
+            const when = reel.post.scheduled_at
+              ? formatSlot(new Date(reel.post.scheduled_at))
+              : "soon";
+            return {
+              reply: `Made a Reel from your photos 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or send a video clip for a native Reel.`,
+              postId: reel.post.id,
+              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
+            };
+          }
+          return {
+            reply: `${videoEditFallbackSms(brand.name)} Or send a video clip and I'll draft a Reel from that.`,
+          };
+        }
+        return {
+          reply:
+            'Send me a video clip (or a few photos) and say "make a reel" — or "generate a video …" for AI video.',
+        };
       }
 
       // Explicit "use an old photo" → pull a previously-posted shot back out (only

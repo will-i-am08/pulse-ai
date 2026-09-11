@@ -46,9 +46,31 @@ export function platformLabel(platform: string): string {
   }
 }
 
-// The post format the bot varies across. Reels (video) parked for later.
-export const PostFormat = ["feed", "carousel", "story"] as const;
+// The post format the bot varies across — feed, carousel, story, and reel (video).
+export const PostFormat = ["feed", "carousel", "story", "reel"] as const;
 export type PostFormat = (typeof PostFormat)[number];
+
+/** Async AI video generation job (Phase G4). */
+export const AiVideoJobStatus = ["queued", "running", "ready", "failed", "cancelled"] as const;
+export type AiVideoJobStatus = (typeof AiVideoJobStatus)[number];
+
+export interface AiVideoJob {
+  id: string;
+  brand_id: string;
+  prompt: string;
+  status: AiVideoJobStatus;
+  provider: string | null;
+  model: string | null;
+  source_media_ids: string[];
+  result_media_id: string | null;
+  post_id: string | null;
+  cost_cents: number;
+  aigc: boolean;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
 
 export const PostStatus = [
   "draft",

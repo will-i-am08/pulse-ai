@@ -8,6 +8,8 @@ import {
   draftPostFromPhoto,
   draftCarouselFromPhotos,
   draftStoryFromPhoto,
+  draftReelFromStills,
+  videoEditFallbackSms,
   generateTipCarousel,
   generateTypedCarousel,
 } from "./deps.js";
@@ -92,6 +94,27 @@ export async function runGapFillLoop(): Promise<void> {
               drafted = { post: s.post, mediaUrl: s.mediaUrl };
               auto = s.auto;
               kind = "story";
+            }
+          }
+        } else if (fmt === "reel") {
+          // Motion template from stills → Reel; fall back to static feed if ffmpeg fails.
+          const photos = await pickFreshPhotos(brand.id, 3);
+          if (photos.length >= 1) {
+            const reel = await draftReelFromStills(
+              brand,
+              photos.map((p) => p.id),
+              pillar,
+            );
+            if (reel.ok) {
+              drafted = { post: reel.post, mediaUrl: reel.coverUrl ?? reel.mediaUrl };
+              kind = "Reel";
+            } else {
+              const p = photos[0]!;
+              drafted = await draftPostFromPhoto(brand, p, pillar);
+              kind = "post";
+              if (drafted) {
+                await sendToBrand(brand.id, videoEditFallbackSms(brand.name));
+              }
             }
           }
         }

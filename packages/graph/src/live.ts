@@ -161,13 +161,26 @@ export class LiveGraphAdapter implements GraphAdapter {
               ...(isVideo(mediaUrl) ? { video_url: mediaUrl } : { image_url: mediaUrl }),
             }),
           );
-        } else {
-          // Single feed post (image or reel-style video).
+        } else if (format === "reel" || isVideo(mediaUrl)) {
+          // Explicit Reel format, or any video on a single-item publish → IG REELS.
+          if (!isVideo(mediaUrl)) {
+            throw new Error("Instagram Reels require a video URL (mp4/mov/m4v)");
+          }
           creationId = await createContainer(
             new URLSearchParams({
               caption,
               access_token: accessToken,
-              ...(isVideo(mediaUrl) ? { video_url: mediaUrl, media_type: "REELS" } : { image_url: mediaUrl }),
+              video_url: mediaUrl,
+              media_type: "REELS",
+            }),
+          );
+        } else {
+          // Single feed image post.
+          creationId = await createContainer(
+            new URLSearchParams({
+              caption,
+              access_token: accessToken,
+              image_url: mediaUrl,
             }),
           );
         }

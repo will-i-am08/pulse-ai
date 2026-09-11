@@ -74,17 +74,17 @@ async function scheduleFor(brand: Brand, pillarId: string | null, postsPerWeek: 
 
 /**
  * Parse "50% carousel, 30% feed, 20% story" style mix strings into weights.
- * Exported for unit tests (C5).
+ * Exported for unit tests (C5). Also accepts "reel".
  */
 export function weightsFromFormatMix(mix: string | null | undefined): Array<[PostFormat, number]> | null {
   if (!mix) return null;
   const found: Partial<Record<PostFormat, number>> = {};
-  const re = /(\d{1,3})\s*%\s*(carousel|feed|story)/gi;
+  const re = /(\d{1,3})\s*%\s*(carousel|feed|story|reel)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(mix))) {
     const n = Number(m[1]);
     const f = m[2]!.toLowerCase() as PostFormat;
-    if (n > 0 && (f === "carousel" || f === "feed" || f === "story")) found[f] = n;
+    if (n > 0 && (f === "carousel" || f === "feed" || f === "story" || f === "reel")) found[f] = n;
   }
   const entries = Object.entries(found) as Array<[PostFormat, number]>;
   return entries.length ? entries : null;
@@ -171,7 +171,7 @@ export async function chooseNextFormat(
         `select format_bias from pillars where id = $1 and brand_id = $2`,
         [pillarId, brandId],
       );
-      if (row?.format_bias && ["feed", "carousel", "story"].includes(row.format_bias)) {
+      if (row?.format_bias && ["feed", "carousel", "story", "reel"].includes(row.format_bias)) {
         preferred = row.format_bias;
       }
     } catch {
@@ -195,7 +195,7 @@ export async function chooseNextFormat(
       if (!preferred) {
         const biases = (accepted?.plan?.pillars ?? [])
           .map((p) => p.format_bias)
-          .filter((f): f is PostFormat => f === "feed" || f === "carousel" || f === "story");
+          .filter((f): f is PostFormat => f === "feed" || f === "carousel" || f === "story" || f === "reel");
         if (biases.length) {
           const counts: Record<string, number> = {};
           for (const b of biases) counts[b] = (counts[b] ?? 0) + 1;
@@ -218,13 +218,15 @@ export async function chooseNextFormat(
               ["carousel", 3],
               ["feed", 2],
               ["story", 1],
+              ["reel", 2],
             ] as Array<[PostFormat, number]>
           ).filter(([f]) => f !== preferred),
         ]
       : [
-          ["carousel", 5],
+          ["carousel", 4],
           ["feed", 3],
-          ["story", 2],
+          ["reel", 2],
+          ["story", 1],
         ];
 
   const pool = weights.filter(([f]) => f !== last);

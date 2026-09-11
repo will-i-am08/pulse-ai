@@ -1,22 +1,40 @@
-import { query, type Brand, type Platform } from "@pulse/shared";
+import {
+  query,
+  type Brand,
+  type Platform,
+  type PostFormat,
+  type AdCampaignMetrics,
+} from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
-import { analyzePerformance, type PostPerf } from "./insights.js";
+import {
+  analyzePerformance,
+  aggregateAdMetrics,
+  type PostPerf,
+  type PaidDigestMetrics,
+  type PerformanceAnalysis,
+  type PerfSuggestion,
+} from "./insights.js";
+import { isAdsEnabled, isAdsConnected, savePerfPending } from "./performanceActions.js";
 
 /**
- * Build the closed-loop performance digest for a brand (same text as the old
- * Discord !digest). Used by the weekly SMS trigger and natural-language asks
- * like "how did we do this week?".
+ * Build the closed-loop performance digest for a brand.
+ * Used by the weekly SMS trigger and natural-language asks like
+ * "how did we do this week?".
  */
-export async function buildPerformanceDigest(brand: Brand): Promise<string> {
+export async function buildPerformanceAnalysis(brand: Brand): Promise<PerformanceAnalysis> {
   const rows = await query<{
+    id: string;
     caption: string | null;
     platform: Platform;
+    format: PostFormat | null;
     scheduled_at: string | null;
     external_post_id: string | null;
     engagement: Record<string, number>;
     pillar_name: string | null;
+    pillar_id: string | null;
   }>(
-    `select p.caption, p.platform, p.scheduled_at, p.external_post_id, p.engagement, pl.name as pillar_name
+    `select p.id, p.caption, p.platform, p.format, p.scheduled_at, p.external_post_id, p.engagement,
+            pl.name as pillar_name, p.pillar_id
        from posts p left join pillars pl on pl.id = p.pillar_id
       where p.brand_id = $1 and p.status = 'published'
       order by p.published_at desc nulls last limit 30`,
@@ -38,12 +56,67 @@ export async function buildPerformanceDigest(brand: Brand): Promise<string> {
       }
     }
     perf.push({
+      id: r.id,
       caption: r.caption,
       pillar_name: r.pillar_name,
+      pillar_id: r.pillar_id,
       platform: r.platform,
+      format: r.format,
       scheduled_at: r.scheduled_at,
       engagement,
     });
   }
-  return analyzePerformance(perf).text;
+
+  const paid = await fetchPaidDigestMetrics(brand);
+  const analysis = analyzePerformance(perf, { paid });
+
+  // Prefer Phase F's richer paid SMS block when available (graceful omit if ads off / error).
+  try {
+    const { paidDigestSection } = await import("./adSpend.js");
+    const section = await paidDigestSection(brand);
+    if (section && !analysis.text.includes("Paid this week") && !analysis.text.includes("💸")) {
+      analysis.text += `\n\n${section}`;
+    } else if (section && analysis.text.includes("💸")) {
+      analysis.text = analysis.text.replace(/\n\n💸 Ads this period:.*$/s, `\n\n${section}`);
+    }
+  } catch {
+    /* adSpend / tables may not be ready */
+  }
+
+  if (analysis.suggestion) {
+    await savePerfPending(brand, analysis.suggestion);
+  }
+
+  return analysis;
 }
+
+/** SMS text for weekly / on-demand digest. Persists pending suggestion when present. */
+export async function buildPerformanceDigest(brand: Brand): Promise<string> {
+  const analysis = await buildPerformanceAnalysis(brand);
+  return analysis.text;
+}
+
+/**
+ * Phase E4 stub: join paid metrics when ads are enabled + connected.
+ * Gracefully returns null when ads are off, disconnected, or tables aren't ready.
+ */
+export async function fetchPaidDigestMetrics(brand: Brand): Promise<PaidDigestMetrics | null> {
+  if (!isAdsEnabled(brand)) return null;
+  if (!isAdsConnected(brand)) return null;
+  try {
+    const rows = await query<{ metrics: AdCampaignMetrics }>(
+      `select metrics from ad_campaigns
+        where brand_id = $1
+          and status in ('active','paused','done')
+          and updated_at > now() - interval '14 days'
+        order by updated_at desc
+        limit 20`,
+      [brand.id],
+    );
+    return aggregateAdMetrics(rows.map((r) => r.metrics ?? {}));
+  } catch {
+    return null;
+  }
+}
+
+export type { PerformanceAnalysis, PerfSuggestion, PaidDigestMetrics };

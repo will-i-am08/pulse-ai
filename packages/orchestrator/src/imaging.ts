@@ -380,11 +380,13 @@ export function messageWantsNoText(body: string | null | undefined): boolean {
 export function shouldOverlayHeadline(
   brand: Brand,
   body: string | null | undefined,
-  opts?: { caption?: string; format?: "feed" | "carousel" | "story" },
+  opts?: { caption?: string; format?: "feed" | "carousel" | "story" | "reel" },
 ): boolean {
   if (messageWantsNoText(body)) return false;
   if (messageWantsText(body)) return true;
   if (opts?.format === "story") return true;
+  // Reels: no automatic photo headline (video cover/text overlay is a separate path).
+  if (opts?.format === "reel") return false;
   if (brand.account_type === "personal") return false;
 
   const text = `${body ?? ""} ${opts?.caption ?? ""}`;

@@ -12,6 +12,7 @@ import { runCompetitorWatchLoop } from "./proactive/competitorWatch.js";
 import { runNichePlanLoop } from "./proactive/nichePlan.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
+import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
 
 /** Overlap-safe interval runner — skips if the previous tick is still in flight. */
 function guardedInterval(
@@ -164,6 +165,11 @@ async function main(): Promise<void> {
   // Linq inbound drain — only meaningful when MESSAGE_CHANNEL=linq, but cheap to poll.
   const linqTimer = guardedInterval("linq-inbound", 3000, runLinqInboundLoop);
 
+  // AI video job drain (Phase G4) — texts when Kling/Runway jobs finish.
+  const aiVideoTimer = guardedInterval("ai-video", 45_000, runAiVideoLoop, {
+    runSoonMs: 25_000,
+  });
+
   let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
@@ -180,6 +186,7 @@ async function main(): Promise<void> {
     clearInterval(planTimer);
     clearInterval(digestTimer);
     clearInterval(linqTimer);
+    clearInterval(aiVideoTimer);
     process.exit(0);
   };
 
@@ -187,7 +194,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   logger.info(
-    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound",
+    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video",
   );
 }
 

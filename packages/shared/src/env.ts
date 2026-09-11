@@ -38,6 +38,14 @@ const serverEnvSchema = z.object({
   // Optional specialty models (Phase C9). When unset, router falls back to composer.
   REPLICATE_IDEOGRAM_MODEL: z.string().optional(),
   REPLICATE_RECRAFT_MODEL: z.string().optional(),
+  // Phase G4 — AI video (Kling primary, Runway secondary). Env-configurable Replicate/fal models.
+  // Provider: "replicate" (default) or "fal". Leave models unset to disable AI video gen.
+  AI_VIDEO_PROVIDER: z.enum(["replicate", "fal"]).default("replicate"),
+  AI_VIDEO_PRIMARY_MODEL: z.string().optional(), // e.g. kwaivgi/kling-v2.1 or fal-ai/kling-video
+  AI_VIDEO_SECONDARY_MODEL: z.string().optional(), // e.g. runwayml/gen4-turbo or fal-ai/runway-gen3
+  AI_VIDEO_COST_CAP_CENTS_MONTH: z.coerce.number().int().positive().default(2000), // ~$20/brand/mo
+  AI_VIDEO_EST_COST_CENTS: z.coerce.number().int().positive().default(50), // estimate per job
+  FAL_KEY: z.string().optional(),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
