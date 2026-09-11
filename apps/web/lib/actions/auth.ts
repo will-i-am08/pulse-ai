@@ -13,12 +13,17 @@ import {
   normalizePhone,
   type Executor,
 } from '@pulse/shared';
-import { deliverPendingLoginCodes } from '@pulse/gateway';
 import { createSessionValue, SESSION_COOKIE_NAME } from '@/lib/auth/session';
 
-/** Kick delivery now so login doesn't wait on the worker/bot poller. */
+/**
+ * Kick delivery now so login doesn't wait on the worker/bot poller.
+ * Dynamic import: @pulse/gateway's barrel pulls orchestrator → satori/harfbuzz WASM,
+ * which can abort the whole login serverless function on Vercel (ENOENT hb.wasm).
+ * Operator login must never load that graph.
+ */
 async function flushLoginCodes(): Promise<void> {
   try {
+    const { deliverPendingLoginCodes } = await import('@pulse/gateway');
     await deliverPendingLoginCodes();
   } catch (err) {
     console.error('issueCode: immediate login-code delivery failed; poller will retry', err);
@@ -238,34 +243,6 @@ export async function signupAction(formData: FormData): Promise<void> {
   // on the poller. issueCode skips this while inside the transaction above.
   await flushLoginCodes();
   redirect(`/login/verify?phone=${encodeURIComponent(phone!)}&new=1`);
-}
-
-/** Same-origin path only — blocks open redirects. */
-function safeAppPath(raw: FormDataEntryValue | null, fallback: string): string {
-  const value = String(raw ?? '').trim();
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
-    return fallback;
-  }
-  return value;
-}
-
-/**
- * Operator break-glass: if the messaging channel is down, the admin can still
- * sign in with OPERATOR_PASSWORD. Never exposed to normal users.
- * Lands in the agent lab by default (or ?redirectTo= when safe).
- */
-export async function operatorLoginAction(formData: FormData): Promise<void> {
-  const password = String(formData.get('password') ?? '');
-  const expected = process.env.OPERATOR_PASSWORD;
-  if (!expected || !password || !timingSafeEqual(password, expected)) {
-    redirect('/login?error=operator');
-  }
-  const admin = await queryOne<{ id: string }>(
-    'select id from users where is_admin = true order by created_at asc limit 1',
-  );
-  if (!admin) redirect('/login?error=noadmin');
-  await setSession(admin!.id);
-  redirect(safeAppPath(formData.get('redirectTo'), '/lab'));
 }
 
 export async function signOutAction(): Promise<void> {
