@@ -1,11 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { publicMediaUrl, type Brand, type Post } from '@pulse/shared';
+import { publicMediaUrl, type Brand } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
 import { listRecentMessages } from '@/lib/data/messages';
-import { listUpcomingPosts, listPostsByStatus } from '@/lib/data/posts';
-import { approvePostAction, rejectPostAction } from '@/lib/actions/approvals';
+import { getBrandPerformance, listPostsByStatus, type BrandPerformance } from '@/lib/data/posts';
 import type { ThreadMessageDto } from '@/lib/thread';
 import { LiveThread } from './LiveThread';
 
@@ -31,66 +30,111 @@ function isConnected(b: Brand): boolean {
   return Boolean(b.fb_page_id && b.platform_tokens_encrypted && b.ig_user_id);
 }
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return 'Unscheduled';
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return String(Math.round(n));
+}
+
+function formatPosted(iso: string | null): string {
+  if (!iso) return '';
   return new Intl.DateTimeFormat('en-AU', {
-    weekday: 'short',
     day: 'numeric',
     month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
   }).format(new Date(iso));
 }
 
-function Aside({
+function MetricsAside({
   brand,
-  waiting,
-  upcoming,
+  performance,
+  waitingCount,
   banner,
 }: {
   brand: Brand;
-  waiting: Post[];
-  upcoming: Post[];
+  performance: BrandPerformance;
+  waitingCount: number;
   banner?: { text: string; ok: boolean };
 }) {
   const connected = isConnected(brand);
+  const hasEngagement =
+    performance.likes + performance.comments + performance.reach + performance.saves + performance.shares > 0;
+
   return (
     <aside className="aside">
       {banner && <p className={`banner ${banner.ok ? 'ok' : 'bad'}`}>{banner.text}</p>}
 
-      <h2>Needs a yes</h2>
-      {waiting.length === 0 ? (
-        <p className="empty">Nothing waiting. Reply yes in the thread.</p>
-      ) : (
-        waiting.map((p) => (
-          <div key={p.id} style={{ marginBottom: 16 }}>
-            <p className="caption">{p.caption ?? '(no caption yet)'}</p>
-            <p className="opt" style={{ fontSize: 13 }}>{formatWhen(p.scheduled_at)}</p>
-            <div className="draft-actions">
-              <form action={approvePostAction}>
-                <input type="hidden" name="postId" value={p.id} />
-                <input type="hidden" name="brandId" value={brand.id} />
-                <button className="text-btn" type="submit">Approve</button>
-              </form>
-              <form action={rejectPostAction}>
-                <input type="hidden" name="postId" value={p.id} />
-                <input type="hidden" name="brandId" value={brand.id} />
-                <button className="text-btn bad" type="submit">Remove</button>
-              </form>
+      <h2>Last {performance.days} days</h2>
+      <div className="metric-grid metric-block">
+        <div className="metric">
+          <span className="metric-val">{formatCompact(performance.postsPublished)}</span>
+          <span className="metric-lbl">Posts</span>
+        </div>
+        <div className="metric">
+          <span className="metric-val">{formatCompact(performance.reach)}</span>
+          <span className="metric-lbl">Views / reach</span>
+        </div>
+        <div className="metric">
+          <span className="metric-val">{formatCompact(performance.likes)}</span>
+          <span className="metric-lbl">Likes</span>
+        </div>
+        <div className="metric">
+          <span className="metric-val">{formatCompact(performance.comments)}</span>
+          <span className="metric-lbl">Comments</span>
+        </div>
+        {(performance.saves > 0 || performance.shares > 0) && (
+          <>
+            <div className="metric">
+              <span className="metric-val">{formatCompact(performance.saves)}</span>
+              <span className="metric-lbl">Saves</span>
             </div>
-          </div>
-        ))
+            <div className="metric">
+              <span className="metric-val">{formatCompact(performance.shares)}</span>
+              <span className="metric-lbl">Shares</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {!hasEngagement && performance.postsPublished === 0 && (
+        <p className="empty">No published posts yet. Metrics show up once Kip posts go live.</p>
+      )}
+      {!hasEngagement && performance.postsPublished > 0 && (
+        <p className="empty">Posts are live — engagement numbers appear as they come in.</p>
       )}
 
-      <h2 style={{ marginTop: 28 }}>Upcoming</h2>
-      {upcoming.length === 0 ? (
-        <p className="empty">Nothing scheduled.</p>
-      ) : (
-        upcoming.map((p) => (
-          <div key={p.id} className="rrow">
-            <span>{formatWhen(p.scheduled_at)}</span>
+      {performance.topPosts.length > 0 && hasEngagement && (
+        <>
+          <h2>Top posts</h2>
+          <div className="metric-block">
+            {performance.topPosts.map((p) => (
+              <div key={p.id} className="metric-post">
+                <p className="caption">{p.caption?.trim() || '(no caption)'}</p>
+                <p className="opt">
+                  {formatPosted(p.published_at)}
+                  {p.reach > 0 ? ` · ${formatCompact(p.reach)} reach` : ''}
+                  {p.likes > 0 ? ` · ${formatCompact(p.likes)} likes` : ''}
+                  {p.comments > 0 ? ` · ${formatCompact(p.comments)} comments` : ''}
+                </p>
+              </div>
+            ))}
           </div>
-        ))
+        </>
+      )}
+
+      <h2>Approvals</h2>
+      {waitingCount === 0 ? (
+        <p className="empty">
+          Nothing waiting.{' '}
+          <Link href="/app/approvals" style={{ color: 'inherit' }}>
+            View upcoming
+          </Link>
+        </p>
+      ) : (
+        <p className="empty" style={{ margin: 0 }}>
+          <Link className="pill-dark" href="/app/approvals">
+            {waitingCount} need{waitingCount === 1 ? 's' : ''} a yes
+          </Link>
+        </p>
       )}
 
       {connected ? (
@@ -100,7 +144,9 @@ function Aside({
         </p>
       ) : (
         <p style={{ marginTop: 24 }}>
-          <Link className="pill-dark" href="/app/connections">Connect accounts</Link>
+          <Link className="pill-dark" href="/app/connections">
+            Connect accounts
+          </Link>
         </p>
       )}
     </aside>
@@ -139,9 +185,9 @@ export default async function ThreadHome({
         ? { text: 'Add your phone in Connections so Kip has somewhere to reply.', ok: false }
         : undefined;
 
-  const [messages, upcoming, waiting] = await Promise.all([
+  const [messages, performance, waiting] = await Promise.all([
     listRecentMessages(brand.id, 40),
-    listUpcomingPosts(brand.id),
+    getBrandPerformance(brand.id, 30),
     listPostsByStatus(brand.id, ['pending_approval']),
   ]);
 
@@ -156,7 +202,12 @@ export default async function ThreadHome({
   return (
     <>
       <LiveThread firstName={user.name?.split(' ')[0] ?? null} initialMessages={initialMessages} />
-      <Aside brand={brand} waiting={waiting} upcoming={upcoming} banner={banner} />
+      <MetricsAside
+        brand={brand}
+        performance={performance}
+        waitingCount={waiting.length}
+        banner={banner}
+      />
     </>
   );
 }

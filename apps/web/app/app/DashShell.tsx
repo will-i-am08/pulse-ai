@@ -8,6 +8,7 @@ type NavItem = { href: string; label: string; match: (p: string) => boolean };
 
 const NAV: NavItem[] = [
   { href: '/app', label: 'Thread', match: (p) => p === '/app' },
+  { href: '/app/approvals', label: 'Approvals', match: (p) => p.startsWith('/app/approvals') },
   { href: '/app/plan', label: 'Calendar', match: (p) => p.startsWith('/app/plan') },
   { href: '/app/routines', label: 'Routines', match: (p) => p.startsWith('/app/routines') },
   { href: '/app/memory', label: 'Memory', match: (p) => p.startsWith('/app/memory') },
@@ -69,8 +70,7 @@ export function DashShell({ children, isAdmin }: { children: ReactNode; isAdmin:
             </Link>
           ))}
         </nav>
-        <div className="spacer" />
-        <form action={signOutAction}>
+        <form className="rail-foot" action={signOutAction}>
           <button className="navb" type="submit">
             Sign out
           </button>
