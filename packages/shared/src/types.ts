@@ -242,7 +242,7 @@ export interface LoginCode {
   user_id: string | null;
   brand_id: string | null;
   code_encrypted: string;
-  purpose: "login" | "signup";
+  purpose: "login" | "signup" | "operator_unlock";
   attempts: number;
   delivered_at: string | null;
   consumed_at: string | null;
