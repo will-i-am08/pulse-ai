@@ -1,11 +1,21 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { OperatorUser } from '@/lib/data/users';
 
 function label(u: OperatorUser): string {
   return u.name || u.email || u.phone || u.id.slice(0, 8);
+}
+
+function contactLine(u: OperatorUser): string {
+  const email = u.email ?? 'no email';
+  const phone = u.phone ?? 'no phone';
+  const brand = u.brand_name
+    ? `${u.brand_name}${u.brand_status ? ` · ${u.brand_status}` : ''}`
+    : 'no brand';
+  return `${email} · ${phone} · ${brand}`;
 }
 
 export default function OperatorUsers({ users, currentUserId }: { users: OperatorUser[]; currentUserId: string }) {
@@ -52,23 +62,35 @@ export default function OperatorUsers({ users, currentUserId }: { users: Operato
         const deactivated = Boolean(u.deleted_at);
         const isSelf = u.id === currentUserId;
         const busy = busyId === u.id;
+        const brandHref = u.brand_id ? `/app/brands/${u.brand_id}` : null;
+
+        const info = (
+          <>
+            <strong>
+              {label(u)}
+              {u.is_admin && <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>admin</span>}
+              {isSelf && <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>you</span>}
+              {deactivated && <span style={{ marginLeft: 8, fontSize: 12, color: '#c0392b' }}>deactivated</span>}
+            </strong>
+            <p className="empty" style={{ margin: '4px 0 0' }}>
+              {contactLine(u)}
+            </p>
+          </>
+        );
+
         return (
           <div
             key={u.id}
             className="brand-card"
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, opacity: deactivated ? 0.55 : 1 }}
           >
-            <div style={{ minWidth: 0 }}>
-              <strong>
-                {label(u)}
-                {u.is_admin && <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>admin</span>}
-                {isSelf && <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>you</span>}
-                {deactivated && <span style={{ marginLeft: 8, fontSize: 12, color: '#c0392b' }}>deactivated</span>}
-              </strong>
-              <p className="empty" style={{ margin: '4px 0 0' }}>
-                {u.email ?? 'no email'} · {u.brand_count} {u.brand_count === 1 ? 'brand' : 'brands'}
-              </p>
-            </div>
+            {brandHref ? (
+              <Link href={brandHref} style={{ minWidth: 0, flex: 1, textDecoration: 'none', color: 'inherit' }}>
+                {info}
+              </Link>
+            ) : (
+              <div style={{ minWidth: 0, flex: 1 }}>{info}</div>
+            )}
 
             {!isSelf && (
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>

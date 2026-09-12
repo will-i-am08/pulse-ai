@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import type { Brand } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrands } from '@/lib/data/brands';
 import { listDeletionLog, listUsersForOperator, type DeletionAction } from '@/lib/data/users';
+import OperatorUnownedBrands from './OperatorUnownedBrands';
 import OperatorUsers from './OperatorUsers';
 
 export const dynamic = 'force-dynamic';
@@ -14,16 +14,6 @@ const ACTION_VERB: Record<DeletionAction, string> = {
   hard_delete: 'permanently deleted',
   restore: 'restored',
 };
-
-function isConnected(b: Brand): boolean {
-  return Boolean(b.fb_page_id && b.platform_tokens_encrypted && b.ig_user_id);
-}
-
-function line(b: Brand): string {
-  const handle = b.ig_username ? `@${b.ig_username}` : isConnected(b) ? b.fb_page_name ?? 'connected' : 'Not connected';
-  const setup = b.onboarding_state?.status ?? 'none';
-  return `${handle} · setup ${setup} · ${b.status}`;
-}
 
 export default async function OperatorPage() {
   const user = await currentUser();
@@ -36,31 +26,28 @@ export default async function OperatorPage() {
     listDeletionLog(),
   ]);
 
+  const unownedBrands = brands.filter((b) => !b.owner_user_id);
+
   return (
     <section className="stage">
       <div className="page">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <h1 className="page-h1">All brands</h1>
+          <h1 className="page-h1">Users</h1>
           <Link className="pill-dark" href="/app/brands/new">
             Add brand
           </Link>
         </div>
-        <p className="lead">Every teammate Kip is running.</p>
+        <p className="lead">Every account and their brand. Click a user to open their brand. Deactivate is reversible; delete is permanent.</p>
 
-        {brands.length === 0 ? (
-          <p className="empty">No brands yet.</p>
-        ) : (
-          brands.map((b) => (
-            <Link key={b.id} className="brand-card" href={`/app/brands/${b.id}`}>
-              <strong>{b.name}</strong>
-              <p className="empty" style={{ margin: '4px 0 0' }}>{line(b)}</p>
-            </Link>
-          ))
-        )}
-
-        <h2 className="page-h1" style={{ marginTop: 40 }}>Users</h2>
-        <p className="lead">Every account. Deactivate is reversible; delete is permanent.</p>
         <OperatorUsers users={users} currentUserId={user.id} />
+
+        {unownedBrands.length > 0 && (
+          <>
+            <h2 className="page-h1" style={{ marginTop: 40 }}>Unowned brands</h2>
+            <p className="lead">Brands with no user attached yet. Delete removes the brand and all its data.</p>
+            <OperatorUnownedBrands brands={unownedBrands} />
+          </>
+        )}
 
         {deletionLog.length > 0 && (
           <>

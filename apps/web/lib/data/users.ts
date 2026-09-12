@@ -1,10 +1,12 @@
 import 'server-only';
 import { query, queryOne } from '@pulse/shared';
-import type { User } from '@pulse/shared';
+import type { BrandStatus, User } from '@pulse/shared';
 
-/** A user plus how many brands they own — the operator list row. */
+/** A user plus their primary brand — the operator list row. */
 export interface OperatorUser extends User {
-  brand_count: number;
+  brand_id: string | null;
+  brand_name: string | null;
+  brand_status: BrandStatus | null;
 }
 
 /** Who performed a deletion action, for the audit trail. */
@@ -33,14 +35,20 @@ function labelFor(u: { name?: string | null; email?: string | null; phone?: stri
 /**
  * All accounts for the operator console, most recent first. Includes
  * soft-deleted users (flagged by `deleted_at`) so an operator can restore them.
+ * Attaches each user's primary brand (earliest created) when one exists.
  */
 export async function listUsersForOperator(): Promise<OperatorUser[]> {
   return query<OperatorUser>(
     `select u.id, u.email, u.phone, u.name, u.is_admin, u.created_at, u.deleted_at,
-            count(b.id)::int as brand_count
+            b.id as brand_id, b.name as brand_name, b.status as brand_status
        from users u
-       left join brands b on b.owner_user_id = u.id
-      group by u.id
+       left join lateral (
+         select id, name, status
+           from brands
+          where owner_user_id = u.id
+          order by created_at asc
+          limit 1
+       ) b on true
       order by u.deleted_at nulls first, u.created_at desc`,
   );
 }

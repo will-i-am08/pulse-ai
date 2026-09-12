@@ -44,3 +44,21 @@ export async function updateBrandVoiceProfile(brandId: string, profile: BrandVoi
     brandId,
   ]);
 }
+
+export type DeleteBrandResult =
+  | { ok: true }
+  | { ok: false; error: 'not_found' | 'has_owner' };
+
+/**
+ * Permanently delete a brand that has no owner. Cascades brand-scoped data via
+ * existing FKs. Refuses brands still attached to a user — delete the user
+ * (hard) instead, which cascades their brands.
+ */
+export async function deleteUnownedBrand(brandId: string): Promise<DeleteBrandResult> {
+  const brand = await getBrand(brandId);
+  if (!brand) return { ok: false, error: 'not_found' };
+  if (brand.owner_user_id) return { ok: false, error: 'has_owner' };
+
+  await query(`delete from brands where id = $1 and owner_user_id is null`, [brandId]);
+  return { ok: true };
+}
