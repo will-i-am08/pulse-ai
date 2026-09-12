@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { currentUser } from '@/lib/auth/current-user';
+import { verifyOperatorPassword } from '@/lib/auth/operator-password';
 import {
   hardDeleteUser,
   restoreUser,
@@ -11,12 +12,10 @@ import {
   type DeleteUserResult,
 } from '@/lib/data/users';
 
-/** The signed-in admin as an audit-log actor. */
 function actorFor(user: { id: string; name: string | null; email: string | null; phone: string | null }): Actor {
   return { id: user.id, label: user.name || user.email || user.phone || user.id.slice(0, 8) };
 }
 
-/** Map a data-layer refusal to an HTTP status + message. */
 function fail(result: Extract<DeleteUserResult, { ok: false }>): NextResponse {
   const map: Record<typeof result.error, { status: number; message: string }> = {
     not_found: { status: 404, message: 'User not found.' },
@@ -29,8 +28,8 @@ function fail(result: Extract<DeleteUserResult, { ok: false }>): NextResponse {
 }
 
 /**
- * Delete a user. `?mode=soft` (default) deactivates reversibly; `?mode=hard`
- * permanently erases the account and cascades to their brands. Admin-only.
+ * Delete a user. Soft (default) needs no password; hard requires OPERATOR_PASSWORD
+ * in the JSON body `{ password }`.
  */
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
@@ -40,14 +39,31 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const { id } = await context.params;
   const mode = new URL(request.url).searchParams.get('mode') === 'hard' ? 'hard' : 'soft';
 
+  if (mode === 'hard') {
+    let password = '';
+    try {
+      const body = (await request.json()) as { password?: string };
+      password = String(body.password ?? '');
+    } catch {
+      return NextResponse.json(
+        { error: 'password_required', message: 'Operator password is required for permanent delete.' },
+        { status: 400 },
+      );
+    }
+    if (!verifyOperatorPassword(password)) {
+      return NextResponse.json(
+        { error: 'bad_password', message: 'Incorrect operator password.' },
+        { status: 403 },
+      );
+    }
+  }
+
   const actor = actorFor(user);
-  const result =
-    mode === 'hard' ? await hardDeleteUser(id, actor) : await softDeleteUser(id, actor);
+  const result = mode === 'hard' ? await hardDeleteUser(id, actor) : await softDeleteUser(id, actor);
   if (!result.ok) return fail(result);
   return NextResponse.json({ ok: true, mode });
 }
 
-/** Restore a soft-deleted user. Admin-only. */
 export async function PATCH(_request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });

@@ -148,3 +148,58 @@ export async function hardDeleteUser(userId: string, actor: Actor): Promise<Dele
   await logAction('hard_delete', actor, { id: userId, label: labelFor(target) });
   return { ok: true };
 }
+
+/** Load a single user (including soft-deleted) for the operator profile page. */
+export async function getUserById(userId: string): Promise<OperatorUser | null> {
+  const rows = await query<OperatorUser>(
+    `select u.id, u.email, u.phone, u.name, u.is_admin, u.created_at, u.deleted_at,
+            b.id as brand_id, b.name as brand_name, b.status as brand_status
+       from users u
+       left join lateral (
+         select id, name, status
+           from brands
+          where owner_user_id = u.id
+          order by created_at asc
+          limit 1
+       ) b on true
+      where u.id = $1`,
+    [userId],
+  );
+  return rows[0] ?? null;
+}
+
+export type UpdateUserPrivateResult =
+  | { ok: true }
+  | { ok: false; error: 'not_found' | 'email_taken' | 'phone_taken' };
+
+/** Update private profile fields. Caller must enforce the OTP unlock gate. */
+export async function updateUserPrivateFields(
+  userId: string,
+  fields: { name: string | null; email: string | null; phone: string | null },
+): Promise<UpdateUserPrivateResult> {
+  const existing = await queryOne<User>(`select id from users where id = $1`, [userId]);
+  if (!existing) return { ok: false, error: 'not_found' };
+
+  if (fields.email) {
+    const taken = await queryOne<{ id: string }>(
+      `select id from users where lower(email) = lower($1) and id <> $2`,
+      [fields.email, userId],
+    );
+    if (taken) return { ok: false, error: 'email_taken' };
+  }
+  if (fields.phone) {
+    const taken = await queryOne<{ id: string }>(
+      `select id from users where phone = $1 and id <> $2`,
+      [fields.phone, userId],
+    );
+    if (taken) return { ok: false, error: 'phone_taken' };
+  }
+
+  await query(`update users set name = $2, email = $3, phone = $4 where id = $1`, [
+    userId,
+    fields.name,
+    fields.email,
+    fields.phone,
+  ]);
+  return { ok: true };
+}

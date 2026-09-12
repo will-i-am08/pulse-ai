@@ -175,9 +175,14 @@ export async function deliverPendingLoginCodes(
       continue;
     }
     const body =
-      `Your Kip login code is ${code}. ` +
-      `Enter it on the dashboard to sign in — it expires in about ${LOGIN_CODE_TTL_MINUTES} minutes. ` +
-      `If you didn't try to log in, ignore this.`;
+      row.purpose === 'operator_unlock'
+        ? `Kip operator unlock code: ${code}. ` +
+          `An operator needs this to edit your account details. ` +
+          `It expires in about ${LOGIN_CODE_TTL_MINUTES} minutes. ` +
+          `If you weren't expecting this, ignore it and contact support.`
+        : `Your Kip login code is ${code}. ` +
+          `Enter it on the dashboard to sign in — it expires in about ${LOGIN_CODE_TTL_MINUTES} minutes. ` +
+          `If you didn't try to log in, ignore this.`;
     try {
       const ok = await deliverCodeBody(row, body);
       if (!ok) continue;
