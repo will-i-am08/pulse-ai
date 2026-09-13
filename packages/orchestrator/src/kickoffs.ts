@@ -26,6 +26,7 @@ import {
   withPreferredVisuals,
   type VisualMode,
 } from "./visualMode.js";
+import { mapWithConcurrency, DRAFT_CONCURRENCY } from "./concurrency.js";
 
 
 /**
@@ -50,6 +51,15 @@ export type KickoffDrainResult = {
   brandId: string;
   sms: string;
   mediaUrl?: string;
+};
+
+/** Optional per-draft delivery hook — SMS as soon as each draft is ready. */
+export type KickoffDeliver = (result: KickoffDrainResult) => Promise<void>;
+
+export type KickoffDrainOpts = {
+  deliver?: KickoffDeliver;
+  /** Parallel draft slots (default DRAFT_CONCURRENCY). */
+  concurrency?: number;
 };
 
 const COMMIT_RE =
@@ -375,6 +385,7 @@ async function draftGeneratedPiece(
 async function runFirstBatch(
   brand: Brand,
   payload: Record<string, unknown>,
+  opts?: KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 3) || 3));
   const pillars = await ensurePillars(brand.id);
@@ -389,29 +400,37 @@ async function runFirstBatch(
   const visuals = resolveVisualMode(brand, payload);
   await rememberPreferredVisuals(brand, visuals);
   const kinds: TypedCarouselKind[] = ["tip", "steps", "before_after", "menu_offer"];
-  const out: KickoffDrainResult[] = [];
-  const postIds: string[] = [];
+  const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
+  const slots = Array.from({ length: count }, (_, i) => i);
 
-  for (let i = 0; i < count; i++) {
+  const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
     const kind = kinds[i % kinds.length]!;
-    const drafted = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals);
-    if (!drafted) continue;
-    postIds.push(drafted.post.id);
-    const when = drafted.post.scheduled_at
-      ? formatSlot(new Date(drafted.post.scheduled_at))
+    const piece = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals);
+    if (!piece) return null;
+    const when = piece.post.scheduled_at
+      ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
-    const n = out.length + 1;
-    out.push({
+    const n = i + 1;
+    const result: KickoffDrainResult = {
       brandId: brand.id,
       sms:
         n === 1
-          ? `First batch, ${n}/${count} — ${drafted.kindLabel} for ${pillar.name}:\n\n"${clipCaption(drafted.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
-          : `Batch ${n}/${count} — ${drafted.kindLabel} for ${pillar.name}:\n\n"${clipCaption(drafted.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-      mediaUrl: drafted.mediaUrl,
-    });
-  }
+          ? `First batch, ${n}/${count} — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
+          : `Batch ${n}/${count} — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+      mediaUrl: piece.mediaUrl,
+    };
+    if (opts?.deliver) {
+      try {
+        await opts.deliver(result);
+      } catch (err) {
+        console.error(`runFirstBatch: deliver failed for slot ${n}`, err);
+      }
+    }
+    return result;
+  });
 
+  const out = drafted.filter((r): r is KickoffDrainResult => r != null);
   if (!out.length) {
     return [
       {
@@ -426,6 +445,7 @@ async function runFirstBatch(
 async function runDraftPosts(
   brand: Brand,
   payload: Record<string, unknown>,
+  opts?: KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 2) || 2));
   const pillars = await ensurePillars(brand.id);
@@ -439,26 +459,38 @@ async function runDraftPosts(
   }
   const visuals = resolveVisualMode(brand, payload);
   await rememberPreferredVisuals(brand, visuals);
-  const out: KickoffDrainResult[] = [];
-  for (let i = 0; i < count; i++) {
+  const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
+  const slots = Array.from({ length: count }, (_, i) => i);
+
+  const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
-    const drafted = await draftGeneratedPiece(
+    const piece = await draftGeneratedPiece(
       brand,
       pillar,
       i % 2 === 0 ? "carousel" : "filler",
       i % 2 === 0 ? "tip" : "steps",
       visuals,
     );
-    if (!drafted) continue;
-    const when = drafted.post.scheduled_at
-      ? formatSlot(new Date(drafted.post.scheduled_at))
+    if (!piece) return null;
+    const when = piece.post.scheduled_at
+      ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
-    out.push({
+    const result: KickoffDrainResult = {
       brandId: brand.id,
-      sms: `Draft ready — ${drafted.kindLabel} for ${pillar.name}:\n\n"${clipCaption(drafted.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-      mediaUrl: drafted.mediaUrl,
-    });
-  }
+      sms: `Draft ready — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+      mediaUrl: piece.mediaUrl,
+    };
+    if (opts?.deliver) {
+      try {
+        await opts.deliver(result);
+      } catch (err) {
+        console.error("runDraftPosts: deliver failed", err);
+      }
+    }
+    return result;
+  });
+
+  const out = drafted.filter((r): r is KickoffDrainResult => r != null);
   if (!out.length) {
     return [{ brandId: brand.id, sms: "Couldn't finish those drafts just then — try again in a moment?" }];
   }
@@ -586,7 +618,10 @@ async function runTrendOrCompetitorDraft(
   ];
 }
 
-export async function processKickoff(kickoffId: string): Promise<KickoffDrainResult[]> {
+export async function processKickoff(
+  kickoffId: string,
+  opts?: KickoffDrainOpts,
+): Promise<KickoffDrainResult[]> {
   const claimed = await claimKickoff(kickoffId);
   if (!claimed) return [];
 
@@ -601,18 +636,30 @@ export async function processKickoff(kickoffId: string): Promise<KickoffDrainRes
       ? (claimed.payload as Record<string, unknown>)
       : {};
 
+  const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
+    if (!opts?.deliver) return;
+    try {
+      await opts.deliver(result);
+    } catch (err) {
+      console.error("processKickoff: deliver failed", err);
+    }
+  };
+
   try {
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
       case "first_batch":
-        results = await runFirstBatch(brand, payload);
+        results = await runFirstBatch(brand, payload, opts);
         break;
       case "draft_posts":
-        results = await runDraftPosts(brand, payload);
+        results = await runDraftPosts(brand, payload, opts);
         break;
       case "trend_draft":
       case "competitor_draft":
         results = await runTrendOrCompetitorDraft(brand, claimed.kind, payload);
+        if (opts?.deliver) {
+          for (const r of results) await deliverOnce(r);
+        }
         break;
       default:
         await failKickoff(kickoffId, `unknown kind ${claimed.kind}`);
@@ -627,24 +674,27 @@ export async function processKickoff(kickoffId: string): Promise<KickoffDrainRes
     const message = err instanceof Error ? err.message : String(err);
     console.error(`processKickoff: ${kickoffId} failed`, err);
     await failKickoff(kickoffId, message);
-    return [
-      {
-        brandId: brand.id,
-        sms: "That background task glitched on my side — say the word and I'll retry.",
-      },
-    ];
+    const failResult: KickoffDrainResult = {
+      brandId: brand.id,
+      sms: "That background task glitched on my side — say the word and I'll retry.",
+    };
+    await deliverOnce(failResult);
+    return [failResult];
   }
 }
 
 /** Drain queued kickoffs (worker loop). */
-export async function runKickoffDrain(limit = 2): Promise<KickoffDrainResult[]> {
+export async function runKickoffDrain(
+  limit = 2,
+  opts?: KickoffDrainOpts,
+): Promise<KickoffDrainResult[]> {
   const rows = await query<KipKickoff>(
     `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
     [limit],
   );
   const out: KickoffDrainResult[] = [];
   for (const row of rows) {
-    const results = await processKickoff(row.id);
+    const results = await processKickoff(row.id, opts);
     out.push(...results);
   }
   return out;

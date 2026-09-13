@@ -26,3 +26,6 @@ export async function mapWithConcurrency<T, R>(
 
 /** Default concurrency for slide / photo-batch renders. */
 export const SLIDE_RENDER_CONCURRENCY = 3;
+
+/** Default concurrency for parallel first-batch / draft-posts generation. */
+export const DRAFT_CONCURRENCY = 3;

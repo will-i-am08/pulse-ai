@@ -147,7 +147,7 @@ export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer
 export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms } from "./designQa.js";
 export { routeImageJob, specialtyReplicateGenerate, specialtyCostSmsHint } from "./modelRouter.js";
 export type { ImageJob, ImageEngine, RouteDecision } from "./modelRouter.js";
-export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
+export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY } from "./concurrency.js";
 export {
   createInteraction,
   claimInteraction,
@@ -417,7 +417,7 @@ export {
   processKickoff,
   runKickoffDrain,
 } from "./kickoffs.js";
-export type { KickoffEnqueueResult, KickoffDrainResult } from "./kickoffs.js";
+export type { KickoffEnqueueResult, KickoffDrainResult, KickoffDeliver, KickoffDrainOpts } from "./kickoffs.js";
 
 export {
   maybeEnqueueCompetitorDraft,

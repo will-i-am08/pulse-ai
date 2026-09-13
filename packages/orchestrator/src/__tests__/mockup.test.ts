@@ -64,3 +64,26 @@ describe("renderStoryMockup", () => {
     expect(Math.abs((meta.height ?? 0) - 1920)).toBeLessThanOrEqual(2);
   }, 60_000);
 });
+
+describe("renderFeedMockup composite path", () => {
+  it("returns a jpeg without requiring a base64 photo in the SVG path", async () => {
+    const { renderFeedMockup } = await import("../mockup.js");
+    // 8x8 red png
+    const sharp = (await import("sharp")).default;
+    const photo = await sharp({
+      create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const out = await renderFeedMockup(photo, {
+      brandName: "Bill Calder",
+      igUsername: "billcalder",
+      caption: "Hiring process theater is real.",
+      aspectRatio: "1:1",
+    });
+    expect(out.length).toBeGreaterThan(1000);
+    // JPEG magic
+    expect(out[0]).toBe(0xff);
+    expect(out[1]).toBe(0xd8);
+  }, 20000);
+});
