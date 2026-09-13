@@ -72,6 +72,13 @@ export {
 } from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
 
+export {
+  looksLikePhotoBackgroundAsk,
+  looksLikePhotoVisualsAsk,
+  looksLikeDesignedVisualsAsk,
+  inferVisualModeFromText,
+} from "./visualMode.js";
+
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
 export { scheduleSlot } from "./scheduler.js";
 export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";

@@ -406,7 +406,12 @@ export function replyAlreadyAcked(next: string): boolean {
   if (/^(hey|hi|hello|yo)\b/i.test(first)) {
     return first.length <= 40 && !/\?/.test(first);
   }
-  return /^(on it|got it|got you|nice one|anytime|no worries|all good|makes sense|cool\b|fair enough|love that|noted)\b/i.test(
+  // "On it — regenerating 4 with photo backgrounds…" is a real work commitment, not a
+  // thin ack bubble. Only treat on-it / got-it openers as acks when they're short.
+  if (/^(on it|got it|got you)\b/i.test(first)) {
+    return first.length <= 55;
+  }
+  return /^(nice one|anytime|no worries|all good|makes sense|cool\b|fair enough|love that|noted)\b/i.test(
     first,
   );
 }
@@ -420,7 +425,10 @@ export function stripLeadingAck(reply: string): string {
   if (!trimmed) return "";
   if (!replyAlreadyAcked(trimmed)) return trimmed;
   const parts = trimmed.split(/\n\n+/);
-  if (parts.length <= 1) return "";
+  // Single-paragraph work commitments must not be wiped after an instant ack.
+  if (parts.length <= 1) {
+    return trimmed.length > 55 ? trimmed : "";
+  }
   return parts.slice(1).join("\n\n").trim();
 }
 

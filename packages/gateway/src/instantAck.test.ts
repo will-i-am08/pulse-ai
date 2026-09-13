@@ -65,6 +65,17 @@ describe("shouldSendInstantTextAck", () => {
     expect(shouldSendInstantTextAck(done, "Can you rerun the plan build")).toBe(false);
     expect(shouldSendInstantTextAck(done, "rebuild my niche plan")).toBe(false);
   });
+
+  it("skips photo-background redo asks so the commitment SMS is the first reply", () => {
+    const done = { onboarding_state: { status: "done" as const } };
+    expect(
+      shouldSendInstantTextAck(
+        done,
+        "Could you put pictures in the background of them? All of them",
+      ),
+    ).toBe(false);
+    expect(shouldSendInstantTextAck(done, "add photo backgrounds to all of these")).toBe(false);
+  });
 });
 
 describe("splitIntoBubbles", () => {

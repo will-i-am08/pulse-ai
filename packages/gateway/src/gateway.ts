@@ -5,6 +5,7 @@ import {
   craftHumanAck,
   stripLeadingAck,
   looksLikeAffirmation,
+  looksLikePhotoBackgroundAsk,
   buildOnboardingPlanSms,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
@@ -83,6 +84,9 @@ export function shouldSendInstantTextAck(
   // to the real answer. A standalone "On it — wrapping that up" before the
   // status SMS feels like filler, not progress.
   if (looksLikeProgressCheck(t)) return false;
+  // Photo-background redo asks — skip the thin "Makes sense" SMS; the orchestrator
+  // reply is the real commitment ("Yeah sure — on it, ~N min").
+  if (looksLikePhotoBackgroundAsk(t)) return false;
   // Plan rebuild asks / scratch confirms — avoid a lone "Got you" while research runs;
   // the plan SMS (or a real holding line) is the reply.
   if (
