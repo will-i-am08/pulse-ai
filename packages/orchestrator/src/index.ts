@@ -406,6 +406,25 @@ export {
   processAiVideoJob,
   runAiVideoJobDrain,
 } from "./aiVideo.js";
+
+export {
+  looksLikeKickoffRequest,
+  inferKickoffFromUserMessage,
+  inferKickoffFromKipCommit,
+  enqueueKickoff,
+  enqueueKickoffFromUserMessage,
+  maybeEnqueueFromKipCommit,
+  processKickoff,
+  runKickoffDrain,
+} from "./kickoffs.js";
+export type { KickoffEnqueueResult, KickoffDrainResult } from "./kickoffs.js";
+
+export {
+  maybeEnqueueCompetitorDraft,
+  queueTrendDraftKickoffs,
+  runAutonomyPass,
+} from "./autonomy.js";
+
 export type { AiVideoProvider, AiVideoRoute, QueueAiVideoResult } from "./aiVideo.js";
 export type { DraftCaptionOpts } from "./draftCaption.js";
 
