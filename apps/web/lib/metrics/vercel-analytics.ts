@@ -133,7 +133,8 @@ export async function fetchVercelVisitSeries(range: MetricsRange): Promise<{
     since,
     until,
     by,
-    limit: '1000',
+    // Web Analytics API rejects limit > 100.
+    limit: '100',
   });
   if (!json?.data) return null;
 
