@@ -65,6 +65,14 @@ export function PricingPlans() {
         Prices in AUD. Cancel anytime. Annual billed up front
         {annual ? ' · shown as monthly equivalent' : ''}.
       </p>
+      <div className={`${styles.riskRow} ${styles.reveal}`}>
+        <p className={styles.riskTitle}>First week, on us if it isn’t useful.</p>
+        <p className={styles.riskCopy}>
+          Start monthly. Ready in about ten minutes. If the first seven days don’t earn their keep,
+          email <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> for a refund of that week.
+          No annual lock-in on monthly.
+        </p>
+      </div>
     </>
   );
 }

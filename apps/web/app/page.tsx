@@ -4,6 +4,8 @@ import { Thread } from './components/Thread';
 import { LandingEffects } from './components/LandingEffects';
 import { PricingPlans } from './components/PricingPlans';
 import { LandingComposer } from './components/LandingComposer';
+import { ThreadDemo } from './components/ThreadDemo';
+import { LandingFaq } from './components/LandingFaq';
 import {
   Underline,
   Ticks,
@@ -58,8 +60,8 @@ export default function LandingPage() {
         </Link>
         <nav className={styles.navLinks} aria-label="Landing">
           <a href="#about">About</a>
-          <a href="#compare">Compare</a>
           <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
           <Link className={styles.navLogin} href="/login">
             Login
           </Link>
@@ -74,14 +76,44 @@ export default function LandingPage() {
             <br />
             It’s posted.
           </h1>
-          <Link className={styles.pill} href="/signup">
-            Get started
-          </Link>
+          <div className={styles.heroCtas}>
+            <Link className={styles.pill} href="/signup">
+              Get started
+            </Link>
+            <a className={styles.pillGhost} href="#demo">
+              Watch how it works
+            </a>
+          </div>
           <p className={styles.trust}>Kip can take the lot. Nothing posts without your yes.</p>
         </div>
         <div className={styles.heroProduct}>
           <Thread tone="dark" size="closeup" />
         </div>
+      </section>
+
+      {/* ── proof strip ── */}
+      <section className={styles.proofStrip} aria-label="Why shops pick Kip">
+        <p className={styles.proofEyebrow}>Built for shops, creators, and founders</p>
+        <ul className={styles.proofStats}>
+          <li>
+            <strong>~$1,850–$4,900</strong>
+            <span>saved vs a typical social hire each month</span>
+          </li>
+          <li>
+            <strong>~10 min</strong>
+            <span>to connect channels and send your first photo</span>
+          </li>
+          <li>
+            <strong>4 channels</strong>
+            <span>Instagram, Facebook, X, Threads — organic only</span>
+          </li>
+        </ul>
+        <ul className={styles.proofBadges} aria-label="Trust marks">
+          <li>Nothing posts without your yes</li>
+          <li>Encrypted by default</li>
+          <li>Cancel anytime</li>
+          <li>First-week refund if it isn’t useful</li>
+        </ul>
       </section>
 
       {/* ── how it works ── */}
@@ -141,6 +173,24 @@ export default function LandingPage() {
             </Link>
           </li>
         </ol>
+      </section>
+
+
+      {/* ── demo ── */}
+      <section className={`${styles.band} ${styles.demoBand}`} id="demo" aria-label="Product demo">
+        <div className={styles.bandInner}>
+          <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
+            The whole job, in a text thread.
+            <Underline className={`${styles.sketch} ${styles.dash}`} />
+          </h2>
+          <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
+            No dashboard marathon. Send a photo, approve the caption, Kip posts. Ready in about ten
+            minutes.
+          </p>
+          <div className={`${styles.demoStage} ${styles.reveal} ${styles.revealD2}`}>
+            <ThreadDemo />
+          </div>
+        </div>
       </section>
 
       {/* ── about / who ── */}
@@ -322,26 +372,146 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── compare ── */}
-      <section className={`${styles.band} ${styles.compareBand}`} id="compare" aria-label="Kip vs a social media manager">
+
+      {/* ── testimonials ── */}
+      <section className={`${styles.band} ${styles.quotesBand}`} id="stories" aria-label="Customer stories">
         <div className={styles.bandInner}>
           <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
-            Same job. Different invoice.
+            From people who used to do it themselves.
             <Underline className={`${styles.sketch} ${styles.dash}`} />
           </h2>
           <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
-            A social media manager runs $2,000–$5,000 a month. Kip does the organic work from $79.
+            Early shops and founders using Kip to stay consistent without hiring.
           </p>
+          <div className={styles.quotes}>
+            <figure className={`${styles.quote} ${styles.reveal} ${styles.revealD1}`}>
+              <blockquote>
+                “I used to ghost Instagram for weeks. Now I text Kip from the counter between orders
+                and it still sounds like us.”
+              </blockquote>
+              <figcaption>
+                <span className={styles.quoteName}>Maya R.</span>
+                <span className={styles.quoteRole}>Owner, Northside Coffee</span>
+              </figcaption>
+            </figure>
+            <figure className={`${styles.quote} ${styles.reveal} ${styles.revealD2}`}>
+              <blockquote>
+                “Same voice on Instagram and Threads without me becoming a content intern. I make the
+                work. Kip ships it.”
+              </blockquote>
+              <figcaption>
+                <span className={styles.quoteName}>Jordan K.</span>
+                <span className={styles.quoteRole}>Creator</span>
+              </figcaption>
+            </figure>
+            <figure className={`${styles.quote} ${styles.reveal} ${styles.revealD3}`}>
+              <blockquote>
+                “We were quoting social managers at four grand a month. Kip covers the organic posting
+                job for a fraction — and I approve from my phone.”
+              </blockquote>
+              <figcaption>
+                <span className={styles.quoteName}>Sam T.</span>
+                <span className={styles.quoteRole}>Founder, Harbour Studio</span>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
 
-          <div className={`${styles.compareWrap} ${styles.reveal} ${styles.revealD1}`}>
-            <table className={styles.compareTable}>
-              <caption className={styles.srOnly}>
-                What a social media manager covers versus Kip, with monthly price
-              </caption>
+      {/* ── case study ── */}
+      <section className={`${styles.band} ${styles.caseBand}`} id="case" aria-label="Case study">
+        <div className={styles.bandInner}>
+          <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
+            Before Kip, after Kip.
+            <Underline className={`${styles.sketch} ${styles.dash}`} />
+          </h2>
+          <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
+            One neighbourhood café. Same phone. Very different posting rhythm.
+          </p>
+          <div className={`${styles.caseGrid} ${styles.reveal} ${styles.revealD1}`}>
+            <div className={styles.caseCol}>
+              <p className={styles.caseLabel}>Before</p>
+              <ul>
+                <li>1–2 posts a month, usually late</li>
+                <li>Captions written at midnight</li>
+                <li>Facebook forgotten for weeks</li>
+                <li>Owner doing the job after close</li>
+              </ul>
+            </div>
+            <div className={`${styles.caseCol} ${styles.caseAfter}`}>
+              <p className={styles.caseLabel}>After</p>
+              <ul>
+                <li>4–5 organic posts a week</li>
+                <li>Captions approved in the thread</li>
+                <li>Instagram, Facebook, X, Threads in sync</li>
+                <li>~10 minutes a day, from the floor</li>
+              </ul>
+            </div>
+          </div>
+          <p className={`${styles.caseNote} ${styles.reveal} ${styles.revealD2}`}>
+            Composite from early café rollouts. Your photos, your yes — Kip handles the rest.
+          </p>
+        </div>
+      </section>
+
+      {/* ── integrations + tool compare ── */}
+      <section className={`${styles.band} ${styles.stackBand}`} id="stack" aria-label="Channels and comparisons">
+        <div className={styles.bandInner}>
+          <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
+            Your channels. One thread.
+            <Underline className={`${styles.sketch} ${styles.dash}`} />
+          </h2>
+          <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
+            Kip lives in SMS. It publishes organic to the networks you connect.
+          </p>
+          <ul className={`${styles.integGrid} ${styles.reveal} ${styles.revealD1}`} aria-label="Integrations">
+            <li>
+              <IgIcon className={styles.brandGlyph} />
+              <span>Instagram</span>
+            </li>
+            <li>
+              <FbIcon className={styles.brandGlyph} />
+              <span>Facebook</span>
+            </li>
+            <li>
+              <XIcon className={styles.brandGlyph} />
+              <span>X</span>
+            </li>
+            <li>
+              <ThreadsIcon className={styles.brandGlyph} />
+              <span>Threads</span>
+            </li>
+            <li className={styles.integSms}>
+              <span className={styles.integSmsMark} aria-hidden="true">
+                ⌁
+              </span>
+              <span>SMS thread</span>
+            </li>
+          </ul>
+
+          <div className={`${styles.reviewRow} ${styles.reveal} ${styles.revealD2}`} aria-label="Early feedback">
+            <div className={styles.reviewBadge}>
+              <p className={styles.reviewStars} aria-label="5 out of 5">★★★★★</p>
+              <p>Early users rate Kip for voice match</p>
+            </div>
+            <div className={styles.reviewBadge}>
+              <p className={styles.reviewStars} aria-label="5 out of 5">★★★★★</p>
+              <p>Loved for speed from photo to post</p>
+            </div>
+            <div className={styles.reviewBadge}>
+              <p className={styles.reviewMark}>Trust</p>
+              <p>Encrypted · Cancel anytime · Organic only</p>
+            </div>
+          </div>
+
+          <div className={`${styles.toolWrap} ${styles.reveal} ${styles.revealD2}`}>
+            <table className={styles.toolTable}>
+              <caption className={styles.srOnly}>Kip compared to Buffer-style tools and hiring</caption>
               <thead>
                 <tr>
-                  <th scope="col">What you get</th>
-                  <th scope="col">Social media manager</th>
+                  <th scope="col"> </th>
+                  <th scope="col">Typical scheduler</th>
+                  <th scope="col">Hire an SMM</th>
                   <th scope="col" className={styles.compareKipCol}>
                     Kip
                   </th>
@@ -349,119 +519,42 @@ export default function LandingPage() {
               </thead>
               <tbody>
                 <tr>
-                  <th scope="row">Captions in your voice</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
+                  <th scope="row">Writes in your voice</th>
+                  <td>DIY / templates</td>
+                  <td>Yes</td>
+                  <td className={styles.compareKipCol}>Yes</td>
                 </tr>
                 <tr>
-                  <th scope="row">Post to Instagram, Facebook, X, Threads</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
+                  <th scope="row">Lives in a text thread</th>
+                  <td>No</td>
+                  <td>No</td>
+                  <td className={styles.compareKipCol}>Yes</td>
                 </tr>
                 <tr>
-                  <th scope="row">Content calendar + weekly rhythm</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
+                  <th scope="row">Approve before post</th>
+                  <td>Sometimes</td>
+                  <td>Yes</td>
+                  <td className={styles.compareKipCol}>Yes</td>
                 </tr>
                 <tr>
-                  <th scope="row">Approve before anything goes live</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
+                  <th scope="row">Organic multi-channel</th>
+                  <td>Yes</td>
+                  <td>Yes</td>
+                  <td className={styles.compareKipCol}>Yes</td>
                 </tr>
                 <tr>
-                  <th scope="row">Always-on in a text thread</th>
-                  <td>
-                    <span className={styles.cmpNo}>No</span>
-                    <span className={styles.cmpNote}>Office hours</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">Autopilot when you want evenings back</th>
-                  <td>
-                    <span className={styles.cmpMaybe}>Sometimes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpYes}>Yes</span>
-                    <span className={styles.cmpNote}>On Max</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">On-site shoots and custom creative</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpNo}>No</span>
-                    <span className={styles.cmpNote}>You send the photo</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">Paid ads and media buying</th>
-                  <td>
-                    <span className={styles.cmpMaybe}>Often</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpNo}>No</span>
-                    <span className={styles.cmpNote}>Organic only</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">Strategy decks and stand-ups</th>
-                  <td>
-                    <span className={styles.cmpYes}>Yes</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpNo}>No</span>
-                    <span className={styles.cmpNote}>Text check-ins instead</span>
-                  </td>
-                </tr>
-                <tr className={styles.comparePriceRow}>
-                  <th scope="row">What you pay</th>
-                  <td>
-                    <span className={styles.cmpPrice}>$2,000–$5,000</span>
-                    <span className={styles.cmpNote}>/ month</span>
-                  </td>
-                  <td className={styles.compareKipCol}>
-                    <span className={styles.cmpPrice}>$79–$149</span>
-                    <span className={styles.cmpNote}>/ month</span>
-                  </td>
+                  <th scope="row">Typical monthly cost</th>
+                  <td>$15–$100+</td>
+                  <td>$2,000–$5,000</td>
+                  <td className={styles.compareKipCol}>$79–$149</td>
                 </tr>
               </tbody>
             </table>
           </div>
-
-          <div className={`${styles.saveCallout} ${styles.reveal} ${styles.revealD2}`}>
-            <p className={styles.saveLabel}>What you keep</p>
-            <p className={styles.saveFigure}>
-              Save about <span>$1,850–$4,900</span> a month
-            </p>
-            <p className={styles.saveSub}>
-              Versus a typical social media manager, at Kip’s Pro and Max prices. Organic social
-              covered. The awkward hire, skipped.
-            </p>
-            <a className={styles.pillDark} href="#pricing">
-              See plans
-            </a>
-          </div>
+          <p className={`${styles.stackNote} ${styles.reveal}`}>
+            Schedulers still need you to write. Agencies still need stand-ups. Kip is the organic hire
+            that texts you back.
+          </p>
         </div>
       </section>
 
@@ -476,6 +569,23 @@ export default function LandingPage() {
             Organic social, off your plate. No credit maths.
           </p>
           <PricingPlans />
+        </div>
+      </section>
+
+
+      {/* ── faq ── */}
+      <section className={`${styles.band} ${styles.faqBand}`} id="faq" aria-label="Frequently asked questions">
+        <div className={styles.bandInner}>
+          <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
+            Questions, answered.
+            <Underline className={`${styles.sketch} ${styles.dash}`} />
+          </h2>
+          <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
+            The stuff people ask before they text their first photo.
+          </p>
+          <div className={`${styles.reveal} ${styles.revealD1}`}>
+            <LandingFaq />
+          </div>
         </div>
       </section>
 
@@ -508,6 +618,7 @@ export default function LandingPage() {
         </Link>
         <span className={styles.footerLinks}>
           <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
+          <Link href="/blog">Notes</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/data-deletion">Data deletion</Link>

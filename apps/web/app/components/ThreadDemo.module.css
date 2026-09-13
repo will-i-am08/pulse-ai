@@ -1,0 +1,140 @@
+.demo {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+}
+
+.phone {
+  width: min(340px, 100%);
+  background: #111;
+  border-radius: 36px;
+  padding: 14px 12px 18px;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 28px 60px -36px rgba(0, 0, 0, 0.55);
+}
+
+.notch {
+  width: 96px;
+  height: 8px;
+  border-radius: 980px;
+  background: #2a2a2a;
+  margin: 4px auto 14px;
+}
+
+.thread {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 6px 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro', system-ui, sans-serif;
+}
+
+.bubble {
+  display: flex;
+  max-width: 88%;
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+  pointer-events: none;
+}
+
+.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.bubble.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.out {
+  align-self: flex-end;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.in {
+  align-self: flex-start;
+}
+
+.bubble p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 400;
+}
+
+.in p {
+  background: #2c2c2e;
+  color: #f5f5f7;
+  border-radius: 20px 20px 20px 6px;
+  padding: 12px 14px;
+}
+
+.photoBubble {
+  max-width: 72%;
+}
+
+.photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 22px 22px 6px 22px;
+}
+
+.yesBubble {
+  max-width: none;
+}
+
+.yes {
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  border-radius: 20px 20px 6px 20px;
+  padding: 8px 16px;
+}
+
+.status {
+  align-self: center;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.status.show {
+  opacity: 1;
+}
+
+.caption {
+  text-align: center;
+  max-width: 28ch;
+  color: var(--muted, #6e6e73);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.captionLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink, #1d1d1f);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble,
+  .status {
+    transition: none;
+  }
+}
