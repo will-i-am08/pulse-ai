@@ -3,10 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../llm.js", () => ({ callLLM: vi.fn() }));
 vi.mock("../readWebsite.js", () => ({ readWebsite: vi.fn(async () => null) }));
 vi.mock("../seedVisualProfile.js", () => ({ seedVisualProfileFromWebsite: vi.fn(async () => undefined) }));
-vi.mock("../queueVoiceAnalysis.js", () => ({ queueVoiceAnalysis: vi.fn(async () => undefined) }));
+vi.mock("../voice/analyzeVoice.js", () => ({
+  queueVoiceAnalysis: vi.fn(async () => undefined),
+}));
 vi.mock("../smsConnect.js", () => ({
   isMetaConnected: vi.fn(() => false),
-  connectLinkMessage: () => "Connect Instagram + Facebook:\nhttps://app.example/c/test",
+  isMetaConnectPartial: vi.fn(() => false),
+  connectLinkMessage: () =>
+    "One tap to connect Instagram + Facebook — I'll take it from there:\nhttps://app.example/c/test",
 }));
 
 vi.mock("@pulse/shared", async (importOriginal) => {
@@ -19,12 +23,20 @@ vi.mock("@pulse/shared", async (importOriginal) => {
 });
 
 import { query, queryOne, type Brand } from "@pulse/shared";
-import { kickOffOnboardingAfterPayment, startOnboarding } from "../onboarding.js";
-import { isMetaConnected } from "../smsConnect.js";
+import {
+  kickOffOnboardingAfterPayment,
+  startOnboarding,
+  handleAwaitingContact,
+  handleAwaitingConnect,
+  looksLikeDoneReply,
+  welcomeContactMessage,
+} from "../onboarding.js";
+import { isMetaConnected, isMetaConnectPartial } from "../smsConnect.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
 const mockedQueryOne = queryOne as unknown as ReturnType<typeof vi.fn>;
 const mockedIsMeta = isMetaConnected as unknown as ReturnType<typeof vi.fn>;
+const mockedIsPartial = isMetaConnectPartial as unknown as ReturnType<typeof vi.fn>;
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -71,6 +83,16 @@ function fakeBrand(over: Partial<Brand> = {}): Brand {
   } as Brand;
 }
 
+describe("looksLikeDoneReply", () => {
+  it("matches Done and close variants", () => {
+    expect(looksLikeDoneReply("Done")).toBe(true);
+    expect(looksLikeDoneReply("done!")).toBe(true);
+    expect(looksLikeDoneReply("all done")).toBe(true);
+    expect(looksLikeDoneReply("I've done that")).toBe(true);
+    expect(looksLikeDoneReply("we run a cafe")).toBe(false);
+  });
+});
+
 describe("kickOffOnboardingAfterPayment", () => {
   beforeEach(() => {
     process.env.APP_BASE_URL = "https://kip.example";
@@ -80,7 +102,9 @@ describe("kickOffOnboardingAfterPayment", () => {
     mockedQuery.mockReset();
     mockedQueryOne.mockReset();
     mockedIsMeta.mockReset();
+    mockedIsPartial.mockReset();
     mockedIsMeta.mockReturnValue(false);
+    mockedIsPartial.mockReturnValue(false);
     mockedQuery.mockResolvedValue([]);
   });
 
@@ -88,23 +112,32 @@ describe("kickOffOnboardingAfterPayment", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("moves a pending brand into awaiting_connect and returns the connect SMS", async () => {
+  it("moves a pending brand into awaiting_contact with welcome (no one-tap yet)", async () => {
     const brand = fakeBrand({ onboarding_state: { status: "pending" } });
-    // kickOff → startOnboarding each load the brand; saveState uses query.
     mockedQueryOne.mockResolvedValue(brand);
 
     const msg = await kickOffOnboardingAfterPayment(brand.id);
 
-    expect(msg.toLowerCase()).toMatch(/instagram/);
-    expect(msg).toContain("https://app.example/c/test");
-    expect(msg.toLowerCase()).toMatch(/skip/);
+    expect(msg.toLowerCase()).toMatch(/hi alex/);
+    expect(msg.toLowerCase()).toMatch(/thanks for jumping in/);
+    expect(msg.toLowerCase()).toMatch(/contact/);
+    expect(msg.toLowerCase()).toMatch(/done/);
+    expect(msg).not.toContain("https://app.example/c/test");
 
     const stateWrites = mockedQuery.mock.calls.filter(
       (c) => typeof c[0] === "string" && String(c[0]).includes("onboarding_state"),
     );
     expect(stateWrites.length).toBeGreaterThan(0);
     const lastPayload = JSON.stringify(stateWrites.at(-1)?.[1] ?? []);
-    expect(lastPayload).toContain("awaiting_connect");
+    expect(lastPayload).toContain("awaiting_contact");
+  });
+
+  it("does not restart when already awaiting_contact", async () => {
+    const brand = fakeBrand({ onboarding_state: { status: "awaiting_contact" } });
+    mockedQueryOne.mockResolvedValue(brand);
+
+    const msg = await startOnboarding(brand.id);
+    expect(msg.toLowerCase()).toMatch(/contacts/);
   });
 
   it("does not restart when already awaiting_connect", async () => {
@@ -113,7 +146,6 @@ describe("kickOffOnboardingAfterPayment", () => {
 
     const msg = await startOnboarding(brand.id);
     expect(msg.toLowerCase()).toMatch(/still waiting/);
-    // No new awaiting_connect write that would reset answers.
     const resets = mockedQuery.mock.calls.filter((c) => {
       const sql = String(c[0] ?? "");
       const args = JSON.stringify(c[1] ?? []);
@@ -131,5 +163,86 @@ describe("kickOffOnboardingAfterPayment", () => {
 
     const msg = await kickOffOnboardingAfterPayment(brand.id);
     expect(msg.toLowerCase()).toMatch(/already set up/);
+  });
+});
+
+describe("handleAwaitingContact", () => {
+  beforeEach(() => {
+    process.env.APP_BASE_URL = "https://kip.example";
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    mockedQuery.mockReset();
+    mockedQueryOne.mockReset();
+    mockedIsMeta.mockReset();
+    mockedIsMeta.mockReturnValue(false);
+    mockedQuery.mockResolvedValue([]);
+  });
+
+  it("sends one-tap connect after Done", async () => {
+    const brand = fakeBrand({ onboarding_state: { status: "awaiting_contact" } });
+    mockedQueryOne.mockResolvedValue(brand);
+
+    const msg = await handleAwaitingContact(brand, "Done");
+    expect(msg.toLowerCase()).toMatch(/one tap/);
+    expect(msg).toContain("https://app.example/c/test");
+    const lastPayload = JSON.stringify(mockedQuery.mock.calls.at(-1)?.[1] ?? []);
+    expect(lastPayload).toContain("awaiting_connect");
+  });
+
+  it("reminds them if they haven't finished the contact step", async () => {
+    const brand = fakeBrand({ onboarding_state: { status: "awaiting_contact" } });
+    const msg = await handleAwaitingContact(brand, "hello?");
+    expect(msg.toLowerCase()).toMatch(/done/);
+    expect(msg).not.toContain("https://app.example/c/test");
+  });
+});
+
+describe("handleAwaitingConnect", () => {
+  beforeEach(() => {
+    process.env.APP_BASE_URL = "https://kip.example";
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    mockedQuery.mockReset();
+    mockedQueryOne.mockReset();
+    mockedIsMeta.mockReset();
+    mockedIsPartial.mockReset();
+    mockedIsMeta.mockReturnValue(false);
+    mockedIsPartial.mockReturnValue(false);
+    mockedQuery.mockResolvedValue([]);
+  });
+
+  it("says connect was incomplete on Done when OAuth is partial", async () => {
+    mockedIsPartial.mockReturnValue(true);
+    const brand = fakeBrand({
+      onboarding_state: {
+        status: "awaiting_connect",
+        answers: { connect_link_sent_at: new Date().toISOString() },
+      },
+      platform_user_token_encrypted: "enc",
+    });
+
+    const msg = await handleAwaitingConnect(brand, "Done");
+    expect(msg.toLowerCase()).toMatch(/didn't finish|did not finish|didn't finish connecting/);
+    expect(msg.toLowerCase()).toMatch(/properly/);
+  });
+
+  it("does not mint a fresh link on every random reply while link is fresh", async () => {
+    const brand = fakeBrand({
+      onboarding_state: {
+        status: "awaiting_connect",
+        answers: { connect_link_sent_at: new Date().toISOString() },
+      },
+    });
+
+    const msg = await handleAwaitingConnect(brand, "hows it going");
+    expect(msg.toLowerCase()).toMatch(/still waiting/);
+    expect(msg).not.toContain("https://app.example/c/test");
+  });
+});
+
+describe("welcomeContactMessage", () => {
+  it("greets by name and asks to save the contact", () => {
+    const msg = welcomeContactMessage(fakeBrand());
+    expect(msg).toMatch(/Hi Alex, it's Kip, thanks for jumping in!/);
+    expect(msg.toLowerCase()).toMatch(/add me to your contacts/);
+    expect(msg.toLowerCase()).toMatch(/message me done/);
   });
 });

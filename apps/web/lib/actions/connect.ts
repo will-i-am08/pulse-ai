@@ -6,6 +6,7 @@ import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding, clearSkippedCo
 import { sendToBrand } from '@pulse/gateway';
 import { currentUser } from '@/lib/auth/current-user';
 import { listManagedPages, derivePageToken } from '@/lib/meta/oauth';
+import { scheduleVoiceAnalysisDrain } from '@/lib/voice/scheduleDrain';
 
 async function ownerBrand(user: User): Promise<Brand | null> {
   return queryOne<Brand>(
@@ -64,6 +65,8 @@ export async function selectPageAction(formData: FormData): Promise<void> {
   } else if (onboarding.message) {
     await sendToBrand(brand!.id, onboarding.message).catch(() => undefined);
   }
+
+  scheduleVoiceAnalysisDrain(brand!.id);
 
   redirect('/app?connect=success');
 }

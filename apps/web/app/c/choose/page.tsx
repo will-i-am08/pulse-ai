@@ -37,6 +37,7 @@ export default async function SmsChoosePage({
       <h1 style={{ fontSize: '1.35rem', marginBottom: 8 }}>Choose the account to connect</h1>
       <p style={{ color: '#555', marginTop: 0 }}>
         Pick the Facebook Page (and its linked Instagram) Kip will post to for {brand.name}.
+        You need to tap <strong>Connect this account</strong> below — signing into Meta alone is not enough.
       </p>
       {error && ERRORS[error] && <p style={{ color: '#c0392b' }}>{ERRORS[error]}</p>}
 

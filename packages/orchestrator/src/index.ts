@@ -17,8 +17,11 @@ export {
   onChannelsConnectedDuringOnboarding,
   continueOnboardingAfterVoiceAnalysis,
   handleAwaitingConnect,
+  handleAwaitingContact,
   handleReadingContent,
   looksLikeSkipConnect,
+  looksLikeDoneReply,
+  sendConnectLinkAfterContact,
   onboardingTurn,
   onboardingNext,
   finishOnboarding,
@@ -43,7 +46,12 @@ export type { LabChatSummary } from "./onboarding.js";
 
 export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";
 
-export { runVoiceAnalysis, queueVoiceAnalysis } from "./voice/analyzeVoice.js";
+export {
+  runVoiceAnalysis,
+  queueVoiceAnalysis,
+  drainVoiceAnalysisForBrand,
+  reclaimStaleVoiceJobs,
+} from "./voice/analyzeVoice.js";
 export { computeTextStats } from "./voice/textStats.js";
 export type { TextStats } from "./voice/textStats.js";
 
@@ -245,6 +253,7 @@ export {
   connectLinkMessage,
   metaConnectStatusMessage,
   isMetaConnected,
+  isMetaConnectPartial,
   isLinkedInConnected,
   isTikTokConnected,
   looksLikeAdsToggle,
