@@ -13,7 +13,7 @@ import {
 import { callLLM } from "./llm.js";
 import { seedPendingPlan } from "./nichePlan.js";
 import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
-import { connectLinkMessage, isMetaConnected } from "./smsConnect.js";
+import { connectLinkMessage, isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
@@ -279,8 +279,150 @@ function priorContentForInterview(brand: Brand, answers: Record<string, string>)
 const SKIP_CONNECT_RE =
   /^\s*(skip|later|not now|no thanks|don't have|dont have|no ig|no instagram|no facebook|none|n\/a)\b/i;
 
+const DONE_RE =
+  /^\s*(done|all done|finished|ready|ok done|i(?:'ve| have) done (?:it|that)|added(?: you| kip)?|saved(?: (?:you|kip|it|the contact))?)\s*[.!]?\s*$/i;
+
+/** True when the owner is confirming they finished a setup step (contact / connect). */
+export function looksLikeDoneReply(body: string): boolean {
+  return DONE_RE.test(body.trim());
+}
+
 export function looksLikeSkipConnect(body: string): boolean {
   return SKIP_CONNECT_RE.test(body.trim());
+}
+
+/**
+ * Short human ack of whatever they just said, before we do the next setup step.
+ * Keeps Kip from ignoring the inbound and only blasting the next scripted beat.
+ */
+export function craftHumanAck(brand: Brand, inbound: string): string {
+  const name = ownerFirstName(brand);
+  const named = name ? `, ${name}` : "";
+  const t = inbound.trim();
+  if (!t) return name ? `Hey ${name}.` : "Hey.";
+
+  // Explicit Done / skip confirmations first (before the "are you done?" impatience check).
+  if (looksLikeDoneReply(t) || looksLikeSkipConnect(t)) {
+    return name ? `Nice one, ${name}.` : "Nice one.";
+  }
+
+  if (
+    /^(are you )?(done|finished|ready)\b/i.test(t) ||
+    /\b(done|finished|ready) yet\b/i.test(t) ||
+    /\bstill (there|working|reading|going)\b/i.test(t) ||
+    /\bhow('?s| is) it going\b/i.test(t) ||
+    /\bany (update|luck|news)\b/i.test(t) ||
+    /\bwhat('?s| is) (taking so long|happening)\b/i.test(t)
+  ) {
+    return `On it${named} — wrapping that up now.`;
+  }
+  if (/^(hey|hi|hello|yo)\b/i.test(t)) {
+    return name ? `Hey ${name}!` : "Hey!";
+  }
+  if (/\b(thanks|thank you|cheers)\b/i.test(t)) {
+    return name ? `Anytime, ${name}.` : "Anytime.";
+  }
+  return name ? `Got it, ${name}.` : "Got it.";
+}
+
+/** Ack their inbound, then continue with the next beat (double newline → two bubbles). */
+export function acknowledgeThenContinue(brand: Brand, inbound: string, next: string): string {
+  const ack = craftHumanAck(brand, inbound);
+  const nextTrim = (next ?? "").trim();
+  if (!nextTrim) return ack;
+  if (!ack) return nextTrim;
+  return `${ack}\n\n${nextTrim}`;
+}
+
+const CONNECT_LINK_FRESH_MS = 14 * 60 * 1000;
+
+function connectLinkIsFresh(answers: Record<string, string>): boolean {
+  const raw = answers.connect_link_sent_at;
+  if (!raw) return false;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) && Date.now() - t < CONNECT_LINK_FRESH_MS;
+}
+
+async function mintConnectLink(
+  brand: Brand,
+  prev: OnboardingState,
+): Promise<{ link: string; answers: Record<string, string> }> {
+  const answers: Record<string, string> = { ...(prev.answers ?? {}) };
+  const link = connectLinkMessage(brand, "meta");
+  answers.connect_link_sent_at = new Date().toISOString();
+  await saveState(brand.id, {
+    ...prev,
+    status: "awaiting_connect",
+    type: prev.type ?? brand.account_type ?? "business",
+    turns: prev.turns ?? 0,
+    transcript: prev.transcript ?? [],
+    answers,
+  });
+  return { link, answers };
+}
+
+/** Welcome copy: contact card first — one-tap connect comes after they reply Done. */
+export function welcomeContactMessage(brand: Brand): string {
+  const knownName = ownerFirstName(brand);
+  const hi = knownName ? `Hi ${knownName}` : "Hi";
+  return (
+    `${hi}, it's Kip, thanks for jumping in!\n\n` +
+    `I sent my contact card — please add me to your contacts so I show up as Kip (not a random number). ` +
+    `On iPhone: tap the contact card / banner at the top and hit Add to Contacts. ` +
+    `On Android: open the contact card attachment and save it.\n\n` +
+    `Just message me Done when you've done that.`
+  );
+}
+
+/** After contact is saved: one-tap Meta connect. */
+export async function sendConnectLinkAfterContact(brandId: string): Promise<string> {
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) throw new Error(`sendConnectLinkAfterContact: brand ${brandId} not found`);
+  const prev = brand.onboarding_state ?? { status: "awaiting_contact" as const };
+  const type: AccountType = prev.type ?? brand.account_type ?? "business";
+  const answers: Record<string, string> = {
+    ...(prev.answers ?? {}),
+    contact_confirmed_at: new Date().toISOString(),
+  };
+
+  if (isMetaConnected(brand)) {
+    await saveState(brand.id, {
+      status: "pending",
+      type,
+      turns: prev.turns ?? 0,
+      transcript: prev.transcript ?? [],
+      answers: { ...answers, connected_meta: "1" },
+    });
+    await queueVoiceAnalysis(brand.id).catch(() => undefined);
+    // Harvest runs in the background — start the interview immediately.
+    return beginOnboardingInterview(brand.id);
+  }
+
+  const { link } = await mintConnectLink(brand, {
+    ...prev,
+    status: "awaiting_connect",
+    type,
+    answers,
+  });
+  return (
+    `One tap to connect Instagram and Facebook — I'll take it from there:\n${link}\n\n` +
+    `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`
+  );
+}
+
+/** Handle inbound while waiting for the owner to save Kip's contact card. */
+export async function handleAwaitingContact(brand: Brand, body: string): Promise<string> {
+  const text = (body ?? "").trim();
+  if (looksLikeSkipConnect(text) || looksLikeDoneReply(text)) {
+    const next = await sendConnectLinkAfterContact(brand.id);
+    return acknowledgeThenContinue(brand, text, next);
+  }
+  return acknowledgeThenContinue(
+    brand,
+    text,
+    `Whenever you've added me to your contacts, just reply Done and I'll send the next step. ` +
+      `Or reply skip if you want to continue without saving the contact.`,
+  );
 }
 
 /**
@@ -307,11 +449,14 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
 
   const knownName = ownerFirstName(brand);
   const system = interviewerSystem(brand, type, websiteSummary, prior);
+  const harvestPending = answers.connected_meta === "1" && !prior;
   const reflectPrior = prior
     ? " You already studied their existing posts — briefly reflect one concrete thing you noticed, then ask your first most useful question that fills a gap."
-    : websiteSummary
-      ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
-      : " Ask your first, most useful question.";
+    : harvestPending
+      ? " Their Instagram/Facebook posts are still being read in the background — do NOT claim you have already studied them. Greet warmly, mention you're skimming their posts in the background so you won't re-ask things they already show online, then ask your first most useful question."
+      : websiteSummary
+        ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
+        : " Ask your first, most useful question.";
   const seed: OnboardingTurnMsg = {
     role: "user",
     content: knownName
@@ -324,14 +469,27 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
   return sanitizeChatText(await enforceOneQuestion(opening));
 }
 
-/** After Meta connect during onboarding: queue harvest and park on reading_content. */
+/**
+ * After Meta connect during onboarding: queue post-harvest in the background and
+ * start the SMS interview immediately (don't park on reading_content).
+ */
 export async function onChannelsConnectedDuringOnboarding(
   brandId: string,
 ): Promise<{ handled: boolean; message?: string }> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) return { handled: false };
   const status = brand.onboarding_state?.status;
-  if (status !== "awaiting_connect" && status !== "pending" && status !== "reading_content") {
+  // Already mid-interview (e.g. reconnect) — queue harvest, don't restart the chat.
+  if (status === "in_progress") {
+    await queueVoiceAnalysis(brand.id).catch(() => undefined);
+    return { handled: true };
+  }
+  if (
+    status !== "awaiting_connect" &&
+    status !== "awaiting_contact" &&
+    status !== "pending" &&
+    status !== "reading_content"
+  ) {
     return { handled: false };
   }
   const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
@@ -342,23 +500,21 @@ export async function onChannelsConnectedDuringOnboarding(
   delete answers.connect_nudge_count;
   delete answers.connect_nudge_at;
   await saveState(brand.id, {
-    status: "reading_content",
+    status: "pending",
     type,
     turns: prev.turns ?? 0,
     transcript: prev.transcript ?? [],
     answers,
   });
   await queueVoiceAnalysis(brand.id).catch(() => undefined);
-  const ig = brand.ig_username ? `@${brand.ig_username}` : "Instagram";
-  return {
-    handled: true,
-    message: `Connected ✅ ${ig}. I'm reading your existing posts now so I don't ask stuff you already show online — one sec.`,
-  };
+  const opening = await beginOnboardingInterview(brand.id);
+  return { handled: true, message: opening };
 }
 
 /**
- * After voice analysis finishes (or skips/fails): start the interview if we were
- * waiting on reading_content. Returns the opening SMS, or null if not applicable.
+ * Legacy: if a brand is still parked on reading_content (pre-background-harvest),
+ * start the interview once voice analysis finishes. No-ops when interview already
+ * started (status in_progress) — harvest just merges into the voice profile.
  */
 export async function continueOnboardingAfterVoiceAnalysis(brandId: string): Promise<string | null> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -370,37 +526,134 @@ export async function continueOnboardingAfterVoiceAnalysis(brandId: string): Pro
 /** Handle inbound SMS while waiting for channel connect (or skip). */
 export async function handleAwaitingConnect(brand: Brand, body: string): Promise<string> {
   const text = (body ?? "").trim();
+  const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
+  const answers: Record<string, string> = { ...(prev.answers ?? {}) };
+
   if (looksLikeSkipConnect(text)) {
-    const prev = brand.onboarding_state ?? { status: "awaiting_connect" as const };
     const type: AccountType = prev.type ?? brand.account_type ?? "business";
-    const answers: Record<string, string> = { ...(prev.answers ?? {}), skipped_connect: "1", skipped_connect_at: new Date().toISOString(), connect_nudge_count: "0" };
     await saveState(brand.id, {
       status: "in_progress",
       type,
       turns: 0,
       transcript: prev.transcript ?? [],
-      answers,
+      answers: {
+        ...answers,
+        skipped_connect: "1",
+        skipped_connect_at: new Date().toISOString(),
+        connect_nudge_count: "0",
+      },
     });
-    // beginOnboardingInterview sets in_progress + opening
-    return beginOnboardingInterview(brand.id);
+    const opening = await beginOnboardingInterview(brand.id);
+    return acknowledgeThenContinue(brand, text, opening);
   }
+
   if (isMetaConnected(brand)) {
     const result = await onChannelsConnectedDuringOnboarding(brand.id);
-    return result.message ?? "Connected — reading your posts now.";
+    const next = result.message ?? "Connected — let's keep going.";
+    return acknowledgeThenContinue(brand, text, next);
   }
-  const link = connectLinkMessage(brand, "meta");
-  return `All good — tap the link to connect Instagram + Facebook first (so I can learn from what you already post), or reply "skip" if you don't have them yet.\n\n${link}`;
+
+  // Owner thinks they're done — diagnose incomplete OAuth vs never started.
+  if (looksLikeDoneReply(text)) {
+    if (isMetaConnectPartial(brand)) {
+      if (connectLinkIsFresh(answers)) {
+        return acknowledgeThenContinue(
+          brand,
+          text,
+          `Oh — it looks like you didn't finish connecting properly. ` +
+            `You signed into Meta, but still need to pick which Facebook Page + Instagram Kip should use. ` +
+            `Open the link I sent, choose the account, and tap Connect this account.`,
+        );
+      }
+      const { link } = await mintConnectLink(brand, prev);
+      return acknowledgeThenContinue(
+        brand,
+        text,
+        `Oh — it looks like you didn't finish connecting properly. ` +
+          `You signed into Meta, but still need to pick which Facebook Page + Instagram Kip should use. ` +
+          `Here's a fresh link — choose the account and tap Connect this account:\n\n${link}`,
+      );
+    }
+    const { link } = await mintConnectLink(brand, prev);
+    return acknowledgeThenContinue(
+      brand,
+      text,
+      `Hmm, I don't see Instagram + Facebook connected yet — it looks like the connect didn't finish. ` +
+        `Tap the link, sign in, then choose your Page + Instagram all the way through:\n\n${link}`,
+    );
+  }
+
+  // Don't spam a fresh one-tap on every random reply — remind, re-link only if stale.
+  if (connectLinkIsFresh(answers)) {
+    return acknowledgeThenContinue(
+      brand,
+      text,
+      `Still waiting on Instagram + Facebook — tap the link I sent, reply Done when you've finished connecting, ` +
+        `or reply skip if you don't have them yet.`,
+    );
+  }
+  const { link } = await mintConnectLink(brand, prev);
+  return acknowledgeThenContinue(
+    brand,
+    text,
+    `All good — tap the link to connect Instagram + Facebook first (so I can learn from what you already post), ` +
+      `or reply skip if you don't have them yet.\n\n${link}`,
+  );
 }
 
-/** Hold-line while voice harvest runs. */
-export async function handleReadingContent(_brand: Brand, _body: string): Promise<string> {
-  return "Still reading your posts, nearly there — then I'll ask a couple of quick questions.";
+/**
+ * Hold-line while voice harvest runs. If the worker never drained the queue
+ * (or analysis already finished/failed), continue into the interview so the
+ * owner isn't stuck on "reading your posts" forever.
+ * Always acknowledge whatever they just said first (e.g. "Are you done?").
+ */
+export async function handleReadingContent(brand: Brand, body: string): Promise<string> {
+  const text = (body ?? "").trim();
+  const voice = brand.voice_analysis_state ?? { status: "none" as const };
+  const status = voice.status ?? "none";
+
+  const continueInterview = async (): Promise<string | null> => {
+    const opening = await continueOnboardingAfterVoiceAnalysis(brand.id);
+    if (!opening) return null;
+    return acknowledgeThenContinue(brand, text, opening);
+  };
+
+  const impatient =
+    /^(are you )?(done|finished|ready)\b/i.test(text) ||
+    /\b(done|finished|ready) yet\b/i.test(text) ||
+    /\bstill (there|working|reading|going)\b/i.test(text) ||
+    /\bhow('?s| is) it going\b/i.test(text) ||
+    /\bany (update|luck|news)\b/i.test(text);
+
+  if (status === "done" || status === "skipped" || status === "failed" || status === "none") {
+    const reply = await continueInterview();
+    if (reply) return reply;
+  }
+
+  if (status === "pending" || status === "running") {
+    const queued = voice.queued_at ? Date.parse(voice.queued_at) : NaN;
+    const started = voice.started_at ? Date.parse(String(voice.started_at)) : NaN;
+    const anchor = Number.isFinite(started) ? started : queued;
+    const ageMs = Number.isFinite(anchor) ? Date.now() - anchor : Number.POSITIVE_INFINITY;
+    // If they're asking whether we're done, or the harvest has sat for a couple
+    // of minutes, don't leave them hanging — open the interview without waiting.
+    if (impatient || ageMs > 2 * 60 * 1000) {
+      const reply = await continueInterview();
+      if (reply) return reply;
+    }
+  }
+
+  return acknowledgeThenContinue(
+    brand,
+    text,
+    "Still skimming your posts — nearly there, then I'll jump straight into setup.",
+  );
 }
 
 /**
  * Begin onboarding after payment is submitted.
- * Reads website if present, then asks them to connect channels first so Kip can
- * harvest existing content before the interview.
+ * Welcome + contact-card step first; one-tap Instagram/Facebook comes after
+ * they reply Done (so the login OTP is never interleaved with a connect link).
  */
 export async function startOnboarding(brandId: string): Promise<string> {
   let brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -416,14 +669,20 @@ export async function startOnboarding(brandId: string): Promise<string> {
       : "Hey — we're already set up. Send a photo or tell me what you want to post.";
   }
 
-  // Already mid-flow — don't restart from connect.
+  // Already mid-flow — don't restart.
   if (prev.status === "in_progress") {
     return "We're mid set-up — just reply to the last question and I'll keep going.";
+  }
+  if (prev.status === "awaiting_contact") {
+    return (
+      "Still waiting on you to add me to your contacts — reply Done when you've saved the contact card, " +
+      "or skip to continue."
+    );
   }
   if (prev.status === "awaiting_connect") {
     return (
       "Still waiting on your Instagram + Facebook connect — tap the link I sent, " +
-      'or reply "skip" if you don\'t have them yet.'
+      'reply Done when you\'ve finished, or reply "skip" if you don\'t have them yet.'
     );
   }
   if (prev.status === "reading_content") {
@@ -470,23 +729,22 @@ export async function startOnboarding(brandId: string): Promise<string> {
 
   const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
   if (pendingBookingConfirm) answers.pending_booking_confirm = pendingBookingConfirm;
-  const knownName = ownerFirstName(brand);
-  const hello = knownName ? `Hey ${knownName}` : "Hey";
 
-  // Already connected (e.g. dashboard) — harvest first, then interview.
+  // Already connected (e.g. dashboard) — harvest in background, interview now.
   if (isMetaConnected(brand)) {
-    await saveState(brand.id, { status: "reading_content", type, turns: 0, transcript: [], answers });
+    await saveState(brand.id, {
+      status: "pending",
+      type,
+      turns: 0,
+      transcript: [],
+      answers: { ...answers, connected_meta: "1" },
+    });
     await queueVoiceAnalysis(brand.id).catch(() => undefined);
-    const ig = brand.ig_username ? `@${brand.ig_username}` : "your Instagram";
-    return `${hello}, it's Kip — thanks for being here. I'm reading ${ig} now so I can learn your voice from what you already post. Hang tight.`;
+    return beginOnboardingInterview(brand.id);
   }
 
-  await saveState(brand.id, { status: "awaiting_connect", type, turns: 0, transcript: [], answers });
-  const link = connectLinkMessage(brand, "meta");
-  return (
-    `${hello}, it's Kip — thanks for jumping in. First up, connect Instagram + Facebook so I can learn from what you already post before we chat.`
-    + ` If you don't have them yet, reply "skip".\n\n${link}`
-  );
+  await saveState(brand.id, { status: "awaiting_contact", type, turns: 0, transcript: [], answers });
+  return welcomeContactMessage(brand);
 }
 
 /**

@@ -6,6 +6,7 @@ import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding, clearSkippedCo
 import { listManagedPages, derivePageToken, listAdAccounts } from '@/lib/meta/oauth';
 import { verifySmsConnectToken } from '@/lib/sms-connect/token';
 import { sendToBrand } from '@pulse/gateway';
+import { scheduleVoiceAnalysisDrain } from '@/lib/voice/scheduleDrain';
 
 /**
  * Finalise Meta link from an SMS deep-link (no dashboard session).
@@ -60,6 +61,9 @@ export async function selectPageFromSmsAction(formData: FormData): Promise<void>
   await sendToBrand(brand.id, confirm).catch((err) =>
     console.error('selectPageFromSmsAction: confirmation SMS failed', err),
   );
+
+  // Drain voice + continue interview even if the Railway worker is down.
+  scheduleVoiceAnalysisDrain(brand.id);
 
   redirect('/c/done?status=success');
 }

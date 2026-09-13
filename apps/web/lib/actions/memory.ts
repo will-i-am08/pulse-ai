@@ -2,7 +2,7 @@
 import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { queryOne, type Brand } from '@pulse/shared';
+import { normalizeBrandVoiceProfile, queryOne, type Brand } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { updateBrandVoiceProfile } from '@/lib/data/brands';
 
@@ -26,7 +26,8 @@ export async function updateMemoryNotesAction(formData: FormData): Promise<void>
     .map((s) => s.replace(/^-\s*/, '').trim())
     .filter(Boolean);
 
-  await updateBrandVoiceProfile(brand!.id, { ...brand!.brand_voice_profile, notes });
+  const voice = normalizeBrandVoiceProfile(brand!.brand_voice_profile);
+  await updateBrandVoiceProfile(brand!.id, { ...voice, notes });
   revalidatePath('/app/memory');
   redirect('/app/memory?file=memory.md&saved=1');
 }

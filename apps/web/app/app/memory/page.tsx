@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { emptyBrandVoiceProfile, type Brand, type BrandVoiceProfile } from '@pulse/shared';
+import { normalizeBrandVoiceProfile, type Brand, type BrandVoiceProfile } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
 import { updateMemoryNotesAction } from '@/lib/actions/memory';
@@ -52,7 +52,8 @@ export default async function MemoryPage({
 
   const { file, saved } = await searchParams;
   const active: FileName = (FILES as string[]).includes(file ?? '') ? (file as FileName) : 'memory.md';
-  const voice = brand.brand_voice_profile ?? emptyBrandVoiceProfile();
+  // `{}` from Postgres is truthy — always normalize so .notes/.tone never crash.
+  const voice = normalizeBrandVoiceProfile(brand.brand_voice_profile);
 
   const body =
     active === 'voice.md' ? voiceMd(voice) : active === 'brand.md' ? brandMd(brand) : memoryMd(voice);

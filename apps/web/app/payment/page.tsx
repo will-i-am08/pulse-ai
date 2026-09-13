@@ -39,8 +39,19 @@ export default async function PaymentPage({
   const brands = await listBrandsForOwner(user.id);
   const brand = brands[0] ?? null;
 
-  // Already past payment UI — no paywall, but no need to show checkout again.
+  // Already past payment UI — send them to the messages interstitial while
+  // early onboarding SMS is in flight; otherwise the dashboard.
   if (brand?.facts?.payment?.submitted_at) {
+    const status = brand.onboarding_state?.status ?? 'none';
+    if (
+      status === 'none' ||
+      status === 'pending' ||
+      status === 'awaiting_contact' ||
+      status === 'awaiting_connect' ||
+      status === 'reading_content'
+    ) {
+      redirect('/check-messages');
+    }
     redirect('/app');
   }
 

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { normalizeBrandVoiceProfile } from '@pulse/shared';
 import { getBrandForUser } from '@/lib/data/brands';
 import { currentUser } from '@/lib/auth/current-user';
 import { updateBrandVoiceAction } from '@/lib/actions/voice';
@@ -11,7 +12,7 @@ export default async function BrandVoicePage({ params }: { params: Promise<{ bra
   const brand = await getBrandForUser(brandId, user);
   if (!brand) notFound();
 
-  const voice = brand.brand_voice_profile;
+  const voice = normalizeBrandVoiceProfile(brand.brand_voice_profile);
 
   return (
     <section className="stage">

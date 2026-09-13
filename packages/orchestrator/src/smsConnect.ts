@@ -5,6 +5,11 @@ export function isMetaConnected(brand: Brand): boolean {
   return Boolean(brand.ig_user_id && brand.fb_page_id && brand.platform_tokens_encrypted);
 }
 
+/** OAuth finished but Page/IG not chosen yet — connect is incomplete. */
+export function isMetaConnectPartial(brand: Brand): boolean {
+  return Boolean(brand.platform_user_token_encrypted) && !isMetaConnected(brand);
+}
+
 export function isLinkedInConnected(brand: Brand): boolean {
   return Boolean(brand.linkedin_org_id && brand.linkedin_tokens_encrypted);
 }

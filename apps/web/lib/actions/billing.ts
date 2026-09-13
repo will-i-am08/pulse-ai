@@ -73,5 +73,5 @@ export async function submitPaymentAction(formData: FormData): Promise<void> {
     }
   }
 
-  redirect('/app');
+  redirect('/check-messages');
 }

@@ -389,3 +389,63 @@ export async function queueVoiceAnalysis(brandId: string): Promise<void> {
     [brandId],
   );
 }
+
+const STALE_RUNNING_MS = 10 * 60 * 1000;
+
+/**
+ * Reclaim voice jobs stuck in `running` (worker crash / deploy mid-analysis)
+ * so they become `pending` again and can be drained.
+ */
+export async function reclaimStaleVoiceJobs(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - STALE_RUNNING_MS).toISOString();
+  const rows = await query<{ id: string }>(
+    `update brands set voice_analysis_state =
+       jsonb_build_object('status','pending','queued_at', to_jsonb(now()::text), 'reclaimed_at', to_jsonb($1::text))
+     where voice_analysis_state->>'status' = 'running'
+       and coalesce(voice_analysis_state->>'started_at', '') <> ''
+       and (voice_analysis_state->>'started_at')::timestamptz < $1::timestamptz
+     returning id`,
+    [cutoff],
+  );
+  return rows.length;
+}
+
+/**
+ * Atomically claim a pending voice job for this brand (or no-op if already
+ * claimed / finished). Used by the worker and by Next.js `after()` so analysis
+ * still runs when the Railway worker is down.
+ */
+async function claimPendingVoiceJob(brandId: string): Promise<Brand | null> {
+  const rows = await query<Brand>(
+    `update brands set voice_analysis_state = voice_analysis_state
+        || jsonb_build_object('status','running','started_at', to_jsonb(now()::text))
+     where id = $1
+       and voice_analysis_state->>'status' = 'pending'
+     returning *`,
+    [brandId],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Run queued voice analysis for one brand and, when onboarding is on
+ * reading_content, open the interview and return the opening SMS (caller sends).
+ * Safe to call from worker ticks or from the web connect `after()` hook.
+ */
+export async function drainVoiceAnalysisForBrand(
+  brandId: string,
+): Promise<{ analysed: boolean; opening: string | null }> {
+  const claimed = await claimPendingVoiceJob(brandId);
+  if (!claimed) {
+    // Already running elsewhere, or not pending — if onboarding is waiting and
+    // analysis already finished, still try to continue.
+    const { continueOnboardingAfterVoiceAnalysis } = await import("../onboarding.js");
+    const opening = await continueOnboardingAfterVoiceAnalysis(brandId);
+    return { analysed: false, opening };
+  }
+
+  await runVoiceAnalysis(brandId);
+  const { continueOnboardingAfterVoiceAnalysis } = await import("../onboarding.js");
+  const opening = await continueOnboardingAfterVoiceAnalysis(brandId);
+  return { analysed: true, opening };
+}

@@ -4,7 +4,7 @@ import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
-import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleReadingContent } from "./onboarding.js";
+import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleAwaitingContact, handleReadingContent, acknowledgeThenContinue } from "./onboarding.js";
 import {
   editImageForBrand,
   shouldOverlayHeadline,
@@ -409,6 +409,10 @@ export async function processInbound(
   // When the interview completes, the ack goes out instantly and the heavy
   // wrap-up (profile compile + plan seeding) runs after, delivered as a
   // second message by the caller via finishOnboardingBrandId.
+  // Early onboarding: save Kip's contact card before the Meta connect link.
+  if (brand.onboarding_state?.status === "awaiting_contact") {
+    return { reply: await handleAwaitingContact(brand, message.body ?? "") };
+  }
   // Early onboarding: wait for Instagram/Facebook connect (or skip) before the interview.
   if (brand.onboarding_state?.status === "awaiting_connect") {
     return { reply: await handleAwaitingConnect(brand, message.body ?? "") };
@@ -422,9 +426,15 @@ export async function processInbound(
     if (!step.complete) return { reply: step.reply };
     return { reply: WRAP_ACK, finishOnboardingBrandId: brand.id };
   }
-  // Wrap-up compiling in the background: don't start over, just hold the line.
+  // Wrap-up compiling in the background: don't start over — ack and hold the line.
   if (brand.onboarding_state?.status === "wrapping_up") {
-    return { reply: "Still writing your voice up, nearly there." };
+    return {
+      reply: acknowledgeThenContinue(
+        brand,
+        message.body ?? "",
+        "Still writing your voice up, nearly there.",
+      ),
+    };
   }
 
   // Destination-link confirmation takes priority while a discovered URL is pending.
