@@ -80,6 +80,7 @@ import {
   getProposedPlan,
   applyNichePlan,
   looksLikeContentPlanRequest,
+  looksLikePlanRebuildConfirm,
   proposeContentPlanFromSms,
 } from "./nichePlan.js";
 import { detectResearchFocus, runDeepResearch } from "./research.js";
@@ -994,9 +995,15 @@ export async function processInbound(
   }
 
   // Content plan propose / rebuild (week or month) — apply only on accept.
-  if (message.body && newMedia.length === 0 && !pending && looksLikeContentPlanRequest(message.body)) {
-    // If they're answering a proposed plan with edits, fall through to yes/revise via converse —
-    // but an explicit "propose/rebuild plan" always builds a fresh proposal.
+  // Also catch short confirms like "From scratch" after Kip asked scratch-vs-tweak
+  // (freeform chat cannot invoke the plan builder).
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    !pending &&
+    (looksLikeContentPlanRequest(message.body) || looksLikePlanRebuildConfirm(message.body))
+  ) {
+    // Explicit propose/rebuild / scratch-confirm always builds a fresh proposal.
     return { reply: await proposeContentPlanFromSms(brand, message.body) };
   }
 

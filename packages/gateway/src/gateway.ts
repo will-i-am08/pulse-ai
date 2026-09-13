@@ -70,6 +70,16 @@ export function shouldSendInstantTextAck(
   ) {
     return false;
   }
+  // Plan rebuild asks / scratch confirms — avoid a lone "Got you" while research runs;
+  // the plan SMS (or a real holding line) is the reply.
+  if (
+    /^(from\s+)?scratch\b/i.test(t) ||
+    /\b(content|niche)\s+plan\b/i.test(t) ||
+    /\bplan\b[\s\S]{0,20}\b(build|rebuild|re-?run)\b/i.test(t) ||
+    /\b(re-?run|re-?build|re-?do)\b[\s\S]{0,40}\bplan\b/i.test(t)
+  ) {
+    return false;
+  }
   return true;
 }
 

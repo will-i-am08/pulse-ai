@@ -224,6 +224,7 @@ export {
   planTextSummary,
   applyNichePlan,
   looksLikeContentPlanRequest,
+  looksLikePlanRebuildConfirm,
   proposeContentPlanFromSms,
 } from "./nichePlan.js";
 export {

@@ -78,7 +78,18 @@ describe("content plan + campaign SMS verbs", () => {
     expect(looksLikeContentPlanRequest("propose a content plan")).toBe(true);
     expect(looksLikeContentPlanRequest("weekly plan please")).toBe(true);
     expect(looksLikeContentPlanRequest("rebuild my month plan")).toBe(true);
+    expect(looksLikeContentPlanRequest("Can you rerun the plan build")).toBe(true);
+    expect(looksLikeContentPlanRequest("rerun my niche plan")).toBe(true);
     expect(looksLikeContentPlanRequest("post this photo")).toBe(false);
+  });
+
+  it("detects scratch/tweak confirms after a rebuild clarify", async () => {
+    const { looksLikePlanRebuildConfirm } = await import("../nichePlan.js");
+    expect(looksLikePlanRebuildConfirm("From scratch")).toBe(true);
+    expect(looksLikePlanRebuildConfirm("scratch")).toBe(true);
+    expect(looksLikePlanRebuildConfirm("start over")).toBe(true);
+    expect(looksLikePlanRebuildConfirm("tweak it")).toBe(true);
+    expect(looksLikePlanRebuildConfirm("make the caption shorter")).toBe(false);
   });
 
   it("detects campaign pause/resume/cancel", () => {

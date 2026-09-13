@@ -23,6 +23,13 @@ describe("shouldSendInstantTextAck", () => {
       shouldSendInstantTextAck({ onboarding_state: { status: "done" } }, "can you make it shorter"),
     ).toBe(true);
   });
+
+  it("skips plan rebuild asks and scratch confirms", () => {
+    const done = { onboarding_state: { status: "done" as const } };
+    expect(shouldSendInstantTextAck(done, "From scratch")).toBe(false);
+    expect(shouldSendInstantTextAck(done, "Can you rerun the plan build")).toBe(false);
+    expect(shouldSendInstantTextAck(done, "rebuild my niche plan")).toBe(false);
+  });
 });
 
 describe("splitIntoBubbles", () => {
