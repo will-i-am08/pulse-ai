@@ -2,13 +2,17 @@ import { describe, it, expect } from "vitest";
 import { shouldSendInstantTextAck, splitIntoBubbles } from "./gateway.js";
 
 describe("shouldSendInstantTextAck", () => {
-  it("skips during active onboarding", () => {
-    expect(
-      shouldSendInstantTextAck({ onboarding_state: { status: "in_progress" } }, "sounds good"),
-    ).toBe(false);
-    expect(
-      shouldSendInstantTextAck({ onboarding_state: { status: "wrapping_up" } }, "ok"),
-    ).toBe(false);
+  it("skips during active onboarding (interview / connect / contact)", () => {
+    for (const status of [
+      "pending",
+      "awaiting_contact",
+      "awaiting_connect",
+      "reading_content",
+      "in_progress",
+      "wrapping_up",
+    ] as const) {
+      expect(shouldSendInstantTextAck({ onboarding_state: { status } }, "sounds good")).toBe(false);
+    }
   });
 
   it("skips affirmations and status checks after onboarding", () => {
@@ -21,6 +25,9 @@ describe("shouldSendInstantTextAck", () => {
   it("allows normal post-setup chat acks", () => {
     expect(
       shouldSendInstantTextAck({ onboarding_state: { status: "done" } }, "can you make it shorter"),
+    ).toBe(true);
+    expect(
+      shouldSendInstantTextAck({ onboarding_state: { status: "none" } }, "hey can you check this"),
     ).toBe(true);
   });
 

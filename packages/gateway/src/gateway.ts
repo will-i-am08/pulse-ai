@@ -83,7 +83,6 @@ export function shouldSendInstantTextAck(
   return true;
 }
 
-
 /**
  * Keep a channel's "... is typing" indicator alive while async work runs.
  * Best-effort: channels without sendTyping (plain SMS) no-op. The indicator
@@ -475,9 +474,12 @@ export async function handleInbound(
     }
 
     // Instant human ack so they never feel like they texted a void.
-    // Photos get a specific styling ack; everything else gets a short reaction
-    // to what they said. The orchestrator reply may also open with an ack —
-    // stripLeadingAck drops that so we don't double-tap.
+    // Photos get a specific styling ack. Plain-text acks are only for
+    // post-onboarding chat — during setup/interview the real reply already
+    // reacts (or acknowledgeThenContinue embeds the ack), and a separate
+    // "Makes sense, Bill" SMS before every turn feels robotic.
+    // stripLeadingAck drops a leading ack from the orchestrator reply when we
+    // already sent one, so we don't double-tap.
     const photoAckSent = newMedia.some((m) => m.kind === "photo");
     const inboundText = (inbound.body ?? "").trim();
 
