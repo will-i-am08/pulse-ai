@@ -119,6 +119,20 @@ import {
 import { setBrandFeatures, setSpendCaps, logAdApproval, formatCents } from "./adsFeatures.js";
 import { looksLikeAdLibraryRequest, adLibraryBrief } from "./adLibrary.js";
 import { looksLikePastAdsRequest, pastAdsAnalysis } from "./pastAds.js";
+import {
+  looksLikeDestinationLinkIntent,
+  handleDestinationLinkConfirmation,
+  ensureDestinationLink,
+  resolveDestinationLink,
+  getPendingDestinationLink,
+  buildLinkOffer,
+  applyLinkOfferToCaption,
+  storyLinkCta,
+  confirmationSms,
+  saveConfirmedDestinationLink,
+  extractUrlFromMessage,
+} from "./destinationLinks.js";
+import type { LinkOffer } from "@pulse/shared";
 import { getProposedBoost, confirmBoost, cancelProposedBoost, looksLikeBoostRequest } from "./boost.js";
 import {
   looksLikePaidCampaignRequest, looksLikeAdCampaignControl, getProposedAdCampaign, getLiveAdCampaign,
@@ -388,7 +402,7 @@ export async function processInbound(
   ctx: InboundContext,
 ): Promise<{ reply: string; postId?: string; mediaUrl?: string; finishOnboardingBrandId?: string }> {
   // Backfill owner_name from signup so persona/interview never re-ask who they are.
-  const brand = await ensureOwnerNameFromUser(ctx.brand);
+  let brand = await ensureOwnerNameFromUser(ctx.brand);
   const { message, newMedia } = ctx;
 
   // Mid-onboarding: run the setup conversation instead of the normal flow.
@@ -420,6 +434,46 @@ export async function processInbound(
         message.body ?? "",
         "Still writing your voice up, nearly there.",
       ),
+    };
+  }
+
+  // Destination-link confirmation takes priority while a discovered URL is pending.
+  // ("Is this the right booking link?" → yes / no / corrected URL)
+  if (message.body && newMedia.length === 0 && getPendingDestinationLink(brand)) {
+    const confirmed = await handleDestinationLinkConfirmation(brand, message.body);
+    if (confirmed) return { reply: confirmed.reply };
+  }
+
+  // Owner asks to find / set / use a booking link (or put a link on a post).
+  if (message.body && newMedia.length === 0 && looksLikeDestinationLinkIntent(message.body)) {
+    const explicit = extractUrlFromMessage(message.body);
+    if (explicit && /\b(set|update|change|use)\b/i.test(message.body)) {
+      // Still confirm before saving — never silently overwrite booking_link.
+      await query(
+        `update brands set facts = jsonb_set(coalesce(facts, '{}'::jsonb), '{pending_destination_link}', $1::jsonb, true), updated_at = now() where id = $2`,
+        [
+          JSON.stringify({
+            url: explicit,
+            context: "update",
+            requested_at: new Date().toISOString(),
+          }),
+          brand.id,
+        ],
+      );
+      return { reply: confirmationSms(explicit, "update") };
+    }
+    if (/\bwhat('s| is)\s+(our|my|the)\s+booking\s+link\b/i.test(message.body)) {
+      const current = resolveDestinationLink(brand);
+      return {
+        reply: current
+          ? `Your booking link on file:\n${current}\n\nSay "update our booking link" to change it.`
+          : 'No booking link on file yet. Say "find our booking link" and I\'ll look, or just send me the URL.',
+      };
+    }
+    const ensured = await ensureDestinationLink(brand, "post");
+    if (ensured.askSms) return { reply: ensured.askSms };
+    return {
+      reply: `Using ${ensured.url} as your booking link. Send a photo (or say "draft a post") and I'll add the platform-safe CTA.`,
     };
   }
 
@@ -1085,7 +1139,32 @@ export async function processInbound(
           ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)
           : Promise.resolve(null),
       ]);
-      const { caption, proposedTime } = captionResult;
+      const { caption: rawCaption, proposedTime } = captionResult;
+
+      // Destination link: when owner asked for a booking/link CTA (or we already
+      // have a confirmed booking URL and they said "with our booking link"),
+      // attach a platform-safe link_offer and rewrite the caption.
+      let caption = rawCaption;
+      let linkOffer: LinkOffer | null = null;
+      const wantsLink =
+        looksLikeDestinationLinkIntent(message.body ?? "") ||
+        /\b(book|booking|link|cta)\b/i.test(message.body ?? "");
+      if (wantsLink) {
+        const ensured = await ensureDestinationLink(brand, "post");
+        if (ensured.askSms) {
+          return { reply: ensured.askSms };
+        }
+        if (ensured.url) {
+          brand = ensured.brand;
+          const destPlatform = (parseDestinationChoice(message.body ?? "")?.[0] ?? "instagram") as string;
+          linkOffer = buildLinkOffer({
+            url: ensured.url,
+            platform: destPlatform,
+            format: "feed",
+          });
+          caption = applyLinkOfferToCaption(caption, linkOffer, destPlatform, "feed");
+        }
+      }
 
       // Clear task after a real gap (≥ ~18h): just do it, with a light welcome-back
       // — never hijack a photo with "want to pick up where we left off?".
@@ -1146,8 +1225,8 @@ export async function processInbound(
       // brighter" re-styles from the original instead of compounding edits.
       const styleMeta = { wants_text: wantsText, ...(headline ? { headline } : {}) };
       const post = await queryOne<Post>(
-        `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at, destinations, captions)
-         values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb)
+        `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at, destinations, captions, link_offer)
+         values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb, $14::jsonb)
          returning *`,
         [
           brand.id,
@@ -1163,6 +1242,7 @@ export async function processInbound(
           slot.toISOString(),
           inboundDests ?? [],
           JSON.stringify(captions),
+          linkOffer ? JSON.stringify(linkOffer) : null,
         ],
       );
       if (!post) throw new Error("Failed to insert post");

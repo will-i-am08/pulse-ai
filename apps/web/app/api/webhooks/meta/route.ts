@@ -33,17 +33,44 @@ async function brandFor(assetId: string): Promise<Brand | null> {
 
 async function ingest(
   brand: Brand,
-  input: { platform: string; kind: InteractionKind; author?: string; text?: string; external_id?: string },
+  input: {
+    platform: string;
+    kind: InteractionKind;
+    author?: string;
+    text?: string;
+    external_id?: string;
+    media_external_id?: string;
+  },
 ): Promise<void> {
   // Idempotency: skip if we've already stored this external event.
   if (input.external_id) {
     const seen = await queryOne('select 1 from interactions where external_id = $1 limit 1', [input.external_id]);
     if (seen) return;
   }
+  // Best-effort: map Meta media id → published Kip post for destination-link fulfillment.
+  let postId: string | null = null;
+  if (input.media_external_id) {
+    const post = await queryOne<{ id: string }>(
+      `select id from posts
+        where brand_id = $1 and external_post_id = $2
+        order by published_at desc nulls last limit 1`,
+      [brand.id, input.media_external_id],
+    );
+    postId = post?.id ?? null;
+  }
   await query(
-    `insert into interactions (brand_id, platform, kind, external_id, author, text, status)
-     values ($1, $2, $3, $4, $5, $6, 'new')`,
-    [brand.id, input.platform, input.kind, input.external_id ?? null, input.author ?? null, input.text ?? null],
+    `insert into interactions (brand_id, platform, kind, external_id, author, text, status, media_external_id, post_id)
+     values ($1, $2, $3, $4, $5, $6, 'new', $7, $8)`,
+    [
+      brand.id,
+      input.platform,
+      input.kind,
+      input.external_id ?? null,
+      input.author ?? null,
+      input.text ?? null,
+      input.media_external_id ?? null,
+      postId,
+    ],
   );
 }
 
@@ -72,11 +99,30 @@ export async function POST(request: NextRequest) {
       for (const change of entry.changes ?? []) {
         const v = change.value ?? {};
         if (change.field === 'comments') {
-          await ingest(brand, { platform, kind: 'comment', author: v.from?.username ?? v.from?.name, text: v.text ?? v.message, external_id: v.id ?? v.comment_id });
+          await ingest(brand, {
+            platform,
+            kind: 'comment',
+            author: v.from?.username ?? v.from?.name,
+            text: v.text ?? v.message,
+            external_id: v.id ?? v.comment_id,
+            media_external_id: v.media?.id ?? v.media_id ?? undefined,
+          });
         } else if (change.field === 'mentions') {
-          await ingest(brand, { platform, kind: 'mention', external_id: v.comment_id ?? v.media_id });
+          await ingest(brand, {
+            platform,
+            kind: 'mention',
+            external_id: v.comment_id ?? v.media_id,
+            media_external_id: v.media_id ?? undefined,
+          });
         } else if (change.field === 'feed' && v.item === 'comment') {
-          await ingest(brand, { platform: 'facebook', kind: 'comment', author: v.from?.name, text: v.message, external_id: v.comment_id });
+          await ingest(brand, {
+            platform: 'facebook',
+            kind: 'comment',
+            author: v.from?.name,
+            text: v.message,
+            external_id: v.comment_id,
+            media_external_id: v.post_id ?? v.parent_id ?? undefined,
+          });
         }
       }
 

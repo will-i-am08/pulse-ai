@@ -5,6 +5,16 @@ import type {
   BoostPostInput, CampaignInsights, PastAdSummary,
 } from "./marketingTypes.js";
 
+/** Prefer confirmed booking URL, then website, then Facebook Page. */
+function adDestinationUrl(brand: Brand): string {
+  const facts = brand.facts as { booking_link?: string } | null | undefined;
+  const offers = brand.offers as { booking_link?: string } | null | undefined;
+  const booking = facts?.booking_link || offers?.booking_link;
+  if (booking && /^https?:\/\//i.test(booking)) return booking;
+  if (brand.website) return brand.website;
+  return brand.fb_page_id ? `https://facebook.com/${brand.fb_page_id}` : "https://facebook.com/";
+}
+
 interface AdsTokens { access_token?: string; ad_account_id?: string; [key: string]: unknown }
 
 const OBJECTIVE_MAP: Record<string, string> = {
@@ -85,8 +95,14 @@ export class LiveMarketingAdapter implements MarketingAdapter {
         page_id: input.brand.fb_page_id,
         link_data: {
           message: input.creative.primary_text, name: input.creative.headline ?? input.name,
-          link: input.brand.website ?? `https://facebook.com/${input.brand.fb_page_id}`,
-          call_to_action: { type: (input.creative.cta ?? "LEARN_MORE").toUpperCase().replace(/\s+/g, "_") },
+          link: adDestinationUrl(input.brand),
+          call_to_action: {
+            type: (input.creative.cta ??
+              (adDestinationUrl(input.brand).includes("book") || input.brand.facts?.booking_link
+                ? "BOOK_NOW"
+                : "LEARN_MORE")
+            ).toUpperCase().replace(/\s+/g, "_"),
+          },
           ...(input.creative.image_urls?.[0] ? { picture: input.creative.image_urls[0] } : {}),
         },
       });

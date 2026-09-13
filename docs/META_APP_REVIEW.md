@@ -72,6 +72,21 @@ Paste usage copy that stresses: **owner confirms every spend in SMS**; weekly + 
 **public_profile**
 > Basic Facebook Login — we read the person's public profile (name, id) to identify the user connecting their accounts and personalise their dashboard.
 
+### Wave 1b — messaging / private replies (destination link fulfillment)
+
+When submitting engagement scopes (or a follow-on review after Wave 1 Live), include copy that private replies deliver **owner-confirmed booking URLs** only after a comment/DM on a Kip-published post that registered a `link_offer` — never cold outbound DMs.
+
+| Permission | Why |
+|---|---|
+| `instagram_manage_messages` | Private reply with the confirmed booking URL when someone comments the CTA keyword on an IG post/Story |
+| `pages_messaging` | Same fulfillment path for Facebook Page comments / DMs |
+| `instagram_manage_comments` | Read comments that trigger link fulfillment (often already requested) |
+| `pages_manage_engagement` | Public ack (“Sent you a DM!”) without putting the URL in the public thread |
+
+> Pulse only sends a private reply containing the business’s owner-confirmed booking link when a visitor comments or DMs a clear “send me the link” intent on a post Pulse published with a link offer. One private reply per comment (Meta’s 7-day window). We never cold-DM non-engagers.
+
+**Story note for reviewers / owners:** Instagram Content Publishing API cannot attach link stickers. Kip bakes a comment/DM CTA into Story creatives and fulfills via private reply / DM; a tappable sticker must be added manually in the IG app if desired.
+
 ---
 
 ## Screencast shot list (~2–3 min, Wave 1)

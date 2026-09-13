@@ -644,6 +644,11 @@ export interface Post {
     reel?: boolean;
     [key: string]: unknown;
   } | null;
+  /**
+   * Confirmed destination / booking URL offer for this post (organic or creative).
+   * Not an SMS connect deep-link. See LinkOffer.
+   */
+  link_offer?: LinkOffer | null;
   // Content pillar this post belongs to, and autopilot bookkeeping.
   pillar_id: string | null;
   // feed (single) / carousel (multi-image) / story (24h). Drives how it publishes.
@@ -692,6 +697,37 @@ export interface BrandPaymentFacts {
   status?: "submitted" | "active" | "none";
 }
 
+/** Owner must SMS-confirm a discovered booking/destination URL before Kip saves or uses it. */
+export interface PendingDestinationLink {
+  url: string;
+  candidates?: string[];
+  /** Why we asked — e.g. "post", "ads", "onboarding", "update". */
+  context?: string;
+  requested_at: string;
+}
+
+/**
+ * Per-post destination link offer (organic captions / Stories / ads).
+ * Distinct from SMS connect deep-links (`/c/[token]`).
+ */
+export type LinkOfferMode = "comment_dm" | "caption_url" | "story_cta" | "ad_destination";
+
+export interface LinkOffer {
+  url: string;
+  mode: LinkOfferMode;
+  /** Comment keyword that triggers a private DM with the URL (IG/FB). */
+  keyword?: string;
+  confirmed_at: string;
+}
+
+/** Ledger of a one-shot private reply / DM that delivered a destination link. */
+export interface LinkFulfillment {
+  method: "private_reply" | "dm" | "public_reply";
+  url: string;
+  sent_at: string;
+  external_message_id?: string | null;
+}
+
 export interface BusinessFacts {
   /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
   lab?: boolean;
@@ -713,6 +749,8 @@ export interface BusinessFacts {
   plan?: BrandPlanFacts;
   /** Payment UI / future billing markers — never used to block /app access. */
   payment?: BrandPaymentFacts;
+  /** Awaiting owner yes/no (or a corrected URL) for a discovered destination link. */
+  pending_destination_link?: PendingDestinationLink | null;
 }
 
 /**
@@ -815,6 +853,12 @@ export interface Interaction {
   status: InteractionStatus;
   /** Public permalink when the platform provided one. */
   permalink?: string | null;
+  /** Kip post this interaction relates to, when known. */
+  post_id?: string | null;
+  /** Platform media id (e.g. IG media the comment was on). */
+  media_external_id?: string | null;
+  /** One-shot destination-link private reply / DM ledger. */
+  link_fulfillment?: LinkFulfillment | null;
   created_at: string;
 }
 

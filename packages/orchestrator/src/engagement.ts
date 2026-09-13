@@ -1,10 +1,16 @@
-import { query, queryOne, sanitizeChatText, type Brand, type Interaction, type InteractionKind } from "@pulse/shared";
+import { query, queryOne, sanitizeChatText, type Brand, type Interaction, type InteractionKind, type LinkFulfillment } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { callLLM } from "./llm.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { brandFeatures } from "./adsFeatures.js";
 import { buildLeadCard, formatLeadCardSms } from "./leadCard.js";
 import { pushLeadToCrm } from "./crmWebhook.js";
+import {
+  loadPostForInteraction,
+  matchesLinkOfferRequest,
+  privateLinkDmBody,
+  publicLinkAckReply,
+} from "./destinationLinks.js";
 
 // The engagement engine: classify an inbound interaction (comment/DM/mention/
 // review) into a bucket + sentiment, then route it — auto-reply the safe stuff,
@@ -68,11 +74,13 @@ export async function createInteraction(
     text: string;
     external_id?: string;
     permalink?: string | null;
+    post_id?: string | null;
+    media_external_id?: string | null;
   },
 ): Promise<Interaction> {
   const row = await queryOne<Interaction>(
-    `insert into interactions (brand_id, platform, kind, external_id, author, text, permalink, status)
-     values ($1, $2, $3, $4, $5, $6, $7, 'new') returning *`,
+    `insert into interactions (brand_id, platform, kind, external_id, author, text, permalink, post_id, media_external_id, status)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new') returning *`,
     [
       brand.id,
       input.platform,
@@ -81,6 +89,8 @@ export async function createInteraction(
       input.author ?? null,
       input.text,
       input.permalink ?? null,
+      input.post_id ?? null,
+      input.media_external_id ?? null,
     ],
   );
   if (!row) throw new Error("createInteraction: insert returned no row");
@@ -113,8 +123,82 @@ export async function claimInteraction(id: string): Promise<Interaction | null> 
   );
 }
 
+/**
+ * If this comment/DM is asking for a destination link on a post with link_offer,
+ * private-reply (comment) or DM-reply with the URL once, then ack publicly.
+ * Returns an EngagementResult when fulfilled; null to fall through to normal triage.
+ */
+async function tryFulfillDestinationLink(
+  brand: Brand,
+  interaction: Interaction,
+): Promise<EngagementResult | null> {
+  if (interaction.link_fulfillment?.sent_at) return null;
+  if (interaction.kind !== "comment" && interaction.kind !== "dm" && interaction.kind !== "mention") {
+    return null;
+  }
+
+  const post = await loadPostForInteraction({
+    brand_id: brand.id,
+    post_id: interaction.post_id,
+    media_external_id: interaction.media_external_id,
+  });
+  const offer = post?.link_offer ?? null;
+  if (!offer?.url) return null;
+  if (offer.mode !== "comment_dm" && offer.mode !== "story_cta") return null;
+  if (!matchesLinkOfferRequest(interaction.text, offer)) return null;
+
+  const graph = getGraphAdapter();
+  const dmBody = sanitizeChatText(privateLinkDmBody(brand, offer.url));
+  let externalId: string | null = null;
+  let method: LinkFulfillment["method"] = "dm";
+
+  try {
+    if (interaction.kind === "dm") {
+      if (!graph.reply) return null;
+      const posted = await graph.reply({ brand, interaction, body: dmBody });
+      externalId = posted.externalReplyId;
+      method = "dm";
+    } else {
+      if (!graph.privateReply) return null;
+      const posted = await graph.privateReply({ brand, interaction, body: dmBody });
+      externalId = posted.externalReplyId;
+      method = "private_reply";
+    }
+  } catch (err) {
+    console.error(`tryFulfillDestinationLink: send failed for ${interaction.id}`, err);
+    return null;
+  }
+
+  const fulfillment: LinkFulfillment = {
+    method,
+    url: offer.url,
+    sent_at: new Date().toISOString(),
+    external_message_id: externalId,
+  };
+  await query(`update interactions set link_fulfillment = $1::jsonb where id = $2`, [
+    JSON.stringify(fulfillment),
+    interaction.id,
+  ]);
+  await recordReply(interaction, dmBody, "sent");
+
+  const publicAck =
+    interaction.kind === "comment" || interaction.kind === "mention"
+      ? sanitizeChatText(publicLinkAckReply(offer.keyword))
+      : undefined;
+  if (publicAck) await recordReply(interaction, publicAck, "sent");
+
+  await setStatus(interaction.id, "auto_replied");
+  return {
+    interaction: { ...interaction, link_fulfillment: fulfillment },
+    publicReply: publicAck,
+  };
+}
+
 /** Run the triage policy on an interaction and return what to post / tell the owner. */
 export async function handleInteraction(brand: Brand, interaction: Interaction): Promise<EngagementResult> {
+  const fulfilled = await tryFulfillDestinationLink(brand, interaction);
+  if (fulfilled) return fulfilled;
+
   const features = brandFeatures(brand);
   const d = await decide(brand, interaction);
 

@@ -521,4 +521,60 @@ export class LiveGraphAdapter implements GraphAdapter {
       }
     });
   }
+
+  /**
+   * Private reply to a commenter — Meta Messaging API with recipient.comment_id.
+   * Opens a DM containing the destination link (one shot per comment).
+   */
+  async privateReply(input: {
+    brand: Brand;
+    interaction: Interaction;
+    body: string;
+  }): Promise<{ externalReplyId: string | null }> {
+    const { brand, interaction, body } = input;
+    if (interaction.kind !== "comment" && interaction.kind !== "mention") {
+      throw new Error(`live:privateReply — kind '${interaction.kind}' is not a comment`);
+    }
+    if (!interaction.external_id) {
+      throw new Error(`Interaction ${interaction.id} has no comment id for private reply`);
+    }
+    const env = getServerEnv();
+    const tokens = getTokens(brand);
+
+    return withRetry(`live:privateReply:${interaction.id}`, async () => {
+      if (interaction.platform === "instagram") {
+        const accessToken = tokens.ig_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing ig_access_token`);
+        if (!brand.ig_user_id) throw new Error(`Brand ${brand.id} missing ig_user_id`);
+        const json = await graphFetch(graphUrl(env, `/${brand.ig_user_id}/messages`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { comment_id: interaction.external_id },
+            message: { text: body },
+            access_token: accessToken,
+          }),
+        });
+        return { externalReplyId: (json.message_id as string | undefined) ?? null };
+      }
+
+      if (interaction.platform === "facebook") {
+        const accessToken = tokens.fb_page_access_token;
+        if (!accessToken) throw new Error(`Brand ${brand.id} missing fb_page_access_token`);
+        if (!brand.fb_page_id) throw new Error(`Brand ${brand.id} missing fb_page_id`);
+        const json = await graphFetch(graphUrl(env, `/${brand.fb_page_id}/messages`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { comment_id: interaction.external_id },
+            message: { text: body },
+            access_token: accessToken,
+          }),
+        });
+        return { externalReplyId: (json.message_id as string | undefined) ?? null };
+      }
+
+      throw new Error(`live:privateReply — unsupported platform '${interaction.platform}'`);
+    });
+  }
 }
