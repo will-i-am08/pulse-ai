@@ -19,6 +19,14 @@ import {
   type TypedCarouselKind,
 } from "./formats.js";
 import { personaLines } from "./persona.js";
+import {
+  inferVisualModeFromText,
+  resolveVisualMode,
+  visualsPayloadValue,
+  withPreferredVisuals,
+  type VisualMode,
+} from "./visualMode.js";
+
 
 /**
  * Kip self-kickoffs — the agentic work queue.
@@ -129,12 +137,18 @@ export function inferKickoffFromUserMessage(
     (NO_PHOTOS_RE.test(t) && STOCK_OR_GENERATED_RE.test(t)) ||
     (STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))
   ) {
-    return {
-      kind: "first_batch",
-      payload: { count: 3, visuals: "generated" },
-      ackSms:
-        "On it — drafting your first few with generated visuals now. I'll text each one over for approval.",
-    };
+    {
+      const mode = inferVisualModeFromText(t);
+      const visuals = visualsPayloadValue(mode, t);
+      return {
+        kind: "first_batch",
+        payload: { count: 3, visuals },
+        ackSms:
+          mode === "designed"
+            ? "On it — drafting your first few as designed cards now. I'll text each one over for approval."
+            : "On it — drafting your first few with photo visuals now. I'll text each one over for approval.",
+      };
+    }
   }
 
   if (DRAFT_POSTS_RE.test(t)) {
@@ -142,7 +156,7 @@ export function inferKickoffFromUserMessage(
     const count = Math.min(5, Math.max(1, Number.isFinite(n) ? n : 2));
     return {
       kind: "draft_posts",
-      payload: { count, visuals: "generated" },
+      payload: { count, visuals: visualsPayloadValue(inferVisualModeFromText(t), t) },
       ackSms: `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
     };
   }
@@ -172,12 +186,23 @@ export function inferKickoffFromKipCommit(
     return { kind: "competitor_draft", payload: { hint: (userMessage ?? kipReply).slice(0, 280), count: 1 } };
   }
   if (FIRST_BATCH_RE.test(blob) || STOCK_OR_GENERATED_RE.test(blob) || NO_PHOTOS_RE.test(userMessage ?? "")) {
-    return { kind: "first_batch", payload: { count: 3, visuals: "generated" } };
+    return { kind: "first_batch", payload: { count: 3, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
   }
   if (DRAFT_POSTS_RE.test(blob) || CONTENT_WORK_RE.test(blob)) {
-    return { kind: "draft_posts", payload: { count: 2, visuals: "generated" } };
+    return { kind: "draft_posts", payload: { count: 2, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
   }
   return null;
+}
+
+
+async function rememberPreferredVisuals(brand: Brand, mode: VisualMode): Promise<void> {
+  if (brand.visual?.preferred_visuals === mode) return;
+  const visual = withPreferredVisuals(brand.visual, mode);
+  await query(`update brands set visual = $1::jsonb where id = $2`, [
+    JSON.stringify(visual),
+    brand.id,
+  ]);
+  brand.visual = visual;
 }
 
 export async function enqueueKickoff(
@@ -190,7 +215,18 @@ export async function enqueueKickoff(
     ackSms?: string | null;
   },
 ): Promise<KickoffEnqueueResult> {
-  const payload = opts?.payload ?? {};
+  const payload = { ...(opts?.payload ?? {}) };
+  // Content drafts default to photos; persist so later drains / fillers stay consistent.
+  if (
+    kind === "first_batch" ||
+    kind === "draft_posts" ||
+    kind === "trend_draft" ||
+    kind === "competitor_draft"
+  ) {
+    const mode = resolveVisualMode(brand, payload);
+    if (payload.visuals == null) payload.visuals = visualsPayloadValue(mode);
+    await rememberPreferredVisuals(brand, mode);
+  }
   const reason = opts?.reason ?? "system";
   try {
     const kickoff = await queryOne<KipKickoff>(
@@ -312,8 +348,16 @@ async function draftGeneratedPiece(
   pillar: Pillar,
   prefer: "carousel" | "filler" = "carousel",
   kind: TypedCarouselKind = "tip",
+  visuals: VisualMode = "photo",
 ): Promise<{ post: Post; mediaUrl: string; kindLabel: string } | null> {
-  if (prefer === "carousel") {
+  // Photo mode: assume a real photo unless the ask is explicitly designed cards.
+  // Tip/step carousels stay designed only when visuals === "designed".
+  if (visuals === "photo") {
+    const filler = await generateFillerPost(brand, pillar, { visuals: "photo" });
+    if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
+    // Fall through to designed carousel/card if photo gen is unavailable.
+  }
+  if (prefer === "carousel" || visuals === "designed") {
     const typed = await generateTypedCarousel(brand, pillar, kind);
     if (typed && typed.ok === false) {
       // QA failed — fall through to tip/filler rather than SMS-ing a dead end mid-batch.
@@ -323,8 +367,8 @@ async function draftGeneratedPiece(
     const tip = await generateTipCarousel(brand, pillar);
     if (tip) return { post: tip.post, mediaUrl: tip.mediaUrl, kindLabel: "tip carousel" };
   }
-  const filler = await generateFillerPost(brand, pillar);
-  if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
+  const filler = await generateFillerPost(brand, pillar, { visuals });
+  if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: visuals === "photo" ? "photo post" : "feed post" };
   return null;
 }
 
@@ -342,6 +386,8 @@ async function runFirstBatch(
       },
     ];
   }
+  const visuals = resolveVisualMode(brand, payload);
+  await rememberPreferredVisuals(brand, visuals);
   const kinds: TypedCarouselKind[] = ["tip", "steps", "before_after", "menu_offer"];
   const out: KickoffDrainResult[] = [];
   const postIds: string[] = [];
@@ -349,7 +395,7 @@ async function runFirstBatch(
   for (let i = 0; i < count; i++) {
     const pillar = pillars[i % pillars.length]!;
     const kind = kinds[i % kinds.length]!;
-    const drafted = await draftGeneratedPiece(brand, pillar, "carousel", kind);
+    const drafted = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals);
     if (!drafted) continue;
     postIds.push(drafted.post.id);
     const when = drafted.post.scheduled_at
@@ -391,6 +437,8 @@ async function runDraftPosts(
       },
     ];
   }
+  const visuals = resolveVisualMode(brand, payload);
+  await rememberPreferredVisuals(brand, visuals);
   const out: KickoffDrainResult[] = [];
   for (let i = 0; i < count; i++) {
     const pillar = pillars[i % pillars.length]!;
@@ -399,6 +447,7 @@ async function runDraftPosts(
       pillar,
       i % 2 === 0 ? "carousel" : "filler",
       i % 2 === 0 ? "tip" : "steps",
+      visuals,
     );
     if (!drafted) continue;
     const when = drafted.post.scheduled_at
@@ -477,7 +526,7 @@ async function runTrendOrCompetitorDraft(
 
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
-  const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip");
+  const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip", resolveVisualMode(brand, payload));
   if (!drafted) {
     return [
       {

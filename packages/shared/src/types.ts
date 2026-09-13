@@ -806,6 +806,12 @@ export interface VisualProfile {
   /** How photos should be treated: lighting, grade, crop bias, etc. */
   photo_treatment?: string;
   aspect_ratio?: string;
+  /**
+   * Default creative surface for drafts when the owner hasn't overridden per-ask.
+   * photo = stock/AI photography (Kip's default assumption);
+   * designed = typographic text cards / tip slides.
+   */
+  preferred_visuals?: "photo" | "designed";
 }
 
 /** Ideal customer profile — segments, demographics, jobs-to-be-done. */

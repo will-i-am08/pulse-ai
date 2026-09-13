@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { query, queryOne, putMedia, brandVoiceProfileSchema, type Brand, type Pillar, type Post } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { renderQuoteCard } from "./imaging.js";
+import { renderQuoteCard, generatePhotoImage } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { brandContextForPrompt } from "./brandContext.js";
+import { visualReference } from "./library.js";
+import { resolveVisualMode, type VisualMode } from "./visualMode.js";
 
 /**
  * Generate a text-only filler post for a pillar (used when a slot is starving and
@@ -14,28 +16,39 @@ import { brandContextForPrompt } from "./brandContext.js";
 export async function generateFillerPost(
   brand: Brand,
   pillar: Pillar,
+  opts?: { visuals?: VisualMode },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
+  const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
+  const wantPhoto = visuals === "photo";
   const system = [
     `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts.",
-    "Output ONLY JSON: {\"caption\":\"<the full post caption, no hashtags unless natural>\",\"card\":\"<a punchy 4-12 word line to display big on a text card>\"}",
-    "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
+    wantPhoto
+      ? 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","photo_prompt":"<one vivid sentence describing a realistic photo that fits the post — lifestyle/product/scene, no text overlays, no logos, no watermarks>","card":"<optional 4-12 word fallback line if a photo cannot be generated>"}'
+      : 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","card":"<a punchy 4-12 word line to display big on a text card>"}',
+    wantPhoto
+      ? "Prefer a photographic scene. photo_prompt must describe a real-looking stock/AI photo, not a graphic or text card."
+      : "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
   ]
     .filter(Boolean)
     .join("\n");
 
   let caption: string;
   let card: string;
+  let photoPrompt = "";
   try {
-    const raw = await callLLM({ system, messages: [{ role: "user", content: `Write today's ${pillar.name} post.` }], maxTokens: 300 });
+    const raw = await callLLM({ system, messages: [{ role: "user", content: `Write today's ${pillar.name} post.` }], maxTokens: 360 });
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
     caption = String(parsed.caption ?? "").trim();
     card = String(parsed.card ?? "").trim();
-    if (!caption || !card) return null;
+    photoPrompt = String(parsed.photo_prompt ?? "").trim();
+    if (!caption) return null;
+    if (!wantPhoto && !card) return null;
+    if (wantPhoto && !photoPrompt && !card) return null;
   } catch (err) {
     console.error("generateFillerPost: LLM/parse failed", err);
     return null;
@@ -43,7 +56,19 @@ export async function generateFillerPost(
 
   const mediaId = randomUUID();
   try {
-    const img = await renderQuoteCard(card, brand);
+    let img: Buffer | null = null;
+    if (wantPhoto && photoPrompt) {
+      const ref = visualReference(brand, false);
+      const stockCue =
+        "Authentic royalty-free stock photo look, natural lighting, no text, no logos, no watermark, no UI.";
+      img = await generatePhotoImage(
+        ref ? `${photoPrompt}. ${stockCue}. ${ref}` : `${photoPrompt}. ${stockCue}`,
+      );
+    }
+    if (!img) {
+      if (!card) return null;
+      img = await renderQuoteCard(card, brand);
+    }
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
        values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
@@ -73,7 +98,7 @@ export async function generateFillerPost(
   await query(
     `insert into approval_log (post_id, brand_id, action, actor, after, note)
      values ($1, $2, 'draft_created', 'system', $3::jsonb, $4)`,
-    [post.id, brand.id, JSON.stringify({ caption, pillar: pillar.key, generated: true }), "Generated filler post"],
+    [post.id, brand.id, JSON.stringify({ caption, pillar: pillar.key, generated: true, visuals, photo: wantPhoto }), wantPhoto ? "Generated photo feed post" : "Generated filler post"],
   );
 
   // The quote card IS the visual — frame it in the IG mockup for the preview.
