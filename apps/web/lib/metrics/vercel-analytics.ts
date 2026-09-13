@@ -55,7 +55,9 @@ async function vercelQuery<T>(
   const token = analyticsToken();
   if (!token) return null;
 
-  const url = new URL(`https://api.vercel.com/v1/web-analytics/${path}`);
+  // Public Web Analytics API lives under /v1/query/web-analytics/*
+  // @see https://vercel.com/docs/analytics/web-analytics-api
+  const url = new URL(`https://api.vercel.com/v1/query/web-analytics/${path}`);
   url.searchParams.set('projectId', projectId());
   const team = teamId();
   if (team) url.searchParams.set('teamId', team);
@@ -75,14 +77,19 @@ async function vercelQuery<T>(
   return (await res.json()) as T;
 }
 
+function rangeBounds(range: MetricsRange): { since: string; until: string } {
+  return {
+    since: range.from.toISOString(),
+    until: range.to.toISOString(),
+  };
+}
+
 /** Total pageviews + unique visitors for a range. */
 export async function fetchVercelVisitTotals(range: MetricsRange): Promise<VisitTotals | null> {
+  const { since, until } = rangeBounds(range);
   const json = await vercelQuery<{
     data?: { pageviews?: number; visitors?: number; total?: number };
-  }>('visits/count', {
-    from: range.from.toISOString(),
-    to: range.to.toISOString(),
-  });
+  }>('visits/count', { since, until });
   if (!json?.data) return null;
   return {
     pageviews: Number(json.data.pageviews ?? json.data.total ?? 0),
@@ -92,12 +99,13 @@ export async function fetchVercelVisitTotals(range: MetricsRange): Promise<Visit
 
 /** Landing-page pageviews only (`/` path). */
 export async function fetchVercelLandingPageviews(range: MetricsRange): Promise<number | null> {
+  const { since, until } = rangeBounds(range);
   const json = await vercelQuery<{
     data?: { pageviews?: number; visitors?: number; total?: number };
   }>('visits/count', {
-    from: range.from.toISOString(),
-    to: range.to.toISOString(),
-    filter: "path eq '/'",
+    since,
+    until,
+    filter: "requestPath eq '/'",
   });
   if (!json?.data) return null;
   return Number(json.data.pageviews ?? json.data.total ?? 0);
@@ -109,6 +117,7 @@ export async function fetchVercelVisitSeries(range: MetricsRange): Promise<{
   visitors: SeriesPoint[];
 } | null> {
   const by = granularityToBy(range.granularity);
+  const { since, until } = rangeBounds(range);
   const json = await vercelQuery<{
     data?: Array<{
       date?: string;
@@ -121,16 +130,17 @@ export async function fetchVercelVisitSeries(range: MetricsRange): Promise<{
       total?: number;
     }>;
   }>('visits/aggregate', {
-    from: range.from.toISOString(),
-    to: range.to.toISOString(),
+    since,
+    until,
     by,
+    limit: '1000',
   });
   if (!json?.data) return null;
 
   const pagePoints: SeriesPoint[] = [];
   const visitorPoints: SeriesPoint[] = [];
   for (const row of json.data) {
-    const raw = row.date ?? row.day ?? row.week ?? row.month ?? row.timestamp;
+    const raw = row.timestamp ?? row.date ?? row.day ?? row.week ?? row.month;
     if (!raw) continue;
     const bucket = String(raw).slice(0, 10);
     pagePoints.push({ bucket, value: Number(row.pageviews ?? row.total ?? 0) });
