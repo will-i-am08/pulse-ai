@@ -35,6 +35,8 @@ export default async function OperatorOverviewPage({
   const { range: rangeParam } = await searchParams;
   const timeframe = parseRange(rangeParam);
   const metrics = await loadOverviewMetrics(timeframe);
+  const visitSource =
+    metrics.visits.source === 'vercel' ? 'Vercel Analytics' : 'First-party beacon';
 
   return (
     <section className="stage">
@@ -74,7 +76,16 @@ export default async function OperatorOverviewPage({
             hint={`${metrics.brands.paused} paused`}
           />
           <MetricCard label="Est. MRR" value={money(metrics.revenue.mrr)} hint="From paid plan facts" />
-          <MetricCard label="Page views" value={String(metrics.visits.total)} hint="In selected range" />
+          <MetricCard
+            label="Visitors"
+            value={String(metrics.visits.visitors)}
+            hint={`${metrics.visits.pageviews} pageviews · ${visitSource}`}
+          />
+          <MetricCard
+            label="Landing views"
+            value={String(metrics.visits.landingPageviews)}
+            hint="Home page (/) only"
+          />
         </div>
 
         <h2 className="page-h1" style={{ marginTop: 40, fontSize: 22 }}>
@@ -94,9 +105,24 @@ export default async function OperatorOverviewPage({
         />
 
         <h2 className="page-h1" style={{ marginTop: 40, fontSize: 22 }}>
-          Site visits
+          Visitors
         </h2>
-        <p className="lead">First-party page views across marketing and app routes.</p>
+        <p className="lead">
+          Unique visitors over time ({visitSource}
+          {metrics.visits.source === 'first_party'
+            ? ' — add VERCEL_API_TOKEN to pull production Web Analytics'
+            : ''}
+          ).
+        </p>
+        <MetricsChart
+          data={metrics.visits.visitorsSeries}
+          emptyLabel="No visitors recorded yet. Visit the landing page, then refresh."
+        />
+
+        <h2 className="page-h1" style={{ marginTop: 40, fontSize: 22 }}>
+          Pageviews
+        </h2>
+        <p className="lead">All pageviews across marketing and app routes ({visitSource}).</p>
         <MetricsChart data={metrics.visits.series} emptyLabel="No page views recorded yet." />
       </div>
     </section>
