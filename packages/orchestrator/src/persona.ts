@@ -10,7 +10,9 @@ import { brandContextForPrompt } from "./brandContext.js";
 export function firstNameFromDisplayName(name: string | null | undefined): string | null {
   if (typeof name !== "string") return null;
   const first = name.trim().split(/\s+/)[0];
-  return first || null;
+  if (!first) return null;
+  // Signup / SMS often stores lowercase ("bill") — address them like a human.
+  return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
 /** The owner's first name if we've captured it, for personal address. */

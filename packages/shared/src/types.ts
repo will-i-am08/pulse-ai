@@ -526,6 +526,8 @@ export interface ContentPlan {
   exemplars: string | null;
   plan: NichePlan | null;
   status: "pending" | "proposed" | "accepted" | "failed";
+  /** When Kip promised to text the plan (concrete ETA). */
+  promised_at: string | null;
   created_at: string;
   updated_at: string;
 }

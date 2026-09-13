@@ -1,6 +1,6 @@
 import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
-import { classifyInbound, type InboundClassification } from "./classify.js";
+import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
@@ -925,7 +925,11 @@ export async function processInbound(
   // so a friendly hello never trips the clarify fallback. It fires even when a
   // draft is pending: a greeting is never an approval, so GREETING_RE only matches
   // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
-  if (message.body && newMedia.length === 0 && GREETING_RE.test(message.body)) {
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
+  ) {
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
     }
@@ -1412,6 +1416,11 @@ export async function processInbound(
 
     case "approval": {
       if (!pending) {
+        // Casual "awesome"/"great" with nothing to approve — chat back, don't
+        // announce an empty approval queue they never asked about.
+        if (looksLikeAffirmation(message.body ?? "") || GREETING_RE.test(message.body ?? "")) {
+          return { reply: await converse(brand, message.body ?? "") };
+        }
         return { reply: "There's nothing pending approval right now." };
       }
 

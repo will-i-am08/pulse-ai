@@ -26,6 +26,18 @@ const APPROVAL_RE =
   /^(yes|yep|yup|yeah|y|ok|okay|k|sounds good|sg|good|great|approve(d)?|go for it|do it|perfect|love it|nice|looks good|lgtm)[.!\s]*(👍|✅|👌|🙌|🔥)?$/i;
 const APPROVAL_EMOJI_ONLY_RE = /^[\s👍✅👌🙌🔥]+$/u;
 
+/** Casual positive vibes with nothing actionable — not an approval ask. */
+const AFFIRMATION_RE =
+  /^\s*(?:awesome|amazing|amazing thanks|fantastic|wonderful|brilliant|excellent|lovely|sweet|sick|dope|fire|rad|cool|legend|beaut(?:y)?|ace|solid|good stuff|nice one|love that|love this|this is (?:great|awesome|perfect)|so good)[.!\s]*$/i;
+
+export function looksLikeAffirmation(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  if (AFFIRMATION_RE.test(t)) return true;
+  // Short vibes that aren't explicit yes/approve (those stay approval when pending).
+  return /^(awesome|amazing|fantastic|wonderful|brilliant|sweet|sick|cool|fire|rad|legend|beauty|ace)[.!\s]*$/i.test(t);
+}
+
 const QUESTION_WORDS = [
   "who",
   "what",
@@ -91,6 +103,11 @@ export function ruleBasedClassify(
   }
 
   if (APPROVAL_RE.test(text) || APPROVAL_EMOJI_ONLY_RE.test(text)) {
+    // Without something to approve, "yes"/"great"/"perfect" are just vibes —
+    // not an approval action. Leave as other so chatBack handles them warmly.
+    if (!hasPendingPost) {
+      return { classification: "other", confidence: 0.85 };
+    }
     return { classification: "approval", confidence: 0.95 };
   }
 
@@ -133,7 +150,7 @@ function extractJson(text: string): string {
 }
 
 const CLASSIFY_SYSTEM_PROMPT = `You classify an inbound SMS from a social-media client into exactly one category:
-- "approval": a plain yes/ok/thumbs-up style approval of a pending draft.
+- "approval": a plain yes/ok/thumbs-up style approval of a pending draft. ONLY use this when a pending draft exists. If nothing is pending, prefer "other" for casual vibes like "awesome"/"great"/"cool".
 - "edit": a correction or change request aimed at a pending draft post.
 - "media": (never used here — media is detected before this LLM call runs).
 - "question": the client is asking something.

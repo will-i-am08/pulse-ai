@@ -9,6 +9,9 @@ import {
 import { harvestBrandPosts } from "@pulse/graph";
 import { callLLM } from "./llm.js";
 
+/** Concrete minutes Kip quotes after onboarding — and delivers against. */
+export const ONBOARDING_PLAN_ETA_MINUTES = 2;
+
 // The niche-research custom plan. A background pass studies the brand's niche +
 // admired accounts (web search), then proposes a tailored playbook. The owner
 // accepts it and it configures their pillars. Web content is UNTRUSTED data to
@@ -17,10 +20,14 @@ import { callLLM } from "./llm.js";
 /** Seed a 'pending' plan for a brand once we know their niche (kicks off research). */
 export async function seedPendingPlan(brandId: string, niche: string, exemplars: string | null): Promise<void> {
   await query(
-    `insert into content_plans (brand_id, niche, exemplars, status)
-     values ($1, $2, $3, 'pending')
-     on conflict (brand_id) where status in ('pending','proposed') do nothing`,
-    [brandId, niche, exemplars],
+    `insert into content_plans (brand_id, niche, exemplars, status, promised_at)
+     values ($1, $2, $3, 'pending', now() + make_interval(mins => $4))
+     on conflict (brand_id) where status in ('pending','proposed') do update
+       set niche = excluded.niche,
+           exemplars = coalesce(excluded.exemplars, content_plans.exemplars),
+           promised_at = coalesce(content_plans.promised_at, excluded.promised_at),
+           updated_at = now()`,
+    [brandId, niche, exemplars, ONBOARDING_PLAN_ETA_MINUTES],
   );
 }
 
@@ -28,8 +35,13 @@ export async function seedPendingPlan(brandId: string, niche: string, exemplars:
 export async function pendingPlans(): Promise<ContentPlan[]> {
   return query<ContentPlan>(
     `select * from content_plans where status = 'pending'
-       and (updated_at = created_at or updated_at < now() - interval '15 minutes')
-     order by created_at limit 5`,
+       and (
+         updated_at = created_at
+         or updated_at < now() - interval '15 minutes'
+         or (promised_at is not null and promised_at <= now())
+       )
+     order by promised_at asc nulls last, created_at
+     limit 5`,
   );
 }
 
@@ -128,7 +140,10 @@ export async function proposeContentPlanFromSms(
  */
 
 /** Voice guide + top captions so the first plan reflects their own past work. */
-async function ownPastContentContext(brand: Brand): Promise<string | undefined> {
+async function ownPastContentContext(
+  brand: Brand,
+  opts?: { skipHarvest?: boolean },
+): Promise<string | undefined> {
   const bits: string[] = [];
   const guide = (brand.voice_guide_md ?? "").trim();
   if (guide) {
@@ -152,7 +167,8 @@ async function ownPastContentContext(brand: Brand): Promise<string | undefined> 
     bits.push(`Analysis source: ${profile.analysis_source}.`);
   }
 
-  if (brand.ig_user_id && brand.platform_tokens_encrypted) {
+  // Graph harvest is slow — skip on the onboarding fast path (voice profile is enough).
+  if (!opts?.skipHarvest && brand.ig_user_id && brand.platform_tokens_encrypted) {
     try {
       const { posts } = await harvestBrandPosts(brand, 40);
       const captions = posts
@@ -174,8 +190,13 @@ async function ownPastContentContext(brand: Brand): Promise<string | undefined> 
   return bits.length ? bits.join("\n\n") : undefined;
 }
 
-export async function researchNichePlan(brand: Brand, niche: string, exemplars: string | null): Promise<NichePlan | null> {
-  const ownPast = await ownPastContentContext(brand);
+export async function researchNichePlan(
+  brand: Brand,
+  niche: string,
+  exemplars: string | null,
+  opts?: { skipHarvest?: boolean },
+): Promise<NichePlan | null> {
+  const ownPast = await ownPastContentContext(brand, opts);
   const system = [
     `You are Kip, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
     exemplars ? `Accounts the owner admires (study these first as industry peers): ${exemplars}.` : "",
@@ -201,7 +222,7 @@ export async function researchNichePlan(brand: Brand, niche: string, exemplars: 
       system,
       messages: [{ role: "user", content: userContent }],
       maxTokens: 1200,
-      webSearch: 6,
+      webSearch: 4,
     });
   } catch (err) {
     console.error(`researchNichePlan: LLM/search failed for brand ${brand.id}`, err);
@@ -216,8 +237,9 @@ export async function researchNichePlanFallback(
   brand: Brand,
   niche: string,
   exemplars: string | null,
+  opts?: { skipHarvest?: boolean },
 ): Promise<NichePlan | null> {
-  const ownPast = await ownPastContentContext(brand);
+  const ownPast = await ownPastContentContext(brand, opts);
   const system = [
     `You are Kip, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
     exemplars ? `Accounts the owner admires (match their vibe): ${exemplars}.` : "",
@@ -281,13 +303,20 @@ export async function buildPlanWithFallback(
   brand: Brand,
   niche: string,
   exemplars: string | null,
+  opts?: { preferFast?: boolean },
 ): Promise<NichePlan | null> {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const plan = await researchNichePlan(brand, niche, exemplars);
-    if (plan) return plan;
-    console.error(`buildPlanWithFallback: research attempt ${attempt} failed for brand ${brand.id}, retrying`);
+  // Onboarding follow-ups need to land inside the promised ETA — try the
+  // no-search path first (one LLM call, no Graph harvest), then one web attempt.
+  if (opts?.preferFast) {
+    const fastOpts = { skipHarvest: true };
+    const fast = await researchNichePlanFallback(brand, niche, exemplars, fastOpts);
+    if (fast) return fast;
+    console.error(`buildPlanWithFallback: fast path failed for brand ${brand.id}, trying web research`);
+    return researchNichePlan(brand, niche, exemplars, fastOpts);
   }
-  console.error(`buildPlanWithFallback: research exhausted for brand ${brand.id}, trying no-search fallback`);
+  const researched = await researchNichePlan(brand, niche, exemplars);
+  if (researched) return researched;
+  console.error(`buildPlanWithFallback: research failed for brand ${brand.id}, trying no-search fallback`);
   return researchNichePlanFallback(brand, niche, exemplars);
 }
 
@@ -306,6 +335,11 @@ export async function markPlanFailed(planId: string): Promise<void> {
 /** A short SMS-friendly summary of the plan, with the pillars listed. */
 export function planTextSummary(plan: NichePlan): string {
   const pillars = plan.pillars.map((p) => `- ${p.name}: ${p.posts_per_week}/wk`).join("\n");
+  const ideas = (plan.starter_ideas ?? []).filter(Boolean).slice(0, 3);
+  const ideaBlock =
+    ideas.length > 0
+      ? ["", "First carousel / post ideas:", ...ideas.map((idea, i) => `${i + 1}. ${idea}`)]
+      : [];
   return [
     `Had a good look at your space — other people in the industry, and what already works for you. Here's the plan I'd run:`,
     plan.summary,
@@ -314,6 +348,7 @@ export function planTextSummary(plan: NichePlan): string {
     "",
     `Format: ${plan.format_mix}`,
     `Best times: ${plan.best_times}`,
+    ...ideaBlock,
   ].join("\n");
 }
 
@@ -345,4 +380,44 @@ export async function applyNichePlan(brand: Brand, planRow: ContentPlan): Promis
     }
   }
   await query("update content_plans set status = 'accepted', updated_at = now() where id = $1", [planRow.id]);
+}
+
+/**
+ * Research a pending onboarding plan and return the SMS body to send.
+ * Marks the row proposed on success. Returns null if nothing pending or
+ * research isn't ready yet (caller retries before promised_at).
+ */
+export async function buildOnboardingPlanSms(brandId: string): Promise<string | null> {
+  const row = await queryOne<ContentPlan>(
+    `select * from content_plans
+      where brand_id = $1 and status = 'pending'
+      order by promised_at asc nulls last, created_at asc
+      limit 1`,
+    [brandId],
+  );
+  if (!row) return null;
+
+  const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
+  if (!brand) {
+    await markPlanFailed(row.id);
+    return null;
+  }
+
+  const plan = await buildPlanWithFallback(brand, row.niche ?? brand.name, row.exemplars ?? null, {
+    preferFast: true,
+  });
+  if (!plan) {
+    await query("update content_plans set updated_at = now() where id = $1", [row.id]);
+    return null;
+  }
+
+  await markPlanProposed(row.id, plan);
+  return `${planTextSummary(plan)}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`;
+}
+
+/** Fresh concrete ETA when research overruns the original promise. */
+export function planOverrunNudge(extraMinutes = 2): string {
+  return (
+    `Still finishing your content plan — about ${extraMinutes} more minutes, then I'll text it through.`
+  );
 }
