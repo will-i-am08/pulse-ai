@@ -217,6 +217,8 @@ export {
   buildOnboardingPlanSms,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
+  PLAN_WEB_SEARCH_DEEP,
+  PLAN_WEB_SEARCH_HYBRID,
   markPlanProposed,
   markPlanFailed,
   planTextSummary,
