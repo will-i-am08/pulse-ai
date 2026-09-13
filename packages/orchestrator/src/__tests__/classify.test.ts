@@ -102,3 +102,14 @@ describe("classifyInbound", () => {
     expect(result.confidence).toBe(0);
   });
 });
+
+describe("photo background redo classification", () => {
+  it("routes pictures-in-background as edit when a draft is pending", () => {
+    const r = ruleBasedClassify(
+      "Could you put pictures in the background of them? All of them",
+      false,
+      true,
+    );
+    expect(r?.classification).toBe("edit");
+  });
+});

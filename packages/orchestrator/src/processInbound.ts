@@ -89,6 +89,11 @@ import {
   maybeEnqueueFromKipCommit,
   enqueueKickoff,
 } from "./kickoffs.js";
+import {
+  looksLikePhotoBackgroundAsk,
+  inferVisualModeFromText,
+  visualsPayloadValue,
+} from "./visualMode.js";
 import { detectResearchFocus, runDeepResearch } from "./research.js";
 import {
   isPersonalAccount,
@@ -1343,6 +1348,38 @@ export async function processInbound(
         }
         return {
             reply: "I don't have a pending draft to edit right now. Send a photo or video and I'll draft a caption for it.",
+        };
+      }
+
+      // "Put pictures in the background of them" is NOT a Flux grade of a text card —
+      // reject pending drafts and regenerate with real photo creatives.
+      if (looksLikePhotoBackgroundAsk(message.body)) {
+        const pendingRows = await query<{ id: string }>(
+          `select id from posts where brand_id = $1 and status = 'pending_approval'`,
+          [brand.id],
+        );
+        const n = Math.min(5, Math.max(pendingRows.length || 2, 2));
+        if (pendingRows.length) {
+          await query(
+            `update posts set status = 'rejected', updated_at = now()
+              where brand_id = $1 and status = 'pending_approval'`,
+            [brand.id],
+          );
+        }
+        const visuals = visualsPayloadValue(inferVisualModeFromText(message.body), message.body);
+        const kicked = await enqueueKickoff(brand, "draft_posts", {
+          payload: { count: n, visuals },
+          reason: "user_request",
+          sourceMessageId: message.id,
+          ackSms: null,
+        });
+        if (kicked.alreadyQueued) {
+          return {
+            reply: "Already regenerating those with photo backgrounds — I'll text the new drafts over for approval.",
+          };
+        }
+        return {
+          reply: `On it — regenerating ${n} with real photo backgrounds (not text cards). I'll text them over for approval.`,
         };
       }
 

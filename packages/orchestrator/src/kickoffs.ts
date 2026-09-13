@@ -365,7 +365,9 @@ async function draftGeneratedPiece(
   if (visuals === "photo") {
     const filler = await generateFillerPost(brand, pillar, { visuals: "photo" });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
-    // Fall through to designed carousel/card if photo gen is unavailable.
+    // Do NOT fall through to tip/quote carousels — that silently re-ships
+    // plain text cards when the owner asked for (or defaulted to) photos.
+    return null;
   }
   if (prefer === "carousel" || visuals === "designed") {
     const typed = await generateTypedCarousel(brand, pillar, kind);
@@ -377,8 +379,8 @@ async function draftGeneratedPiece(
     const tip = await generateTipCarousel(brand, pillar);
     if (tip) return { post: tip.post, mediaUrl: tip.mediaUrl, kindLabel: "tip carousel" };
   }
-  const filler = await generateFillerPost(brand, pillar, { visuals });
-  if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: visuals === "photo" ? "photo post" : "feed post" };
+  const filler = await generateFillerPost(brand, pillar, { visuals: "designed" });
+  if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
 }
 
