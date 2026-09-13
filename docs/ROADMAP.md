@@ -18,7 +18,8 @@ This spec captures the target product and the phased build. **Authoritative buil
 
 **Done in code (high level):**
 
-- SMS agent (Twilio primary, Linq end-state): photo → draft → approve → publish; deep-link connects.
+- SMS agent (Twilio primary, Linq end-state): photo → draft → approve → publish; deep-link connects (`/c/[token]`).
+- Destination / booking links (separate from connect deep links): discover → SMS confirm → platform-safe caption/Story CTA → Meta private-reply fulfillment; ads prefer confirmed booking URL.
 - Brand voice, ICP/offers, context-driven organic visuals, Reels + AI video, Meta paid ads + spend caps.
 - Inbound engagement policy + thin A6 SMS `send`/edit for drafted replies.
 - Performance analyst digests on SMS; optional X/Threads behind `platformConfigured()`.

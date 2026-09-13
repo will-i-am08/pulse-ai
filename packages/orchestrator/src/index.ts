@@ -143,6 +143,32 @@ export {
 } from "./engagement.js";
 export type { EngagementResult } from "./engagement.js";
 export {
+  resolveDestinationLink,
+  resolveAdDestinationUrl,
+  getPendingDestinationLink,
+  looksLikeDestinationLinkIntent,
+  looksLikeLinkConfirmYes,
+  looksLikeLinkConfirmNo,
+  extractUrlFromMessage,
+  discoverBookingLinks,
+  saveConfirmedDestinationLink,
+  clearPendingDestinationLink,
+  setPendingDestinationLink,
+  confirmationSms,
+  ensureDestinationLink,
+  handleDestinationLinkConfirmation,
+  platformForbidsCaptionUrl,
+  defaultLinkKeyword,
+  buildLinkOffer,
+  applyLinkOfferToCaption,
+  storyLinkCta,
+  matchesLinkOfferRequest,
+  loadPostForInteraction,
+  privateLinkDmBody,
+  publicLinkAckReply,
+} from "./destinationLinks.js";
+export type { DiscoveredLink, DestinationLinkContext } from "./destinationLinks.js";
+export {
   buildLeadCard,
   formatLeadCardSms,
   inferLeadIntent,

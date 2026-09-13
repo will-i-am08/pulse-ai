@@ -39,6 +39,17 @@ export interface GraphAdapter {
     body: string;
   }): Promise<{ externalReplyId: string | null }>;
 
+  /**
+   * Private reply to a commenter (IG/FB): opens a DM thread from a comment id.
+   * Used to fulfill "comment LINK and I'll DM you" destination-link offers.
+   * One private reply per comment (Meta limit); caller must enforce idempotency.
+   */
+  privateReply?(input: {
+    brand: Brand;
+    interaction: Interaction;
+    body: string;
+  }): Promise<{ externalReplyId: string | null }>;
+
   hide?(input: {
     brand: Brand;
     interaction: Interaction;

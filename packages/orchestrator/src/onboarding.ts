@@ -437,6 +437,7 @@ export async function startOnboarding(brandId: string): Promise<string> {
 
   let websiteSummary: string | undefined;
   let websiteHtml: string | undefined;
+  let pendingBookingConfirm: string | undefined;
   if (brand.website) {
     const read = await readWebsite(brand.website);
     if (read) {
@@ -444,10 +445,31 @@ export async function startOnboarding(brandId: string): Promise<string> {
       websiteHtml = read.html;
       // Seed visual tokens early so quote cards / tiles can use brand colours ASAP.
       await seedVisualProfileFromWebsite(brand, websiteHtml, websiteSummary);
+      // Best-effort booking-link discovery — always SMS-confirm before saving.
+      try {
+        const { discoverBookingLinks, setPendingDestinationLink, confirmationSms } = await import(
+          "./destinationLinks.js"
+        );
+        if (!brand.facts?.booking_link && !brand.offers?.booking_link) {
+          const found = await discoverBookingLinks(brand.website);
+          if (found[0]) {
+            await setPendingDestinationLink(brand, {
+              url: found[0].url,
+              candidates: found.slice(1, 4).map((c) => c.url),
+              context: "onboarding",
+              requested_at: new Date().toISOString(),
+            });
+            pendingBookingConfirm = confirmationSms(found[0].url, "onboarding");
+          }
+        }
+      } catch {
+        /* non-blocking */
+      }
     }
   }
 
   const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
+  if (pendingBookingConfirm) answers.pending_booking_confirm = pendingBookingConfirm;
   const knownName = ownerFirstName(brand);
   const hello = knownName ? `Hey ${knownName}` : "Hey";
 

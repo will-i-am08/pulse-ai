@@ -28,6 +28,12 @@ import {
   type LayoutPrimitive,
   type SlideRole,
 } from "./designComposer.js";
+import {
+  resolveDestinationLink,
+  buildLinkOffer,
+  storyLinkCta,
+} from "./destinationLinks.js";
+import type { LinkOffer } from "@pulse/shared";
 import { ensureDesignQa, designQaFailureSms } from "./designQa.js";
 import { routeImageJob } from "./modelRouter.js";
 
@@ -517,6 +523,16 @@ export async function draftStoryFromPhoto(
   const tone = await classifyStoryTone(brand, `${overlay.overlay} ${overlay.cta ?? ""}`);
   const auto = tone === "candid";
 
+  // Destination link on Stories: Meta Graph cannot publish link stickers, so we
+  // bake a "comment/DM for the link" CTA into the overlay and register link_offer
+  // for private-reply fulfillment (same as feed comment_dm).
+  let linkOffer: LinkOffer | null = null;
+  const bookingUrl = resolveDestinationLink(brand);
+  if (bookingUrl) {
+    linkOffer = buildLinkOffer({ url: bookingUrl, platform: "instagram", format: "story" });
+    if (!overlay.cta) overlay.cta = storyLinkCta(linkOffer);
+  }
+
   let coverId = edited ?? photo.id;
   const creativeId = await applyStoryCreative(brand, coverId, overlay.overlay, overlay.cta);
   if (creativeId) coverId = creativeId;
@@ -533,8 +549,8 @@ export async function draftStoryFromPhoto(
   const mediaIds = [coverId];
   const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, 'story');
   const post = await queryOne<Post>(
-    `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, format, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at)
-     values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, 'story', $6, $7, $8, 'instagram', $9, $10)
+    `insert into posts (brand_id, caption, media_ids, source_media_ids, style_meta, format, pillar_id, is_auto, hold_notified_at, platform, status, scheduled_at, link_offer)
+     values ($1, $2, $3::uuid[], $4::uuid[], $5::jsonb, 'story', $6, $7, $8, 'instagram', $9, $10, $11::jsonb)
      returning *`,
     [
       brand.id,
@@ -545,12 +561,18 @@ export async function draftStoryFromPhoto(
         story_overlay: overlay.overlay,
         story_cta: overlay.cta ?? null,
         wants_text: true,
+        // Meta Content Publishing API cannot attach Story link stickers (polls/
+        // location/link stickers unsupported). CTA is baked into creative + fulfilled via DM.
+        story_link_sticker: false,
+        story_link_sticker_note:
+          "API cannot publish link stickers; owner may add one manually in IG if desired.",
       }),
       pillar.id,
       auto,
       auto ? new Date().toISOString() : null,
       auto ? "scheduled" : "pending_approval",
       slot.toISOString(),
+      linkOffer ? JSON.stringify(linkOffer) : null,
     ],
   );
   if (!post) return null;

@@ -107,6 +107,24 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 
 ---
 
+## Destination links (booking URLs — not SMS `/c/` deep links)
+
+**Destination / booking links** are confirmed public URLs Kip discovers from the brand website, SMS-confirms with the owner, then uses in captions, Stories CTAs, engagement replies, and ad click-throughs. They are **not** the SMS connect deep links at `/c/[token]`.
+
+| Surface | Behavior |
+|---|---|
+| Discovery | Crawl homepage + `/book`-style paths; rank Calendly/Acuity/etc.; always SMS “Is this the right link?” before save |
+| Storage | Writes both `facts.booking_link` and `offers.booking_link`; pending confirm under `facts.pending_destination_link` |
+| IG feed / Reels | **No URL in caption** — soft CTA (“Comment LINK…”) + `posts.link_offer`; Meta **private reply** DMs the URL once per comment |
+| IG Stories | Content Publishing API **cannot** attach link stickers — bake “DM/comment for the link” into creative + same `link_offer` fulfillment; owner may add a sticker manually in the IG app |
+| Facebook / X / Threads | May include confirmed URL in caption when the platform allows clickable links |
+| LinkedIn | Prefer comment/DM CTA (bio mention OK as secondary); inbound auto-send deferred until LinkedIn engagement ingest |
+| Ads | Marketing API `link` prefers confirmed booking URL; preview SMS shows destination; `BOOK_NOW` when booking used |
+
+Code: `packages/orchestrator/src/destinationLinks.ts`, migration `db/migrations/0043_destination_links.sql`, `graph.privateReply`.
+
+---
+
 ## Decisions locked (this wave)
 
 - Discord **removed**; SMS-led product.

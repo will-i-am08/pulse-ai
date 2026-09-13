@@ -105,6 +105,21 @@ export class MockGraphAdapter implements GraphAdapter {
     });
   }
 
+  async privateReply(input: {
+    brand: Brand;
+    interaction: Interaction;
+    body: string;
+  }): Promise<{ externalReplyId: string | null }> {
+    const { brand, interaction, body } = input;
+    return withRetry(`mock:privateReply:${interaction.id}`, async () => {
+      const externalReplyId = `mock_priv_${hashHex(`${interaction.id}|${body}|${Date.now()}`).slice(0, 12)}`;
+      console.log(
+        `[graph:mock] privateReply brand=${brand.id} platform=${interaction.platform} kind=${interaction.kind} -> ${externalReplyId}`
+      );
+      return { externalReplyId };
+    });
+  }
+
   async hide(input: { brand: Brand; interaction: Interaction }): Promise<void> {
     const { brand, interaction } = input;
     return withRetry(`mock:hide:${interaction.id}`, async () => {

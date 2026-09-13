@@ -10,6 +10,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
 vi.mock("@pulse/graph", () => ({
   getGraphAdapter: vi.fn(() => ({
     reply: vi.fn(async () => ({ externalReplyId: "ext-1" })),
+    privateReply: vi.fn(async () => ({ externalReplyId: "priv-1" })),
   })),
 }));
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   mockedGetGraph.mockClear();
   mockedGetGraph.mockReturnValue({
     reply: vi.fn(async () => ({ externalReplyId: "ext-1" })),
+    privateReply: vi.fn(async () => ({ externalReplyId: "priv-1" })),
   });
 });
 
@@ -139,5 +141,56 @@ describe("A6 SMS draft approve/edit", () => {
     const row = await latestDraftedInteraction("b1");
     expect(row?.id).toBe("i1");
     expect(String(mockedQueryOne.mock.calls[0]![0])).toContain("status = 'drafted'");
+  });
+});
+
+describe("destination link private-reply fulfillment", () => {
+  it("private-replies once when a comment matches a link_offer keyword", async () => {
+    const post = {
+      id: "p1",
+      brand_id: "b1",
+      link_offer: {
+        url: "https://book.example/",
+        mode: "comment_dm",
+        keyword: "LINK",
+        confirmed_at: new Date().toISOString(),
+      },
+    };
+    mockedQueryOne.mockResolvedValueOnce(post); // loadPostForInteraction
+    mockedQuery.mockResolvedValue([]);
+
+    const comment = interaction("comment", "LINK");
+    const res = await handleInteraction(brand, comment);
+
+    const graph = mockedGetGraph.mock.results.at(-1)?.value as {
+      privateReply: ReturnType<typeof vi.fn>;
+      reply: ReturnType<typeof vi.fn>;
+    };
+    expect(graph.privateReply).toHaveBeenCalledTimes(1);
+    expect(String(graph.privateReply.mock.calls[0]![0].body)).toContain("book.example");
+    expect(res.publicReply?.toLowerCase()).toMatch(/dm|sent/i);
+    expect(
+      mockedQuery.mock.calls.some((c) => String(c[0]).includes("link_fulfillment")),
+    ).toBe(true);
+  });
+
+  it("does not private-reply twice when link_fulfillment is already set", async () => {
+    const privateReply = vi.fn(async () => ({ externalReplyId: "priv-1" }));
+    mockedGetGraph.mockReturnValue({
+      reply: vi.fn(async () => ({ externalReplyId: "ext-1" })),
+      privateReply,
+    });
+    decide({ bucket: "general", sentiment: "positive", action: "auto", reply: "thanks!" });
+    const already = {
+      ...interaction("comment", "LINK"),
+      link_fulfillment: {
+        method: "private_reply",
+        url: "https://book.example/",
+        sent_at: new Date().toISOString(),
+      },
+    } as Interaction;
+
+    await handleInteraction(brand, already);
+    expect(privateReply).not.toHaveBeenCalled();
   });
 });

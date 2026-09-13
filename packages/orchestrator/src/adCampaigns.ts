@@ -9,6 +9,7 @@ import {
 import { connectLinkMessage } from "./smsConnect.js";
 import { brandContextForPrompt } from "./brandContext.js";
 import { callLLM } from "./llm.js";
+import { resolveAdDestinationUrl, ensureDestinationLink } from "./destinationLinks.js";
 
 const OBJECTIVES: AdObjective[] = ["awareness", "traffic", "leads", "messages", "sales"];
 
@@ -87,11 +88,12 @@ export async function getLiveAdCampaign(brandId: string): Promise<AdCampaign | n
   );
 }
 
-function previewText(c: AdCampaign): string {
+function previewText(c: AdCampaign, destinationUrl?: string | null): string {
   return (
     `📣 Ad campaign preview\n\nName: ${c.name}\nObjective: ${c.objective}\nAudience: ${c.audience?.label ?? "TBD"}\n` +
     `Creative: ${c.creative?.source ?? "static"}${c.creative?.headline ? ` — "${c.creative.headline}"` : ""}\n` +
     ((c.offer_ref as any)?.primary ? `Offer: ${(c.offer_ref as any).primary}\n` : "") +
+    (destinationUrl ? `Clicks go to: ${destinationUrl}\n` : "") +
     `Budget: ${formatCents(c.budget_cents)}/day · ${c.duration_days} days (~${formatCents(c.budget_cents * c.duration_days)} total)\n` +
     (c.objective === "leads" ? "Leads: hot ones hand into your usual lead SMS thread.\n" : "") +
     `\nReply "yes" to launch, "no" to cancel, or tell me what to change.`
@@ -103,6 +105,12 @@ export async function proposeAdCampaign(
 ): Promise<{ ok: true; campaign: AdCampaign; summary: string } | { ok: false; summary: string }> {
   if (!adsEnabled(brand)) return { ok: false, summary: adsDisabledMessage() };
   if (!isAdsConnected(brand)) return { ok: false, summary: "Connect an ad account first.\n\n" + connectLinkMessage(brand, "ads") };
+
+  // Prefer a confirmed booking URL for click-through; confirm with owner if missing.
+  const ensured = await ensureDestinationLink(brand, "ads");
+  if (ensured.askSms) return { ok: false, summary: ensured.askSms };
+  brand = ensured.brand;
+
   const caps = spendCaps(brand);
   let budget = parseBudgetCents(request) ?? Math.min(5_000, Math.floor(caps.campaign_cents / 3));
   if (budget < 500) return { ok: false, summary: 'Budgets need at least $5/day. Try e.g. "run ads for leads at $20/day for 7 days".' };
@@ -136,7 +144,8 @@ export async function proposeAdCampaign(
      JSON.stringify({ step: "preview", audience_options: audiences.map((a) => a.label) })],
   );
   if (!campaign) return { ok: false, summary: "Couldn't save that campaign draft — try again." };
-  return { ok: true, campaign, summary: previewText(campaign) };
+  const destinationUrl = resolveAdDestinationUrl(brand);
+  return { ok: true, campaign, summary: previewText(campaign, destinationUrl) };
 }
 
 export async function confirmAdCampaign(brand: Brand, proposed: AdCampaign): Promise<string> {
