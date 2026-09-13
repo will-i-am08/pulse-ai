@@ -344,15 +344,15 @@ export async function sendConnectLinkAfterContact(brandId: string): Promise<stri
 
   if (isMetaConnected(brand)) {
     await saveState(brand.id, {
-      status: "reading_content",
+      status: "pending",
       type,
       turns: prev.turns ?? 0,
       transcript: prev.transcript ?? [],
       answers: { ...answers, connected_meta: "1" },
     });
     await queueVoiceAnalysis(brand.id).catch(() => undefined);
-    const ig = brand.ig_username ? `@${brand.ig_username}` : "your Instagram";
-    return `Nice — you're already connected. I'm reading ${ig} now so I can learn your voice. Hang tight.`;
+    // Harvest runs in the background — start the interview immediately.
+    return beginOnboardingInterview(brand.id);
   }
 
   const { link } = await mintConnectLink(brand, {
@@ -403,11 +403,14 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
 
   const knownName = ownerFirstName(brand);
   const system = interviewerSystem(brand, type, websiteSummary, prior);
+  const harvestPending = answers.connected_meta === "1" && !prior;
   const reflectPrior = prior
     ? " You already studied their existing posts — briefly reflect one concrete thing you noticed, then ask your first most useful question that fills a gap."
-    : websiteSummary
-      ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
-      : " Ask your first, most useful question.";
+    : harvestPending
+      ? " Their Instagram/Facebook posts are still being read in the background — do NOT claim you have already studied them. Greet warmly, mention you're skimming their posts in the background so you won't re-ask things they already show online, then ask your first most useful question."
+      : websiteSummary
+        ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
+        : " Ask your first, most useful question.";
   const seed: OnboardingTurnMsg = {
     role: "user",
     content: knownName
@@ -420,13 +423,21 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
   return sanitizeChatText(await enforceOneQuestion(opening));
 }
 
-/** After Meta connect during onboarding: queue harvest and park on reading_content. */
+/**
+ * After Meta connect during onboarding: queue post-harvest in the background and
+ * start the SMS interview immediately (don't park on reading_content).
+ */
 export async function onChannelsConnectedDuringOnboarding(
   brandId: string,
 ): Promise<{ handled: boolean; message?: string }> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) return { handled: false };
   const status = brand.onboarding_state?.status;
+  // Already mid-interview (e.g. reconnect) — queue harvest, don't restart the chat.
+  if (status === "in_progress") {
+    await queueVoiceAnalysis(brand.id).catch(() => undefined);
+    return { handled: true };
+  }
   if (
     status !== "awaiting_connect" &&
     status !== "awaiting_contact" &&
@@ -443,23 +454,21 @@ export async function onChannelsConnectedDuringOnboarding(
   delete answers.connect_nudge_count;
   delete answers.connect_nudge_at;
   await saveState(brand.id, {
-    status: "reading_content",
+    status: "pending",
     type,
     turns: prev.turns ?? 0,
     transcript: prev.transcript ?? [],
     answers,
   });
   await queueVoiceAnalysis(brand.id).catch(() => undefined);
-  const ig = brand.ig_username ? `@${brand.ig_username}` : "Instagram";
-  return {
-    handled: true,
-    message: `Connected ✅ ${ig}. I'm reading your existing posts now so I don't ask stuff you already show online — one sec.`,
-  };
+  const opening = await beginOnboardingInterview(brand.id);
+  return { handled: true, message: opening };
 }
 
 /**
- * After voice analysis finishes (or skips/fails): start the interview if we were
- * waiting on reading_content. Returns the opening SMS, or null if not applicable.
+ * Legacy: if a brand is still parked on reading_content (pre-background-harvest),
+ * start the interview once voice analysis finishes. No-ops when interview already
+ * started (status in_progress) — harvest just merges into the voice profile.
  */
 export async function continueOnboardingAfterVoiceAnalysis(brandId: string): Promise<string | null> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -493,7 +502,7 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
 
   if (isMetaConnected(brand)) {
     const result = await onChannelsConnectedDuringOnboarding(brand.id);
-    return result.message ?? "Connected — reading your posts now.";
+    return result.message ?? "Connected — let's keep going.";
   }
 
   // Owner thinks they're done — diagnose incomplete OAuth vs never started.
@@ -622,14 +631,17 @@ export async function startOnboarding(brandId: string): Promise<string> {
 
   const answers: Record<string, string> = websiteSummary ? { website_summary: websiteSummary } : {};
 
-  // Already connected (e.g. dashboard) — harvest first, then interview.
+  // Already connected (e.g. dashboard) — harvest in background, interview now.
   if (isMetaConnected(brand)) {
-    await saveState(brand.id, { status: "reading_content", type, turns: 0, transcript: [], answers });
+    await saveState(brand.id, {
+      status: "pending",
+      type,
+      turns: 0,
+      transcript: [],
+      answers: { ...answers, connected_meta: "1" },
+    });
     await queueVoiceAnalysis(brand.id).catch(() => undefined);
-    const knownName = ownerFirstName(brand);
-    const hello = knownName ? `Hi ${knownName}` : "Hi";
-    const ig = brand.ig_username ? `@${brand.ig_username}` : "your Instagram";
-    return `${hello}, it's Kip, thanks for jumping in! I'm reading ${ig} now so I can learn your voice from what you already post. Hang tight.`;
+    return beginOnboardingInterview(brand.id);
   }
 
   await saveState(brand.id, { status: "awaiting_contact", type, turns: 0, transcript: [], answers });

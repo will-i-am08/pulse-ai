@@ -11,7 +11,8 @@ import { logger } from "../lib/logger.js";
 // Picks up brands whose voice analysis was queued at connect time and runs it.
 // One brand per tick keeps the (LLM- and image-heavy) work from stampeding; the
 // queue drains steadily. runVoiceAnalysis records its own success/failure state.
-// When onboarding was waiting on reading_content, continue into the interview.
+// Interview now starts on connect (harvest is background) — continueOnboarding
+// only fires for legacy brands still parked on reading_content.
 
 async function claimNext(): Promise<Brand | null> {
   // Atomically claim one pending brand by flipping it to running, so overlapping
