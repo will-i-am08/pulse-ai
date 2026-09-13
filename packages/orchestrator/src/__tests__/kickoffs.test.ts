@@ -23,11 +23,24 @@ describe("looksLikeKickoffRequest", () => {
 });
 
 describe("inferKickoffFromUserMessage", () => {
-  it("maps stock/no-photos to first_batch", () => {
+  it("maps stock/no-photos to first_batch with photo visuals", () => {
     const r = inferKickoffFromUserMessage(
       "I don't have any photos so can you just do stock or generated?",
     );
     expect(r?.kind).toBe("first_batch");
+    expect(r?.payload.visuals).toBe("generated");
+  });
+
+  it("defaults draft posts to photo visuals", () => {
+    const r = inferKickoffFromUserMessage("draft me 2 posts");
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.visuals).toBe("photo");
+  });
+
+  it("honors explicit text-card asks as designed", () => {
+    const r = inferKickoffFromUserMessage("draft me 2 posts as text cards please");
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.visuals).toBe("designed");
   });
 
   it("maps draft N posts", () => {
@@ -49,6 +62,7 @@ describe("inferKickoffFromKipCommit", () => {
       "Absolutely, I'll pull together the first batch of carousels and get them over for approval.",
     );
     expect(r?.kind).toBe("first_batch");
+    expect(r?.payload.visuals).toBe("generated");
   });
 
   it("does not queue on pure acknowledgement", () => {

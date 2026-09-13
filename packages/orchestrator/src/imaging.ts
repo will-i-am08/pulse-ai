@@ -17,7 +17,7 @@ import { callLLM } from "./llm.js";
 import { routeImageJob } from "./modelRouter.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
-import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
+import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
 
@@ -26,8 +26,8 @@ type BrandPalette = {
   bgTo: string;
   text: string;
   muted: string;
-  displayFont: "Anton" | "Playfair";
-  bodyFont: "Anton" | "Playfair";
+  displayFont: "Anton" | "Playfair" | "Inter";
+  bodyFont: "Anton" | "Playfair" | "Inter";
 };
 
 function normalizeHex(raw: string | undefined): string | null {
@@ -93,17 +93,22 @@ export function resolveBrandPalette(visual?: VisualProfile | null): BrandPalette
 
   const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
   const wantsSerif = fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f));
-  const wantsSans = fonts.some((f) => /sans|helvetica|arial|montserrat|inter|futura|anton|impact|gothic/.test(f));
-  let displayFont: "Anton" | "Playfair" = "Anton";
-  let bodyFont: "Anton" | "Playfair" = "Playfair";
-  // Serif preference wins when both match (e.g. "Playfair Display").
+  const wantsDisplay = fonts.some((f) => /anton|impact|bebas|display|condensed|oswald|archivo black/.test(f));
+  const wantsSans = fonts.some((f) => /sans|helvetica|arial|montserrat|inter|futura|gothic|roboto|open sans|lato|poppins|dm sans|neue|linear/.test(f));
+  // Default: Inter — clean/linear when no website fonts. Serif → Playfair. Impact display → Anton. Sans → Inter.
+  let displayFont: "Anton" | "Playfair" | "Inter" = "Inter";
+  let bodyFont: "Anton" | "Playfair" | "Inter" = "Inter";
   if (wantsSerif) {
     displayFont = "Playfair";
     bodyFont = "Playfair";
-  } else if (wantsSans) {
+  } else if (wantsDisplay) {
     displayFont = "Anton";
-    bodyFont = "Anton";
+    bodyFont = "Inter";
+  } else if (wantsSans || fonts.length === 0) {
+    displayFont = "Inter";
+    bodyFont = "Inter";
   }
+
 
   return { bgFrom, bgTo, text, muted, displayFont, bodyFont };
 }
@@ -529,6 +534,8 @@ async function renderTile(
       fonts: [
         { name: "Anton", data: ANTON, weight: 400, style: "normal" },
         { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        { name: "Inter", data: INTER_REGULAR, weight: 400, style: "normal" },
+        { name: "Inter", data: INTER_BOLD, weight: 700, style: "normal" },
       ],
     },
   );
@@ -611,6 +618,8 @@ export async function renderQuoteCard(
       fonts: [
         { name: "Anton", data: ANTON, weight: 400, style: "normal" },
         { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        { name: "Inter", data: INTER_REGULAR, weight: 400, style: "normal" },
+        { name: "Inter", data: INTER_BOLD, weight: 700, style: "normal" },
       ],
     },
   );
@@ -743,6 +752,8 @@ export async function applyStoryCreative(
         fonts: [
           { name: "Anton", data: ANTON, weight: 400, style: "normal" },
           { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+          { name: "Inter", data: INTER_REGULAR, weight: 400, style: "normal" },
+          { name: "Inter", data: INTER_BOLD, weight: 700, style: "normal" },
         ],
       },
     );

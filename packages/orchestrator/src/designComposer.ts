@@ -8,7 +8,7 @@ import {
   type DesignMemoryRef,
   type VisualExemplar,
 } from "@pulse/shared";
-import { anton as ANTON, serif as SERIF } from "./assets/fonts.generated.js";
+import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 import { resolveBrandPalette } from "./imaging.js";
 import { listRecentDesignMemory, listTopDesignMemory } from "./designMemory.js";
 import { listVisualExemplars } from "./research.js";
@@ -295,6 +295,8 @@ export async function composeSlide(input: ComposeSlideInput): Promise<Buffer> {
       fonts: [
         { name: "Anton", data: ANTON, weight: 400, style: "normal" },
         { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        { name: "Inter", data: INTER_REGULAR, weight: 400, style: "normal" },
+        { name: "Inter", data: INTER_BOLD, weight: 700, style: "normal" },
       ],
     },
   );

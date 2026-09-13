@@ -139,6 +139,18 @@ describe("resolveBrandPalette", () => {
     expect(p.displayFont).toBe("Playfair");
     expect(p.bodyFont).toBe("Playfair");
   });
+
+  it("defaults to Inter (linear) when no fonts are set", () => {
+    const p = resolveBrandPalette({});
+    expect(p.displayFont).toBe("Inter");
+    expect(p.bodyFont).toBe("Inter");
+  });
+
+  it("maps website sans fonts to Inter", () => {
+    const p = resolveBrandPalette({ fonts: ["Montserrat", "Open Sans"] });
+    expect(p.displayFont).toBe("Inter");
+    expect(p.bodyFont).toBe("Inter");
+  });
 });
 
 describe("extractVisualHintsFromHtml", () => {
@@ -152,6 +164,18 @@ describe("extractVisualHintsFromHtml", () => {
     const hints = extractVisualHintsFromHtml(html, "https://example.com");
     expect(hints.theme_colors).toContain("#0b1f3a");
     expect(hints.logo_url).toMatch(/example\.com/);
+  });
+
+  it("pulls Google Fonts and CSS font-family hints", () => {
+    const html = `
+      <html><head>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
+        <style>body { font-family: "DM Sans", system-ui, sans-serif; }</style>
+      </head><body></body></html>`;
+    const hints = extractVisualHintsFromHtml(html, "https://example.com");
+    expect(hints.fonts.map((f) => f.toLowerCase())).toEqual(
+      expect.arrayContaining(["inter", "playfair display", "dm sans"]),
+    );
   });
 });
 

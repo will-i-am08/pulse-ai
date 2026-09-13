@@ -173,12 +173,24 @@ async function readWebsite(url: string): Promise<{ summary: string; html: string
   }
 }
 
-/** Pull logo URL + theme-color hints from raw HTML (best-effort, no network). */
+const GENERIC_FONT_FAMILY =
+  /^(sans-serif|serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace|inherit|initial|unset|emoji|math|fangsong)$/i;
+
+/** Pull logo URL, theme-color, and font-family hints from raw HTML (best-effort, no network). */
 export function extractVisualHintsFromHtml(html: string, baseUrl?: string): {
   logo_url?: string;
   theme_colors: string[];
+  fonts: string[];
 } {
   const theme_colors: string[] = [];
+  const fonts: string[] = [];
+  const pushFont = (raw: string) => {
+    const name = raw.replace(/["']/g, "").replace(/\+/g, " ").trim();
+    if (!name || GENERIC_FONT_FAMILY.test(name)) return;
+    if (fonts.some((f) => f.toLowerCase() === name.toLowerCase())) return;
+    fonts.push(name);
+  };
+
   const theme = html.match(
     /<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i,
   ) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']theme-color["']/i);
@@ -188,6 +200,31 @@ export function extractVisualHintsFromHtml(html: string, baseUrl?: string): {
     /<meta[^>]+name=["']msapplication-TileColor["'][^>]+content=["']([^"']+)["']/i,
   );
   if (ms?.[1]) theme_colors.push(ms[1].trim());
+
+  // Google Fonts CSS / CSS2 links — collect every family= in the href
+  for (const link of html.matchAll(/fonts\.googleapis\.com\/css2?\?[^"'\s>]*/gi)) {
+    const href = link[0] ?? "";
+    for (const m of href.matchAll(/[?&]family=([^&]+)/gi)) {
+      let decoded = m[1] ?? "";
+      try {
+        decoded = decodeURIComponent(decoded);
+      } catch {
+        /* keep raw */
+      }
+      for (const fam of decoded.split("|")) {
+        pushFont(fam.split(":")[0] ?? "");
+        if (fonts.length >= 6) break;
+      }
+    }
+  }
+
+  // Inline / stylesheet font-family declarations (quoted or bare)
+  for (const m of html.matchAll(/font-family\s*:\s*([^;}{]+)/gi)) {
+    for (const part of (m[1] ?? "").split(",")) {
+      pushFont(part);
+      if (fonts.length >= 6) break;
+    }
+  }
 
   // Common logo patterns in img src / og:image as fallback.
   let logo_url: string | undefined;
@@ -207,7 +244,7 @@ export function extractVisualHintsFromHtml(html: string, baseUrl?: string): {
       }
     }
   }
-  return { logo_url, theme_colors };
+  return { logo_url, theme_colors, fonts };
 }
 
 /**
@@ -243,6 +280,7 @@ export async function seedVisualProfileFromWebsite(
             `Brand: ${brand.name}`,
             websiteSummary ? `Summary: ${websiteSummary}` : "",
             hints.theme_colors.length ? `Theme colours found: ${hints.theme_colors.join(", ")}` : "",
+            hints.fonts.length ? `Fonts found in HTML/CSS: ${hints.fonts.join(", ")}` : "",
             hints.logo_url ? `Logo URL candidate: ${hints.logo_url}` : "",
             `Page text excerpt:\n"""${snippet}"""`,
           ]
@@ -254,10 +292,16 @@ export async function seedVisualProfileFromWebsite(
     });
 
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as VisualProfile;
+    const mergedFonts = [
+      ...hints.fonts,
+      ...((parsed.fonts ?? []).filter(
+        (f) => !hints.fonts.some((h) => h.toLowerCase() === f.toLowerCase()),
+      )),
+    ].slice(0, 4);
     const visual: VisualProfile = {
       ...(brand.visual ?? {}),
       ...(parsed.colors?.length ? { colors: parsed.colors } : {}),
-      ...(parsed.fonts?.length ? { fonts: parsed.fonts } : {}),
+      ...(mergedFonts.length ? { fonts: mergedFonts } : {}),
       ...(parsed.aesthetic ? { aesthetic: parsed.aesthetic } : {}),
       ...(parsed.aesthetic_notes ? { aesthetic_notes: parsed.aesthetic_notes } : {}),
       ...(parsed.photo_treatment ? { photo_treatment: parsed.photo_treatment } : {}),
