@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { activeChannel, handleInbound } from '@pulse/gateway';
 import { getServerEnv } from '@pulse/shared';
+import { scheduleKickoffDrain } from '@/lib/kickoffs/scheduleDrain';
 
 export async function POST(request: Request): Promise<NextResponse> {
   const rawBody = await request.text();
@@ -34,6 +35,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     // an unexpected downstream failure, since Twilio must get a fast, cheap
     // response regardless.
     await handleInbound(inbound);
+    // Drain any Kip self-kickoffs (queued first batch, drafts, etc.) after the
+    // response — don't wait on the Railway worker tick.
+    scheduleKickoffDrain('twilio');
   } catch (err) {
     console.error('twilio webhook: handleInbound failed', err);
   }
