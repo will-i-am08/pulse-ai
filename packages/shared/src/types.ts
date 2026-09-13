@@ -90,6 +90,38 @@ export interface AiVideoJob {
   completed_at: string | null;
 }
 
+/** Kip self-kickoff job — work Kip queues for itself (user ask, verbal commit, or proactive). */
+export const KipKickoffKind = [
+  "first_batch",
+  "draft_posts",
+  "trend_draft",
+  "competitor_draft",
+] as const;
+export type KipKickoffKind = (typeof KipKickoffKind)[number];
+
+export const KipKickoffStatus = ["queued", "running", "done", "failed", "cancelled"] as const;
+export type KipKickoffStatus = (typeof KipKickoffStatus)[number];
+
+export const KipKickoffReason = ["user_request", "kip_commit", "system", "proactive"] as const;
+export type KipKickoffReason = (typeof KipKickoffReason)[number];
+
+export interface KipKickoff {
+  id: string;
+  brand_id: string;
+  kind: KipKickoffKind;
+  status: KipKickoffStatus;
+  payload: Record<string, unknown>;
+  reason: KipKickoffReason;
+  source_message_id: string | null;
+  error: string | null;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+
 export const PostStatus = [
   "draft",
   "pending_approval",

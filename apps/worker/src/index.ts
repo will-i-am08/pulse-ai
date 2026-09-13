@@ -14,6 +14,8 @@ import { runConnectNudgeLoop } from "./proactive/connectNudge.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
 import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
+import { runKickoffLoop } from "./proactive/kickoffLoop.js";
+import { runAutonomyLoop } from "./proactive/autonomyLoop.js";
 import { runRetentionPurgeLoop } from "./proactive/retention.js";
 import { runAdsSyncLoop } from "./proactive/adsSync.js";
 
@@ -176,6 +178,15 @@ async function main(): Promise<void> {
     runSoonMs: 25_000,
   });
 
+  // Kip self-kickoffs — user asks, Kip commits, or proactive autonomy.
+  const kickoffTimer = guardedInterval("kip-kickoffs", 30_000, runKickoffLoop, {
+    runSoonMs: 15_000,
+  });
+  // Proactive trend scouting (daytime) — queues kickoffs the drain loop delivers.
+  const autonomyTimer = guardedInterval("kip-autonomy", 6 * 60 * 60 * 1000, runAutonomyLoop, {
+    runSoonMs: 120_000,
+  });
+
   // Meta ads insights + spend-cap enforcement (Phase F).
   const adsSyncTimer = guardedInterval("ads-sync", 30 * 60 * 1000, runAdsSyncLoop, {
     runSoonMs: 60_000,
@@ -208,6 +219,8 @@ async function main(): Promise<void> {
     clearInterval(digestTimer);
     clearInterval(linqTimer);
     clearInterval(aiVideoTimer);
+    clearInterval(kickoffTimer);
+    clearInterval(autonomyTimer);
     clearInterval(adsSyncTimer);
     clearInterval(retentionTimer);
     process.exit(0);
@@ -217,7 +230,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   logger.info(
-    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video, ads-sync, retention",
+    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video, kip-kickoffs, kip-autonomy, ads-sync, retention",
   );
 }
 
