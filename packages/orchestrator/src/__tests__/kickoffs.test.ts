@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   looksLikeKickoffRequest,
   inferKickoffFromUserMessage,
   inferKickoffFromKipCommit,
+  deliverUnstreamed,
 } from "../kickoffs.js";
 
 describe("looksLikeKickoffRequest", () => {
@@ -68,5 +69,23 @@ describe("inferKickoffFromKipCommit", () => {
   it("does not queue on pure acknowledgement", () => {
     const r = inferKickoffFromKipCommit("cool", "Nice one, Bill.");
     expect(r).toBeNull();
+  });
+});
+
+describe("deliverUnstreamed", () => {
+  it("calls deliver for empty-batch failure SMS (so Kip does not go silent)", async () => {
+    const deliver = vi.fn(async () => {});
+    const results = [
+      { brandId: "b1", sms: "Couldn't finish those drafts just then — try again in a moment?" },
+    ];
+    const out = await deliverUnstreamed(results, deliver);
+    expect(out).toEqual(results);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledWith(results[0]);
+  });
+
+  it("is a no-op when deliver is omitted", async () => {
+    const results = [{ brandId: "b1", sms: "Need pillars before I draft." }];
+    await expect(deliverUnstreamed(results)).resolves.toEqual(results);
   });
 });
