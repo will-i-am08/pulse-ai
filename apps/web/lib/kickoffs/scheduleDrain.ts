@@ -7,14 +7,17 @@ import { sendToBrand } from '@pulse/gateway';
  * behind/redeploying, queued jobs sit forever. Mirror the voice-analysis
  * pattern: also schedule an in-process drain via Next.js `after()` so the
  * Twilio webhook can return fast while drafts still get built + SMS'd.
+ *
+ * Drafts SMS as each finishes (not after the whole batch).
  */
 export function scheduleKickoffDrain(reason = 'inbound'): void {
   after(async () => {
     try {
-      const results = await runKickoffDrain(2);
-      for (const r of results) {
-        await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
-      }
+      const results = await runKickoffDrain(2, {
+        deliver: async (r) => {
+          await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
+        },
+      });
       if (results.length) {
         console.info('[kickoffs] after() drain finished', {
           reason,

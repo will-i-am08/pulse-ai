@@ -10,6 +10,7 @@ import { sendToBrand } from '@pulse/gateway';
 /**
  * Manually drain Kip's self-kickoff queue (first batch, drafts, trend/competitor).
  * Admin-only — used when the Railway worker is behind and we need drafts now.
+ * SMS fires as each draft finishes.
  */
 export async function POST(_request: NextRequest) {
   const user = await currentUser();
@@ -17,13 +18,14 @@ export async function POST(_request: NextRequest) {
   if (!user.is_admin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   try {
-    const results = await runKickoffDrain(3);
     const sent: { brandId: string; preview: string }[] = [];
-    for (const r of results) {
-      await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
-      sent.push({ brandId: r.brandId, preview: r.sms.slice(0, 120) });
-    }
-    return NextResponse.json({ ok: true, drained: sent.length, sent });
+    const results = await runKickoffDrain(3, {
+      deliver: async (r) => {
+        await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
+        sent.push({ brandId: r.brandId, preview: r.sms.slice(0, 120) });
+      },
+    });
+    return NextResponse.json({ ok: true, drained: results.length, sent });
   } catch (err) {
     console.error('[operator] kickoff drain failed', err);
     return NextResponse.json(

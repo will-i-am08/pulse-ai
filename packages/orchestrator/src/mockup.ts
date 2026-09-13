@@ -111,22 +111,20 @@ const SEND = ["M22 2 11 13", "M22 2l-7 20-4-9-9-4 20-7z"];
 const BOOKMARK = "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z";
 
 /**
- * Render an Instagram feed-post mockup: white 1080px frame with a profile
- * header, the photo cropped honestly to the brand's aspect ratio, an action
- * icon row, the folded caption and a "Just now" timestamp. Deliberately no
- * like counts or follower numbers — nothing fabricated.
+ * Render an Instagram feed-post mockup. Satori draws chrome only; sharp drops
+ * the photo into the frame — no base64 photo through the layout engine.
  */
 export async function renderFeedMockup(photoBytes: Uint8Array, input: MockupInput): Promise<Buffer> {
   const W = 1080;
   const { w: aw, h: ah } = parseAspectRatio(input.aspectRatio);
   const photoH = Math.max(566, Math.min(1350, Math.round((W * ah) / aw)));
 
+  // Resize the photo once via sharp — never push base64 through Satori.
   const photo = await sharp(Buffer.from(photoBytes))
     .rotate()
     .resize({ width: W, height: photoH, fit: "cover" })
     .jpeg({ quality: 90 })
     .toBuffer();
-  const dataUri = `data:image/jpeg;base64,${photo.toString("base64")}`;
 
   const handle = handleFor(input);
   const initial = initialFor(input.brandName);
@@ -154,16 +152,10 @@ export async function renderFeedMockup(photoBytes: Uint8Array, input: MockupInpu
   ];
   if (truncated) captionKids.push(el("span", { style: { color: "#6b6b6b", marginLeft: 12 } }, MORE_SUFFIX));
 
-  const photoKids: SNode[] = [
-    el("img", {
-      src: dataUri,
-      width: W,
-      height: photoH,
-      style: { position: "absolute", top: 0, left: 0, width: `${W}px`, height: `${photoH}px` },
-    }),
-  ];
+  // Photo hole is an empty flex spacer — sharp drops the JPEG into this band.
+  const photoHoleKids: SNode[] = [];
   if ((input.slideCount ?? 1) > 1) {
-    photoKids.push(
+    photoHoleKids.push(
       el(
         "div",
         {
@@ -222,7 +214,7 @@ export async function renderFeedMockup(photoBytes: Uint8Array, input: MockupInpu
     ),
   );
 
-  const tree = el(
+  const chrome = el(
     "div",
     {
       style: {
@@ -269,18 +261,32 @@ export async function renderFeedMockup(photoBytes: Uint8Array, input: MockupInpu
     ),
     el(
       "div",
-      { style: { display: "flex", position: "relative", width: `${W}px`, height: `${photoH}px` } },
-      ...photoKids,
+      {
+        style: {
+          display: "flex",
+          position: "relative",
+          width: `${W}px`,
+          height: `${photoH}px`,
+          background: "#111111",
+        },
+      },
+      ...photoHoleKids,
     ),
     ...bottomKids,
   );
 
-  return toBudgetJpeg(await renderSatori(W, totalH, tree));
+  const chromePng = await renderSatori(W, totalH, chrome);
+  const composed = await sharp(chromePng)
+    .composite([{ input: photo, top: headerH, left: 0 }])
+    .png()
+    .toBuffer();
+  return toBudgetJpeg(composed);
 }
 
 /**
  * Render an Instagram story mockup: 1080x1920 full-bleed photo with a top
- * progress bar and avatar + handle. No caption block, no fabricated metrics.
+ * progress bar and avatar + handle. Photo is composited via sharp; Satori only
+ * draws the chrome overlay.
  */
 export async function renderStoryMockup(photoBytes: Uint8Array, input: MockupInput): Promise<Buffer> {
   const W = 1080;
@@ -291,12 +297,12 @@ export async function renderStoryMockup(photoBytes: Uint8Array, input: MockupInp
     .resize({ width: W, height: H, fit: "cover" })
     .jpeg({ quality: 90 })
     .toBuffer();
-  const dataUri = `data:image/jpeg;base64,${photo.toString("base64")}`;
 
   const handle = handleFor(input);
   const initial = initialFor(input.brandName);
 
-  const tree = el(
+  // Transparent overlay chrome — composited on top of the photo.
+  const overlay = el(
     "div",
     {
       style: {
@@ -308,12 +314,6 @@ export async function renderStoryMockup(photoBytes: Uint8Array, input: MockupInp
         fontFamily: "Inter",
       },
     },
-    el("img", {
-      src: dataUri,
-      width: W,
-      height: H,
-      style: { position: "absolute", top: 0, left: 0, width: `${W}px`, height: `${H}px` },
-    }),
     el("div", {
       style: {
         position: "absolute",
@@ -359,19 +359,14 @@ export async function renderStoryMockup(photoBytes: Uint8Array, input: MockupInp
     ),
   );
 
-  return toBudgetJpeg(await renderSatori(W, H, tree));
+  const overlayPng = await renderSatori(W, H, overlay);
+  const composed = await sharp(photo)
+    .composite([{ input: overlayPng, top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+  return toBudgetJpeg(composed);
 }
 
-/**
- * Build the approval-preview URL for a photo draft: fetch the display photo's
- * bytes, render it inside the IG frame (feed or story per post.format), store
- * the mockup as an operator asset, and return its public URL.
- *
- * The mockup id is returned ONLY as a URL — never written into posts.media_ids
- * (the publish loop publishes media_ids verbatim, so this keeps mockups out of
- * what actually goes live). On ANY failure, falls back to the original photo's
- * public URL so the client still sees their post, not a broken preview.
- */
 export async function previewUrlForPost(
   brand: Brand,
   post: { caption: string | null; format: PostFormat; media_ids: string[] },

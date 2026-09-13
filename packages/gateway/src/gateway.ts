@@ -632,13 +632,14 @@ export async function handleInbound(
       // (or there's a leftover queued job), run it now and SMS the drafts.
       void (async () => {
         try {
-          const results = await runKickoffDrain(2);
-          for (const r of results) {
-            await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined, {
-              channel,
-              pace: false,
-            });
-          }
+          await runKickoffDrain(2, {
+            deliver: async (r) => {
+              await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined, {
+                channel,
+                pace: false,
+              });
+            },
+          });
         } catch (err) {
           console.error(`handleInbound: kickoff drain failed for brand ${brand.id}`, err);
         }
