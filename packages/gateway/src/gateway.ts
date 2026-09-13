@@ -8,6 +8,7 @@ import {
   buildOnboardingPlanSms,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
+  runKickoffDrain,
 } from "@pulse/orchestrator";
 import {
   getServerEnv,
@@ -614,6 +615,22 @@ export async function handleInbound(
           ).catch(() => {});
         }
       }
+
+      // Kickoff drain: don't wait on the Railway worker. If Kip queued work
+      // (or there's a leftover queued job), run it now and SMS the drafts.
+      void (async () => {
+        try {
+          const results = await runKickoffDrain(2);
+          for (const r of results) {
+            await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined, {
+              channel,
+              pace: false,
+            });
+          }
+        } catch (err) {
+          console.error(`handleInbound: kickoff drain failed for brand ${brand.id}`, err);
+        }
+      })();
     } catch (err) {
       // Orchestrator failures must not lose the persisted inbound message — and
       // the client should never be left with silence.
