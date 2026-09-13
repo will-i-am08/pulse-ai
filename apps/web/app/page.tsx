@@ -58,6 +58,7 @@ export default function LandingPage() {
         </Link>
         <nav className={styles.navLinks} aria-label="Landing">
           <a href="#about">About</a>
+          <a href="#compare">Compare</a>
           <a href="#pricing">Pricing</a>
           <Link className={styles.navLogin} href="/login">
             Login
@@ -318,6 +319,149 @@ export default function LandingPage() {
             Encrypted in transit and at rest. Disconnect Meta, X, or Threads anytime. Email{' '}
             <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> to wipe what we hold.
           </p>
+        </div>
+      </section>
+
+      {/* ── compare ── */}
+      <section className={`${styles.band} ${styles.compareBand}`} id="compare" aria-label="Kip vs a social media manager">
+        <div className={styles.bandInner}>
+          <h2 className={`${styles.sketchTitle} ${styles.reveal}`}>
+            Same job. Different invoice.
+            <Underline className={`${styles.sketch} ${styles.dash}`} />
+          </h2>
+          <p className={`${styles.sub} ${styles.reveal} ${styles.revealD1}`}>
+            A social media manager runs $2,000–$5,000 a month. Kip does the organic work from $79.
+          </p>
+
+          <div className={`${styles.compareWrap} ${styles.reveal} ${styles.revealD1}`}>
+            <table className={styles.compareTable}>
+              <caption className={styles.srOnly}>
+                What a social media manager covers versus Kip, with monthly price
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">What you get</th>
+                  <th scope="col">Social media manager</th>
+                  <th scope="col" className={styles.compareKipCol}>
+                    Kip
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Captions in your voice</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Post to Instagram, Facebook, X, Threads</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Content calendar + weekly rhythm</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Approve before anything goes live</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Always-on in a text thread</th>
+                  <td>
+                    <span className={styles.cmpNo}>No</span>
+                    <span className={styles.cmpNote}>Office hours</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Autopilot when you want evenings back</th>
+                  <td>
+                    <span className={styles.cmpMaybe}>Sometimes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpYes}>Yes</span>
+                    <span className={styles.cmpNote}>On Max</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">On-site shoots and custom creative</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpNo}>No</span>
+                    <span className={styles.cmpNote}>You send the photo</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Paid ads and media buying</th>
+                  <td>
+                    <span className={styles.cmpMaybe}>Often</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpNo}>No</span>
+                    <span className={styles.cmpNote}>Organic only</span>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Strategy decks and stand-ups</th>
+                  <td>
+                    <span className={styles.cmpYes}>Yes</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpNo}>No</span>
+                    <span className={styles.cmpNote}>Text check-ins instead</span>
+                  </td>
+                </tr>
+                <tr className={styles.comparePriceRow}>
+                  <th scope="row">What you pay</th>
+                  <td>
+                    <span className={styles.cmpPrice}>$2,000–$5,000</span>
+                    <span className={styles.cmpNote}>/ month</span>
+                  </td>
+                  <td className={styles.compareKipCol}>
+                    <span className={styles.cmpPrice}>$79–$149</span>
+                    <span className={styles.cmpNote}>/ month</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className={`${styles.saveCallout} ${styles.reveal} ${styles.revealD2}`}>
+            <p className={styles.saveLabel}>What you keep</p>
+            <p className={styles.saveFigure}>
+              Save about <span>$1,850–$4,900</span> a month
+            </p>
+            <p className={styles.saveSub}>
+              Versus a typical social media manager, at Kip’s Pro and Max prices. Organic social
+              covered. The awkward hire, skipped.
+            </p>
+            <a className={styles.pillDark} href="#pricing">
+              See plans
+            </a>
+          </div>
         </div>
       </section>
 
