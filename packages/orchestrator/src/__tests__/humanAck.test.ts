@@ -16,10 +16,9 @@ function brandWithName(name: string | null): Brand {
 }
 
 describe("craftHumanAck", () => {
-  it("acks 'Are you done?' with On it + name", () => {
-    const ack = craftHumanAck(brandWithName("Bill"), "Are you done?");
-    expect(ack.toLowerCase()).toMatch(/on it/);
-    expect(ack).toMatch(/Bill/);
+  it("skips filler wrapping acks for status checks", () => {
+    expect(craftHumanAck(brandWithName("Bill"), "Are you done?")).toBe("");
+    expect(craftHumanAck(brandWithName("Bill"), "How's it going?")).toBe("");
   });
 
   it("acks hey with a greeting", () => {
@@ -44,20 +43,29 @@ describe("craftHumanAck", () => {
     expect(ack.toLowerCase()).toMatch(/makes sense/);
   });
 
-  it("falls back without a name", () => {
-    expect(craftHumanAck(brandWithName(null), "Are you done?").toLowerCase()).toMatch(/^on it/);
+  it("falls back without a name on short vibes", () => {
+    expect(craftHumanAck(brandWithName(null), "cool")).toMatch(/cool/i);
   });
 });
 
 describe("acknowledgeThenContinue", () => {
-  it("puts ack before the next beat", () => {
+  it("goes straight to the next beat on status checks (no wrapping filler)", () => {
     const out = acknowledgeThenContinue(
       brandWithName("Bill"),
       "Are you done?",
       "Hey Bill — what's your niche?",
     );
-    expect(out).toMatch(/^On it, Bill/);
-    expect(out).toContain("\n\nHey Bill — what's your niche?");
+    expect(out).toBe("Hey Bill — what's your niche?");
+  });
+
+  it("puts a real ack before the next beat", () => {
+    const out = acknowledgeThenContinue(
+      brandWithName("Bill"),
+      "We help busy cafe owners fill weekday mornings",
+      "What's your niche?",
+    );
+    expect(out).toMatch(/^Makes sense/i);
+    expect(out).toContain("\n\nWhat's your niche?");
   });
 
   it("does not double-ack when next already opens with one", () => {

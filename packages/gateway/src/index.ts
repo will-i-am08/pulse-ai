@@ -11,6 +11,7 @@ export {
   startTypingKeeper,
   splitIntoBubbles,
   shouldSendInstantTextAck,
+  looksLikeProgressCheck,
 } from "./gateway.js";
 export type { TypingKeeper, HandleInboundOpts } from "./gateway.js";
 export { createLinqChannel, LinqChannel } from "./linq-channel.js";
