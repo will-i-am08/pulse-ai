@@ -109,8 +109,9 @@ function interviewerSystem(
       : "",
     ...personalBits,
     knownName
-      ? `You already know their first name is ${knownName}. Greet them by it. Do NOT ask for their name — never re-ask who they are.`
+      ? `You already know their first name is ${knownName}. Use it naturally. Do NOT ask for their name — never re-ask who they are.`
       : "Early on, warmly get their first name (by your third message at the latest) so you can address them personally from here on.",
+    "You already introduced yourself earlier in this chat. Never re-introduce: no \"kip here\", no \"hey i'm kip\", no \"your new social media manager\". Jump straight into the setup beat.",
     "Make sure you learn their niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "Ask about admired accounts AT MOST ONCE. If they say they're not sure, don't know, can't think of any, or dodge the question, accept that and move on — never re-ask for account examples.",
     "HOW YOU TALK (absolute rules):",
@@ -519,18 +520,20 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
   const knownName = ownerFirstName(brand);
   const system = interviewerSystem(brand, type, websiteSummary, prior);
   const harvestPending = answers.connected_meta === "1" && !prior;
+  const noReintro =
+    " Do NOT re-introduce yourself (no \"kip here\", no \"i'm your new social media manager\") — you already did that. Skip straight to the setup beat.";
   const reflectPrior = prior
-    ? " You already studied their existing posts — briefly reflect one concrete thing you noticed, then ask your first most useful question that fills a gap."
+    ? ` You already studied their existing posts — briefly reflect one concrete thing you noticed, then ask your first most useful question that fills a gap.${noReintro}`
     : harvestPending
-      ? " Their Instagram/Facebook posts are still being read in the background — do NOT claim you have already studied them. Greet warmly, mention you're skimming their posts in the background so you won't re-ask things they already show online, then ask your first most useful question."
+      ? ` Their Instagram/Facebook posts are still being read in the background — do NOT claim you have already studied them. Open by saying you're skimming their posts (so you won't re-ask things they already show online), then ask your first most useful question.${noReintro}`
       : websiteSummary
-        ? " If you learned things from their website, briefly reflect that back before asking your first, most useful question."
-        : " Ask your first, most useful question.";
+        ? ` If you learned things from their website, briefly reflect that back before asking your first, most useful question.${noReintro}`
+        : ` Ask your first, most useful question.${noReintro}`;
   const seed: OnboardingTurnMsg = {
     role: "user",
     content: knownName
-      ? `Start the onboarding interview now: greet them as ${knownName} (you already know their name — do not ask for it).${reflectPrior}`
-      : `Start the onboarding interview now: greet them by name.${reflectPrior}`,
+      ? `Start the onboarding interview now for ${knownName} (you already know their name — do not ask for it). No hello-I'm-Kip re-intro.${reflectPrior}`
+      : `Start the onboarding interview now. No hello-I'm-Kip re-intro.${reflectPrior}`,
   };
   const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
   const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];

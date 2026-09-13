@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../llm.js", () => ({
-  callLLM: vi.fn(async () => "Hey Alex — I'm skimming your posts in the background. What's your niche?"),
+  callLLM: vi.fn(async () => "Skimming through your posts now so I don't re-ask stuff you already show. What's your niche?"),
 }));
 vi.mock("../voice/analyzeVoice.js", () => ({
   queueVoiceAnalysis: vi.fn(async () => undefined),
