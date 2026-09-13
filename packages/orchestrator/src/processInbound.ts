@@ -4,7 +4,7 @@ import { classifyInbound, type InboundClassification } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
-import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleAwaitingContact, handleReadingContent } from "./onboarding.js";
+import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleAwaitingContact, handleReadingContent, acknowledgeThenContinue } from "./onboarding.js";
 import {
   editImageForBrand,
   shouldOverlayHeadline,
@@ -412,9 +412,15 @@ export async function processInbound(
     if (!step.complete) return { reply: step.reply };
     return { reply: WRAP_ACK, finishOnboardingBrandId: brand.id };
   }
-  // Wrap-up compiling in the background: don't start over, just hold the line.
+  // Wrap-up compiling in the background: don't start over — ack and hold the line.
   if (brand.onboarding_state?.status === "wrapping_up") {
-    return { reply: "Still writing your voice up, nearly there." };
+    return {
+      reply: acknowledgeThenContinue(
+        brand,
+        message.body ?? "",
+        "Still writing your voice up, nearly there.",
+      ),
+    };
   }
 
   // Hold-window kill switch: "HOLD" / "stop" pulls a scheduled autopilot post

@@ -21,6 +21,8 @@ export {
   handleReadingContent,
   looksLikeSkipConnect,
   looksLikeDoneReply,
+  craftHumanAck,
+  acknowledgeThenContinue,
   sendConnectLinkAfterContact,
   onboardingTurn,
   onboardingNext,
