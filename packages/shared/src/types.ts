@@ -181,6 +181,16 @@ export type BrandVoiceProfile = z.infer<typeof brandVoiceProfileSchema>;
 export const emptyBrandVoiceProfile = (): BrandVoiceProfile =>
   brandVoiceProfileSchema.parse({});
 
+/**
+ * Coerce a DB/JSON blob into a full BrandVoiceProfile.
+ * Empty `{}` from Postgres is truthy, so `?? emptyBrandVoiceProfile()` is not
+ * enough — callers that touch `.notes.length` / `.tone.join` must normalize.
+ */
+export function normalizeBrandVoiceProfile(raw: unknown): BrandVoiceProfile {
+  const parsed = brandVoiceProfileSchema.safeParse(raw ?? {});
+  return parsed.success ? parsed.data : emptyBrandVoiceProfile();
+}
+
 // ─── Voice-analysis job state (async, run on the worker) ────────────
 export type VoiceAnalysisStatus =
   | "none"

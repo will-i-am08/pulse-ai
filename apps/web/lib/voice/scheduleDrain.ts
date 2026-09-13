@@ -4,8 +4,9 @@ import { sendToBrand } from '@pulse/gateway';
 
 /**
  * Queue is enough when the Railway worker is healthy. Also schedule an
- * in-process drain via Next.js `after()` so onboarding interview still starts
- * if the worker is down or delayed — same claim semantics as the worker.
+ * in-process drain via Next.js `after()` so post-harvest still completes if the
+ * worker is down. Interview already starts on connect — this only runs analysis
+ * (continueOnboardingAfterVoiceAnalysis is a no-op once status is in_progress).
  */
 export function scheduleVoiceAnalysisDrain(brandId: string): void {
   after(async () => {
