@@ -1,4 +1,4 @@
-import { getServerEnv, query, queryOne, type Brand } from "@pulse/shared";
+import { getServerEnv, query, queryOne, type Brand, type ContentPlan } from "@pulse/shared";
 import {
   sendToBrand,
   pendingPlans,
@@ -6,19 +6,15 @@ import {
   markPlanProposed,
   markPlanFailed,
   planTextSummary,
+  planOverrunNudge,
+  ONBOARDING_PLAN_ETA_MINUTES,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
-const PLAN_HOLDING_PREFIX = "Still working on your content plan";
+const PLAN_HOLDING_PREFIX = "Still finishing your content plan";
 
-function planHoldingNudge(): string {
-  const templates = [
-    `Still working on your content plan — the research is being stubborn but I'm on it. Will send it the moment it lands.`,
-    `Content plan's taking longer than expected. Still digging, will ping you the second it's ready.`,
-    `Plan research hit a snag, but I'm still going. You'll get it as soon as it's solid.`,
-    `Still cooking your content plan. The deep dive is taking a bit, but it's coming.`,
-  ];
-  return templates[Math.floor(Math.random() * templates.length)]!;
+function isOnboardingTimedPlan(row: ContentPlan): boolean {
+  return row.promised_at != null;
 }
 
 async function holdingRecentlySent(brandId: string): Promise<boolean> {
@@ -43,11 +39,15 @@ export async function runNichePlanLoop(): Promise<void> {
         await markPlanFailed(row.id);
         continue;
       }
-      const plan = await buildPlanWithFallback(brand, row.niche ?? brand.name, row.exemplars ?? null);
+      // Onboarding plans promised a concrete ETA — prefer the fast path.
+      const preferFast = isOnboardingTimedPlan(row);
+      const plan = await buildPlanWithFallback(brand, row.niche ?? brand.name, row.exemplars ?? null, {
+        preferFast,
+      });
       if (!plan) {
         await query("update content_plans set updated_at = now() where id = $1", [row.id]);
         if (!(await holdingRecentlySent(brand.id))) {
-          await sendToBrand(brand.id, planHoldingNudge());
+          await sendToBrand(brand.id, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES));
         }
         continue;
       }

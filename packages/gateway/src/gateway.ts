@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { processInbound, finishOnboarding, craftHumanAck, stripLeadingAck } from "@pulse/orchestrator";
+import {
+  processInbound,
+  finishOnboarding,
+  craftHumanAck,
+  stripLeadingAck,
+  looksLikeAffirmation,
+  buildOnboardingPlanSms,
+  planOverrunNudge,
+  ONBOARDING_PLAN_ETA_MINUTES,
+} from "@pulse/orchestrator";
 import {
   getServerEnv,
   kipContactIdentity,
@@ -32,6 +41,38 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 /** Quiet window so rapid SMS from one owner become a single turn. */
 const INBOUND_BURST_MS = 2800;
+
+/** Instant plain-text acks are for post-setup chat only — and never for pure vibes. */
+export function shouldSendInstantTextAck(
+  brand: Pick<Brand, "onboarding_state">,
+  inboundText: string,
+): boolean {
+  const status = brand.onboarding_state?.status;
+  if (
+    status === "pending" ||
+    status === "awaiting_contact" ||
+    status === "awaiting_connect" ||
+    status === "reading_content" ||
+    status === "in_progress" ||
+    status === "wrapping_up"
+  ) {
+    return false;
+  }
+  const t = (inboundText ?? "").trim();
+  if (!t) return false;
+  // Affirmations / thanks get a real reply — no separate "Got you, Bill." SMS.
+  if (looksLikeAffirmation(t)) return false;
+  // Status checks ("are you done?") — let the real reply speak, don't fake-wrap.
+  if (
+    /^(are you )?(done|finished|ready)\b/i.test(t) ||
+    /\b(done|finished|ready) yet\b/i.test(t) ||
+    /\bstill (there|working|reading|going)\b/i.test(t)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 
 /**
  * Keep a channel's "... is typing" indicator alive while async work runs.
@@ -70,24 +111,40 @@ export function startTypingKeeper(channel: MessageChannel, to: string): TypingKe
  */
 export function splitIntoBubbles(body: string, softMax = 320): string[] {
   const text = (body ?? "").trim();
-  if (!text || text.length <= softMax) return [text];
-  const sentences = text.split(/(?<=[.!?…\n])\s+/);
+  if (!text) return [];
+
+  // Prefer paragraph breaks first so intentional SMS beats stay intact —
+  // even when the whole body is under softMax.
+  const paragraphs = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length > 1) {
+    const out: string[] = [];
+    for (const para of paragraphs) {
+      out.push(...splitIntoBubbles(para, softMax));
+    }
+    return out;
+  }
+
+  if (text.length <= softMax) return [text];
+
+  const sentences = text.split(/(?<=[.!?…])\s+/);
   const chunks: string[] = [];
   let cur = "";
   const push = (): void => {
     if (cur.trim()) chunks.push(cur.trim());
     cur = "";
   };
+  // Allow modest overflow so we don't tear a sentence mid-thought.
+  const hardMax = Math.round(softMax * 1.45);
   for (const s of sentences) {
-    if (!cur || `${cur} ${s}`.trim().length <= softMax) {
-      cur = cur ? `${cur} ${s}` : s;
-    } else if (s.length > softMax) {
+    const next = cur ? `${cur} ${s}` : s;
+    if (!cur || next.length <= softMax) {
+      cur = next;
+    } else if (s.length > hardMax) {
       push();
-      // Hard-split an over-long sentence on word boundaries.
       const words = s.split(/\s+/);
       let w = "";
       for (const word of words) {
-        if (!w || `${w} ${word}`.trim().length <= softMax) {
+        if (!w || `${w} ${word}`.length <= softMax) {
           w = w ? `${w} ${word}` : word;
         } else {
           chunks.push(w);
@@ -95,6 +152,9 @@ export function splitIntoBubbles(body: string, softMax = 320): string[] {
         }
       }
       cur = w;
+    } else if (next.length <= hardMax) {
+      // Keep the sentence with the prior bubble rather than orphaning it.
+      cur = next;
     } else {
       push();
       cur = s;
@@ -435,7 +495,7 @@ export async function handleInbound(
         undefined,
         { pace: false, channel },
       ).catch(() => {});
-    } else if (inboundText && !priorInBurst) {
+    } else if (inboundText && !priorInBurst && shouldSendInstantTextAck(brand, inboundText)) {
       const ack = craftHumanAck(brand, inbound.body ?? "");
       if (ack) {
         await sendToBrand(brand.id, ack, undefined, { pace: false, channel }).catch(() => {});
@@ -507,13 +567,35 @@ export async function handleInbound(
       // Onboarding just completed: the ack is already with the owner. Now do
       // the slow compile and deliver the rundown as a second message.
       if (finishOnboardingBrandId) {
+        const brandId = finishOnboardingBrandId;
         try {
-          const rundown = await finishOnboarding(finishOnboardingBrandId);
-          await sendToBrand(finishOnboardingBrandId, rundown, undefined, { channel });
+          const rundown = await finishOnboarding(brandId);
+          // Main voice recap first (no goodbye), then the plan afterthought as its own SMS.
+          await sendToBrand(brandId, rundown.main, undefined, { channel, pace: false });
+          await new Promise((r) => setTimeout(r, 900));
+          await sendToBrand(brandId, rundown.afterthought, undefined, { channel, pace: false });
+
+          // Kick the plan immediately so the concrete ETA is real — don't wait on the 30s worker tick.
+          void (async () => {
+            try {
+              const sms = await buildOnboardingPlanSms(brandId);
+              if (sms) {
+                await sendToBrand(brandId, sms, undefined, { channel, pace: false });
+                return;
+              }
+              // Research overran — nudge with another concrete ETA, worker will retry.
+              await sendToBrand(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
+                channel,
+                pace: false,
+              });
+            } catch (err) {
+              console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
+            }
+          })();
         } catch (err) {
-          console.error(`handleInbound: finishOnboarding failed for brand ${finishOnboardingBrandId}`, err);
+          console.error(`handleInbound: finishOnboarding failed for brand ${brandId}`, err);
           await sendToBrand(
-            finishOnboardingBrandId,
+            brandId,
             "Hit a snag writing your voice up — your answers are safe though. I'll get the rundown to you shortly.",
             undefined,
             { channel },

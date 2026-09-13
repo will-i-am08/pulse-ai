@@ -11,7 +11,7 @@ import {
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { seedPendingPlan } from "./nichePlan.js";
+import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
 import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
 import { connectLinkMessage, isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
@@ -134,7 +134,7 @@ function interviewerSystem(
       ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like (or they've confirmed your brief). Then wrap up. Do not ask about customers, ads, or offers."
       : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like — OR they've confirmed your brief. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
     "- Typical finish: 4 to 7 turns. Never pad to fill turns, never rush. Prefer a brief+confirm over a long interrogation.",
-    `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short, warm sign-off. Tailor the next step: personal accounts get the photo ask, business or faceless accounts are told their first ideas are coming.`,
+    `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short warm note (no "talk soon" / goodbye — we keep texting them next). If they said faceless, do NOT ask for photos of their face. Personal face-forward accounts can get a photo ask; business or faceless accounts are told their first ideas are coming.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -458,7 +458,7 @@ export async function sendConnectLinkAfterContact(brandId: string): Promise<stri
     answers,
   });
   return (
-    `One tap to connect Instagram and Facebook — I'll take it from there:\n${link}\n\n` +
+    `One tap to connect Instagram + Facebook — I'll take it from there:\n${link}\n\n` +
     `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`
   );
 }
@@ -1016,22 +1016,37 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
   const step = await onboardingNext(brand, body);
   if (!step.complete) return { reply: step.reply, done: false };
   const rundown = await finishOnboarding(brand.id);
-  return { reply: `${step.reply}\n\n${rundown}`, done: true };
+  return { reply: `${step.reply}\n\n${rundown.main}\n\n${rundown.afterthought}`, done: true };
 }
 
 /** Next step tailored to the account: personal brands send a photo, everyone else gets ideas first. */
 function nextStepFor(type: AccountType, transcript: OnboardingTurnMsg[]): string {
   const faceless = transcript.some((t) => /faceless/i.test(t.content));
-  if (type === "personal" && !faceless) return "Send me a photo anytime and we'll get rolling.";
-  return "I'll send your first ideas shortly. Anything you want to add before I start, just say.";
+  if (type === "personal" && !faceless) {
+    return "Send me a photo anytime and we'll get rolling.";
+  }
+  return "Anything you want to add before I start, just say.";
 }
 
 /**
- * Heavy wrap-up: compile the voice profile, capture name/niche, seed the plan
- * research, and build the rundown message (sign-off + recap + plan promise).
- * Runs AFTER the instant ack, so it can take its time.
+ * SMS messages delivered after WRAP_ACK once the voice compile finishes.
+ * Kept as separate bubbles on purpose:
+ *   1. main — voice recap + next step (no goodbye / "talk soon")
+ *   2. afterthought — plan tease as a human "oh and one more thing" beat,
+ *      including the concrete ETA promise in the SAME bubble
  */
-export async function finishOnboarding(brandId: string): Promise<string> {
+export type OnboardingRundown = {
+  main: string;
+  afterthought: string;
+};
+
+/**
+ * Heavy wrap-up: compile the voice profile, capture name/niche, seed the plan
+ * research, and return the rundown as TWO SMS messages (main + afterthought).
+ * Runs AFTER the instant WRAP_ACK. Does not text the parked LLM sign-off —
+ * those often say "talk soon" right before we keep talking.
+ */
+export async function finishOnboarding(brandId: string): Promise<OnboardingRundown> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
   if (!brand) throw new Error(`finishOnboarding: brand ${brandId} not found`);
   const state = brand.onboarding_state ?? { status: "wrapping_up" };
@@ -1040,10 +1055,12 @@ export async function finishOnboarding(brandId: string): Promise<string> {
   const answers: Record<string, string> = { ...(state.answers ?? {}) };
   const turns = state.turns ?? 0;
 
-  const signoff =
-    transcript.length > 0 && transcript[transcript.length - 1]?.role === "assistant"
-      ? (transcript.pop() as OnboardingTurnMsg).content
-      : "You're all set.";
+  // Drop the parked SETUP_COMPLETE sign-off from the outbound SMS. Keep the
+  // rest of the transcript for profile compile — the sign-off is history only.
+  if (transcript.length > 0 && transcript[transcript.length - 1]?.role === "assistant") {
+    transcript.pop();
+  }
+
   const recap = await compileProfile(brand, type, transcript);
   await saveState(brand.id, {
     status: "done",
@@ -1058,17 +1075,20 @@ export async function finishOnboarding(brandId: string): Promise<string> {
   await ensureOwnerNameFromUser(latest);
   await captureNicheAndSeedPlan(brand, transcript);
   // Cold-start design: seed niche exemplar URLs so first compose isn't empty-handed.
-  try {
-    const { seedOnboardingNicheExemplars } = await import("./designBootstrap.js");
-    await seedOnboardingNicheExemplars(brand.id);
-  } catch {
-    /* table may not exist yet */
-  }
-  const planLine =
+  // Fire-and-forget so the wrap-up SMS isn't blocked on bootstrap network I/O.
+  void import("./designBootstrap.js")
+    .then(({ seedOnboardingNicheExemplars }) => seedOnboardingNicheExemplars(brand.id))
+    .catch(() => {});
+
+  const afterthought =
     type === "personal"
-      ? `One more thing: I'm putting together a light niche plan for you. I'll send it over in a couple of minutes 👀`
-      : `One more thing: I'm studying your space to build you a tailored content plan. I'll send it over in a couple of minutes 👀`;
-  return `${signoff}\n\n${recap}\n\n${nextStepFor(type, transcript)}\n\n${planLine}`;
+      ? `One more thing — I'm putting together a light niche plan and first carousel ideas for you. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`
+      : `One more thing — I'm studying your space to build a content plan and first carousel ideas. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`;
+
+  return {
+    main: `${recap}\n\n${nextStepFor(type, transcript)}`,
+    afterthought,
+  };
 }
 
 /** Compile the whole conversation into a stored BrandVoiceProfile + strategy notes; return a short recap. */
@@ -1130,9 +1150,10 @@ async function compileProfile(
     [brand.id, voiceNotes || null],
   );
 
-  const tone = profile.tone.length ? profile.tone.join(", ") : "friendly";
-  const donts = profile.donts.length ? profile.donts.join("; ") : "none noted";
-  return `Here's what I've got: tone is ${tone}; emoji ${profile.emoji_policy}; never: ${donts}. You can tweak any of this on your dashboard anytime.`;
+  const tone = profile.tone.length ? profile.tone.slice(0, 3).join(", ") : "friendly and direct";
+  const avoid = profile.donts.length ? profile.donts.slice(0, 2).join("; ").toLowerCase() : null;
+  const avoidBit = avoid ? ` I'll steer clear of ${avoid}.` : "";
+  return `Here's how I'm reading your voice: ${tone}.${avoidBit} You can tweak any of this on your dashboard anytime.`;
 }
 
 
