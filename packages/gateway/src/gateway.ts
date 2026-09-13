@@ -43,6 +43,22 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /** Quiet window so rapid SMS from one owner become a single turn. */
 const INBOUND_BURST_MS = 2800;
 
+/** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */
+export function looksLikeProgressCheck(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return (
+    /^(are you )?(done|finished|ready)\b/i.test(t) ||
+    /\b(done|finished|ready) yet\b/i.test(t) ||
+    /\bstill (there|working|reading|going)\b/i.test(t) ||
+    /\bhow(?:'?s| is| are)?\s+(?:it|things|everything)(?:\s+going)?\b/i.test(t) ||
+    /\bhow(?:'?s| is)\s+(?:the\s+)?(?:progress|batch|draft|carousel|copy)\b/i.test(t) ||
+    /\bany (?:update|luck|news|progress)\b/i.test(t) ||
+    /\bwhat(?:'?s| is) (?:taking so long|happening|the (?:eta|status|update))\b/i.test(t) ||
+    /^(?:update|status|progress)\??$/i.test(t)
+  );
+}
+
 /** Instant plain-text acks are for post-setup chat only — and never for pure vibes. */
 export function shouldSendInstantTextAck(
   brand: Pick<Brand, "onboarding_state">,
@@ -63,14 +79,10 @@ export function shouldSendInstantTextAck(
   if (!t) return false;
   // Affirmations / thanks get a real reply — no separate "Got you, Bill." SMS.
   if (looksLikeAffirmation(t)) return false;
-  // Status checks ("are you done?") — let the real reply speak, don't fake-wrap.
-  if (
-    /^(are you )?(done|finished|ready)\b/i.test(t) ||
-    /\b(done|finished|ready) yet\b/i.test(t) ||
-    /\bstill (there|working|reading|going)\b/i.test(t)
-  ) {
-    return false;
-  }
+  // Status / progress checks ("how's it going?", "are you done?") — go straight
+  // to the real answer. A standalone "On it — wrapping that up" before the
+  // status SMS feels like filler, not progress.
+  if (looksLikeProgressCheck(t)) return false;
   // Plan rebuild asks / scratch confirms — avoid a lone "Got you" while research runs;
   // the plan SMS (or a real holding line) is the reply.
   if (

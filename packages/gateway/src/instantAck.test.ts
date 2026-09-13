@@ -1,5 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { shouldSendInstantTextAck, splitIntoBubbles } from "./gateway.js";
+import {
+  looksLikeProgressCheck,
+  shouldSendInstantTextAck,
+  splitIntoBubbles,
+} from "./gateway.js";
+
+describe("looksLikeProgressCheck", () => {
+  it("matches how's-it-going / status pings", () => {
+    for (const t of [
+      "How's it going?",
+      "hows it going",
+      "How is it going",
+      "any update?",
+      "what's the status",
+      "progress?",
+      "are you done?",
+      "still working?",
+    ]) {
+      expect(looksLikeProgressCheck(t)).toBe(true);
+    }
+  });
+
+  it("leaves real asks alone", () => {
+    expect(looksLikeProgressCheck("can you make it shorter")).toBe(false);
+    expect(looksLikeProgressCheck("draft me 3 posts")).toBe(false);
+  });
+});
 
 describe("shouldSendInstantTextAck", () => {
   it("skips during active onboarding (interview / connect / contact)", () => {
@@ -20,6 +46,8 @@ describe("shouldSendInstantTextAck", () => {
     expect(shouldSendInstantTextAck(done, "Awesome")).toBe(false);
     expect(shouldSendInstantTextAck(done, "are you done?")).toBe(false);
     expect(shouldSendInstantTextAck(done, "still working?")).toBe(false);
+    expect(shouldSendInstantTextAck(done, "How's it going?")).toBe(false);
+    expect(shouldSendInstantTextAck(done, "any update")).toBe(false);
   });
 
   it("allows normal post-setup chat acks", () => {

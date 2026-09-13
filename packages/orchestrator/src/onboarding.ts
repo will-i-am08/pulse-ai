@@ -315,6 +315,9 @@ export function craftHumanAck(brand: Brand, inbound: string): string {
     return name ? `Nice one, ${name}.` : "Nice one.";
   }
 
+  // Progress / status checks ("how's it going?", "are you done?") — don't emit a
+  // filler "On it — wrapping that up" ack. The real reply is the answer; a
+  // standalone wrapping SMS before it feels like stalling.
   if (
     /^(are you )?(done|finished|ready)\b/i.test(t) ||
     /\b(done|finished|ready) yet\b/i.test(t) ||
@@ -323,7 +326,7 @@ export function craftHumanAck(brand: Brand, inbound: string): string {
     /\bany (update|luck|news)\b/i.test(t) ||
     /\bwhat('?s| is) (taking so long|happening)\b/i.test(t)
   ) {
-    return `On it${named} — wrapping that up now.`;
+    return "";
   }
   if (/^(hey|hi|hello|yo)\b/i.test(t)) {
     return name ? `Hey ${name}!` : "Hey!";
