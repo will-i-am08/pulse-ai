@@ -124,11 +124,16 @@ function interviewerSystem(
     "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
     "- Never re-ask something you already know (including from the website or their existing posts).",
     "- Never re-ask for admired/example accounts once you've already asked — even if their answer was vague or \"I don't know\".",
-    "FINISH:",
+    "- Typos and slang are fine — silently infer the meaning (e.g. \"entroperial\" → entrepreneurial, \"faceless\" → no face on camera). Confirm the cleaned-up meaning in plain words instead of echoing the typo back.",
+    "- When they say both / either / idk on tone or style, pick a concrete blended read and check it once — do not keep probing the same fork.",
+    "BRIEF + FINISH:",
+    "- Once you roughly hold the core (niche, content style, tone, and any hard constraints like faceless), send a ONE-SMS brief in plain English: what you'll post about, how it looks, and the tone. End with a single check question like \"sound right?\".",
+    "- After 2 unsure answers (idk / not sure / can't think), do NOT dig further — send that brief immediately.",
+    "- If they confirm the brief (yes / yeah / sounds good / done), wrap up immediately. Do not ask another discovery question.",
     type === "personal"
-      ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like. Then wrap up. Do not ask about customers, ads, or offers."
-      : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
-    "- Typical finish: 5 to 8 turns. Never pad to fill turns, never rush.",
+      ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like (or they've confirmed your brief). Then wrap up. Do not ask about customers, ads, or offers."
+      : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like — OR they've confirmed your brief. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
+    "- Typical finish: 4 to 7 turns. Never pad to fill turns, never rush. Prefer a brief+confirm over a long interrogation.",
     `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short, warm sign-off. Tailor the next step: personal accounts get the photo ask, business or faceless accounts are told their first ideas are coming.`,
   ]
     .filter(Boolean)
@@ -638,12 +643,33 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
           `Here's a fresh link — choose the account and tap Connect this account:\n\n${link}`,
       );
     }
-    const { link } = await mintConnectLink(brand, prev);
+    // Never started / never completed — say that plainly (don't imply they "almost" finished).
+    const attempts = Number(answers.connect_done_attempts ?? "0") + 1;
+    answers.connect_done_attempts = String(attempts);
+    if (connectLinkIsFresh(answers)) {
+      await saveState(brand.id, {
+        ...prev,
+        status: "awaiting_connect",
+        type: prev.type ?? brand.account_type ?? "business",
+        turns: prev.turns ?? 0,
+        transcript: prev.transcript ?? [],
+        answers,
+      });
+      return acknowledgeThenContinue(
+        brand,
+        text,
+        `I still don't see Instagram + Facebook connected — the link hasn't completed yet. ` +
+          `Open the link I already sent, sign in, pick your Page + Instagram, and tap Connect this account. ` +
+          `Or reply skip to keep going without them.`,
+      );
+    }
+    const { link } = await mintConnectLink(brand, { ...prev, answers });
     return acknowledgeThenContinue(
       brand,
       text,
-      `Hmm, I don't see Instagram + Facebook connected yet — it looks like the connect didn't finish. ` +
-        `Tap the link, sign in, then choose your Page + Instagram all the way through:\n\n${link}`,
+      `I still don't see Instagram + Facebook connected. ` +
+        `Tap this link and finish all the way through (sign in → pick Page + Instagram → Connect this account), ` +
+        `or reply skip to continue without them:\n\n${link}`,
     );
   }
 
@@ -874,6 +900,35 @@ async function enforceOneQuestion(reply: string): Promise<string> {
  */
 
 /** True when Kip already asked about admired / example accounts in this transcript. */
+
+/** Owner is unsure / can't answer — count these so we stop digging and brief them. */
+export function looksLikeUnsureReply(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return (
+    /^(idk|i don'?t know|not sure|no idea|dunno|n\/?a)\b/i.test(t) ||
+    /\bi'?m not sure\b/i.test(t) ||
+    /\bcan'?t think\b/i.test(t) ||
+    /\bno (clue|idea)\b/i.test(t) ||
+    /^(nope|no|nah)\.?$/i.test(t)
+  );
+}
+
+function countUnsureUserReplies(transcript: OnboardingTurnMsg[]): number {
+  return transcript.filter((t) => t.role === "user" && looksLikeUnsureReply(t.content)).length;
+}
+
+/** True when Kip already sent a "here's what I've got — sound right?" brief. */
+function alreadySentBrief(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(sound right|does that sound|have i got (that|you)|did i get that|that the vibe)\b/i.test(
+        t.content,
+      ),
+  );
+}
+
 function alreadyAskedAdmiredAccounts(transcript: OnboardingTurnMsg[]): boolean {
   return transcript.some(
     (t) =>
@@ -904,6 +959,30 @@ export async function onboardingNext(
         "(You already asked about admired/example accounts earlier. Do NOT ask again — even if they said they don't know. Move on to something else you still need, or wrap up if you have enough.)",
     });
   }
+
+  const unsureCount = countUnsureUserReplies(transcript);
+  const briefSent = alreadySentBrief(transcript);
+  // They confirmed a brief — stop interviewing and wrap.
+  if (
+    briefSent &&
+    /^(y+|yes|yeah|yep|yup|correct|sounds? good|perfect|right|done|that's (it|right)|thats (it|right)|good)\b/i.test(
+      body.trim(),
+    )
+  ) {
+    messages.push({
+      role: "user",
+      content:
+        "(They just confirmed your brief. Do NOT ask another question. Wrap up NOW with SETUP_COMPLETE and a warm sign-off.)",
+    });
+  } else if (!briefSent && (unsureCount >= 2 || turns >= 5)) {
+    // Enough signal (or too many idks) — force a plain-English brief + single confirm.
+    messages.push({
+      role: "user",
+      content:
+        "(Stop discovery questions. Send a short plain-English brief of what you think their content should be — niche/topic, format (e.g. faceless stock/AI), and tone — in ONE SMS. End with a single check like \"sound right?\". That is your only question.)",
+    });
+  }
+
   if (turns >= MAX_ANSWERS) {
     messages.push({
       role: "user",
