@@ -10,6 +10,7 @@ export {
   setActiveChannel,
   startTypingKeeper,
   splitIntoBubbles,
+  shouldSendInstantTextAck,
 } from "./gateway.js";
 export type { TypingKeeper, HandleInboundOpts } from "./gateway.js";
 export { createLinqChannel, LinqChannel } from "./linq-channel.js";

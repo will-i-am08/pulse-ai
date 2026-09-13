@@ -30,6 +30,7 @@ export {
   onboardingTurn,
   onboardingNext,
   finishOnboarding,
+  type OnboardingRundown,
   WRAP_ACK,
   restartOnboarding,
   archiveLabChatAndRestart,
@@ -63,7 +64,12 @@ export type { TextStats } from "./voice/textStats.js";
 export { callLLM } from "./llm.js";
 export type { CallLLMOptions } from "./llm.js";
 
-export { classifyInbound, ruleBasedClassify, InboundClassification } from "./classify.js";
+export {
+  classifyInbound,
+  ruleBasedClassify,
+  looksLikeAffirmation,
+  InboundClassification,
+} from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
 
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
@@ -208,11 +214,17 @@ export {
   researchNichePlan,
   researchNichePlanFallback,
   buildPlanWithFallback,
+  buildOnboardingPlanSms,
+  planOverrunNudge,
+  ONBOARDING_PLAN_ETA_MINUTES,
+  PLAN_WEB_SEARCH_DEEP,
+  PLAN_WEB_SEARCH_HYBRID,
   markPlanProposed,
   markPlanFailed,
   planTextSummary,
   applyNichePlan,
   looksLikeContentPlanRequest,
+  looksLikePlanRebuildConfirm,
   proposeContentPlanFromSms,
 } from "./nichePlan.js";
 export {

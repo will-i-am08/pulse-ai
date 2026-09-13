@@ -1,6 +1,6 @@
 import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
-import { classifyInbound, type InboundClassification } from "./classify.js";
+import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
@@ -80,6 +80,7 @@ import {
   getProposedPlan,
   applyNichePlan,
   looksLikeContentPlanRequest,
+  looksLikePlanRebuildConfirm,
   proposeContentPlanFromSms,
 } from "./nichePlan.js";
 import { detectResearchFocus, runDeepResearch } from "./research.js";
@@ -925,7 +926,11 @@ export async function processInbound(
   // so a friendly hello never trips the clarify fallback. It fires even when a
   // draft is pending: a greeting is never an approval, so GREETING_RE only matches
   // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
-  if (message.body && newMedia.length === 0 && GREETING_RE.test(message.body)) {
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
+  ) {
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
     }
@@ -990,9 +995,15 @@ export async function processInbound(
   }
 
   // Content plan propose / rebuild (week or month) — apply only on accept.
-  if (message.body && newMedia.length === 0 && !pending && looksLikeContentPlanRequest(message.body)) {
-    // If they're answering a proposed plan with edits, fall through to yes/revise via converse —
-    // but an explicit "propose/rebuild plan" always builds a fresh proposal.
+  // Also catch short confirms like "From scratch" after Kip asked scratch-vs-tweak
+  // (freeform chat cannot invoke the plan builder).
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    !pending &&
+    (looksLikeContentPlanRequest(message.body) || looksLikePlanRebuildConfirm(message.body))
+  ) {
+    // Explicit propose/rebuild / scratch-confirm always builds a fresh proposal.
     return { reply: await proposeContentPlanFromSms(brand, message.body) };
   }
 
@@ -1412,6 +1423,11 @@ export async function processInbound(
 
     case "approval": {
       if (!pending) {
+        // Casual "awesome"/"great" with nothing to approve — chat back, don't
+        // announce an empty approval queue they never asked about.
+        if (looksLikeAffirmation(message.body ?? "") || GREETING_RE.test(message.body ?? "")) {
+          return { reply: await converse(brand, message.body ?? "") };
+        }
         return { reply: "There's nothing pending approval right now." };
       }
 
