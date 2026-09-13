@@ -53,6 +53,13 @@ const nextConfig = {
     // **/*.wasm catch-all backstops any other wasm asset in the dep store.
     '/api/webhooks/twilio': tracingIncludes,
     '/api/webhooks/linq': tracingIncludes,
+    // App routes that transitively pull imaging/satori (live-test: hb.wasm ENOENT
+    // on /payment, /app/connections, /c/choose*). Force the wasm into those fns too.
+    '/payment': tracingIncludes,
+    '/app/connections': tracingIncludes,
+    '/app/memory': tracingIncludes,
+    '/c/choose': tracingIncludes,
+    '/c/choose-ads': tracingIncludes,
   },
   eslint: {
     // Sibling workspace packages may not exist on disk yet during parallel build;

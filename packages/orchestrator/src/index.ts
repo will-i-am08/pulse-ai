@@ -21,6 +21,7 @@ export {
   handleReadingContent,
   looksLikeSkipConnect,
   looksLikeDoneReply,
+  looksLikeUnsureReply,
   craftHumanAck,
   replyAlreadyAcked,
   stripLeadingAck,

@@ -236,6 +236,21 @@ describe("handleAwaitingConnect", () => {
     expect(msg.toLowerCase()).toMatch(/instagram|facebook|skip/);
     expect(msg).not.toContain("https://app.example/c/test");
   });
+
+  it("on Done with no Meta progress, says connect hasn't completed (reuses fresh link)", async () => {
+    const brand = fakeBrand({
+      onboarding_state: {
+        status: "awaiting_connect",
+        answers: { connect_link_sent_at: new Date().toISOString() },
+      },
+    });
+
+    const msg = await handleAwaitingConnect(brand, "Done");
+    expect(msg.toLowerCase()).toMatch(/still don't see|haven't completed|hasn't completed|not see instagram/);
+    expect(msg.toLowerCase()).toMatch(/skip/);
+    // Fresh link should be reused — no new URL minted in the reply.
+    expect(msg).not.toContain("https://app.example/c/test");
+  });
 });
 
 describe("welcomeContactMessage", () => {

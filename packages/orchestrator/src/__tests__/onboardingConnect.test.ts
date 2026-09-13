@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeSkipConnect } from "../onboarding.js";
+import { looksLikeSkipConnect, looksLikeUnsureReply } from "../onboarding.js";
 
 describe("looksLikeSkipConnect", () => {
   it("accepts common skip phrases", () => {
@@ -13,5 +13,20 @@ describe("looksLikeSkipConnect", () => {
   it("rejects normal answers", () => {
     expect(looksLikeSkipConnect("we run a cafe in Fitzroy")).toBe(false);
     expect(looksLikeSkipConnect("connect")).toBe(false);
+  });
+});
+
+describe("looksLikeUnsureReply", () => {
+  it("matches idk / not sure variants", () => {
+    expect(looksLikeUnsureReply("idk")).toBe(true);
+    expect(looksLikeUnsureReply("I'm not sure")).toBe(true);
+    expect(looksLikeUnsureReply("not sure")).toBe(true);
+    expect(looksLikeUnsureReply("can't think of any")).toBe(true);
+    expect(looksLikeUnsureReply("no idea")).toBe(true);
+  });
+
+  it("rejects real answers", () => {
+    expect(looksLikeUnsureReply("entrepreneurial tips and quotes")).toBe(false);
+    expect(looksLikeUnsureReply("faceless stock photos")).toBe(false);
   });
 });

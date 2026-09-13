@@ -28,6 +28,11 @@ export interface TypingKeeper {
   stop(): void;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Quiet window so rapid SMS from one owner become a single turn. */
+const INBOUND_BURST_MS = 2800;
+
 /**
  * Keep a channel's "... is typing" indicator alive while async work runs.
  * Best-effort: channels without sendTyping (plain SMS) no-op. The indicator
@@ -57,10 +62,6 @@ export function startTypingKeeper(channel: MessageChannel, to: string): TypingKe
       clearInterval(timer);
     },
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -408,6 +409,24 @@ export async function handleInbound(
     // to what they said. The orchestrator reply may also open with an ack —
     // stripLeadingAck drops that so we don't double-tap.
     const photoAckSent = newMedia.some((m) => m.kind === "photo");
+    const inboundText = (inbound.body ?? "").trim();
+
+    // If another inbound from this brand landed in the last few seconds, this
+    // message is part of a burst — skip the extra ack (the first one already
+    // covered it). The latest message in the burst will process the combined text.
+    const priorInBurst = inboundText
+      ? await queryOne<{ id: string }>(
+          `select id from messages
+           where brand_id = $1
+             and direction = 'inbound'
+             and id <> $2
+             and created_at > now() - ($3::text || ' milliseconds')::interval
+           order by created_at desc
+           limit 1`,
+          [brand.id, message.id, String(INBOUND_BURST_MS + 500)],
+        )
+      : null;
+
     let textAckSent = false;
     if (photoAckSent) {
       await sendToBrand(
@@ -416,11 +435,47 @@ export async function handleInbound(
         undefined,
         { pace: false, channel },
       ).catch(() => {});
-    } else if ((inbound.body ?? "").trim()) {
+    } else if (inboundText && !priorInBurst) {
       const ack = craftHumanAck(brand, inbound.body ?? "");
       if (ack) {
         await sendToBrand(brand.id, ack, undefined, { pace: false, channel }).catch(() => {});
         textAckSent = true;
+      }
+    }
+
+    // Coalesce rapid SMS: wait briefly, then let only the latest message in the
+    // burst run the orchestrator on the combined body (so "tips" + "and quotes"
+    // become one turn instead of two racing replies).
+    let messageForProcess = message;
+    if (!photoAckSent && inboundText) {
+      await sleep(INBOUND_BURST_MS);
+      const latest = await queryOne<{ id: string }>(
+          `select id from messages
+           where brand_id = $1
+             and direction = 'inbound'
+             and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
+           order by created_at desc
+           limit 1`,
+          [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+        );
+      if (latest && latest.id !== message.id) {
+        // A newer inbound will handle the combined burst.
+        return { brandId: brand.id, messageId: message.id };
+      }
+      const burst = await query<{ body: string | null }>(
+        `select body from messages
+         where brand_id = $1
+           and direction = 'inbound'
+           and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
+         order by created_at asc`,
+        [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+      );
+      const combined = burst
+        .map((r) => (r.body ?? "").trim())
+        .filter(Boolean)
+        .join("\n");
+      if (combined && combined !== inboundText) {
+        messageForProcess = { ...message, body: combined };
       }
     }
 
@@ -436,7 +491,11 @@ export async function handleInbound(
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
-      const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({ brand, message, newMedia });
+      const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({
+        brand,
+        message: messageForProcess,
+        newMedia,
+      });
       if (reply) {
         const toSend = textAckSent ? stripLeadingAck(reply) : reply;
         if (toSend) {

@@ -40,7 +40,8 @@ export class TwilioChannel implements MessageChannel {
     if (this.clientCache) return this.clientCache;
     const { user, pass, accountSid } = restCreds();
     // When `user` is an API key SID, the SDK needs the account SID passed explicitly.
-    this.clientCache = twilio(user, pass, { accountSid });
+    // Cap request time so a hung Twilio call can't stall the inbound pipeline (~30s default).
+    this.clientCache = twilio(user, pass, { accountSid, timeout: 15_000 });
     return this.clientCache;
   }
 
@@ -49,13 +50,27 @@ export class TwilioChannel implements MessageChannel {
     if (!env.TWILIO_FROM_NUMBER) {
       throw new Error("TWILIO_FROM_NUMBER must be set to send messages via TwilioChannel");
     }
-    const message = await this.client().messages.create({
+    const payload = {
       to: msg.to,
       from: env.TWILIO_FROM_NUMBER,
       body: msg.body,
       ...(msg.mediaUrls && msg.mediaUrls.length > 0 ? { mediaUrl: msg.mediaUrls } : {}),
-    });
-    return { providerMessageId: message.sid };
+    };
+    try {
+      const message = await this.client().messages.create(payload);
+      return { providerMessageId: message.sid };
+    } catch (err) {
+      // One retry on timeout / transient abort — matches the live-test failure mode.
+      const msgText = err instanceof Error ? err.message : String(err);
+      const code = (err as { code?: string })?.code ?? "";
+      const retryable =
+        /timeout|timed out|ECONNABORTED|ETIMEDOUT|socket hang up/i.test(msgText) ||
+        code === "ECONNABORTED" ||
+        code === "ETIMEDOUT";
+      if (!retryable) throw err;
+      const message = await this.client().messages.create(payload);
+      return { providerMessageId: message.sid };
+    }
   }
 
   parseInbound(payload: unknown): InboundMessage {
