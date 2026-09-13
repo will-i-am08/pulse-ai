@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { craftHumanAck, acknowledgeThenContinue } from "../onboarding.js";
+import {
+  craftHumanAck,
+  acknowledgeThenContinue,
+  replyAlreadyAcked,
+  stripLeadingAck,
+} from "../onboarding.js";
 import type { Brand } from "@pulse/shared";
 
 function brandWithName(name: string | null): Brand {
@@ -25,6 +30,20 @@ describe("craftHumanAck", () => {
     expect(craftHumanAck(brandWithName("Bill"), "Done").toLowerCase()).toMatch(/nice one/);
   });
 
+  it("acks uncertainty warmly instead of a robotic got-it", () => {
+    const ack = craftHumanAck(brandWithName("Bill"), "I'm not sure");
+    expect(ack.toLowerCase()).toMatch(/all good/);
+    expect(ack).toMatch(/Bill/);
+  });
+
+  it("acks a real answer like a person who listened", () => {
+    const ack = craftHumanAck(
+      brandWithName("Bill"),
+      "We help busy cafe owners fill their weekday mornings with locals",
+    );
+    expect(ack.toLowerCase()).toMatch(/makes sense/);
+  });
+
   it("falls back without a name", () => {
     expect(craftHumanAck(brandWithName(null), "Are you done?").toLowerCase()).toMatch(/^on it/);
   });
@@ -39,5 +58,35 @@ describe("acknowledgeThenContinue", () => {
     );
     expect(out).toMatch(/^On it, Bill/);
     expect(out).toContain("\n\nHey Bill — what's your niche?");
+  });
+
+  it("does not double-ack when next already opens with one", () => {
+    const out = acknowledgeThenContinue(
+      brandWithName("Bill"),
+      "hey",
+      "Hey Bill!\n\nWhat's your niche?",
+    );
+    expect(out).toBe("Hey Bill!\n\nWhat's your niche?");
+  });
+});
+
+describe("stripLeadingAck", () => {
+  it("strips a leading ack bubble", () => {
+    expect(stripLeadingAck("Got you, Bill.\n\nWhat's your niche?")).toBe("What's your niche?");
+  });
+
+  it("returns empty when the reply was only an ack", () => {
+    expect(stripLeadingAck("Makes sense, Bill.")).toBe("");
+  });
+
+  it("leaves non-ack replies alone", () => {
+    expect(stripLeadingAck("What's your niche?")).toBe("What's your niche?");
+  });
+});
+
+describe("replyAlreadyAcked", () => {
+  it("detects human-SMM ack openers", () => {
+    expect(replyAlreadyAcked("Makes sense, Bill.\n\nNext question")).toBe(true);
+    expect(replyAlreadyAcked("What's your niche?")).toBe(false);
   });
 });

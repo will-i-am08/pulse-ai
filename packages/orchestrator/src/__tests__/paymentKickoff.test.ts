@@ -137,7 +137,7 @@ describe("kickOffOnboardingAfterPayment", () => {
     mockedQueryOne.mockResolvedValue(brand);
 
     const msg = await startOnboarding(brand.id);
-    expect(msg.toLowerCase()).toMatch(/contacts/);
+    expect(msg.toLowerCase()).toMatch(/contact/);
   });
 
   it("does not restart when already awaiting_connect", async () => {
@@ -145,7 +145,7 @@ describe("kickOffOnboardingAfterPayment", () => {
     mockedQueryOne.mockResolvedValue(brand);
 
     const msg = await startOnboarding(brand.id);
-    expect(msg.toLowerCase()).toMatch(/still waiting/);
+    expect(msg.toLowerCase()).toMatch(/instagram|facebook|skip/);
     const resets = mockedQuery.mock.calls.filter((c) => {
       const sql = String(c[0] ?? "");
       const args = JSON.stringify(c[1] ?? []);
@@ -233,7 +233,7 @@ describe("handleAwaitingConnect", () => {
     });
 
     const msg = await handleAwaitingConnect(brand, "hows it going");
-    expect(msg.toLowerCase()).toMatch(/still waiting/);
+    expect(msg.toLowerCase()).toMatch(/instagram|facebook|skip/);
     expect(msg).not.toContain("https://app.example/c/test");
   });
 });

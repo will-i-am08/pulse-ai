@@ -3,8 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../llm.js", () => ({
   callLLM: vi.fn(async () => "Hey Alex — I'm skimming your posts in the background. What's your niche?"),
 }));
-vi.mock("../readWebsite.js", () => ({ readWebsite: vi.fn(async () => null) }));
-vi.mock("../seedVisualProfile.js", () => ({ seedVisualProfileFromWebsite: vi.fn(async () => undefined) }));
 vi.mock("../voice/analyzeVoice.js", () => ({
   queueVoiceAnalysis: vi.fn(async () => undefined),
 }));
@@ -107,7 +105,6 @@ describe("onChannelsConnectedDuringOnboarding (background harvest)", () => {
 
   it("queues harvest and returns interview opening (does not park on reading_content)", async () => {
     const brand = fakeBrand({ onboarding_state: { status: "awaiting_connect" } });
-    // beginOnboardingInterview reloads the brand after saveState
     mockedQueryOne.mockResolvedValue(brand);
 
     const result = await onChannelsConnectedDuringOnboarding(brand.id);
@@ -126,7 +123,13 @@ describe("onChannelsConnectedDuringOnboarding (background harvest)", () => {
   });
 
   it("does not restart interview when already in_progress", async () => {
-    const brand = fakeBrand({ onboarding_state: { status: "in_progress", turns: 2 } });
+    const brand = fakeBrand({
+      onboarding_state: {
+        status: "in_progress",
+        turns: 2,
+        transcript: [{ role: "assistant", content: "What's your niche?" }],
+      },
+    });
     mockedQueryOne.mockResolvedValue(brand);
 
     const result = await onChannelsConnectedDuringOnboarding(brand.id);
