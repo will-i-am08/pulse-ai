@@ -90,11 +90,32 @@ describe("stripLeadingAck", () => {
   it("leaves non-ack replies alone", () => {
     expect(stripLeadingAck("What's your niche?")).toBe("What's your niche?");
   });
+
+  it("does not wipe a single-paragraph work commitment after an instant ack", () => {
+    const commitment =
+      "Yeah sure — I'll redo all 4 with photo backgrounds. Give me about 4 minutes and I'll text them over.";
+    expect(stripLeadingAck(commitment)).toBe(commitment);
+    expect(
+      stripLeadingAck(
+        "On it — regenerating 4 with real photo backgrounds (not text cards). I'll text them over for approval.",
+      ),
+    ).toMatch(/regenerating 4/);
+  });
 });
 
 describe("replyAlreadyAcked", () => {
   it("detects human-SMM ack openers", () => {
     expect(replyAlreadyAcked("Makes sense, Bill.\n\nNext question")).toBe(true);
     expect(replyAlreadyAcked("What's your niche?")).toBe(false);
+  });
+
+  it("does not treat substantive on-it work commitments as thin acks", () => {
+    expect(replyAlreadyAcked("On it.")).toBe(true);
+    expect(replyAlreadyAcked("Got you, Bill.")).toBe(true);
+    expect(
+      replyAlreadyAcked(
+        "On it — regenerating 4 with real photo backgrounds (not text cards). I'll text them over for approval.",
+      ),
+    ).toBe(false);
   });
 });

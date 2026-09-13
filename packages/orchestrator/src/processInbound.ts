@@ -1375,11 +1375,13 @@ export async function processInbound(
         });
         if (kicked.alreadyQueued) {
           return {
-            reply: "Already regenerating those with photo backgrounds — I'll text the new drafts over for approval.",
+            reply:
+              "Already on it — regenerating those with photo backgrounds. I'll text the new drafts over shortly.",
           };
         }
+        const etaMin = Math.max(2, Math.ceil(n / 3) * 2);
         return {
-          reply: `On it — regenerating ${n} with real photo backgrounds (not text cards). I'll text them over for approval.`,
+          reply: `Yeah sure — I'll redo all ${n} with photo backgrounds. Give me about ${etaMin} minutes and I'll text them over.`,
         };
       }
 
