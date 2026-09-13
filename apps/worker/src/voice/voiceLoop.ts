@@ -1,6 +1,10 @@
 import { query } from "@pulse/shared";
 import type { Brand } from "@pulse/shared";
-import { runVoiceAnalysis, continueOnboardingAfterVoiceAnalysis } from "@pulse/orchestrator";
+import {
+  runVoiceAnalysis,
+  continueOnboardingAfterVoiceAnalysis,
+  reclaimStaleVoiceJobs,
+} from "@pulse/orchestrator";
 import { sendToBrand } from "@pulse/gateway";
 import { logger } from "../lib/logger.js";
 
@@ -28,6 +32,16 @@ async function claimNext(): Promise<Brand | null> {
 }
 
 export async function runVoiceLoop(): Promise<void> {
+  const reclaimed = await reclaimStaleVoiceJobs().catch((err) => {
+    logger.warn("voice loop: reclaim stale jobs failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  });
+  if (reclaimed > 0) {
+    logger.info("voice loop: reclaimed stale running jobs", { count: reclaimed });
+  }
+
   const brand = await claimNext();
   if (!brand) return;
   logger.info("voice loop: analysing brand voice", { brandId: brand.id, name: brand.name });

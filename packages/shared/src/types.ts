@@ -204,7 +204,15 @@ export interface VoiceAnalysisState {
 // ─── Row shapes (mirror the tables in 0001_init.sql) ────────
 export type AccountType = "business" | "personal";
 
-export type OnboardingStatus = "none" | "pending" | "awaiting_connect" | "reading_content" | "in_progress" | "wrapping_up" | "done";
+export type OnboardingStatus =
+  | "none"
+  | "pending"
+  | "awaiting_contact"
+  | "awaiting_connect"
+  | "reading_content"
+  | "in_progress"
+  | "wrapping_up"
+  | "done";
 
 export interface OnboardingTurnMsg {
   role: "user" | "assistant";
