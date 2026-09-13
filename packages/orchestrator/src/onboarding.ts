@@ -102,7 +102,7 @@ function interviewerSystem(
           "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
         ];
   return [
-    `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Warm, sharp, human, like texting a switched-on mate.`,
+    `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     priorContent
       ? `From their connected socials / existing posts you already know:\n${priorContent}\nTreat this as prior context. Confirm or refine — do not re-ask things you already know well.`
@@ -112,15 +112,18 @@ function interviewerSystem(
       ? `You already know their first name is ${knownName}. Greet them by it. Do NOT ask for their name — never re-ask who they are.`
       : "Early on, warmly get their first name (by your third message at the latest) so you can address them personally from here on.",
     "Make sure you learn their niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
+    "Ask about admired accounts AT MOST ONCE. If they say they're not sure, don't know, can't think of any, or dodge the question, accept that and move on — never re-ask for account examples.",
     "HOW YOU TALK (absolute rules):",
+    "- Sound like their social media manager texting from your phone, not a survey. Natural reactions first, then one clear next beat.",
     "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
     "- Short. Your question stays under 25 words. Most messages are 1-2 sentences.",
     "- Plain words. No jargon like POV, format, cadence, or leverage.",
     "- When they are vague, venture a concrete guess for them to react to. Never hand their fog back with a list of options.",
-    "- React specifically to what they just said before you ask. Prove you listened.",
+    "- React specifically to what they just said before you ask. Prove you listened. If they said they don't know, acknowledge that warmly and move on — never loop the same ask.",
     "- Punctuate like a human texter: ... for a thoughtful pause, ! for genuine enthusiasm. Sparingly, never performative, never more than one ! per message.",
     "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
     "- Never re-ask something you already know (including from the website or their existing posts).",
+    "- Never re-ask for admired/example accounts once you've already asked — even if their answer was vague or \"I don't know\".",
     "FINISH:",
     type === "personal"
       ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like. Then wrap up. Do not ask about customers, ads, or offers."
@@ -322,15 +325,60 @@ export function craftHumanAck(brand: Brand, inbound: string): string {
   if (/\b(thanks|thank you|cheers)\b/i.test(t)) {
     return name ? `Anytime, ${name}.` : "Anytime.";
   }
-  return name ? `Got it, ${name}.` : "Got it.";
+  // Unsure / can't think of anything — sound like a real manager, not a stuck form.
+  if (
+    /^(idk|i don'?t know|not sure|no idea|dunno)\b/i.test(t) ||
+    /\bi'?m not sure\b/i.test(t) ||
+    /\bcan'?t think( of any)?\b/i.test(t) ||
+    /\bno (clue|idea)\b/i.test(t)
+  ) {
+    return name ? `All good, ${name}.` : "All good.";
+  }
+  // Short yes / cool
+  if (/^(yep|yeah|yes|yup|sure|ok|okay|cool|sounds good|perfect)\.?$/i.test(t)) {
+    return name ? `Cool, ${name}.` : "Cool.";
+  }
+  // They actually answered something — take it in like a person.
+  if (t.length > 40 || t.split(/\s+/).length > 6) {
+    return name ? `Makes sense, ${name}.` : "Makes sense.";
+  }
+  return name ? `Got you, ${name}.` : "Got you.";
 }
 
-/** Ack their inbound, then continue with the next beat (double newline → two bubbles). */
+/** True when `next` already opens with a short human ack (avoid double-acking). */
+export function replyAlreadyAcked(next: string): boolean {
+  const first = (next ?? "").trim().split(/\n\n/)[0] ?? "";
+  if (!first || first.length > 120) return false;
+  // Greeting acks are short and never questions ("Hey Bill!"). A "Hey … what's your niche?" opener is content, not an ack.
+  if (/^(hey|hi|hello|yo)\b/i.test(first)) {
+    return first.length <= 40 && !/\?/.test(first);
+  }
+  return /^(on it|got it|got you|nice one|anytime|no worries|all good|makes sense|cool\b|fair enough|love that|noted)\b/i.test(
+    first,
+  );
+}
+
+/**
+ * Drop a leading ack bubble from a reply (used when the gateway already sent one).
+ * Returns "" when the whole reply was just the ack.
+ */
+export function stripLeadingAck(reply: string): string {
+  const trimmed = (reply ?? "").trim();
+  if (!trimmed) return "";
+  if (!replyAlreadyAcked(trimmed)) return trimmed;
+  const parts = trimmed.split(/\n\n+/);
+  if (parts.length <= 1) return "";
+  return parts.slice(1).join("\n\n").trim();
+}
+
 export function acknowledgeThenContinue(brand: Brand, inbound: string, next: string): string {
-  const ack = craftHumanAck(brand, inbound);
   const nextTrim = (next ?? "").trim();
-  if (!nextTrim) return ack;
+  if (!nextTrim) return craftHumanAck(brand, inbound);
+  if (!inbound.trim()) return nextTrim;
+  if (replyAlreadyAcked(nextTrim)) return nextTrim;
+  const ack = craftHumanAck(brand, inbound);
   if (!ack) return nextTrim;
+  if (nextTrim === ack || nextTrim.startsWith(`${ack}\n`)) return nextTrim;
   return `${ack}\n\n${nextTrim}`;
 }
 
@@ -428,6 +476,7 @@ export async function handleAwaitingContact(brand: Brand, body: string): Promise
 /**
  * Open the SMS interview (after connect/skip). Uses website + harvested voice
  * as prior context so Kip does not re-ask what it already learned.
+ * Never restarts an in-progress interview — resumes from the last question.
  */
 export async function beginOnboardingInterview(brandId: string): Promise<string> {
   let brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -440,6 +489,21 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
     return name
       ? `Hey ${name} — we're already set up. Send a photo or tell me what you want to post.`
       : "Hey — we're already set up. Send a photo or tell me what you want to post.";
+  }
+
+  // Already mid-interview — never wipe the transcript / restart from the top.
+  const existing = prev.transcript ?? [];
+  if (prev.status === "in_progress" && existing.some((t) => t.role === "assistant")) {
+    const name = ownerFirstName(brand);
+    const lastAsk = [...existing].reverse().find((t) => t.role === "assistant")?.content?.trim();
+    if (lastAsk) {
+      return name
+        ? `Still with you, ${name} — ${lastAsk}`
+        : `Still with you — ${lastAsk}`;
+    }
+    return name
+      ? `Still with you, ${name} — just reply to my last note and I'll keep going.`
+      : "Still with you — just reply to my last note and I'll keep going.";
   }
 
   const type: AccountType = prev.type ?? brand.account_type ?? "business";
@@ -646,7 +710,7 @@ export async function handleReadingContent(brand: Brand, body: string): Promise<
   return acknowledgeThenContinue(
     brand,
     text,
-    "Still skimming your posts — nearly there, then I'll jump straight into setup.",
+    "Still skimming your posts — nearly there, then we'll jump into getting you set up.",
   );
 }
 
@@ -671,25 +735,25 @@ export async function startOnboarding(brandId: string): Promise<string> {
 
   // Already mid-flow — don't restart.
   if (prev.status === "in_progress") {
-    return "We're mid set-up — just reply to the last question and I'll keep going.";
+    return "Still with you — just reply to my last note and I'll keep going.";
   }
   if (prev.status === "awaiting_contact") {
     return (
-      "Still waiting on you to add me to your contacts — reply Done when you've saved the contact card, " +
-      "or skip to continue."
+      "No rush — once you've saved my contact, just reply Done and I'll send the next step. " +
+      "Or skip if you want to keep going without it."
     );
   }
   if (prev.status === "awaiting_connect") {
     return (
-      "Still waiting on your Instagram + Facebook connect — tap the link I sent, " +
-      'reply Done when you\'ve finished, or reply "skip" if you don\'t have them yet.'
+      "Whenever you're ready, tap the Instagram + Facebook link I sent — reply Done when you're through, " +
+      'or skip if you don\'t have them yet.'
     );
   }
   if (prev.status === "reading_content") {
     return handleReadingContent(brand, "");
   }
   if (prev.status === "wrapping_up") {
-    return "Still writing your voice up, nearly there.";
+    return "Still putting your voice together — nearly there.";
   }
 
   const type: AccountType = brand.account_type ?? "business";
@@ -749,7 +813,7 @@ export async function kickOffOnboardingAfterPayment(brandId: string): Promise<st
   return startOnboarding(brandId);
 }
 
-export const WRAP_ACK = "Awesome, got everything. Writing your voice up now, one sec.";
+export const WRAP_ACK = "Love it — I've got what I need. Writing your voice up now, one sec.";
 
 /** Count the questions in a message. */
 function questionCount(text: string): number {
@@ -786,6 +850,18 @@ async function enforceOneQuestion(reply: string): Promise<string> {
  * rundown as a second message. Never bundle the ack with the rundown: the
  * compile takes 30s+ and the owner should never stare at dead air.
  */
+
+/** True when Kip already asked about admired / example accounts in this transcript. */
+function alreadyAskedAdmiredAccounts(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(admir(?:e|ed|ing)|look up to|inspire|accounts? you (?:like|love|follow)|example accounts|accounts in (?:your|their) (?:space|niche))\b/i.test(
+        t.content,
+      ),
+  );
+}
+
 export async function onboardingNext(
   brand: Brand,
   body: string,
@@ -799,6 +875,13 @@ export async function onboardingNext(
   transcript.push({ role: "user", content: body });
 
   const messages = toMessages(transcript);
+  if (alreadyAskedAdmiredAccounts(transcript)) {
+    messages.push({
+      role: "user",
+      content:
+        "(You already asked about admired/example accounts earlier. Do NOT ask again — even if they said they don't know. Move on to something else you still need, or wrap up if you have enough.)",
+    });
+  }
   if (turns >= MAX_ANSWERS) {
     messages.push({
       role: "user",

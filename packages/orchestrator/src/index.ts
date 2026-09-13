@@ -22,6 +22,8 @@ export {
   looksLikeSkipConnect,
   looksLikeDoneReply,
   craftHumanAck,
+  replyAlreadyAcked,
+  stripLeadingAck,
   acknowledgeThenContinue,
   sendConnectLinkAfterContact,
   onboardingTurn,

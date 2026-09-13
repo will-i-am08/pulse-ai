@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { processInbound, finishOnboarding } from "@pulse/orchestrator";
+import { processInbound, finishOnboarding, craftHumanAck, stripLeadingAck } from "@pulse/orchestrator";
 import {
   getServerEnv,
   kipContactIdentity,
@@ -403,30 +403,47 @@ export async function handleInbound(
       return { brandId: brand.id, messageId: null };
     }
 
-    // Styling a photo takes a moment — reassure the client first.
+    // Instant human ack so they never feel like they texted a void.
+    // Photos get a specific styling ack; everything else gets a short reaction
+    // to what they said. The orchestrator reply may also open with an ack —
+    // stripLeadingAck drops that so we don't double-tap.
     const photoAckSent = newMedia.some((m) => m.kind === "photo");
+    let textAckSent = false;
     if (photoAckSent) {
-      await sendToBrand(brand.id, "Got it, styling your photo and writing your caption, one sec ✨", undefined, {
-        pace: false,
-        channel,
-      }).catch(() => {});
+      await sendToBrand(
+        brand.id,
+        "Got it — styling your photo and writing the caption now, one sec ✨",
+        undefined,
+        { pace: false, channel },
+      ).catch(() => {});
+    } else if ((inbound.body ?? "").trim()) {
+      const ack = craftHumanAck(brand, inbound.body ?? "");
+      if (ack) {
+        await sendToBrand(brand.id, ack, undefined, { pace: false, channel }).catch(() => {});
+        textAckSent = true;
+      }
     }
 
     // Slow-work safety net for channels WITHOUT a native typing indicator
-    // (plain SMS): if the orchestrator is still thinking after a few seconds,
-    // say so — otherwise the client stares at silence. Skipped when the photo
-    // ack above already went out, and when native typing covers liveness.
+    // (plain SMS): if we're still thinking after a few seconds, say so.
+    // Skipped when we already sent an instant ack, and when native typing
+    // covers liveness.
     let slowTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      if (!photoAckSent && typeof channel.sendTyping !== "function") {
+      if (!photoAckSent && !textAckSent && typeof channel.sendTyping !== "function") {
         slowTimer = setTimeout(() => {
-          sendToBrand(brand.id, "On it, one sec…", undefined, { pace: false, channel }).catch(() => {});
+          sendToBrand(brand.id, "Still on this — one sec…", undefined, { pace: false, channel }).catch(() => {});
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
       const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({ brand, message, newMedia });
       if (reply) {
-        await sendToBrand(brand.id, reply, mediaUrl ? [mediaUrl] : undefined, { channel });
+        const toSend = textAckSent ? stripLeadingAck(reply) : reply;
+        if (toSend) {
+          await sendToBrand(brand.id, toSend, mediaUrl ? [mediaUrl] : undefined, { channel });
+        } else if (mediaUrl) {
+          await sendToBrand(brand.id, "", [mediaUrl], { channel });
+        }
       }
       // Onboarding just completed: the ack is already with the owner. Now do
       // the slow compile and deliver the rundown as a second message.
@@ -438,7 +455,7 @@ export async function handleInbound(
           console.error(`handleInbound: finishOnboarding failed for brand ${finishOnboardingBrandId}`, err);
           await sendToBrand(
             finishOnboardingBrandId,
-            "Writing your voice up hit a snag on my end. Your answers are saved, I'll have the rundown to you shortly.",
+            "Hit a snag writing your voice up — your answers are safe though. I'll get the rundown to you shortly.",
             undefined,
             { channel },
           ).catch(() => {});
@@ -449,7 +466,7 @@ export async function handleInbound(
       // the client should never be left with silence.
       console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
       try {
-        await sendToBrand(brand.id, "Sorry, I had trouble with that one just now. Mind sending it again?", undefined, { channel });
+        await sendToBrand(brand.id, "Ah — that one glitched on my side. Mind sending it again?", undefined, { channel });
       } catch {
         /* best-effort: the send itself may also be down */
       }
