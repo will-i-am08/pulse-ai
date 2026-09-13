@@ -78,9 +78,12 @@ async function vercelQuery<T>(
 }
 
 function rangeBounds(range: MetricsRange): { since: string; until: string } {
+  // Web Analytics normalizes timestamps to UTC day starts. Passing a same-day
+  // ISO `until` truncates to 00:00 UTC today and drops today's traffic. Date-only
+  // values are treated as inclusive calendar days (until expands to next midnight).
   return {
-    since: range.from.toISOString(),
-    until: range.to.toISOString(),
+    since: range.from.toISOString().slice(0, 10),
+    until: range.to.toISOString().slice(0, 10),
   };
 }
 
@@ -133,7 +136,8 @@ export async function fetchVercelVisitSeries(range: MetricsRange): Promise<{
     since,
     until,
     by,
-    limit: '1000',
+    // Web Analytics API rejects limit > 100.
+    limit: '100',
   });
   if (!json?.data) return null;
 
