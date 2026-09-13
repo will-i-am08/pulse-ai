@@ -63,11 +63,35 @@ export async function getAcceptedPlan(brandId: string): Promise<ContentPlan | nu
 
 /** SMS intent: propose / rebuild a week or month content plan. */
 export function looksLikeContentPlanRequest(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
   return (
-    /\b(propose|rebuild|draft|make|build)\s+(a\s+|my\s+|our\s+)?(content\s+)?plan\b/i.test(body) ||
-    /\b(week|weekly|month|monthly)\s+(content\s+)?plan\b/i.test(body) ||
-    /\bcontent\s+plan\b/i.test(body) ||
-    /\brevise\s+(the\s+|my\s+)?(content\s+)?plan\b/i.test(body)
+    /\b(propose|rebuild|draft|make|build)\s+(a\s+|my\s+|our\s+)?(content\s+)?plan\b/i.test(t) ||
+    // "rerun the plan build", "run my plan build", "plan rebuild"
+    /\b(re-?run|re-?build|re-?do|run)\b[\s\S]{0,40}\bplan\b/i.test(t) ||
+    /\bplan\b[\s\S]{0,20}\b(build|rebuild|re-?run)\b/i.test(t) ||
+    /\b(week|weekly|month|monthly)\s+(content\s+)?plan\b/i.test(t) ||
+    /\b(content|niche)\s+plan\b/i.test(t) ||
+    /\brevise\s+(the\s+|my\s+)?(content\s+)?plan\b/i.test(t)
+  );
+}
+
+/**
+ * Short confirm after Kip asks "from scratch vs tweak?" — must kick the builder,
+ * not freeform chat (LLM can't invoke researchNichePlan).
+ */
+export function looksLikePlanRebuildConfirm(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t || t.length > 80) return false;
+  if (looksLikeContentPlanRequest(t)) return true;
+  return (
+    /^(from\s+)?scratch\b/i.test(t) ||
+    /^(start|begin)\s+over\b/i.test(t) ||
+    /^(run\s+it\s+)?fresh\b/i.test(t) ||
+    /^re-?build(\s+it)?\b/i.test(t) ||
+    /^(do\s+it\s+)?(from\s+)?scratch\b/i.test(t) ||
+    /^tweak(\s+it)?\b/i.test(t) ||
+    /^(just\s+)?tweak\b/i.test(t)
   );
 }
 
@@ -86,7 +110,10 @@ export async function proposeContentPlanFromSms(
   const exemplars = brand.icp?.notes ?? null;
   const horizon = /\bmonth/i.test(request) ? "month" : "week";
 
-  const plan = await buildPlanWithFallback(brand, String(niche), exemplars);
+  // SMS rebuilds use the same hybrid fast path as onboarding so they land quickly.
+  const plan = await buildPlanWithFallback(brand, String(niche), exemplars, {
+    preferFast: true,
+  });
   if (!plan) {
     return "Couldn't finish the content plan just then — say \"propose a content plan\" again shortly and I'll retry. Nothing was applied.";
   }
