@@ -18,6 +18,7 @@ import { routeImageJob } from "./modelRouter.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
+import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
 
@@ -420,6 +421,8 @@ export async function frameStoryImage(imgBytes: Uint8Array): Promise<Buffer> {
  */
 export function messageWantsImageEdit(body: string | null | undefined): boolean {
   if (!body) return false;
+  // Photo-background redos regenerate drafts — do not Flux-edit a text card.
+  if (looksLikePhotoBackgroundAsk(body)) return false;
   return /\b(photo|image|picture|pic|background|bg|lighting|light|bright(er|en)?|dark(er|en)?|colou?r|filter|crop|contrast|saturat\w*|vibrant|warm(er)?|cool(er)?|cinematic|cine|vibe|blur|sharp(er|en)?|exposure|shadows?|highlights?|black\s*and\s*white|b&w|grade|grading|retouch|edit the (photo|image|pic|picture))\b/i.test(
     body,
   );

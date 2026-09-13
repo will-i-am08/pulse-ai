@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callLLM } from "./llm.js";
+import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 
 // Six-way inbound classification per BUILD_CONTRACTS.md. Note: "edit" is an
 // orchestrator-internal category — the `messages.type` DB column (see
@@ -120,6 +121,13 @@ export function ruleBasedClassify(
   const looksLikeEdit = EDIT_SIGNALS.some((s) => lower.includes(s));
   if (looksLikeEdit) {
     return hasPendingPost ? { classification: "edit", confidence: 0.8 } : null;
+  }
+
+  // "Could you put pictures in the background of them?" starts with Could → question,
+  // but with pending drafts it is a visual redo — route as edit so we regenerate
+  // with real photos instead of chatting + re-shipping text cards.
+  if (hasPendingPost && looksLikePhotoBackgroundAsk(text)) {
+    return { classification: "edit", confidence: 0.9 };
   }
 
   const looksLikeQuestion =

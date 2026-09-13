@@ -5,6 +5,7 @@ import {
   visualsPayloadValue,
   looksLikeDesignedVisualsAsk,
   looksLikePhotoVisualsAsk,
+  looksLikePhotoBackgroundAsk,
 } from "../visualMode.js";
 
 describe("inferVisualModeFromText", () => {
@@ -51,5 +52,23 @@ describe("visualsPayloadValue", () => {
     expect(visualsPayloadValue("photo", "AI generated please")).toBe("generated");
     expect(visualsPayloadValue("photo", "draft posts")).toBe("photo");
     expect(visualsPayloadValue("designed", "text cards")).toBe("designed");
+  });
+});
+
+describe("looksLikePhotoBackgroundAsk", () => {
+  it("catches pictures/photos in the background asks", () => {
+    expect(
+      looksLikePhotoBackgroundAsk(
+        "Could you put pictures in the background of them? All of them",
+      ),
+    ).toBe(true);
+    expect(looksLikePhotoBackgroundAsk("add photo backgrounds to all of these")).toBe(true);
+    expect(looksLikePhotoBackgroundAsk("make the caption shorter")).toBe(false);
+  });
+
+  it("counts as a photo visuals ask", () => {
+    expect(
+      looksLikePhotoVisualsAsk("put pictures in the background of them"),
+    ).toBe(true);
   });
 });

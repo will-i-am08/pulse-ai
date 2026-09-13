@@ -12,7 +12,15 @@ const DESIGNED_ONLY_RE =
   /\b(text[- ]?(cards?|only)|quote cards?|designed (slides?|cards?|graphics?)|plain[- ]?background|typography[- ]?only|graphics? only)\b/i;
 
 const PHOTO_ASK_RE =
-  /\b(stock|generated|ai[- ]?(generated|made|created)|synthetic|photos?|pics?|imagery|visuals?)\b/i;
+  /\b(stock|generated|ai[- ]?(generated|made|created)|synthetic|photos?|pictures?|pics?|imagery|visuals?)\b/i;
+
+/**
+ * Owner wants real photos *behind* / instead of plain text cards —
+ * e.g. "put pictures in the background of them", "add photo backgrounds".
+ * Distinct from a light Flux grade of an existing image.
+ */
+const PHOTO_BACKGROUND_ASK_RE =
+  /\b((put|add|use|with|need|want)\s+)?(pictures?|photos?|pics?|imagery|stock|generated).{0,48}\b(background|behind|bg)\b|\b(background|behind|bg).{0,48}\b(pictures?|photos?|pics?|imagery)\b|\bphoto[- ]?backgrounds?\b|\bpictures? (in|on) (the )?(background|back)\b/i;
 
 /** Owner explicitly wants designed/text cards rather than photos. */
 export function looksLikeDesignedVisualsAsk(text: string | null | undefined): boolean {
@@ -23,7 +31,14 @@ export function looksLikeDesignedVisualsAsk(text: string | null | undefined): bo
 export function looksLikePhotoVisualsAsk(text: string | null | undefined): boolean {
   const t = text ?? "";
   if (looksLikeDesignedVisualsAsk(t)) return false;
-  return PHOTO_ASK_RE.test(t);
+  return PHOTO_ASK_RE.test(t) || looksLikePhotoBackgroundAsk(t);
+}
+
+/** Owner wants photographic backgrounds on drafts (not text-on-plain cards). */
+export function looksLikePhotoBackgroundAsk(text: string | null | undefined): boolean {
+  const t = text ?? "";
+  if (looksLikeDesignedVisualsAsk(t)) return false;
+  return PHOTO_BACKGROUND_ASK_RE.test(t);
 }
 
 /**

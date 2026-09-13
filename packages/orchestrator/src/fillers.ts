@@ -66,6 +66,12 @@ export async function generateFillerPost(
       );
     }
     if (!img) {
+      // Photo mode must never silently ship a text card — that is how
+      // "add pictures to the background" turned into the same plain cards.
+      if (wantPhoto) {
+        console.error("generateFillerPost: photo generation failed; refusing quote-card fallback");
+        return null;
+      }
       if (!card) return null;
       img = await renderQuoteCard(card, brand);
     }
