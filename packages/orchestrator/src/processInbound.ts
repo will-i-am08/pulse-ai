@@ -96,6 +96,7 @@ import {
   enqueueKickoffFromUserMessage,
   maybeEnqueueFromKipCommit,
   enqueueKickoff,
+  refersToAttachedMedia,
 } from "./kickoffs.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
@@ -486,7 +487,7 @@ export async function processInbound(
     const ensured = await ensureDestinationLink(brand, "post");
     if (ensured.askSms) return { reply: ensured.askSms };
     return {
-      reply: `Using ${ensured.url} as your booking link. Send a photo (or say "draft a post") and I'll add the platform-safe CTA.`,
+      reply: `Using ${ensured.url} as your booking link. Send a photo (or ask me to make a post) and I'll add the platform-safe CTA.`,
     };
   }
 
@@ -1025,6 +1026,20 @@ export async function processInbound(
   // → self-kickoff. Allow even when a prior draft is still pending approval — a new
   // creative ask should not stall behind an old "yes/no" (and must not fall through
   // to the single-filler path that asks for uploads or ships a lone feed card).
+  // "…with this photo" but MMS media never arrived — ask to resend rather than
+  // generating stock art or teaching a magic "draft a post" phrase.
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    refersToAttachedMedia(message.body) &&
+    looksLikeKickoffRequest(message.body)
+  ) {
+    return {
+      reply:
+        "I didn't get the photo on that text — send the image again (caption in the same message is fine) and I'll draft it straight away.",
+    };
+  }
+
   if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
     const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
     if (kicked?.ackSms) return { reply: kicked.ackSms };
@@ -1792,8 +1807,7 @@ export async function processInbound(
       }
       return {
         reply:
-          "Got it, noted. Say \"draft a post\" or \"make a carousel\" and I'll generate the visuals — " +
-          "or tell me specifically what you'd like changed.",
+          "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
       };
     }
   }

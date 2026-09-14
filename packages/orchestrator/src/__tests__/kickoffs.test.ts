@@ -12,6 +12,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
 import { query } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
+  refersToAttachedMedia,
   inferKickoffFromUserMessage,
   inferKickoffFromKipCommit,
   deliverUnstreamed,
@@ -46,6 +47,28 @@ describe("looksLikeKickoffRequest", () => {
   it("ignores plain chat", () => {
     expect(looksLikeKickoffRequest("thanks!")).toBe(false);
     expect(looksLikeKickoffRequest("what do you think of carousels?")).toBe(false);
+  });
+
+
+  it("treats imperative Post/do/want creative asks as kickoffs (no magic 'draft' verb)", () => {
+    const samples = [
+      "Post a good morning post with this photo",
+      "post something about coffee",
+      "I want a post about hiring",
+      "Need a carousel on AI tools",
+      "Do a post comparing Cursor and Claude",
+      "a post comparing ai coding tools",
+      "Can you post about our launch",
+    ];
+    for (const s of samples) {
+      expect(looksLikeKickoffRequest(s), s).toBe(true);
+      expect(inferKickoffFromUserMessage(s)?.kind, s).toBe("draft_posts");
+    }
+  });
+
+  it("detects when the owner refers to an attached photo", () => {
+    expect(refersToAttachedMedia("Post a good morning post with this photo")).toBe(true);
+    expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
   });
 });
 

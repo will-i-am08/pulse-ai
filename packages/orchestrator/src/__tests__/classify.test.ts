@@ -103,6 +103,14 @@ describe("classifyInbound", () => {
   });
 });
 
+
+  it("routes imperative creative asks as instruction (no 'draft' verb required)", () => {
+    expect(ruleBasedClassify("Post a good morning post with this photo", false, false)?.classification).toBe(
+      "instruction",
+    );
+    expect(ruleBasedClassify("I want a post about hiring", false, false)?.classification).toBe("instruction");
+  });
+
 describe("photo background redo classification", () => {
   it("routes pictures-in-background as edit when a draft is pending", () => {
     const r = ruleBasedClassify(
