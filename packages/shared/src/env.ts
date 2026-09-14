@@ -28,6 +28,14 @@ const serverEnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true" || v === "1"),
+  /**
+   * When "true"/"1", multi-step owner asks get a short SmartPlan before
+   * kickoff enqueue (thin planner). Off by default.
+   */
+  KIP_SMART_PLANNER: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),

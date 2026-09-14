@@ -9,7 +9,6 @@ import {
   brandVoiceProfileSchema,
   query,
   type Brand,
-  type BusinessFacts,
   type KipKickoffKind as KipKickoffKindT,
   type PostStatus,
 } from "@pulse/shared";
@@ -17,6 +16,11 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { enqueueKickoff } from "./kickoffs.js";
+import {
+  clampMemoryText,
+  recordKipMemory,
+  type KipMemoryBucket,
+} from "./kipMemory.js";
 import { connectionSummary } from "./persona.js";
 
 export type AgentToolContext = {
@@ -24,7 +28,8 @@ export type AgentToolContext = {
   sourceMessageId?: string | null;
 };
 
-export type KipMemoryBucket = "kip_preferences" | "kip_decisions";
+export type { KipMemoryBucket };
+export { clampMemoryText, mergeKipMemoryFact, recordKipMemory } from "./kipMemory.js";
 
 const RECENT_POST_STATUSES: PostStatus[] = [
   "pending_approval",
@@ -34,9 +39,6 @@ const RECENT_POST_STATUSES: PostStatus[] = [
 ];
 
 const CALENDAR_STATUSES: PostStatus[] = ["pending_approval", "approved", "scheduled"];
-
-const MAX_MEMORY_ENTRIES = 20;
-const MAX_MEMORY_TEXT = 200;
 
 /** Anthropic tool definitions for the question tool loop. */
 export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
@@ -133,25 +135,6 @@ export function captionExcerpt(caption: string | null | undefined, max = 120): s
   if (!t) return "(no caption)";
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
-}
-
-export function clampMemoryText(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, MAX_MEMORY_TEXT);
-}
-
-/** Pure merge helper for remember_fact (testable without DB). */
-export function mergeKipMemoryFact(
-  facts: BusinessFacts | null | undefined,
-  bucket: KipMemoryBucket,
-  text: string,
-  atISO = new Date().toISOString(),
-): BusinessFacts {
-  const cleaned = clampMemoryText(text);
-  const base: BusinessFacts = { ...(facts ?? {}) };
-  const prev = Array.isArray(base[bucket]) ? [...(base[bucket] as Array<{ text: string; atISO: string }>)] : [];
-  prev.push({ text: cleaned, atISO });
-  base[bucket] = prev.slice(-MAX_MEMORY_ENTRIES);
-  return base;
 }
 
 export function buildBrandProfilePayload(brand: Brand): Record<string, unknown> {
@@ -343,12 +326,7 @@ async function toolRememberFact(ctx: AgentToolContext, input: unknown): Promise<
   }
   const bucket: KipMemoryBucket =
     rec.bucket === "kip_decisions" ? "kip_decisions" : "kip_preferences";
-  const merged = mergeKipMemoryFact(ctx.brand.facts, bucket, text);
-  await query(`update brands set facts = $1::jsonb where id = $2`, [
-    JSON.stringify(merged),
-    ctx.brand.id,
-  ]);
-  ctx.brand.facts = merged;
+  const merged = await recordKipMemory(ctx.brand, text, bucket);
   return JSON.stringify({
     ok: true,
     bucket,

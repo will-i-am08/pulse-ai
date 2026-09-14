@@ -97,6 +97,7 @@ import {
   maybeEnqueueFromKipCommit,
   enqueueKickoff,
 } from "./kickoffs.js";
+import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
   looksLikePhotoBackgroundAsk,
@@ -369,6 +370,29 @@ async function answerQuestion(
   });
 }
 
+/**
+ * When KIP_SMART_PLANNER is on and the message looks multi-step, plan then
+ * optionally enqueue a kickoff. Returns null to fall through to existing paths.
+ */
+async function trySmartPlannerKickoff(
+  brand: Brand,
+  body: string,
+  sourceMessageId?: string | null,
+  context?: string,
+): Promise<{ reply: string } | null> {
+  if (!getServerEnv().KIP_SMART_PLANNER) return null;
+  if (!looksLikeMultiStepAsk(body)) return null;
+  const plan = await planSmartTurn({ brand, message: body, context });
+  if (!plan?.kickoffKind) return null;
+  const kicked = await enqueueKickoff(brand, plan.kickoffKind, {
+    payload: { plan, topicHint: body.slice(0, 280) },
+    reason: "user_request",
+    sourceMessageId: sourceMessageId ?? null,
+    ackSms: plan.speakHint ?? null,
+  });
+  if (!kicked.ackSms) return null;
+  return { reply: kicked.ackSms };
+}
 
 /**
  * Chat back like a switched-on human — for greetings, thanks, and small talk,
@@ -1152,6 +1176,8 @@ export async function processInbound(
   // creative ask should not stall behind an old "yes/no" (and must not fall through
   // to the single-filler path that asks for uploads or ships a lone feed card).
   if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
+    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+    if (planned) return planned;
     const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
     if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
@@ -1937,6 +1963,14 @@ export async function processInbound(
         const configReply = await configurePillarsFromMessage(brand, pillars, message.body);
         if (configReply) return { reply: configReply };
       }
+
+      // Ambiguous multi-step instruction — thin planner (flagged) before the
+      // generic fallback. Specific handlers above always win first.
+      if (message.body && newMedia.length === 0) {
+        const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+        if (planned) return planned;
+      }
+
       return {
         reply:
           "Got it, noted. Say \"draft a post\" or \"make a carousel\" and I'll generate the visuals — " +

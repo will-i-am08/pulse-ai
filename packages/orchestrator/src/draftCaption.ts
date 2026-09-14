@@ -7,6 +7,7 @@ import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { inferContentJob, type ContentJob } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
+import { kipMemoryPromptBlock } from "./kipMemory.js";
 import {
   captionJobForFormat,
   captionJobPrompt,
@@ -129,6 +130,9 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
     lines.push("Business facts (do not invent beyond these):");
     lines.push(facts);
   }
+
+  const memory = kipMemoryPromptBlock(brand.facts);
+  if (memory) lines.push(memory);
 
   const ctx = brandContextForPrompt(brand);
   if (ctx) {
