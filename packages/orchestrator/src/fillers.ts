@@ -49,14 +49,14 @@ export async function generateFillerPost(
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
     wantPhoto
-      ? 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","photo_prompt":"<one vivid sentence: subject + place + lighting that matches THIS post — candid stock-photo realism>","card":"<4-12 word punchy overlay headline for the photo>"}'
-      : 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","card":"<a punchy 4-12 word line to display big on a text card>"}',
+      ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<4-12 word overlay headline>"}'
+      : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
     wantPhoto
       ? [
-          "photo_prompt rules: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
+          "Keep caption short — long captions get truncated and break JSON parsing.",
+          "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
-          "card is the on-image headline (short, readable at a glance).",
         ].join(" ")
       : "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
   ]
@@ -67,14 +67,11 @@ export async function generateFillerPost(
   let card: string;
   let photoPrompt = "";
   try {
-    const raw = await callLLM({ system, messages: [{ role: "user", content: `Write today's ${pillar.name} post.` }], maxTokens: 360 });
-    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-    caption = String(parsed.caption ?? "").trim();
-    card = String(parsed.card ?? "").trim();
-    photoPrompt = String(parsed.photo_prompt ?? "").trim();
-    if (!caption) return null;
-    if (!wantPhoto && !card) return null;
-    if (wantPhoto && !photoPrompt && !card) return null;
+    const drafted = await draftFillerFields(system, pillar.name, wantPhoto);
+    if (!drafted) return null;
+    caption = drafted.caption;
+    card = drafted.card;
+    photoPrompt = drafted.photoPrompt;
   } catch (err) {
     console.error("generateFillerPost: LLM/parse failed", err);
     return null;
@@ -155,6 +152,62 @@ export async function generateFillerPost(
   // The quote card IS the visual — frame it in the IG mockup for the preview.
   // The mockup id stays out of posts.media_ids; publishing still sends the card.
   return { post, mediaUrl: await previewUrlForPost(brand, post, mediaId) };
+}
+
+
+/** Pull the first JSON object from an LLM reply (fences OK). */
+export function extractJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced?.[1] ?? trimmed).trim();
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return body.slice(start, end + 1);
+}
+
+type FillerFields = { caption: string; card: string; photoPrompt: string };
+
+/**
+ * Ask the LLM for filler JSON. Retries once on empty/truncated/invalid JSON —
+ * photo drafts were failing live with "Unexpected end of JSON input" when
+ * maxTokens clipped mid-object.
+ */
+export async function draftFillerFields(
+  system: string,
+  pillarName: string,
+  wantPhoto: boolean,
+): Promise<FillerFields | null> {
+  const maxTokens = wantPhoto ? 700 : 500;
+  let lastRaw = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await callLLM({
+      system,
+      messages: [{ role: "user", content: `Write today's ${pillarName} post.` }],
+      maxTokens,
+    });
+    lastRaw = raw ?? "";
+    const json = extractJsonObject(lastRaw);
+    if (!json) continue;
+    try {
+      const parsed = JSON.parse(json) as Record<string, unknown>;
+      const caption = String(parsed.caption ?? "").trim();
+      const card = String(parsed.card ?? "").trim();
+      const photoPrompt = String(parsed.photo_prompt ?? "").trim();
+      if (!caption) continue;
+      if (!wantPhoto && !card) continue;
+      if (wantPhoto && !photoPrompt && !card) continue;
+      return { caption, card, photoPrompt };
+    } catch {
+      // retry
+    }
+  }
+  console.error(
+    "generateFillerPost: LLM JSON unusable after retries",
+    lastRaw.slice(0, 240),
+  );
+  return null;
 }
 
 /** The pillar most recently nudged about a gap (within 48h), for "draft one". */
