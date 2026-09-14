@@ -86,11 +86,12 @@ describe("hybrid web×2 onboarding path", () => {
 
     expect(plan?.summary).toContain("carousel");
     expect(mockedCallLLM).toHaveBeenCalledTimes(1);
-    const opts = mockedCallLLM.mock.calls[0][0] as {
+    const opts = mockedCallLLM.mock.calls[0]?.[0] as {
       webSearch?: number;
       maxTokens?: number;
       system?: string;
     };
+    expect(opts).toBeTruthy();
     expect(opts.webSearch).toBe(PLAN_WEB_SEARCH_HYBRID);
     expect(opts.maxTokens).toBe(900);
     expect(opts.system).toMatch(/at most 2 focused web searches/i);
@@ -109,8 +110,10 @@ describe("hybrid web×2 onboarding path", () => {
     expect(plan?.pillars?.length).toBeGreaterThan(0);
     expect(mockedCallLLM).toHaveBeenCalledTimes(2);
 
-    const hybridOpts = mockedCallLLM.mock.calls[0][0] as { webSearch?: number; maxTokens?: number };
-    const fallbackOpts = mockedCallLLM.mock.calls[1][0] as { webSearch?: number; maxTokens?: number };
+    const hybridOpts = mockedCallLLM.mock.calls[0]?.[0] as { webSearch?: number; maxTokens?: number };
+    const fallbackOpts = mockedCallLLM.mock.calls[1]?.[0] as { webSearch?: number; maxTokens?: number };
+    expect(hybridOpts).toBeTruthy();
+    expect(fallbackOpts).toBeTruthy();
     expect(hybridOpts.webSearch).toBe(2);
     expect(fallbackOpts.webSearch).toBeUndefined();
     expect(fallbackOpts.maxTokens).toBe(900);
@@ -123,7 +126,8 @@ describe("hybrid web×2 onboarding path", () => {
     await buildPlanWithFallback(brand, "AI tips for founders", null);
 
     expect(mockedCallLLM).toHaveBeenCalledTimes(1);
-    const opts = mockedCallLLM.mock.calls[0][0] as { webSearch?: number; maxTokens?: number };
+    const opts = mockedCallLLM.mock.calls[0]?.[0] as { webSearch?: number; maxTokens?: number };
+    expect(opts).toBeTruthy();
     expect(opts.webSearch).toBe(PLAN_WEB_SEARCH_DEEP);
     expect(opts.maxTokens).toBe(1200);
   });
