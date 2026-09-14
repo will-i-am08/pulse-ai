@@ -1,5 +1,25 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { TwilioChannel } from "./twilio-channel.js";
+import { mediaFromTwilioPayload, TwilioChannel } from "./twilio-channel.js";
+
+describe("mediaFromTwilioPayload", () => {
+  it("reads MediaUrl keys even when NumMedia is under-counted", () => {
+    const media = mediaFromTwilioPayload({
+      NumMedia: "0",
+      MediaUrl0: "https://api.twilio.com/media/0",
+      MediaContentType0: "image/jpeg",
+    });
+    expect(media).toEqual([{ url: "https://api.twilio.com/media/0", contentType: "image/jpeg" }]);
+  });
+
+  it("dedupes URLs when both NumMedia loop and key scan would see them", () => {
+    const media = mediaFromTwilioPayload({
+      NumMedia: "1",
+      MediaUrl0: "https://api.twilio.com/media/0",
+      MediaContentType0: "image/png",
+    });
+    expect(media).toHaveLength(1);
+  });
+});
 
 describe("TwilioChannel.parseInbound", () => {
   const channel = new TwilioChannel();
@@ -63,6 +83,17 @@ describe("TwilioChannel.parseInbound", () => {
     const result = channel.parseInbound(payload);
 
     expect(result.media).toEqual([{ url: "https://api.twilio.com/media/0", contentType: "image/png" }]);
+  });
+
+  it("falls back to SmsSid when MessageSid is absent", () => {
+    const result = channel.parseInbound({
+      From: "+61400000000",
+      To: "+61400000001",
+      Body: "hi",
+      NumMedia: "0",
+      SmsSid: "SMabcdef0123456789abcdef0123456789",
+    });
+    expect(result.providerMessageId).toBe("SMabcdef0123456789abcdef0123456789");
   });
 });
 

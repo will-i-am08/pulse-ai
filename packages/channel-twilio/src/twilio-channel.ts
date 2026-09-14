@@ -14,7 +14,7 @@ import {
 // `payload` as that decoded record.
 type TwilioWebhookPayload = Record<string, string | undefined>;
 
-/** Basic-auth pair for REST + media downloads: prefer the API key, fall back to the Auth Token. */
+/** Basic-auth for the Twilio REST SDK (sending). Prefer revocable API keys. */
 function restCreds(): { user: string; pass: string; accountSid: string } {
   const env = getServerEnv();
   if (!env.TWILIO_ACCOUNT_SID) {
@@ -29,6 +29,59 @@ function restCreds(): { user: string; pass: string; accountSid: string } {
   throw new Error(
     "Provide TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (preferred) or TWILIO_AUTH_TOKEN to use TwilioChannel",
   );
+}
+
+/**
+ * Auth pairs to try for media downloads. Account SID + Auth Token first —
+ * media CDN redirects are most reliable with that pair — then API key.
+ */
+function mediaAuthCandidates(): Array<{ user: string; pass: string }> {
+  const env = getServerEnv();
+  if (!env.TWILIO_ACCOUNT_SID) {
+    throw new Error("TWILIO_ACCOUNT_SID must be set to use TwilioChannel");
+  }
+  const out: Array<{ user: string; pass: string }> = [];
+  if (env.TWILIO_AUTH_TOKEN) {
+    out.push({ user: env.TWILIO_ACCOUNT_SID, pass: env.TWILIO_AUTH_TOKEN });
+  }
+  if (env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET) {
+    out.push({ user: env.TWILIO_API_KEY_SID, pass: env.TWILIO_API_KEY_SECRET });
+  }
+  if (out.length === 0) {
+    throw new Error(
+      "Provide TWILIO_AUTH_TOKEN or TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET to download media",
+    );
+  }
+  return out;
+}
+
+/** Collect MediaUrl{N} entries from a Twilio webhook, even if NumMedia is wrong. */
+export function mediaFromTwilioPayload(p: Record<string, string | undefined>): InboundMedia[] {
+  const media: InboundMedia[] = [];
+  const seen = new Set<string>();
+  const numMedia = Number.parseInt(p.NumMedia ?? "0", 10) || 0;
+  const maxIdx = Math.max(numMedia, 10);
+  for (let i = 0; i < maxIdx; i++) {
+    const url = p[`MediaUrl${i}`];
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    media.push({
+      url,
+      contentType: p[`MediaContentType${i}`] ?? "application/octet-stream",
+    });
+  }
+  // Also pick up any MediaUrl* keys NumMedia under-counted.
+  for (const [key, url] of Object.entries(p)) {
+    const m = /^MediaUrl(\d+)$/i.exec(key);
+    if (!m || !url || seen.has(url)) continue;
+    seen.add(url);
+    const idx = m[1]!;
+    media.push({
+      url,
+      contentType: p[`MediaContentType${idx}`] ?? "application/octet-stream",
+    });
+  }
+  return media;
 }
 
 export class TwilioChannel implements MessageChannel {
@@ -75,24 +128,12 @@ export class TwilioChannel implements MessageChannel {
 
   parseInbound(payload: unknown): InboundMessage {
     const p = (payload ?? {}) as TwilioWebhookPayload;
-    const numMedia = Number.parseInt(p.NumMedia ?? "0", 10) || 0;
-
-    const media: InboundMedia[] = [];
-    for (let i = 0; i < numMedia; i++) {
-      const url = p[`MediaUrl${i}`];
-      if (!url) continue;
-      media.push({
-        url,
-        contentType: p[`MediaContentType${i}`] ?? "application/octet-stream",
-      });
-    }
-
     return {
       from: p.From ?? "",
       to: p.To ?? "",
       body: p.Body ?? "",
-      media,
-      providerMessageId: p.MessageSid ?? "",
+      media: mediaFromTwilioPayload(p),
+      providerMessageId: p.MessageSid ?? p.SmsSid ?? "",
       raw: payload,
     };
   }
@@ -106,18 +147,70 @@ export class TwilioChannel implements MessageChannel {
   }
 
   async fetchMedia(media: InboundMedia): Promise<{ bytes: Uint8Array; contentType: string }> {
-    const { user, pass } = restCreds();
-    const auth = Buffer.from(`${user}:${pass}`).toString("base64");
-    const res = await fetch(media.url, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-    if (!res.ok) {
-      throw new Error(`TwilioChannel.fetchMedia: failed to download media (${res.status} ${res.statusText}): ${media.url}`);
+    let lastErr: Error | null = null;
+    for (const { user, pass } of mediaAuthCandidates()) {
+      try {
+        return await downloadTwilioMedia(media.url, user, pass, media.contentType);
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+      }
     }
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") ?? media.contentType;
-    return { bytes: buf, contentType };
+    throw lastErr ?? new Error(`TwilioChannel.fetchMedia: failed to download media: ${media.url}`);
   }
+
+  /**
+   * Recover media when the inbound webhook omitted NumMedia/MediaUrl* but Twilio
+   * still has attachments on the Message resource (common with flaky MMS).
+   */
+  async listMessageMedia(providerMessageId: string): Promise<InboundMedia[]> {
+    const sid = providerMessageId?.trim();
+    if (!sid || !/^(SM|MM)[a-f0-9]{32}$/i.test(sid)) return [];
+    try {
+      const { accountSid } = restCreds();
+      const list = await this.client().messages(sid).media.list({ limit: 10 });
+      return list.map((m) => ({
+        url: `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${sid}/Media/${m.sid}`,
+        contentType: m.contentType || "application/octet-stream",
+      }));
+    } catch (err) {
+      console.warn(`TwilioChannel.listMessageMedia: failed for ${sid}`, err);
+      return [];
+    }
+  }
+}
+
+/**
+ * Download Twilio media, following the auth→signed-CDN redirect without relying
+ * on fetch to keep the Authorization header across hosts (it must not).
+ */
+async function downloadTwilioMedia(
+  url: string,
+  user: string,
+  pass: string,
+  fallbackType: string,
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const auth = Buffer.from(`${user}:${pass}`).toString("base64");
+  const first = await fetch(url, {
+    headers: { Authorization: `Basic ${auth}` },
+    redirect: "manual",
+  });
+  let res = first;
+  if (first.status >= 300 && first.status < 400) {
+    const loc = first.headers.get("location");
+    if (!loc) {
+      throw new Error(`TwilioChannel.fetchMedia: redirect without Location (${first.status}): ${url}`);
+    }
+    // Signed CDN URL — no auth header.
+    res = await fetch(loc, { redirect: "follow" });
+  }
+  if (!res.ok) {
+    throw new Error(
+      `TwilioChannel.fetchMedia: failed to download media (${res.status} ${res.statusText}): ${url}`,
+    );
+  }
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const contentType = res.headers.get("content-type") ?? fallbackType;
+  return { bytes: buf, contentType };
 }
 
 export function createTwilioChannel(): MessageChannel {

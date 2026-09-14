@@ -1,1 +1,1 @@
-export { TwilioChannel, createTwilioChannel } from "./twilio-channel.js";
+export { TwilioChannel, createTwilioChannel, mediaFromTwilioPayload } from "./twilio-channel.js";
