@@ -120,7 +120,7 @@ function interviewerSystem(
     "- Short. Your question stays under 25 words. Most messages are 1-2 sentences.",
     "- Plain words. No jargon like POV, format, cadence, or leverage.",
     "- When they are vague, venture a concrete guess for them to react to. Never hand their fog back with a list of options.",
-    "- React specifically to what they just said before you ask. Prove you listened. If they said they don't know, acknowledge that warmly and move on — never loop the same ask.",
+    "- Fold any reaction into the SAME message as your next ask — never open with a standalone one-liner like \"Makes sense, Bill.\" or \"Got you.\" Prove you listened inside the real reply. If they said they don't know, acknowledge that warmly and move on — never loop the same ask.",
     "- Punctuate like a human texter: ... for a thoughtful pause, ! for genuine enthusiasm. Sparingly, never performative, never more than one ! per message.",
     "- No em dashes, ever. No markdown, no bold, no lists. Plain SMS text.",
     "- Never re-ask something you already know (including from the website or their existing posts).",
@@ -751,7 +751,7 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
  * Hold-line while voice harvest runs. If the worker never drained the queue
  * (or analysis already finished/failed), continue into the interview so the
  * owner isn't stuck on "reading your posts" forever.
- * Always acknowledge whatever they just said first (e.g. "Are you done?").
+ * Reply to whatever they just said (e.g. "Are you done?") — no separate thin ack SMS.
  */
 export async function handleReadingContent(brand: Brand, body: string): Promise<string> {
   const text = (body ?? "").trim();
