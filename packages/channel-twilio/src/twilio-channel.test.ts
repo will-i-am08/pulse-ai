@@ -138,3 +138,60 @@ describe("TwilioChannel.send contact card media", () => {
     });
   });
 });
+
+describe("TwilioChannel.send retry contract", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function stubbedChannel(create: ReturnType<typeof vi.fn>) {
+    process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/test";
+    process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "test";
+    process.env.TOKEN_ENCRYPTION_KEY =
+      process.env.TOKEN_ENCRYPTION_KEY || Buffer.alloc(32).toString("base64");
+    process.env.TWILIO_ACCOUNT_SID = "ACtest";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_FROM_NUMBER = "+61411111111";
+    process.env.APP_BASE_URL = "https://kip.example";
+
+    const { resetServerEnvCache } = await import("@pulse/shared");
+    resetServerEnvCache();
+
+    const channel = new TwilioChannel();
+    (channel as unknown as { client: () => { messages: { create: typeof create } } }).client = () => ({
+      messages: { create },
+    });
+    return channel;
+  }
+
+  // Regression: this class used to retry messages.create internally on timeout,
+  // while gateway.sendToBrand ALSO wrapped it in withBackoff({retries: 3}) —
+  // one client-side timeout became up to SIX create calls. A Twilio timeout
+  // does not mean the send was rejected; Twilio commonly accepts and queues,
+  // so every extra attempt was a separately billed, separately delivered
+  // duplicate SMS to a paying client. Retry policy belongs to the caller only
+  // (see the MessageChannel contract in @pulse/shared channel.ts).
+  it("does not retry internally on a timeout — exactly one create call", async () => {
+    const create = vi.fn().mockRejectedValue(
+      Object.assign(new Error("ETIMEDOUT: socket hang up"), { code: "ETIMEDOUT" }),
+    );
+    const channel = await stubbedChannel(create);
+
+    await expect(
+      channel.send({ to: "+61400000000", body: "hello" }),
+    ).rejects.toThrow(/ETIMEDOUT/);
+
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry internally on any other error either", async () => {
+    const create = vi.fn().mockRejectedValue(
+      Object.assign(new Error("Twilio 21610: recipient has opted out"), { status: 400 }),
+    );
+    const channel = await stubbedChannel(create);
+
+    await expect(channel.send({ to: "+61400000000", body: "hello" })).rejects.toThrow(/21610/);
+
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});

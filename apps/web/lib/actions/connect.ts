@@ -1,7 +1,7 @@
 'use server';
 import 'server-only';
 import { redirect } from 'next/navigation';
-import { query, queryOne, decrypt, encryptJson, type Brand, type User } from '@pulse/shared';
+import { query, queryOne, decrypt, encryptJson, normalizePhone, type Brand, type User } from '@pulse/shared';
 import { queueVoiceAnalysis, onChannelsConnectedDuringOnboarding, clearSkippedConnectFlags } from '@pulse/orchestrator';
 import { sendToBrand } from '@pulse/gateway';
 import { currentUser } from '@/lib/auth/current-user';
@@ -78,12 +78,16 @@ export async function setPhoneAction(formData: FormData): Promise<void> {
   const brand = await ownerBrand(user!);
   if (!brand) redirect('/app?connect=nobrand');
 
-  const raw = String(formData.get('phone') ?? '').replace(/[\s()-]/g, '');
-  let e164: string | null = null;
-  if (/^\+\d{8,15}$/.test(raw)) e164 = raw; // already E.164
-  else if (/^0\d{9}$/.test(raw)) e164 = `+61${raw.slice(1)}`; // AU 0xxxxxxxxx → +61…
-  // Anything else (bare digits without a country code, wrong length) is rejected
-  // rather than blindly prefixed with "+", which would mint bogus numbers.
+  const raw = String(formData.get('phone') ?? '');
+  // Country matters: a bare trunk-0 number is ambiguous, and the old inline
+  // `/^0\d{9}$/ -> +61` rule turned an NZ mobile (021 123 4567) into
+  // +61211234567 — a real Australian number belonging to a stranger. Use the
+  // shared normaliser with an explicit country, defaulting to AU.
+  const countryRaw = String(formData.get('country') ?? '').trim().toUpperCase();
+  const country: 'AU' | 'NZ' = countryRaw === 'NZ' ? 'NZ' : 'AU';
+  // Anything that can't be made into a plausible E.164 number is rejected rather
+  // than blindly prefixed with "+", which would mint bogus numbers.
+  const e164 = normalizePhone(raw, country);
   if (!e164) redirect('/app?phone=invalid');
 
   // Replace the `signup:<id>` placeholder with the real number, and arm the agent

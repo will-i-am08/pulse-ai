@@ -19,6 +19,7 @@ vi.mock("@pulse/graph", () => ({
 }));
 
 import { callLLM } from "../llm.js";
+import { SEND_DRAFT_RE } from "../processInbound.js";
 import { query, queryOne, type Brand, type Interaction } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import {
@@ -359,8 +360,7 @@ describe("I4 feature toggles", () => {
 
 /** Regex contracts used by processInbound (kept here so verb polish can't silently regress). */
 describe("I1 SMS verb regex contracts", () => {
-  const SEND_DRAFT_RE =
-    /^\s*(send|post it|send it|send that|approve that reply|approve the reply|approve it|approve that)\b/i;
+  // Imported, not copied: a local copy silently drifted from the real matcher.
   const SEND_INSTEAD_RE = /^\s*send this instead\s*[:\-–]?\s*(.+)$/is;
   const TAKE_LEAD_RE =
     /^\s*(i'?ll take it|i will take it|i'?ll take this|claim (it|the lead)|i'?ve got (it|this))\s*[.!]?\s*$/i;

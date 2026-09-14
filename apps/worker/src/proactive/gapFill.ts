@@ -1,6 +1,7 @@
 import { query, queryOne, type Brand, type Pillar, type Post } from "@pulse/shared";
 import {
   sendToBrand,
+  isDaytime,
   gapNudgeMessage,
   chooseNextFormat,
   pickFreshPhoto,
@@ -23,6 +24,11 @@ const GAP_PING_THROTTLE_MS = 24 * 60 * 60 * 1000;
  * the worker tick flag.
  */
 export async function runGapFillLoop(): Promise<void> {
+  // Quiet hours. Every sibling proactive loop gates on this and sendToBrand has
+  // no check of its own, so the caller's gate is the only thing between a 2am
+  // Railway redeploy (runSoonMs: 20s) and a 2am text to every eligible client.
+  if (!isDaytime(new Date())) return;
+
   const brands = await query<Brand>("select * from brands where status = 'active'");
   for (const brand of brands) {
     const paused = await queryOne(

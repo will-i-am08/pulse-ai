@@ -289,13 +289,21 @@ export async function persistEditedCaptions(
  *
  * Multi-destination isolation (H6): each channel becomes its own post row, so
  * a LinkedIn failure cannot roll back a successful TikTok (or IG) sibling.
+ *
+ * The status update is a CLAIM: `and status = 'pending_approval'` means only one
+ * caller can win it. Without that predicate a second "yes" (or a dashboard
+ * approve racing an SMS approve — the inbound burst window is 2800ms and this
+ * path does ~8 sequential round-trips before writing) re-ran the whole thing and
+ * inserted a fresh approved sibling per extra destination every time, so
+ * duplicate posts went live on X/Threads/LinkedIn/TikTok. `claimed: false` means
+ * someone else already approved it and this caller must do nothing.
  */
 export async function approveSelectedDestinations(opts: {
   post: Post;
   brand: Brand;
   actor: string;
   postNow: boolean;
-}): Promise<{ slices: PublishSlice[]; dests: Platform[] }> {
+}): Promise<{ slices: PublishSlice[]; dests: Platform[]; claimed: boolean }> {
   const { post, brand, actor, postNow } = opts;
   const dests = selectedDestinations(post);
   const slices = slicesForApproval(post);
@@ -308,7 +316,7 @@ export async function approveSelectedDestinations(opts: {
     throw new Error("approveSelectedDestinations: no destinations to publish");
   }
 
-  await query(
+  const claimedRows = await query<{ id: string }>(
     `update posts
         set status = 'approved',
             platform = $1,
@@ -316,9 +324,14 @@ export async function approveSelectedDestinations(opts: {
             destinations = $3::text[],
             captions = $4::jsonb,
             scheduled_at = $5
-      where id = $6 and brand_id = $7`,
+      where id = $6 and brand_id = $7 and status = 'pending_approval'
+      returning id`,
     [first.platform, first.caption, dests, JSON.stringify(captions), scheduledAt, post.id, brand.id],
   );
+  if (claimedRows.length === 0) {
+    // Already approved by another turn — no log line, and above all no fan-out.
+    return { slices, dests, claimed: false };
+  }
 
   await query(
     `insert into approval_log (post_id, brand_id, action, actor, note)
@@ -362,5 +375,5 @@ export async function approveSelectedDestinations(opts: {
     }
   }
 
-  return { slices, dests };
+  return { slices, dests, claimed: true };
 }

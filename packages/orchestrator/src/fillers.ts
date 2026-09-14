@@ -147,7 +147,9 @@ export async function generateFillerPost(
       const stockCue =
         "Photorealistic editorial photograph, full-frame camera, natural grain, real-world materials, documentary lighting — not CGI, not AI art, not plastic HDR, no text, no logos, no watermark, no UI, no random props unrelated to the subject";
       const prompt = [photoPrompt, stockCue, noFace, ref].filter(Boolean).join(". ");
-      img = await generatePhotoImage(prompt);
+      // Pass the brand so this counts against AI_WEEKLY_SPEND_CAP_USD — fillers
+      // generate one paid image per draft, which was previously uncapped.
+      img = await generatePhotoImage(prompt, "1:1", { brand });
     }
     if (!img) {
       // Photo mode must never silently ship a text card — that is how

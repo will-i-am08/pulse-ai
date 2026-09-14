@@ -108,7 +108,13 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
       const ref = visualReference(brand, hasRealPhotos);
       const img =
         item.visual === "photo" && item.photo_prompt
-          ? await generatePhotoImage(ref ? `${item.photo_prompt}. ${ref}` : item.photo_prompt)
+          ? // Pass the brand: this runs once PER ITEM, so an uncapped repurpose
+            // run is bulk paid generation charged to nobody's ledger.
+            await generatePhotoImage(
+              ref ? `${item.photo_prompt}. ${ref}` : item.photo_prompt,
+              "1:1",
+              { brand },
+            )
           : await renderQuoteCard(item.card ?? item.caption.slice(0, 60), brand);
       if (!img) continue;
       await query(

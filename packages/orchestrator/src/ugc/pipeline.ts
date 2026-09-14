@@ -13,7 +13,7 @@ import { draftCaption } from "../draftCaption.js";
 import { scheduleSlot } from "../scheduler.js";
 import { ensurePillars } from "../pillars.js";
 import { storeVideoAsset, storePhotoAsset } from "../video.js";
-import { costEstimateSmsLine, estimateCost } from "../costEstimate.js";
+import { estimateCost, formatCostUsd } from "../costEstimate.js";
 import { assertAiSpendAllowed, recordAiSpend } from "../aiSpend.js";
 import { brandContextForPrompt } from "../brandContext.js";
 import {
@@ -28,6 +28,7 @@ import {
   MOTION_SECONDS_PER_SCENE,
 } from "./presets/index.js";
 import { falConfigured, falGenerateImageRouted, falImageToVideoRouted, describeUgcModelChains } from "./falClient.js";
+import { normaliseMotionSeconds } from "./modelRouter.js";
 import { elevenLabsConfigured, synthesizeUgcVoiceover } from "./elevenLabs.js";
 import { assembleUgcReel } from "./assemble.js";
 import { planUgcCreative, summarizeCreativePlan, type UgcCreativePlan } from "./creativePlan.js";
@@ -105,11 +106,25 @@ async function monthSpendCents(brandId: string): Promise<number> {
   const row = await queryOne<{ n: number }>(
     `select coalesce(sum(cost_cents), 0)::int as n from ai_video_jobs
       where brand_id = $1
-        and status in ('queued','running','ready')
+        and status in ('queued','running','ready','failed')
         and created_at >= date_trunc('month', now())`,
     [brandId],
   );
   return Number(row?.n ?? 0);
+}
+
+/** Billable fal submissions for one job (the only honest cost signal we have). */
+export type UgcSpendMeter = { still: number; motion: number };
+
+/**
+ * Real cost from actual paid submissions, not the flat estimate. A scene that
+ * burns the whole 3-model chain 3 times has paid for 9 submissions whether or
+ * not the job ended 'ready'.
+ */
+export function ugcActualCostCents(meter: UgcSpendMeter): number {
+  const stillUsd = estimateCost({ kind: "image" }).usd;
+  const motionUsd = estimateCost({ kind: "video" }).usd;
+  return Math.max(0, Math.round(meter.still * stillUsd * 100 + meter.motion * motionUsd * 100));
 }
 
 function costCapCents(): number {
@@ -221,12 +236,14 @@ const creative = planUgcCreative({
     return { ok: false, sms: "Couldn't queue that UGC just then. Try again in a moment?" };
   }
 
-  await recordAiSpend(brand.id, "video", estimateCost({ kind: "video" }).usd).catch(() => {});
+  // One number, both ledgers: the monthly row and the weekly cap are booked at
+  // UGC_EST_COST_CENTS, and that is what we quote. Reconciled to actual on completion.
+  await recordAiSpend(brand.id, "video", est / 100).catch(() => {});
 
   return {
     ok: true,
     job,
-    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; Kip picked ${summarizeCreativePlan(creative)}; auto-tune on) ${costEstimateSmsLine("video")}. I'll text when it's ready for approval 🎬`,
+    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; Kip picked ${summarizeCreativePlan(creative)}; auto-tune on) (this may cost ${formatCostUsd(est / 100)}). I'll text when it's ready for approval 🎬`,
   };
 }
 
@@ -313,6 +330,7 @@ async function stillForScene(opts: {
   productUrls: string[];
   productLabel: string;
   stillChain: UgcCreativePlan["still"];
+  meter: UgcSpendMeter;
 }): Promise<{ buf: Buffer; prompt: string; modelId: string; falId: string }> {
   const visual = opts.scene.visual || opts.productLabel;
   const prompt = productOnlyStillPrompt({
@@ -332,15 +350,22 @@ async function stillForScene(opts: {
     const routed = await falGenerateImageRouted({
       prompt: patched,
       imageUrls: opts.productUrls.length ? opts.productUrls : undefined,
+      // Product refs are a hard gate — never silently fall back to a model that
+      // drops them and hands the client a stock-looking product that isn't theirs.
+      requireImageRefs: PRESETS_V1.requireProductRefs,
       aspectRatio: "9:16",
       negativePrompt: STILL_NEGATIVE,
       chain: opts.stillChain,
+      onSubmission: () => {
+        opts.meter.still += 1;
+      },
     });
     if (!routed) continue;
     last = routed.buffer;
     modelId = routed.modelId;
     falId = routed.falId;
     const score = await scoreUgcStill({
+      image: routed.buffer,
       sceneRole: opts.scene.role,
       promptUsed: patched,
       frameHint: `product-first UGC still for ${opts.productLabel}; attempt ${attempt}; model ${routed.label}`,
@@ -353,16 +378,23 @@ async function stillForScene(opts: {
       promptDelta: attempt ? { attempt, patched: true } : { modelId: routed.modelId },
       passed: score.pass,
     });
-    if (score.pass) break;
+    // `scored: false` means nothing actually graded the image — never buy a regen on that.
+    if (score.pass || !score.scored) break;
   }
   if (!last) throw new Error("still generation failed across model chain");
   return { buf: last, prompt: usedPrompt, modelId, falId };
+}
+
+/** LLM-invented `seconds` values are unvalidated JSON — normalise before spending on them. */
+export function sceneSeconds(scene: UgcScriptScene): number {
+  return normaliseMotionSeconds(scene.seconds, MOTION_SECONDS_PER_SCENE);
 }
 
 async function motionForStill(opts: {
   stillUrl: string;
   scene: UgcScriptScene;
   motionChain: UgcCreativePlan["motion"];
+  meter: UgcSpendMeter;
 }): Promise<{ buf: Buffer; modelId: string; falId: string }> {
   const prompt = motionPromptForScene({
     role: opts.scene.role,
@@ -378,10 +410,15 @@ async function motionForStill(opts: {
     const routed = await falImageToVideoRouted({
       prompt: patched,
       startImageUrl: opts.stillUrl,
-      duration: String(opts.scene.seconds ?? MOTION_SECONDS_PER_SCENE),
+      // buildMotionInput snaps this onto each family's allowed set (Kling: 5|10).
+      duration: sceneSeconds(opts.scene),
+      aspectRatio: "9:16",
       negativePrompt: MOTION_NEGATIVE,
       generateAudio: false,
       chain: opts.motionChain,
+      onSubmission: () => {
+        opts.meter.motion += 1;
+      },
     });
     if (!routed) continue;
     last = routed.buffer;
@@ -398,20 +435,30 @@ async function motionForStill(opts: {
  */
 export async function processUgcJob(
   jobId: string,
-): Promise<{ brandId: string; sms: string; mediaUrl?: string } | null> {
-  const job = await queryOne<AiVideoJob & { kind?: string; destination?: string; pipeline?: Record<string, unknown> }>(
-    `select * from ai_video_jobs where id = $1`,
+): Promise<{ brandId: string; sms: string; mediaUrl?: string; videoUrl?: string } | null> {
+  const peek = await queryOne<AiVideoJob & { kind?: string }>(
+    `select id, kind, status from ai_video_jobs where id = $1`,
     [jobId],
   );
-  if (!job || job.status !== "queued") return null;
-  if ((job as { kind?: string }).kind && (job as { kind?: string }).kind !== "ugc") return null;
+  if (!peek || peek.status !== "queued") return null;
+  if ((peek as { kind?: string }).kind && (peek as { kind?: string }).kind !== "ugc") return null;
 
-  await query(`update ai_video_jobs set status = 'running', updated_at = now() where id = $1`, [jobId]);
+  // Atomic claim — without the status predicate two workers both "win" and both pay fal.
+  const job = await queryOne<AiVideoJob & { kind?: string; destination?: string; pipeline?: Record<string, unknown> }>(
+    `update ai_video_jobs set status = 'running', updated_at = now()
+      where id = $1 and status = 'queued'
+      returning *`,
+    [jobId],
+  );
+  if (!job) return null;
+
+  const meter: UgcSpendMeter = { still: 0, motion: 0 };
 
   const brand = await queryOne<Brand>(`select * from brands where id = $1`, [job.brand_id]);
   if (!brand) {
     await query(
-      `update ai_video_jobs set status = 'failed', error = 'brand missing', updated_at = now(), completed_at = now() where id = $1`,
+      `update ai_video_jobs set status = 'failed', error = 'brand missing', updated_at = now(), completed_at = now()
+        where id = $1 and status = 'running'`,
       [jobId],
     );
     return null;
@@ -419,19 +466,34 @@ export async function processUgcJob(
 
   try {
     const sourceIds = job.source_media_ids ?? [];
+    // Cheap gate first (no spend), then re-gate on the REAL duration once we
+    // have a script — the old hardcoded 18 meant the duration gate never fired.
+    const refGate = hardGateUgc({
+      hasProductRefs: sourceIds.length > 0,
+      requireProductRefs: PRESETS_V1.requireProductRefs,
+      durationSec: (PRESETS_V1.assembly.minTotalSec + PRESETS_V1.assembly.maxTotalSec) / 2,
+      hasVo: true,
+      aigc: true,
+    });
+    if (!refGate.ok) {
+      throw new Error(refGate.reason ?? "hard_gate");
+    }
+
+    const pipeline = (job as { pipeline?: { retune?: UgcRetuneHint } }).pipeline ?? {};
+    const script = await generateScript(brand, job.prompt, pipeline.retune ?? null);
+
+    const plannedScenes = script.scenes.slice(0, 3);
+    const plannedSec = plannedScenes.reduce((a, sc) => a + sceneSeconds(sc), 0);
     const gate = hardGateUgc({
       hasProductRefs: sourceIds.length > 0,
       requireProductRefs: PRESETS_V1.requireProductRefs,
-      durationSec: 18,
+      durationSec: plannedSec,
       hasVo: true,
       aigc: true,
     });
     if (!gate.ok) {
       throw new Error(gate.reason ?? "hard_gate");
     }
-
-    const pipeline = (job as { pipeline?: { retune?: UgcRetuneHint } }).pipeline ?? {};
-    const script = await generateScript(brand, job.prompt, pipeline.retune ?? null);
     const productUrls = await productRefUrls(sourceIds);
     const productLabel =
       brand.name +
@@ -452,12 +514,12 @@ export async function processUgcJob(
     const stillMediaIds: string[] = [];
     const modelsUsed: Array<{ scene: string; still?: string; motion?: string }> = [];
 
-    for (const scene of script.scenes.slice(0, 3)) {
-      const still = await stillForScene({ brand, scene, productUrls, productLabel, stillChain: creative.still });
+    for (const scene of plannedScenes) {
+      const still = await stillForScene({ brand, scene, productUrls, productLabel, stillChain: creative.still, meter });
       const stillId = await storePhotoAsset(brand.id, still.buf);
       stillMediaIds.push(stillId);
       const stillUrl = publicMediaUrl(stillId);
-      const motion = await motionForStill({ stillUrl, scene, motionChain: creative.motion });
+      const motion = await motionForStill({ stillUrl, scene, motionChain: creative.motion, meter });
       sceneClips.push({ video: motion.buf, voText: scene.vo });
       modelsUsed.push({
         scene: scene.role,
@@ -519,12 +581,14 @@ export async function processUgcJob(
       ],
     );
 
+    const actualCents = await reconcileUgcSpend(jobId, brand.id, meter);
     await query(
       `update ai_video_jobs
           set status = 'ready', result_media_id = $2, post_id = $3,
               pipeline = coalesce(pipeline, '{}'::jsonb) || $4::jsonb,
+              cost_cents = $5,
               updated_at = now(), completed_at = now()
-        where id = $1`,
+        where id = $1 and status = 'running'`,
       [
         jobId,
         mediaId,
@@ -535,7 +599,10 @@ export async function processUgcJob(
           assembled: true,
           models_used: modelsUsed,
           model_chains: describeUgcModelChains(creative),
+          submissions: { ...meter },
+          actual_cost_cents: actualCents,
         }),
+        actualCents,
       ],
     );
 
@@ -563,22 +630,63 @@ export async function processUgcJob(
           ? `Usable as organic Reel or paid creative. Reply "yes" to approve the Reel, or "run ads with this".`
           : `Proposed for ${when}. Reply "yes" to approve as a Reel — or say "run ads with this".`;
 
+    // The MMS attachment stays the cover JPEG (carriers drop multi-MB mp4s, and the
+    // media route buffers whole blobs under a 4.5MB cap) — but the client must be
+    // able to WATCH the Reel before approving it, so the mp4 goes in the body.
+    const videoUrl = publicMediaUrl(mediaId);
     return {
       brandId: brand.id,
-      sms: `Your UGC-style video is ready (AIGC) 🎬\n\n"${aigcCaption}"\n\n${destLine}`,
-      mediaUrl: coverId ? publicMediaUrl(coverId) : publicMediaUrl(mediaId),
+      sms: `Your UGC-style video is ready (AIGC) 🎬\n\nWatch it: ${videoUrl}\n\n"${aigcCaption}"\n\n${destLine}`,
+      mediaUrl: coverId ? publicMediaUrl(coverId) : videoUrl,
+      videoUrl,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    // A failed job has ALREADY paid for everything it generated — book it before
+    // the row goes terminal, or the cap frees budget that was actually spent.
+    const actualCents = await reconcileUgcSpend(jobId, brand.id, meter);
     await query(
-      `update ai_video_jobs set status = 'failed', error = $2, updated_at = now(), completed_at = now() where id = $1`,
-      [jobId, msg.slice(0, 500)],
+      `update ai_video_jobs
+          set status = 'failed', error = $2, cost_cents = $3, updated_at = now(), completed_at = now()
+        where id = $1 and status = 'running'`,
+      [jobId, msg.slice(0, 500), actualCents],
     );
     return {
       brandId: brand.id,
       sms: "Couldn't finish that UGC video just then (provider/assembly glitch). Want to try again with clearer product photos, or send a real clip instead?",
     };
   }
+}
+
+/**
+ * Book the real cost of a job's paid submissions. Returns the cents to stamp on
+ * the row. The weekly ledger only takes the DELTA over what queueUgcJob already
+ * booked, so the two ledgers stay in step instead of disagreeing 3x.
+ */
+async function reconcileUgcSpend(
+  jobId: string,
+  brandId: string,
+  meter: UgcSpendMeter,
+): Promise<number> {
+  const actual = ugcActualCostCents(meter);
+  const booked = ugcEstCostCents();
+  const cents = Math.max(actual, 0);
+  const deltaUsd = (cents - booked) / 100;
+  if (deltaUsd > 0) {
+    await recordAiSpend(brandId, "video", deltaUsd).catch(() => {});
+  }
+  console.info(
+    JSON.stringify({
+      evt: "ugc_job_cost",
+      job_id: jobId,
+      brand_id: brandId,
+      submissions: meter,
+      booked_cents: booked,
+      actual_cents: cents,
+    }),
+  );
+  // Never book less than the estimate: the row also covers VO + LLM calls.
+  return Math.max(cents, booked);
 }
 
 /** Re-queue latest ready/failed UGC with a soft retune hint (cheaper than full new brief). */

@@ -173,6 +173,26 @@ export function splitIntoBubbles(body: string, softMax = 320): string[] {
 }
 
 /**
+ * Hard ceiling per outbound part. Twilio rejects a body over 1600 chars
+ * outright (error 21617) and delivers nothing, so this is a last-resort floor
+ * under splitIntoBubbles — not a formatting choice.
+ */
+export const MAX_SMS_PART_CHARS = 1500;
+
+/** Chop any part that still exceeds the provider body limit. */
+export function clampSmsParts(parts: string[], max = MAX_SMS_PART_CHARS): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part.length <= max) {
+      out.push(part);
+      continue;
+    }
+    for (let i = 0; i < part.length; i += max) out.push(part.slice(i, i + max));
+  }
+  return out;
+}
+
+/**
  * Set the active channel explicitly (e.g. lab channel in tests / dashboard).
  * Production Twilio/Linq channels are built from env via activeChannel().
  */
@@ -252,9 +272,16 @@ export async function captureMedia(
         onRetry: (err, attempt) => console.warn(`captureMedia: fetchMedia retry ${attempt} for ${item.url}`, err),
       });
 
-      // media_assets row first — storage_path is set to the row's own id,
-      // which is also the key used to store its bytes via putMedia.
+      // Bytes FIRST, row second. storage_path is the row's own id, which is
+      // also the putMedia key — so inserting the row before the blob exists
+      // leaves a permanently-404ing orphan when putMedia fails (broken
+      // dashboard thumbnails, Meta publishes that can't fetch image_url).
+      // An orphan blob with no row is harmless by comparison.
       const mediaId = randomUUID();
+      await withBackoff(() => putMedia(mediaId, bytes, contentType), {
+        onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
+      });
+
       const row = await queryOne<MediaAsset>(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
          values ($1, $2, $3, $4, $5, $6)
@@ -265,10 +292,6 @@ export async function captureMedia(
         console.error(`captureMedia: failed to insert media_assets row for ${mediaId}`);
         continue;
       }
-
-      await withBackoff(() => putMedia(mediaId, bytes, contentType), {
-        onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
-      });
 
       captured.push(row);
     } catch (err) {
@@ -312,8 +335,13 @@ export async function sendToBrand(
   // liveness — pacing is the SMS stand-in (SMS has no typing signal).
   const hasNativeTyping = typeof channel.sendTyping === "function";
   const pace = (opts?.pace ?? true) && !hasNativeTyping;
-  // Never split captioned media: the text + image ride together as one MMS.
-  const parts = pace && (!mediaUrls || mediaUrls.length === 0) ? splitIntoBubbles(text) : [text];
+  // Splitting is ALWAYS on. `pace` controls the typing pauses below, nothing
+  // else: a long body handed to Twilio as one part is rejected with 21617 and
+  // the client receives nothing at all (real content plans run ~2200 chars).
+  // Never split captioned media — the text + image ride together as one MMS —
+  // but still clamp it so an over-long caption can't sink the whole send.
+  const hasMedia = !!mediaUrls && mediaUrls.length > 0;
+  const parts = clampSmsParts(hasMedia ? [text] : splitIntoBubbles(text));
 
   // Twilio can't do iMessage Name-and-Photo Sharing — attach a Kip.vcf MMS on
   // the first outbound so the client can save name + cat logo from setup/OTP.
@@ -409,6 +437,30 @@ export async function sendToOperator(
 export type HandleInboundOpts = {
   channel?: MessageChannel;
   resolveBrand?: (from: string) => Promise<Brand | null>;
+  /**
+   * Schedule follow-up work that must outlive the HTTP response (the onboarding
+   * plan SMS). On Vercel the isolate is frozen the moment the webhook returns
+   * 204, so a bare `void (async () => ...)()` here silently never runs — the
+   * same trap `scheduleKickoffDrain` documents. Serverless callers MUST pass
+   * `defer: (task) => after(task)` from `next/server`; the gateway is
+   * platform-agnostic and cannot import Next itself.
+   *
+   * Default reproduces the old detached behaviour so non-serverless callers
+   * (worker, tests, lab) are unchanged.
+   */
+  defer?: (task: () => Promise<void>) => void;
+};
+
+/** What handleInbound managed to actually deliver back to the brand. */
+export type HandleInboundResult = {
+  brandId: string | null;
+  messageId: string | null;
+  /**
+   * true = every reply we attempted reached the provider; false = at least one
+   * reply failed after retries (the client may have gone dark and the operator
+   * has been paged); null = we never attempted a reply for this inbound.
+   */
+  delivered: boolean | null;
 };
 
 
@@ -449,14 +501,42 @@ async function waitForSiblingMedia(
 export async function handleInbound(
   inbound: InboundMessage,
   opts?: HandleInboundOpts,
-): Promise<{ brandId: string | null; messageId: string | null }> {
+): Promise<HandleInboundResult> {
   // Liveness from the first millisecond: keeper targets the sender address
   // directly (sender phone equals inbound.from), so it can start before brand
   // resolution. Twilio SMS no-ops here (paced sends + holding text below are
   // its stand-in). Never let typing break the pipeline.
   const channel = opts?.channel ?? activeChannel();
   const resolve = opts?.resolveBrand ?? resolveBrand;
+  const defer =
+    opts?.defer ??
+    ((task: () => Promise<void>) => {
+      void task().catch((err) => console.error("handleInbound: deferred task failed", err));
+    });
   let keeper: TypingKeeper | null = null;
+
+  // sendToBrand returns false on silent failure (Twilio 21610 STOP / 21614 /
+  // 21617 / 30007). Nothing used to check it, so a paying client could go
+  // completely dark with only a console.error as evidence.
+  let delivered: boolean | null = null;
+  let operatorPaged = false;
+  const deliver = async (
+    toBrandId: string,
+    body: string,
+    mediaUrls?: string[],
+    sendOpts?: { pace?: boolean },
+  ): Promise<boolean> => {
+    const ok = await sendToBrand(toBrandId, body, mediaUrls, { channel, ...sendOpts });
+    delivered = delivered === false ? false : ok;
+    if (!ok && !operatorPaged) {
+      operatorPaged = true;
+      await sendToOperator(
+        `Kip: SMS to brand ${toBrandId} failed after retries — client may be receiving nothing. Check Twilio logs.`,
+        { channel },
+      ).catch(() => {});
+    }
+    return ok;
+  };
   try {
     try {
       keeper = startTypingKeeper(channel, inbound.from);
@@ -466,7 +546,7 @@ export async function handleInbound(
     const brand = await resolve(inbound.from);
     if (!brand) {
       console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
-      return { brandId: null, messageId: null };
+      return { brandId: null, messageId: null, delivered: null };
     }
 
     // Idempotency: a provider (Twilio/Linq retry) can redeliver the same message.
@@ -479,7 +559,7 @@ export async function handleInbound(
       );
       if (seen) {
         console.warn(`handleInbound: duplicate provider message ${inbound.providerMessageId}, skipping`);
-        return { brandId: brand.id, messageId: seen.id };
+        return { brandId: brand.id, messageId: seen.id, delivered: null };
       }
     }
 
@@ -526,7 +606,7 @@ export async function handleInbound(
       message = row;
     } catch (err) {
       console.error(`handleInbound: failed to persist inbound message for brand ${brand.id}`, err);
-      return { brandId: brand.id, messageId: null };
+      return { brandId: brand.id, messageId: null, delivered: null };
     }
 
     // Instant human ack so they never feel like they texted a void.
@@ -541,28 +621,31 @@ export async function handleInbound(
 
     // If another inbound from this brand landed in the last few seconds, this
     // message is part of a burst — skip the extra ack (the first one already
-    // covered it). The latest message in the burst will process the combined text.
-    const priorInBurst = inboundText
-      ? await queryOne<{ id: string }>(
-          `select id from messages
-           where brand_id = $1
-             and direction = 'inbound'
-             and id <> $2
-             and created_at > now() - ($3::text || ' milliseconds')::interval
-           order by created_at desc
-           limit 1`,
-          [brand.id, message.id, String(INBOUND_BURST_MS + 500)],
-        )
-      : null;
+    // covered it). The latest message in the burst will process the combined
+    // text + media. This guard applies to MEDIA too: iOS dispatches three
+    // photos as three separate MMS, which without it meant three identical
+    // acks, three concurrent imaging jobs and three replies for one action.
+    const priorInBurst = await queryOne<{ id: string }>(
+      `select id from messages
+       where brand_id = $1
+         and direction = 'inbound'
+         and id <> $2
+         and created_at > now() - ($3::text || ' milliseconds')::interval
+       order by created_at desc, id desc
+       limit 1`,
+      [brand.id, message.id, String(INBOUND_BURST_MS)],
+    );
 
     let textAckSent = false;
     if (photoAckSent) {
-      await sendToBrand(
-        brand.id,
-        "Got it — styling your photo and writing the caption now, one sec ✨",
-        undefined,
-        { pace: false, channel },
-      ).catch(() => {});
+      if (!priorInBurst) {
+        await sendToBrand(
+          brand.id,
+          "Got it — styling your photo and writing the caption now, one sec ✨",
+          undefined,
+          { pace: false, channel },
+        ).catch(() => {});
+      }
     } else if (inboundText && !priorInBurst && shouldSendInstantTextAck(brand, inboundText)) {
       const ack = craftHumanAck(brand, inbound.body ?? "");
       if (ack) {
@@ -591,7 +674,7 @@ export async function handleInbound(
         [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
       );
       if (latestInBurst && latestInBurst.id !== message.id) {
-        return { brandId: brand.id, messageId: message.id };
+        return { brandId: brand.id, messageId: message.id, delivered };
       }
       const siblingMedia = await waitForSiblingMedia(brand.id, message, PHOTO_ARRIVAL_WAIT_MS);
       if (siblingMedia.length > 0) {
@@ -620,7 +703,7 @@ export async function handleInbound(
         undefined,
         { pace: false, channel },
       ).catch(() => {});
-      return { brandId: brand.id, messageId: message.id };
+      return { brandId: brand.id, messageId: message.id, delivered };
     }
 
     // Photo-only MMS (empty body) often arrives a beat before the caption text.
@@ -640,7 +723,7 @@ export async function handleInbound(
         [brand.id, message.id, message.created_at, String(INBOUND_BURST_MS + 500)],
       );
       if (captionSibling) {
-        return { brandId: brand.id, messageId: message.id };
+        return { brandId: brand.id, messageId: message.id, delivered };
       }
     }
 
@@ -649,28 +732,37 @@ export async function handleInbound(
     // become one turn instead of two racing replies).
     let messageForProcess = message;
     let mediaForProcess = newMedia;
-    if (!photoAckSent && inboundText) {
+    // Media participates too: iOS dispatches three photos as three separate
+    // MMS, so a media-only burst must become ONE turn over three photos rather
+    // than three turns (and three imaging jobs) against the same brand.
+    if (inboundText || newMedia.length > 0) {
+      // The lookback MUST equal the sleep. When it was longer (BURST_MS + 500)
+      // a message landing in the 2800-3300ms seam was both already answered by
+      // its own turn AND pulled into the next one, so the orchestrator
+      // re-answered it — a confused double reply. `id desc` breaks ties on
+      // identical created_at, so two simultaneous rows agree on one winner
+      // instead of each deferring to the other and going silent.
       await sleep(INBOUND_BURST_MS);
       const latest = await queryOne<{ id: string }>(
           `select id from messages
            where brand_id = $1
              and direction = 'inbound'
              and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
-           order by created_at desc
+           order by created_at desc, id desc
            limit 1`,
-          [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+          [brand.id, message.created_at, String(INBOUND_BURST_MS)],
         );
       if (latest && latest.id !== message.id) {
         // A newer inbound will handle the combined burst.
-        return { brandId: brand.id, messageId: message.id };
+        return { brandId: brand.id, messageId: message.id, delivered };
       }
       const burst = await query<{ body: string | null; media_ids: string[] | null }>(
         `select body, media_ids from messages
          where brand_id = $1
            and direction = 'inbound'
            and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
-         order by created_at asc`,
-        [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+         order by created_at asc, id asc`,
+        [brand.id, message.created_at, String(INBOUND_BURST_MS)],
       );
       const combined = burst
         .map((r) => (r.body ?? "").trim())
@@ -722,9 +814,12 @@ export async function handleInbound(
         const attach =
           mediaUrls && mediaUrls.length > 0 ? mediaUrls : mediaUrl ? [mediaUrl] : undefined;
         if (toSend) {
-          await sendToBrand(brand.id, toSend, attach, { channel });
+          // `deliver` wraps sendToBrand so a silent delivery failure is
+          // detected and paged to the operator; `attach` carries every
+          // carousel slide, not just the cover.
+          await deliver(brand.id, toSend, attach);
         } else if (attach?.length) {
-          await sendToBrand(brand.id, "", attach, { channel });
+          await deliver(brand.id, "", attach);
         }
       }
       // Onboarding just completed: the ack is already with the owner. Now do
@@ -734,27 +829,29 @@ export async function handleInbound(
         try {
           const rundown = await finishOnboarding(brandId);
           // Main voice recap first (no goodbye), then the plan afterthought as its own SMS.
-          await sendToBrand(brandId, rundown.main, undefined, { channel, pace: false });
+          await deliver(brandId, rundown.main, undefined, { pace: false });
           await new Promise((r) => setTimeout(r, 900));
-          await sendToBrand(brandId, rundown.afterthought, undefined, { channel, pace: false });
+          await deliver(brandId, rundown.afterthought, undefined, { pace: false });
 
           // Kick the plan immediately so the concrete ETA is real — don't wait on the 30s worker tick.
-          void (async () => {
+          // Routed through `defer` so serverless callers can keep the isolate
+          // alive (Next's after()); a bare detached promise here was frozen on
+          // webhook return and the plan SMS never went out.
+          defer(async () => {
             try {
               const sms = await buildOnboardingPlanSms(brandId);
               if (sms) {
-                await sendToBrand(brandId, sms, undefined, { channel, pace: false });
+                await deliver(brandId, sms, undefined, { pace: false });
                 return;
               }
               // Research overran — nudge with another concrete ETA, worker will retry.
-              await sendToBrand(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
-                channel,
+              await deliver(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
                 pace: false,
               });
             } catch (err) {
               console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
             }
-          })();
+          });
         } catch (err) {
           console.error(`handleInbound: finishOnboarding failed for brand ${brandId}`, err);
           await sendToBrand(
@@ -781,10 +878,10 @@ export async function handleInbound(
       if (slowTimer) clearTimeout(slowTimer);
     }
 
-    return { brandId: brand.id, messageId: message.id };
+    return { brandId: brand.id, messageId: message.id, delivered };
   } catch (err) {
     console.error("handleInbound: unexpected failure", err);
-    return { brandId: null, messageId: null };
+    return { brandId: null, messageId: null, delivered };
   } finally {
     keeper?.stop();
   }

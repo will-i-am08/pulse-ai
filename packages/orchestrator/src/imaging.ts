@@ -5,6 +5,7 @@ import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import {
   query,
+  queryOne,
   getMedia,
   putMedia,
   getServerEnv,
@@ -15,6 +16,7 @@ import {
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { routeImageJob, stillChainForQuality, type CreativeQuality } from "./modelRouter.js";
+import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
 import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
@@ -255,6 +257,34 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
   }
 }
 
+/** A brand identity thin enough for every image caller to supply. */
+export type SpendBrand = Pick<Brand, "id" | "facts">;
+
+/**
+ * Is this brand over the weekly AI spend cap for one more image?
+ *
+ * Reads facts fresh from the DB: callers hold a Brand loaded at the top of the
+ * request, so a 10-photo bundle would otherwise check the same stale $0.00 ten
+ * times and sail past the cap.
+ */
+async function imageSpendBlocked(brand: SpendBrand): Promise<boolean> {
+  let facts = brand.facts;
+  try {
+    const fresh = await queryOne<Brand>(`select facts from brands where id = $1`, [brand.id]);
+    if (fresh) facts = fresh.facts;
+  } catch {
+    /* fall back to the caller's snapshot */
+  }
+  const blocked = assertAiSpendAllowed({ facts }, "image");
+  if (blocked) {
+    console.warn(
+      JSON.stringify({ evt: "image_spend_capped", brand_id: brand.id, reason: "weekly_cap" }),
+    );
+    return true;
+  }
+  return false;
+}
+
 /**
  * Text-to-image for feed drafts. Prefers the fal still router (Nano Banana →
  * Flux Dev → Seedream) used by UGC — better realism + negatives than bare
@@ -265,18 +295,43 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
 export async function generatePhotoImage(
   prompt: string,
   aspectRatio = "1:1",
-  opts?: { quality?: CreativeQuality; brief?: string },
+  opts?: {
+    quality?: CreativeQuality;
+    brief?: string;
+    /** Pass the brand so the generation is counted against AI_WEEKLY_SPEND_CAP_USD. */
+    brand?: SpendBrand | null;
+  },
 ): Promise<Buffer | null> {
   routeImageJob("photo_generate");
   const ratio = aspectRatio.includes(":") ? aspectRatio : "1:1";
   const quality: CreativeQuality = opts?.quality ?? "standard";
+  const brand = opts?.brand ?? null;
 
+  if (brand) {
+    if (await imageSpendBlocked(brand)) return null;
+  } else {
+    console.warn(
+      JSON.stringify({ evt: "image_spend_uncapped", fn: "generatePhotoImage", reason: "no_brand" }),
+    );
+  }
+
+  const buf = await generatePhotoImageInner(prompt, ratio, quality, opts?.brief);
+  if (buf && brand) await recordAiSpend(brand.id, "image").catch(() => {});
+  return buf;
+}
+
+async function generatePhotoImageInner(
+  prompt: string,
+  ratio: string,
+  quality: CreativeQuality = "standard",
+  brief?: string,
+): Promise<Buffer | null> {
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
     const { resolveStillChain } = await import("./ugc/modelRouter.js");
     const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
     if (falConfigured()) {
-      const chain = resolveStillChain(stillChainForQuality(quality, opts?.brief));
+      const chain = resolveStillChain(stillChainForQuality(quality, brief));
       const routed = await falGenerateImageRouted({
         prompt,
         aspectRatio: ratio,
@@ -365,9 +420,13 @@ export async function editImageForBrand(
   routeImageJob("photo_edit");
   const blob = await getMedia(mediaId);
   if (!blob || !blob.contentType.startsWith("image/")) return null;
+  // Checked BEFORE the vision call: the LLM prompt is billable too, and the
+  // caller falls back to the original photo when this returns null.
+  if (await imageSpendBlocked(brand)) return null;
   try {
     const prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
     const edited = await replicateEdit(blob.bytes, prompt);
+    await recordAiSpend(brand.id, "image").catch(() => {});
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
@@ -395,6 +454,9 @@ export async function gradePhotoBundle(
   if (mediaIds.length === 0) return [];
   const first = await getMedia(mediaIds[0]!);
   if (!first || !first.contentType.startsWith("image/")) return mediaIds;
+  // One check up front so a capped brand doesn't pay for the shared vision call
+  // either; the per-photo edits are capped again inside editImageForBrand.
+  if (await imageSpendBlocked(brand)) return mediaIds;
   let shared: string | undefined;
   try {
     shared = await generateEditPrompt(brand, first.bytes, request);

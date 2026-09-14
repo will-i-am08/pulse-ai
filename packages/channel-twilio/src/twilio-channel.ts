@@ -109,21 +109,14 @@ export class TwilioChannel implements MessageChannel {
       body: msg.body,
       ...(msg.mediaUrls && msg.mediaUrls.length > 0 ? { mediaUrl: msg.mediaUrls } : {}),
     };
-    try {
-      const message = await this.client().messages.create(payload);
-      return { providerMessageId: message.sid };
-    } catch (err) {
-      // One retry on timeout / transient abort — matches the live-test failure mode.
-      const msgText = err instanceof Error ? err.message : String(err);
-      const code = (err as { code?: string })?.code ?? "";
-      const retryable =
-        /timeout|timed out|ECONNABORTED|ETIMEDOUT|socket hang up/i.test(msgText) ||
-        code === "ECONNABORTED" ||
-        code === "ETIMEDOUT";
-      if (!retryable) throw err;
-      const message = await this.client().messages.create(payload);
-      return { providerMessageId: message.sid };
-    }
+    // No retry here. Per the MessageChannel contract, retries/backoff are the
+    // caller's concern (gateway.sendToBrand wraps this in withBackoff). Retrying
+    // internally multiplied with that wrapper: one client-side timeout became up
+    // to six messages.create calls — and a timeout does NOT mean Twilio rejected
+    // the send, it commonly accepts and queues, so each extra attempt is a
+    // separately billed, separately delivered duplicate SMS.
+    const message = await this.client().messages.create(payload);
+    return { providerMessageId: message.sid };
   }
 
   parseInbound(payload: unknown): InboundMessage {

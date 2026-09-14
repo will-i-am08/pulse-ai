@@ -55,6 +55,14 @@ export type KickoffDrainResult = {
   mediaUrl?: string;
   /** All carousel slide preview URLs (SMS may attach several). */
   mediaUrls?: string[];
+  /**
+   * Set when the run produced NO drafts. The kickoff row must be recorded
+   * `failed` with this string, not `done` — otherwise a brand whose image
+   * provider is down looks healthy forever in the queue table.
+   */
+  kickoffFailure?: string;
+  /** Repeated-failure escalation for OPERATOR_PHONE (worker sends it). */
+  operatorAlert?: string;
 };
 
 /** Optional per-draft delivery hook — SMS as soon as each draft is ready. */
@@ -69,8 +77,41 @@ export type KickoffDrainOpts = {
 const COMMIT_RE =
   /\b(i('ll| will)|i'm (gonna|going to|drafting|on it)|let me|i'll (go )?(ahead|get|pull|draft|make|put|knock|spin)|on it|drafting (a |your |the )?(carr?ousel|post|batch)|i('ve)? got (this|you)|leave it (with|to) me|i'll handle)\b/i;
 
+/**
+ * A bare "I'll" / "on it" is conversational filler, not a work promise. The
+ * commitment has to name the work too, or Kip queues drafts off its own small
+ * talk ("I'll keep your posts spread across the week" is not a brief).
+ */
+const COMMIT_WORK_RE =
+  /\b(draft(s|ing)?|writ(e|ing)|mak(e|ing)|creat(e|ing)|put(ting)? together|pull(ing)? together|knock(ing)? (up|out)|spin(ning)? up|send(ing)? (you|them|these|those|over)|get(ting)? (you|them|these|those|it|that|a few|the first|started)|line (up|them up)|batch|carr?ousels?|posts?|content|visuals?)\b/i;
+
 const CONTENT_WORK_RE =
   /\b(first batch|starter batch|batch of (posts?|carr?ousels?)|draft(s|ing)?|carr?ousel|post(s)?|stock|generated|visuals?|content|fill(ing)? (your |the )?slots?|put together|pull together)\b/i;
+
+/**
+ * The CLIENT's own words, which are the only ones allowed to authorise work.
+ * Deliberately stricter than CONTENT_WORK_RE: a bare "post"/"content" mention
+ * ("how often should I post?") must NOT count as a request. Mirrors
+ * processInbound's USER_ASKED_FOR_CONTENT_WORK_RE so the two call sites there
+ * and any other caller of maybeEnqueueFromKipCommit get the same gate.
+ */
+const CLIENT_WORK_REQUEST_RE =
+  /\b(first batch|starter batch|draft|drafts|drafting|write|writing|make me|create|generate|put together|pull together|knock (up|out)|batch|carr?ousels?|reels?|stor(y|ies)|post ideas?|content ideas?|(some|more|a few|another|\d+)\s+posts?|a post)\b/i;
+
+/** Did the client (not Kip) actually ask for content work? */
+export function clientAskedForContentWork(userMessage: string | null | undefined): boolean {
+  const t = (userMessage ?? "").trim();
+  if (!t) return false;
+  return (
+    CLIENT_WORK_REQUEST_RE.test(t) ||
+    NO_PHOTOS_RE.test(t) ||
+    FIRST_BATCH_RE.test(t) ||
+    DRAFT_POSTS_RE.test(t) ||
+    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t) ||
+    TREND_RE.test(t) ||
+    COMPETITOR_MOVE_RE.test(t)
+  );
+}
 
 const FIRST_BATCH_RE =
   /\b(first batch|starter batch|first (few|set) of (posts?|carr?ousels?)|start filling|fill my slots?|kick.?off (my )?content)\b/i;
@@ -298,7 +339,10 @@ export function inferKickoffFromKipCommit(
   kipReply: string | null | undefined,
 ): { kind: KipKickoffKind; payload: Record<string, unknown> } | null {
   if (!kipReply?.trim()) return null;
-  if (!COMMIT_RE.test(kipReply)) return null;
+  // Kip must both commit AND name the work — a bare "I'll" / "on it" is not a promise.
+  if (!COMMIT_RE.test(kipReply) || !COMMIT_WORK_RE.test(kipReply)) return null;
+  // ...and the request has to come from the client, never from Kip's own reply.
+  if (!clientAskedForContentWork(userMessage)) return null;
   const blob = `${userMessage ?? ""}\n${kipReply}`;
   if (!CONTENT_WORK_RE.test(blob) && !TREND_RE.test(blob) && !COMPETITOR_MOVE_RE.test(blob)) {
     return null;
@@ -454,32 +498,113 @@ async function claimKickoff(id: string): Promise<KipKickoff | null> {
   );
 }
 
+/**
+ * Terminal writes are compare-and-swap on `status = 'running'`, exactly like
+ * claimKickoff. Without the guard a batch that outran the stale window came
+ * back and flipped the reaper's `failed` row to `done` — erasing the error, the
+ * audit trail, and any sign that the client had already been told it broke.
+ * Returns false when the row was no longer ours (reaped / already terminal).
+ */
 async function finishKickoff(
   id: string,
   result: Record<string, unknown>,
-): Promise<void> {
-  await query(
+): Promise<boolean> {
+  const rows = await query<{ id: string }>(
     `update kip_kickoffs
         set status = 'done', result = $2::jsonb, completed_at = now(), updated_at = now()
-      where id = $1`,
+      where id = $1 and status = 'running'
+      returning id`,
     [id, JSON.stringify(result)],
   );
+  if (rows.length === 0) {
+    console.warn("[kickoffs] finishKickoff skipped — row no longer running", { id });
+    return false;
+  }
+  return true;
 }
 
-async function failKickoff(id: string, error: string): Promise<void> {
-  await query(
+async function failKickoff(id: string, error: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
     `update kip_kickoffs
         set status = 'failed', error = $2, completed_at = now(), updated_at = now()
-      where id = $1`,
+      where id = $1 and status = 'running'
+      returning id`,
     [id, error.slice(0, 500)],
   );
+  if (rows.length === 0) {
+    console.warn("[kickoffs] failKickoff skipped — row no longer running", { id });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Progress signal from inside a running batch. The reaper ages rows off
+ * `greatest(started_at, updated_at)`, so a slow-but-alive 5-slot photo batch
+ * keeps its claim while a genuinely dead worker still ages out.
+ * Best-effort: a failed heartbeat must never lose a draft.
+ */
+async function heartbeatKickoff(id: string): Promise<void> {
+  await query(
+    `update kip_kickoffs set updated_at = now() where id = $1 and status = 'running'`,
+    [id],
+  ).catch((err) => console.error(`heartbeatKickoff: failed for ${id}`, err));
+}
+
+/** Zero-draft outcome: SMS the client, but record the row as a real failure. */
+async function zeroDraftFailure(
+  brand: Brand,
+  kind: KipKickoffKind,
+  sms: string,
+): Promise<KickoffDrainResult> {
+  const out: KickoffDrainResult = {
+    brandId: brand.id,
+    sms,
+    kickoffFailure: `${kind}: every draft slot returned nothing (no post written)`,
+  };
+  try {
+    const rows = await query<{ n: number }>(
+      `select count(*)::int as n from kip_kickoffs
+        where brand_id = $1 and kind = $2 and status = 'failed'
+          and completed_at > now() - interval '24 hours'`,
+      [brand.id, kind],
+    );
+    const prior = Number(rows[0]?.n ?? 0);
+    if (prior + 1 >= REPEAT_FAILURE_ALERT_THRESHOLD) {
+      out.operatorAlert = `Kip drafting keeps failing for ${brand.name} (${kind}): ${prior + 1} zero-draft runs in 24h. Check the image/photo provider for this brand.`;
+      console.error("[kickoffs] repeated zero-draft runs", {
+        brandId: brand.id,
+        kind,
+        failures: prior + 1,
+      });
+    }
+  } catch (err) {
+    console.error("[kickoffs] zero-draft failure count lookup failed", err);
+  }
+  return out;
+}
+
+/** Zero-draft runs in 24h before OPERATOR_PHONE gets told. */
+const REPEAT_FAILURE_ALERT_THRESHOLD = 3;
+
+/**
+ * Record that a draft has been put in front of the client (migration 0050).
+ * The router resolves a bare "yes" by `coalesce(last_offered_at, created_at)`,
+ * so every path that texts a draft must stamp it — otherwise batch drafts all
+ * carry a null and fall back to insert order, which is not delivery order.
+ * Non-blocking: failing to stamp must never lose a draft that was delivered.
+ */
+async function markPostOffered(postId: string): Promise<void> {
+  await query(`update posts set last_offered_at = now() where id = $1`, [postId]).catch((err) => {
+    console.error(`markPostOffered: failed for post ${postId}`, err);
+  });
 }
 
 /**
  * Running kickoffs older than this are treated as abandoned (serverless kill /
  * worker crash after claim). Must exceed worst-case legitimate photo batches.
  */
-export const STALE_RUNNING_KICKOFF_MS = 12 * 60 * 1000;
+export const STALE_RUNNING_KICKOFF_MS = 20 * 60 * 1000;
 
 const STALE_FAIL_SMS =
   "That draft run got stuck on my side and I had to stop it — say the word and I'll retry.";
@@ -504,7 +629,7 @@ export async function reclaimStaleKickoffs(opts?: {
             updated_at = now()
       where status = 'running'
         and started_at is not null
-        and started_at < $1::timestamptz
+        and greatest(started_at, updated_at) < $1::timestamptz
       returning *`,
     [cutoff],
   );
@@ -646,6 +771,7 @@ async function runFirstBatch(
   brand: Brand,
   payload: Record<string, unknown>,
   opts?: KickoffDrainOpts,
+  heartbeat?: () => Promise<void>,
 ): Promise<KickoffDrainResult[]> {
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 3) || 3));
   const pillars = await ensurePillars(brand.id);
@@ -667,45 +793,64 @@ async function runFirstBatch(
   const slots = Array.from({ length: count }, (_, i) => i);
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
-    const pillar = pillars[i % pillars.length]!;
-    const kind = kinds[i % kinds.length]!;
-    const piece = await draftGeneratedPiece(
-      brand,
-      pillar,
-      "carousel",
-      kind,
-      visuals,
-      String(payload.topicHint ?? ""),
-      { forceFresh: payload.forceFresh === true },
-    );
-    if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-    if (!isDraftPiece(piece)) return null;
-    const when = piece.post.scheduled_at
-      ? formatSlot(new Date(piece.post.scheduled_at))
-      : "soon";
-    const n = i + 1;
-    const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-    const slideNote =
-      piece.kindLabel.includes("carousel") && slideN > 1
-        ? ` (${slideN} slides — swipe)`
-        : "";
-    const result: KickoffDrainResult = {
-      brandId: brand.id,
-      sms:
-        n === 1
-          ? `First batch, ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
-          : `Batch ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-      mediaUrl: piece.mediaUrl,
-      mediaUrls: piece.mediaUrls,
-    };
-    if (opts?.deliver) {
-      try {
-        await opts.deliver(result);
-      } catch (err) {
-        console.error(`runFirstBatch: deliver failed for slot ${n}`, err);
+    // One bad slot must not abort the batch. mapWithConcurrency is Promise.all
+    // based: a throw here rejected the whole map while the sibling workers kept
+    // running, wrote their posts and SMS'd them — so the client got good drafts
+    // AND an apology, then duplicates when they replied "retry". Returning null
+    // matches the existing null-on-failure contract: "3 of 5", not "nothing".
+    try {
+      const pillar = pillars[i % pillars.length]!;
+      const kind = kinds[i % kinds.length]!;
+      const piece = await draftGeneratedPiece(
+        brand,
+        pillar,
+        "carousel",
+        kind,
+        visuals,
+        String(payload.topicHint ?? ""),
+        { forceFresh: payload.forceFresh === true },
+      );
+      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+      if (!isDraftPiece(piece)) return null;
+      const when = piece.post.scheduled_at
+        ? formatSlot(new Date(piece.post.scheduled_at))
+        : "soon";
+      const n = i + 1;
+      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
+      const slideNote =
+        piece.kindLabel.includes("carousel") && slideN > 1
+          ? ` (${slideN} slides — swipe)`
+          : "";
+      const result: KickoffDrainResult = {
+        brandId: brand.id,
+        sms:
+          n === 1
+            ? `First batch, ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
+            : `Batch ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+        mediaUrl: piece.mediaUrl,
+        mediaUrls: piece.mediaUrls,
+      };
+      if (opts?.deliver) {
+        try {
+          await opts.deliver(result);
+          // Stamp AFTER a successful send: this records when the draft was put in
+          // front of the client, which is how a bare "yes" resolves which draft it
+          // means. Slots are drafted concurrently, so created_at order does not
+          // match SMS delivery order — without this, "yes" to batch 1/3 approves
+          // whichever row happened to insert last.
+          await markPostOffered(piece.post.id);
+        } catch (err) {
+          console.error(`runFirstBatch: deliver failed for slot ${n}`, err);
+        }
       }
+      return result;
+    } catch (err) {
+      console.error(`runFirstBatch: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
+      return null;
+    } finally {
+      // Long photo slots would otherwise let the reaper age out a live batch.
+      await heartbeat?.();
     }
-    return result;
   });
 
   const out = drafted.filter(
@@ -719,13 +864,22 @@ async function runFirstBatch(
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
-        {
-          brandId: brand.id,
-          sms: selfHeal
-            ? "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight."
-            : (qaFail?.sms ??
-              "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?"),
-        },
+        // A self-heal run has already queued a fresh attempt, so it is not a
+        // dead end: report it plainly and leave the row alone. A genuine
+        // zero-draft run goes through zeroDraftFailure so the kickoff is marked
+        // `failed` (not `done`) and repeated failures escalate to the operator —
+        // otherwise a brand whose image provider is down looks healthy forever.
+        selfHeal
+          ? {
+              brandId: brand.id,
+              sms: "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight.",
+            }
+          : await zeroDraftFailure(
+              brand,
+              "first_batch",
+              qaFail?.sms ??
+                "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
+            ),
       ],
       opts?.deliver,
     );
@@ -737,6 +891,7 @@ async function runDraftPosts(
   brand: Brand,
   payload: Record<string, unknown>,
   opts?: KickoffDrainOpts,
+  heartbeat?: () => Promise<void>,
 ): Promise<KickoffDrainResult[]> {
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 2) || 2));
   const pillars = await ensurePillars(brand.id);
@@ -757,44 +912,56 @@ async function runDraftPosts(
   const slots = Array.from({ length: count }, (_, i) => i);
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
-    const pillar = pillars[i % pillars.length]!;
-    // Default to a single feed post unless the payload asks for carousel.
-    // "A post" may still be a carousel when preferCarousel/format says so — not banned.
-    const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
-    const prefer = forceCarousel ? "carousel" : "filler";
-    const piece = await draftGeneratedPiece(
-      brand,
-      pillar,
-      prefer,
-      i % 2 === 0 ? "tip" : "steps",
-      visuals,
-      String(payload.topicHint ?? ""),
-      { forceFresh: payload.forceFresh === true },
-    );
-    if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-    if (!isDraftPiece(piece)) return null;
-    const when = piece.post.scheduled_at
-      ? formatSlot(new Date(piece.post.scheduled_at))
-      : "soon";
-    const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-    const slideNote =
-      piece.kindLabel.includes("carousel") && slideN > 1
-        ? ` (${slideN} slides — swipe)`
-        : "";
-    const result: KickoffDrainResult = {
-      brandId: brand.id,
-      sms: `Draft ready — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-      mediaUrl: piece.mediaUrl,
-      mediaUrls: piece.mediaUrls,
-    };
-    if (opts?.deliver) {
-      try {
-        await opts.deliver(result);
-      } catch (err) {
-        console.error("runDraftPosts: deliver failed", err);
+    // See runFirstBatch: isolate the slot so one failure degrades the batch
+    // instead of aborting it while its siblings keep writing + SMS-ing.
+    try {
+      const pillar = pillars[i % pillars.length]!;
+      // Default to a single feed post unless the payload asks for carousel.
+      // "A post" may still be a carousel when preferCarousel/format says so — not banned.
+      const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
+      const prefer = forceCarousel ? "carousel" : "filler";
+      const piece = await draftGeneratedPiece(
+        brand,
+        pillar,
+        prefer,
+        i % 2 === 0 ? "tip" : "steps",
+        visuals,
+        String(payload.topicHint ?? ""),
+        { forceFresh: payload.forceFresh === true },
+      );
+      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+      if (!isDraftPiece(piece)) return null;
+      const when = piece.post.scheduled_at
+        ? formatSlot(new Date(piece.post.scheduled_at))
+        : "soon";
+      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
+      const slideNote =
+        piece.kindLabel.includes("carousel") && slideN > 1
+          ? ` (${slideN} slides — swipe)`
+          : "";
+      const result: KickoffDrainResult = {
+        brandId: brand.id,
+        sms: `Draft ready — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+        mediaUrl: piece.mediaUrl,
+        mediaUrls: piece.mediaUrls,
+      };
+      if (opts?.deliver) {
+        try {
+          await opts.deliver(result);
+          // See runFirstBatch: records that this draft was offered, so a bare
+          // "yes" resolves to the draft the client was actually just shown.
+          await markPostOffered(piece.post.id);
+        } catch (err) {
+          console.error("runDraftPosts: deliver failed", err);
+        }
       }
+      return result;
+    } catch (err) {
+      console.error(`runDraftPosts: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
+      return null;
+    } finally {
+      await heartbeat?.();
     }
-    return result;
   });
 
   const out = drafted.filter(
@@ -811,12 +978,19 @@ async function runDraftPosts(
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
-        {
-          brandId: brand.id,
-          sms: selfHeal
-            ? "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight."
-            : (qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?"),
-        },
+        // See runFirstBatch: a self-heal has already queued a retry, so it is
+        // not a dead end; a genuine zero-draft run is marked `failed` and
+        // escalated rather than recorded as a healthy `done`.
+        selfHeal
+          ? {
+              brandId: brand.id,
+              sms: "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight.",
+            }
+          : await zeroDraftFailure(
+              brand,
+              "draft_posts",
+              qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
+            ),
       ],
       opts?.deliver,
     );
@@ -909,13 +1083,13 @@ async function runTrendOrCompetitorDraft(
   }
   if (!isDraftPiece(drafted)) {
     return [
-      {
-        brandId: brand.id,
-        sms:
-          researched
-            ? `Spotted this: ${researched.angle}. ${researched.why || ""} I couldn't finish the draft visual just then — ask me again and I'll retry.`
-            : "Couldn't land a timely draft just then — try again shortly?",
-      },
+      await zeroDraftFailure(
+        brand,
+        kind,
+        researched
+          ? `Spotted this: ${researched.angle}. ${researched.why || ""} I couldn't finish the draft visual just then — ask me again and I'll retry.`
+          : "Couldn't land a timely draft just then — try again shortly?",
+      ),
     ];
   }
 
@@ -974,17 +1148,7 @@ export async function processKickoff(
 ): Promise<KickoffDrainResult[]> {
   const claimed = await claimKickoff(kickoffId);
   if (!claimed) return [];
-
-  const brand = await queryOne<Brand>(`select * from brands where id = $1`, [claimed.brand_id]);
-  if (!brand) {
-    await failKickoff(kickoffId, "brand missing");
-    return [];
-  }
-
-  const payload =
-    claimed.payload && typeof claimed.payload === "object"
-      ? (claimed.payload as Record<string, unknown>)
-      : {};
+  const brandId = claimed.brand_id;
 
   const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
     if (!opts?.deliver) return;
@@ -995,14 +1159,31 @@ export async function processKickoff(
     }
   };
 
+  // Everything after the claim runs inside the try. The brand lookup used to
+  // sit outside it, so a pool timeout / dropped connection escaped the whole
+  // function: no failKickoff, no SMS, and a claimed row nobody owned until the
+  // reaper came round.
   try {
+    const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
+    if (!brand) {
+      await failKickoff(kickoffId, "brand missing");
+      return [];
+    }
+
+    const payload =
+      claimed.payload && typeof claimed.payload === "object"
+        ? (claimed.payload as Record<string, unknown>)
+        : {};
+
+    const heartbeat = (): Promise<void> => heartbeatKickoff(kickoffId);
+
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
       case "first_batch":
-        results = await runFirstBatch(brand, payload, opts);
+        results = await runFirstBatch(brand, payload, opts, heartbeat);
         break;
       case "draft_posts":
-        results = await runDraftPosts(brand, payload, opts);
+        results = await runDraftPosts(brand, payload, opts, heartbeat);
         break;
       case "trend_draft":
       case "competitor_draft":
@@ -1015,6 +1196,14 @@ export async function processKickoff(
         await failKickoff(kickoffId, `unknown kind ${claimed.kind}`);
         return [];
     }
+    // A run that drafted nothing already SMS'd the client an apology; recording
+    // it `done` with smsCount: 1 made "drafted nothing" indistinguishable from
+    // "drafted 3 posts" and hid a brand whose image provider is dead.
+    const failure = results.find((r) => r.kickoffFailure);
+    if (failure) {
+      await failKickoff(kickoffId, failure.kickoffFailure!);
+      return results;
+    }
     await finishKickoff(kickoffId, {
       smsCount: results.length,
       kinds: results.map((r) => r.sms.slice(0, 80)),
@@ -1025,7 +1214,7 @@ export async function processKickoff(
     console.error(`processKickoff: ${kickoffId} failed`, err);
     await failKickoff(kickoffId, message);
     const failResult: KickoffDrainResult = {
-      brandId: brand.id,
+      brandId,
       sms: "That background task glitched on my side — say the word and I'll retry.",
     };
     await deliverOnce(failResult);
@@ -1045,8 +1234,15 @@ export async function runKickoffDrain(
     [limit],
   );
   for (const row of rows) {
-    const results = await processKickoff(row.id, opts);
-    out.push(...results);
+    // One row must never abort the batch: processKickoff already handles its
+    // own failures, but anything that escapes it (claim/terminal-write errors)
+    // used to skip every remaining queued row in the tick.
+    try {
+      const results = await processKickoff(row.id, opts);
+      out.push(...results);
+    } catch (err) {
+      console.error(`[kickoffs] drain: row ${row.id} threw out of processKickoff`, err);
+    }
   }
   return out;
 }

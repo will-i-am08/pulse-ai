@@ -489,6 +489,7 @@ export {
   queueAiVideoJob,
   processAiVideoJob,
   runAiVideoJobDrain,
+  reapStaleAiVideoJobs,
 } from "./aiVideo.js";
 
 export {

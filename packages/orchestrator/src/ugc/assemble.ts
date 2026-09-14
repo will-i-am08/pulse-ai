@@ -2,8 +2,9 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { spawnFfmpeg } from "../video.js";
+import { spawnFfmpeg, probeVideo } from "../video.js";
 import { ASSEMBLY_V1, CAPTION_STYLE } from "./presets/assemblyPresets.js";
+import { MOTION_SECONDS_PER_SCENE } from "./presets/motionPresets.js";
 
 export type UgcSceneClip = {
   video: Buffer;
@@ -20,8 +21,49 @@ async function rmQuiet(...paths: string[]) {
   await Promise.all(paths.map((p) => fs.unlink(p).catch(() => undefined)));
 }
 
-function escapeDrawtext(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/\n/g, " ");
+/**
+ * Escape text for an ffmpeg `drawtext=text='...'` single-quoted section.
+ *
+ * Inside a single-quoted filtergraph section a backslash is NOT an escape, so
+ * the old `\\'` left the quote live: "don't" closed the string early, corrupted
+ * the filtergraph and killed the job at the very last step — after all three
+ * stills, all three motion renders and the ElevenLabs call had been paid for.
+ * The only portable idiom is close-quote / escaped-quote / reopen: '\''
+ *
+ * `:` must NOT be escaped here either — the surrounding quotes already protect
+ * it, and escaping rendered a literal backslash in the burned caption.
+ */
+export function escapeDrawtext(s: string): string {
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\r?\n/g, " ")
+    .replace(/'/g, "'\\''");
+}
+
+/** Shortest a caption may stay on screen and still be readable. */
+const MIN_CHUNK_SEC = 0.9;
+
+/**
+ * Spread caption chunks across the REAL timeline instead of a hardcoded 2.2s
+ * cadence. The old schedule ran 52.8s of captions over a 12s video, so roughly
+ * three-quarters of the on-screen text never rendered at all.
+ *
+ * Chunks that cannot be given a readable slot are dropped rather than scheduled
+ * past the end of the video, where they would silently vanish.
+ */
+export function captionSchedule(
+  chunkCount: number,
+  totalSec: number,
+): Array<{ start: number; end: number }> {
+  if (chunkCount <= 0 || !(totalSec > 0)) return [];
+  const fits = Math.max(1, Math.min(chunkCount, Math.floor(totalSec / MIN_CHUNK_SEC)));
+  const per = totalSec / fits;
+  const out: Array<{ start: number; end: number }> = [];
+  for (let i = 0; i < fits; i++) {
+    const start = i * per;
+    out.push({ start, end: Math.min(totalSec, start + per) });
+  }
+  return out;
 }
 
 function captionChunks(text: string, wordsPerChunk: number): string[] {
@@ -106,15 +148,30 @@ export async function assembleUgcReel(opts: {
       if (code !== 0) throw new Error(`ffmpeg concat exit ${code}`);
     }
 
+    // Real durations drive both the caption schedule and the output length.
+    const voSec = (await probeVideo(opts.voiceoverMp3, "audio/mpeg").catch(() => null))?.durationSec ?? 0;
+    const concatBytes = await fs.readFile(concatPath);
+    const probedVideoSec = (await probeVideo(concatBytes, "video/mp4").catch(() => null))?.durationSec ?? 0;
+    const videoSec =
+      probedVideoSec > 0
+        ? probedVideoSec
+        : Math.max(1, opts.scenes.length) * MOTION_SECONDS_PER_SCENE;
+    // `-shortest` used to cut the output to the video, decapitating a longer
+    // voiceover mid-sentence — and the CTA is the tail of the script.
+    const padSec = voSec > videoSec ? voSec - videoSec : 0;
+    const totalSec = Math.max(videoSec, voSec);
+
     const chunks = captionChunks(opts.fullScript, ASSEMBLY_V1.captionWordsPerChunk);
-    const drawtexts = chunks
-      .map((chunk, i) => {
-        const start = (i * 2.2).toFixed(2);
-        const end = (i * 2.2 + 2.0).toFixed(2);
-        const t = escapeDrawtext(chunk);
-        return `drawtext=text='${t}':fontsize=${CAPTION_STYLE.fontsize}:fontcolor=${CAPTION_STYLE.fontcolor}:borderw=${CAPTION_STYLE.borderw}:bordercolor=${CAPTION_STYLE.bordercolor}:x=${CAPTION_STYLE.x}:y=${CAPTION_STYLE.y}:enable='between(t,${start},${end})'`;
+    const schedule = captionSchedule(chunks.length, totalSec);
+    const drawtexts = schedule
+      .map((slot, i) => {
+        const t = escapeDrawtext(chunks[i]!);
+        return `drawtext=text='${t}':fontsize=${CAPTION_STYLE.fontsize}:fontcolor=${CAPTION_STYLE.fontcolor}:borderw=${CAPTION_STYLE.borderw}:bordercolor=${CAPTION_STYLE.bordercolor}:x=${CAPTION_STYLE.x}:y=${CAPTION_STYLE.y}:enable='between(t,${slot.start.toFixed(2)},${slot.end.toFixed(2)})'`;
       })
       .join(",");
+    // Clone the last frame to cover a longer VO rather than truncating it.
+    const padFilter = padSec > 0 ? `tpad=stop_mode=clone:stop_duration=${padSec.toFixed(2)}` : "";
+    const vf = [padFilter, drawtexts].filter(Boolean).join(",") || "null";
 
     const outPath = join(tmpdir(), `ugc-out-${randomUUID()}.mp4`);
     work.push(outPath);
@@ -126,7 +183,7 @@ export async function assembleUgcReel(opts: {
         "-i",
         voPath,
         "-vf",
-        drawtexts || "null",
+        vf,
         "-c:v",
         ASSEMBLY_V1.videoCodec,
         "-crf",
@@ -135,7 +192,6 @@ export async function assembleUgcReel(opts: {
         ASSEMBLY_V1.audioCodec,
         "-b:a",
         ASSEMBLY_V1.audioBitrate,
-        "-shortest",
         "-pix_fmt",
         "yuv420p",
         "-movflags",

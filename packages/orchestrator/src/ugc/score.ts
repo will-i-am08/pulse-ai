@@ -10,6 +10,8 @@ export type UgcSceneScore = {
   overall: number;
   notes: string;
   pass: boolean;
+  /** False when no real image was graded — such rows must never drive a paid regen. */
+  scored: boolean;
 };
 
 export type UgcAudioScore = {
@@ -24,6 +26,7 @@ const PASS_THRESHOLD = 0.62;
 export function hardGateUgc(opts: {
   hasProductRefs: boolean;
   requireProductRefs: boolean;
+  /** REAL planned duration (sum of clamped scene seconds) — not a placeholder. */
   durationSec: number;
   hasVo: boolean;
   aigc: boolean;
@@ -40,21 +43,56 @@ export function hardGateUgc(opts: {
   return { ok: true };
 }
 
+/** Fail-open score: never triggers a paid regeneration, never pollutes the tune log. */
+function unscored(notes: string): UgcSceneScore {
+  return {
+    phoneFeel: 0.7,
+    handsOk: 0.7,
+    productClear: 0.7,
+    notStudio: 0.7,
+    overall: 0.7,
+    notes,
+    pass: true,
+    scored: false,
+  };
+}
+
+/**
+ * Grade a generated still. The IMAGE is the input — grading the prompt we wrote
+ * ourselves produced no signal yet still paid for a full regeneration on the
+ * verdict. Without image bytes this is a no-op that passes (spend safety).
+ */
 export async function scoreUgcStill(opts: {
   sceneRole: string;
   promptUsed: string;
   frameHint: string;
+  /** The generated JPEG. Required — without it there is nothing to grade. */
+  image?: Buffer | null;
 }): Promise<UgcSceneScore> {
+  if (!opts.image?.length) return unscored("no_image_supplied");
   try {
     const raw = await callLLM({
       system:
-        "You score AI UGC stills for phone-native ads. Output ONLY JSON: " +
+        "You score AI UGC stills for phone-native ads. Judge ONLY the attached image. Output ONLY JSON: " +
         '{"phoneFeel":0-1,"handsOk":0-1,"productClear":0-1,"notStudio":0-1,"notes":"…"}. ' +
-        "Punish studio gloss, plastic skin, floating products, unreadable labels.",
+        "Punish studio gloss, plastic skin, floating products, unreadable labels, any visible text/logos/watermarks.",
       messages: [
         {
           role: "user",
-          content: `Scene role: ${opts.sceneRole}\nPrompt: ${opts.promptUsed.slice(0, 400)}\nFrame: ${opts.frameHint.slice(0, 400)}`,
+          content: [
+            {
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: "image/jpeg" as const,
+                data: opts.image.toString("base64"),
+              },
+            },
+            {
+              type: "text" as const,
+              text: `Scene role: ${opts.sceneRole}\nIntended: ${opts.frameHint.slice(0, 300)}\nScore the attached image now.`,
+            },
+          ],
         },
       ],
       maxTokens: 200,
@@ -75,29 +113,34 @@ export async function scoreUgcStill(opts: {
       overall,
       notes: String(parsed.notes ?? "").slice(0, 200),
       pass: overall >= PASS_THRESHOLD && productClear >= 0.5 && notStudio >= 0.5,
+      scored: true,
     };
   } catch {
-    return {
-      phoneFeel: 0.7,
-      handsOk: 0.7,
-      productClear: 0.7,
-      notStudio: 0.7,
-      overall: 0.7,
-      notes: "scorer_fallback",
-      pass: true,
-    };
+    // Scorer outage must not gate delivery — and must not buy a regeneration.
+    return unscored("scorer_fallback");
   }
 }
 
+/** Rough VO delivery rate — used to keep the script inside the assembled runtime. */
+const WORDS_PER_SECOND = 2.5;
+/** 120 words was ~48s of VO for a ~12s video; cap to what the Reel can actually carry. */
+export const MAX_SCRIPT_WORDS = Math.round(PRESETS_V1.assembly.maxTotalSec * WORDS_PER_SECOND);
+
 export function scoreUgcAudioHeuristic(script: string): UgcAudioScore {
   const words = script.trim().split(/\s+/).filter(Boolean);
-  const speechOk = words.length >= 12 && words.length <= 120;
+  const speechOk = words.length >= 12 && words.length <= MAX_SCRIPT_WORDS;
   const tooFlat = !/\.\.\.|—|--|honestly|okay so|like,/i.test(script) && !/[?]/.test(script);
   const banned = /\b(introducing|innovative|game-changer|revolutionize)\b/i.test(script);
   return {
     speechOk,
     tooFlat: tooFlat || banned,
-    notes: banned ? "banned_ad_speak" : tooFlat ? "flat_monotone_risk" : "ok",
+    notes: banned
+      ? "banned_ad_speak"
+      : !speechOk
+        ? `length_out_of_range (${words.length} words; max ${MAX_SCRIPT_WORDS})`
+        : tooFlat
+          ? "flat_monotone_risk"
+          : "ok",
     pass: speechOk && !banned,
   };
 }
@@ -131,11 +174,15 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
+/** A UGC noun must be present — otherwise "try again" or "make it shorter"
+ * about a caption buys a full-price video nobody asked for. */
+const UGC_NOUN = /\b(ugc|reels?|videos?|ads?|clips?|creative)\b/i;
+const RETUNE_VERB =
+  /\b(more casual|shorter|different hook|less face|more product|try again|regenerate|redo|remake|another go)\b/i;
+
 export function looksLikeUgcRetune(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(more casual|shorter|different hook|less face|more product|try again|regenerate|redo (the )?(ugc|ad|reel|video))\b/i.test(
-    body,
-  );
+  return RETUNE_VERB.test(body) && UGC_NOUN.test(body);
 }
 
 export type UgcRetuneHint =
