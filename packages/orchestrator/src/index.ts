@@ -159,6 +159,15 @@ export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer
 export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms, looksLikeCreativeRedoAsk, designQaSampleIndices } from "./designQa.js";
 export type { DesignQaResult, DesignQaFixHints, DesignQaMode } from "./designQa.js";
 export {
+  looksLikeComparisonBrief,
+  looksLikeCityscapeBrief,
+  looksLikeSingularPostBrief,
+  heuristicBriefCompliance,
+  reviewBriefCompliance,
+  reinforceTopicHint,
+} from "./briefCompliance.js";
+export type { BriefComplianceInput, BriefComplianceResult } from "./briefCompliance.js";
+export {
   routeImageJob,
   specialtyReplicateGenerate,
   specialtyCostSmsHint,

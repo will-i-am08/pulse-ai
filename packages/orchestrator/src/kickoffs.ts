@@ -698,11 +698,14 @@ async function runDraftPosts(
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
+    // Honour the brief: only carousel when the owner asked for one (or format=carousel).
+    // Alternating carousel/filler was ignoring "do up a post" and shipping 5-slide sets.
     const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
+    const prefer = forceCarousel ? "carousel" : "filler";
     const piece = await draftGeneratedPiece(
       brand,
       pillar,
-      forceCarousel || i % 2 === 0 ? "carousel" : "filler",
+      prefer,
       i % 2 === 0 ? "tip" : "steps",
       visuals,
       String(payload.topicHint ?? ""),

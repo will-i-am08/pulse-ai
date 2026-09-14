@@ -16,6 +16,12 @@ import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
 import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames } from "./faceless.js";
+import {
+  looksLikeCityscapeBrief,
+  looksLikeComparisonBrief,
+  reinforceTopicHint,
+  reviewBriefCompliance,
+} from "./briefCompliance.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
@@ -49,7 +55,13 @@ export async function generateFillerPost(
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
     "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
-    topic ? `Owner brief (honour the subject matter): ${topic}` : "",
+    topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    looksLikeComparisonBrief(topic)
+      ? "COMPARISON brief: caption + card must name at least TWO specific options and state a concrete difference (e.g. Cursor vs Claude Code). Category-level tips without named tools FAIL."
+      : "",
+    looksLikeCityscapeBrief(topic)
+      ? "VISUAL brief: photo_prompt MUST be a cinematic cityscape / skyline background (urban dusk or night lights), not a desk, office, or abstract wash."
+      : "",
     facelessLine ?? "",
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
@@ -60,7 +72,7 @@ export async function generateFillerPost(
     wantPhoto
       ? [
           "Keep caption short — long captions get truncated and break JSON parsing.",
-          "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
+          "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption — and honour any background the owner named.",
           noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
@@ -72,23 +84,59 @@ export async function generateFillerPost(
     .filter(Boolean)
     .join("\n");
 
-  let caption: string;
-  let card: string;
+  let caption = "";
+  let card = "";
   let photoPrompt = "";
   try {
-    const drafted = await draftFillerFields(
-      system,
-      topic ? `Brief: ${topic}` : pillar.name,
-      wantPhoto,
-    );
-    if (!drafted) return null;
-    caption = stripPersonalNames(drafted.caption, brand);
-    card = stripPersonalNames(drafted.card, brand);
-    photoPrompt = drafted.photoPrompt;
+    let briefForDraft = topic;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const attemptSystem =
+        attempt === 0
+          ? system
+          : [
+              system,
+              briefForDraft && briefForDraft !== topic
+                ? `COMPLIANCE RETRY — previous draft missed the brief. Fix: ${briefForDraft}`
+                : "COMPLIANCE RETRY — previous draft missed the owner brief. Satisfy every constraint.",
+            ]
+              .filter(Boolean)
+              .join("\n");
+      const drafted = await draftFillerFields(
+        attemptSystem,
+        briefForDraft ? `Brief: ${briefForDraft}` : pillar.name,
+        wantPhoto,
+      );
+      if (!drafted) {
+        if (attempt === 0) continue;
+        return null;
+      }
+      caption = stripPersonalNames(drafted.caption, brand);
+      card = stripPersonalNames(drafted.card, brand);
+      photoPrompt = drafted.photoPrompt;
+      if (!topic) break;
+      const compliance = await reviewBriefCompliance({
+        brief: topic,
+        caption,
+        overlays: card ? [card] : [],
+        photoPrompts: photoPrompt ? [photoPrompt] : [],
+        surface: "feed",
+      });
+      if (compliance.pass) break;
+      console.warn("generateFillerPost: brief compliance fail", compliance.reasons);
+      if (attempt === 0) {
+        briefForDraft = reinforceTopicHint(topic, compliance.reinforceHint);
+        continue;
+      }
+      // Second miss — don't ship a draft that ignores the owner brief.
+      return null;
+    }
   } catch (err) {
     console.error("generateFillerPost: LLM/parse failed", err);
     return null;
   }
+
+  if (!caption.trim()) return null;
+
 
   let mediaId: string = randomUUID();
   let photoHeadline: string | undefined;
