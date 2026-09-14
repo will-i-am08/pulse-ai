@@ -510,10 +510,10 @@ export async function generatePhotoTextCarousel(
     facelessLine,
     topic ? `Owner brief (honour the subject matter and vibe): ${topic}` : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤10 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<1 sentence: what the idea is + why it works now>"}]}'
+      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤8 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
       : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
-      ? "4 to 5 slides. EACH slide is ONE distinct, concrete, researched idea (name a real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Prefer AI / business ideas grounded in current market demand. Overlay = idea name only. idea_blurb = what it is + why now. No emoji. No personal names."
+      ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
     "photo_prompt must match the owner brief visual (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
     "photo_prompt must read like a real photographer brief: specific make/model or vehicle class if cars, real location/time of day, lens feel — never 'epic AI fantasy' or abstract CGI.",
@@ -539,7 +539,7 @@ export async function generatePhotoTextCarousel(
             : `Write today's ${pillar.name} photo carousel.`,
         },
       ],
-      maxTokens: ideaMode ? 1200 : 900,
+      maxTokens: ideaMode ? 1600 : 900,
       webSearch: ideaMode ? 5 : undefined,
     });
     const startIdx = raw.indexOf("{");
@@ -561,18 +561,22 @@ export async function generatePhotoTextCarousel(
         overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
           .replace(/["']/g, "")
           .trim()
-          .slice(0, ideaMode ? 80 : 64),
+          .slice(0, ideaMode ? 64 : 64),
         photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
         ideaBlurb: stripPersonalNames(
           sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
           brand,
         )
           .trim()
-          .slice(0, 180),
+          .slice(0, ideaMode ? 220 : 180),
       }))
       .filter((s) => s.overlay && s.photoPrompt)
       .slice(0, 6);
     if (!caption || slides.length < 3) return null;
+    // Soft first slide / opener frame is often the weakest photo — drop it when we have 5+.
+    if (ideaMode && slides.length >= 5) {
+      slides = slides.slice(1);
+    }
     // Fold idea blurbs into caption so the SMS preview isn't empty fluff.
     if (ideaMode) {
       const ideaLines = slides
@@ -590,9 +594,23 @@ export async function generatePhotoTextCarousel(
 
   const { FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
   const mediaIds: string[] = [];
-  for (const slide of slides) {
-    const prompt = [slide.photoPrompt, FEED_PHOTO_REALISM_CUE, noFace].filter(Boolean).join(". ");
-    const img = await generatePhotoImage(prompt);
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i]!;
+    let prompt = [slide.photoPrompt, FEED_PHOTO_REALISM_CUE, noFace].filter(Boolean).join(". ");
+    let img = await generatePhotoImage(prompt);
+    // Lead frame is often the softest — one retry with a stronger composition cue.
+    if (i === 0 && img) {
+      const retryPrompt = [
+        slide.photoPrompt,
+        FEED_PHOTO_REALISM_CUE,
+        "hero composition, sharp subject, clean background, premium editorial still",
+        noFace,
+      ]
+        .filter(Boolean)
+        .join(". ");
+      const retry = await generatePhotoImage(retryPrompt);
+      if (retry) img = retry;
+    }
     if (!img) {
       console.error("generatePhotoTextCarousel: photo generation failed for a slide");
       return null;
@@ -604,7 +622,18 @@ export async function generatePhotoTextCarousel(
       [mediaId, brand.id, mediaId],
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
-    const tiled = await applyTextTile(brand, mediaId, slide.overlay);
+    const tiled = await applyTextTile(
+      brand,
+      mediaId,
+      slide.overlay,
+      ideaMode
+        ? {
+            body: slide.ideaBlurb || undefined,
+            eyebrow: "IDEA",
+            mixedFonts: true,
+          }
+        : undefined,
+    );
     mediaIds.push(tiled ?? mediaId);
   }
   if (mediaIds.length < 3) return null;
