@@ -64,13 +64,17 @@ describe("inferKickoffFromUserMessage", () => {
     expect(r?.payload.visuals).toBe("photo");
   });
 
-  it("maps cinematic carousel asks to draft_posts with photo visuals (no client upload)", () => {
-    const r = inferKickoffFromUserMessage(
-      "Can you make me a carrousel with cinematic business photos with text over the top?",
-    );
+  it("maps cinematic carousel asks to a single photo carousel (not a lone filler)", () => {
+    const brief =
+      "Can you make me a carrousel with cinematic business photos with text over the top?";
+    const r = inferKickoffFromUserMessage(brief);
     expect(r?.kind).toBe("draft_posts");
     expect(r?.payload.visuals).toBe("photo");
-    expect(String(r?.ackSms ?? "")).toMatch(/generated\/stock photos/i);
+    expect(r?.payload.preferCarousel).toBe(true);
+    expect(r?.payload.format).toBe("carousel");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
+    expect(String(r?.ackSms ?? "")).toMatch(/photo carousel/i);
   });
 
   it("honors explicit text-card asks as designed", () => {

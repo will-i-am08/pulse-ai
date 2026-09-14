@@ -1,12 +1,17 @@
 /**
- * Faceless accounts: no face on camera, and usually nameless in creatives too —
- * don't burn the owner's personal name onto slides or into captions.
+ * Faceless accounts: no face on camera.
+ *
+ * Naming:
+ * - Do NOT stamp the owner's personal name onto creatives.
+ * - A real business name (e.g. a café) MAY appear as a masthead.
+ * - Faceless personal brands ("bill calder") stay nameless on tiles.
  */
 
 export type FacelessBrandBits = {
   name?: string;
   facts?: {
     owner_name?: string;
+    business_name?: string;
     faceless?: boolean;
     nameless?: boolean;
   } | null;
@@ -18,6 +23,9 @@ export type FacelessBrandBits = {
 
 type BrandFacts = NonNullable<FacelessBrandBits["facts"]>;
 type OnboardingBits = NonNullable<FacelessBrandBits["onboarding_state"]>;
+
+const BUSINESS_NAME_HINT =
+  /\b(cafe|café|coffee|kitchen|bakery|studio|salon|gym|clinic|dental|barber|shop|store|co\b|company|agency|media|lab|labs|restaurant|bar|inn|hotel|boutique|market|garage|motors|auto|fitness|yoga|spa|brewery|winery|farm|realty|law|legal|plumbing|electric)\b/i;
 
 function factsOf(brand: FacelessBrandBits): BrandFacts {
   return (brand.facts ?? {}) as BrandFacts;
@@ -42,22 +50,46 @@ export function isFacelessBrand(brand: FacelessBrandBits): boolean {
 }
 
 /**
- * Faceless ⇒ treat as nameless in creatives unless they opted into naming.
+ * True when we should treat the brand display name as a person's name
+ * (first + last), not a business marque like "Sunrise Cafe".
+ */
+export function looksLikePersonalBrandName(brand: FacelessBrandBits): boolean {
+  const name = (brand.name ?? "").trim();
+  if (!name) return false;
+  if (BUSINESS_NAME_HINT.test(name)) return false;
+  const owner = (factsOf(brand).owner_name ?? "").trim().toLowerCase();
+  if (owner) {
+    const first = owner.split(/\s+/)[0];
+    if (first && name.toLowerCase().includes(first)) return true;
+  }
+  // Two+ alphabetic tokens, no business hint → likely "Bill Calder".
+  const parts = name.split(/\s+/).filter((p) => /[a-zA-Z]{2,}/.test(p));
+  return parts.length >= 2 && parts.length <= 4;
+}
+
+/**
+ * Faceless ⇒ nameless for *personal* stamps unless they opted into naming.
  * Also nameless when facts.nameless is set.
+ * Business marques (café name) are NOT forced nameless just because faceless.
  */
 export function isNamelessCreative(brand: FacelessBrandBits): boolean {
   const facts = factsOf(brand);
   if (facts.nameless === true) return true;
   if (facts.nameless === false) return false;
-  return isFacelessBrand(brand);
+  if (!isFacelessBrand(brand)) return false;
+  // Faceless personal brands: no name stamp. Faceless business pages can keep marque.
+  return looksLikePersonalBrandName(brand) || !brand.name?.trim();
 }
 
 /** Personal names we should not stamp onto creatives for this brand. */
 export function personalNameTokens(brand: FacelessBrandBits): string[] {
   const facts = factsOf(brand);
   const tokens = new Set<string>();
-  for (const raw of [brand.name, facts.owner_name]) {
-    if (!raw?.trim()) continue;
+  const sources: string[] = [];
+  if (facts.owner_name?.trim()) sources.push(facts.owner_name);
+  // Only strip brand.name when it looks like a person, never strip "Sunrise Cafe".
+  if (looksLikePersonalBrandName(brand) && brand.name?.trim()) sources.push(brand.name);
+  for (const raw of sources) {
     for (const part of raw.trim().split(/\s+/)) {
       const t = part.replace(/[^a-zA-Z]/g, "");
       if (t.length >= 2) tokens.add(t.toLowerCase());
@@ -68,24 +100,42 @@ export function personalNameTokens(brand: FacelessBrandBits): string[] {
 
 /**
  * Masthead burned onto photo tiles / quote cards.
- * Faceless/nameless → empty (no "BILL CALDER" stamp).
+ * - Explicit nameless / faceless personal → empty (no "BILL CALDER").
+ * - Real business name (café etc.) → brand / business_name stamp is OK.
  */
 export function overlayMasthead(brand: FacelessBrandBits): string {
   if (isNamelessCreative(brand)) return "";
+  const facts = factsOf(brand);
+  const business = (facts.business_name ?? "").trim();
+  if (business) return business.toUpperCase();
   return (brand.name ?? "").trim().toUpperCase();
 }
 
-/** Prompt line for draft LLMs when the account is faceless/nameless. */
+/** Prompt line for draft LLMs when the account is faceless / nameless-personal. */
 export function facelessPromptLine(brand: FacelessBrandBits): string | null {
   if (!isFacelessBrand(brand) && !isNamelessCreative(brand)) return null;
   const names = personalNameTokens(brand);
   const avoid = names.length
     ? ` Never use these personal names in captions or headlines: ${names.join(", ")}.`
     : "";
-  return `This is a FACELESS account (nameless in creatives too): never show or name the owner on-camera or in copy. Write as a guide/brand voice, not a personal diary.${avoid}`;
+  const face =
+    " Never depict the owner's face or any recognisable person portrait — keep visuals object/scene based.";
+  return `This is a FACELESS account: no face on camera.${face} Write as a guide/brand voice, not a personal diary.${avoid}`;
 }
 
-/** Strip owner/brand personal name leaks from caption/headline copy. */
+/**
+ * Extra photo-prompt constraints for faceless brands — blocks the "random old guy"
+ * portrait fallback that kept showing up on Bill's drafts.
+ */
+export function facelessPhotoConstraint(brand: FacelessBrandBits): string {
+  if (!isFacelessBrand(brand)) return "";
+  return (
+    "Faceless creative: no people, no faces, no portraits, no hands holding product, " +
+    "no model, no human silhouette — scene, object, vehicle, or environment only."
+  );
+}
+
+/** Strip owner personal-name leaks from caption/headline copy. */
 export function stripPersonalNames(text: string, brand: FacelessBrandBits): string {
   let out = text;
   for (const token of personalNameTokens(brand)) {

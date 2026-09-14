@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import {
   query,
   queryOne,
+  putMedia,
   brandVoiceProfileSchema,
   sanitizeChatText,
   type Brand,
@@ -16,8 +18,16 @@ import {
   gradePhotoBundle,
   applyStoryCreative,
   generateHeadline,
+  generatePhotoImage,
+  applyTextTile,
 } from "./imaging.js";
-import { facelessPromptLine, isNamelessCreative, stripPersonalNames } from "./faceless.js";
+import {
+  facelessPromptLine,
+  facelessPhotoConstraint,
+  isFacelessBrand,
+  overlayMasthead,
+  stripPersonalNames,
+} from "./faceless.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
@@ -326,7 +336,8 @@ export async function draftStoryOverlay(
   } catch (err) {
     console.error("draftStoryOverlay failed", err);
   }
-  return { overlay: isNamelessCreative(brand) ? "START HERE" : brand.name.slice(0, 24) };
+  const masthead = overlayMasthead(brand);
+  return { overlay: (masthead || "START HERE").slice(0, 24) };
 }
 
 async function renderTypedSlides(
@@ -467,6 +478,122 @@ export async function generateTypedCarousel(
     ],
   ).catch(() => {});
   return { ok: true, post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
+}
+
+
+/**
+ * Photo + burned-in text carousel (the SMS "make me a carousel with cinematic
+ * car photos + text overlay" path). Each slide is a generated still with a
+ * short overlay — NOT a single feed filler, and NOT a designed tip card.
+ */
+export async function generatePhotoTextCarousel(
+  brand: Brand,
+  pillar: Pillar,
+  opts?: { topicHint?: string | null },
+): Promise<{ post: Post; mediaUrl: string } | null> {
+  const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
+  const facelessLine = facelessPromptLine(brand) ?? "";
+  const noFace = facelessPhotoConstraint(brand);
+  const system = [
+    `You write a swipeable Instagram carousel for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    facelessLine,
+    topic ? `Owner brief (honour the subject matter and vibe): ${topic}` : "",
+    'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
+    "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
+    "photo_prompt must match the owner brief (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
+    noFace || "Prefer object/scene photography unless the brief clearly needs people.",
+    "No text/logos/watermarks in the photo itself — overlay is burned on afterward.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  let caption: string;
+  let slides: Array<{ overlay: string; photoPrompt: string }>;
+  try {
+    const raw = await callLLM({
+      system,
+      messages: [{ role: "user", content: topic ? `Build the carousel for: ${topic}` : `Write today's ${pillar.name} photo carousel.` }],
+      maxTokens: 900,
+    });
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as {
+      caption?: string;
+      slides?: Array<{ overlay?: string; photo_prompt?: string; photoPrompt?: string }>;
+    };
+    caption = stripPersonalNames(sanitizeChatText(String(parsed.caption ?? "")), brand).trim();
+    slides = (parsed.slides ?? [])
+      .map((s) => ({
+        overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
+          .replace(/["']/g, "")
+          .trim()
+          .slice(0, 64),
+        photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
+      }))
+      .filter((s) => s.overlay && s.photoPrompt)
+      .slice(0, 6);
+    if (!caption || slides.length < 3) return null;
+  } catch (err) {
+    console.error("generatePhotoTextCarousel: LLM/parse failed", err);
+    return null;
+  }
+
+  const stockCue =
+    "Authentic royalty-free stock photo, natural or cinematic lighting, shallow depth of field, no text, no logos, no watermark, no UI.";
+  const mediaIds: string[] = [];
+  for (const slide of slides) {
+    const prompt = [slide.photoPrompt, stockCue, noFace].filter(Boolean).join(". ");
+    const img = await generatePhotoImage(prompt);
+    if (!img) {
+      console.error("generatePhotoTextCarousel: photo generation failed for a slide");
+      return null;
+    }
+    const mediaId = randomUUID();
+    await query(
+      `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+       values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
+      [mediaId, brand.id, mediaId],
+    );
+    await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
+    const tiled = await applyTextTile(brand, mediaId, slide.overlay);
+    mediaIds.push(tiled ?? mediaId);
+  }
+  if (mediaIds.length < 3) return null;
+
+  const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, "carousel");
+  const post = await queryOne<Post>(
+    `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
+     values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5, $6::jsonb)
+     returning *`,
+    [
+      brand.id,
+      humanizeCaption(caption),
+      mediaIds,
+      pillar.id,
+      slot.toISOString(),
+      JSON.stringify({
+        generated: true,
+        wants_text: true,
+        photo_carousel: true,
+        slides: mediaIds.length,
+        topic_hint: topic || null,
+        faceless: isFacelessBrand(brand),
+      }),
+    ],
+  );
+  if (!post) return null;
+  await query(
+    `insert into approval_log (post_id, brand_id, action, actor, after, note)
+     values ($1, $2, 'draft_created', 'system', $3::jsonb, $4)`,
+    [
+      post.id,
+      brand.id,
+      JSON.stringify({ caption, format: "carousel", slides: mediaIds.length, photo: true }),
+      "AI photo+text carousel",
+    ],
+  ).catch(() => {});
+  return { post, mediaUrl: await previewUrlForPost(brand, post, post.media_ids[0]!) };
 }
 
 /** Tip carousel — thin wrapper over typed generator. Always pending_approval. */

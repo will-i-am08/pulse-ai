@@ -2,16 +2,23 @@ import { describe, it, expect } from "vitest";
 import {
   isFacelessBrand,
   isNamelessCreative,
+  looksLikePersonalBrandName,
   overlayMasthead,
   stripPersonalNames,
   facelessPromptLine,
+  facelessPhotoConstraint,
 } from "../faceless.js";
 import { looksLikeGapFillDraftAsk } from "../draftAsk.js";
-import { looksLikeKickoffRequest } from "../kickoffs.js";
+import { inferKickoffFromUserMessage, looksLikeKickoffRequest } from "../kickoffs.js";
 
 type MiniBrand = {
   name: string;
-  facts: { faceless?: boolean; nameless?: boolean; owner_name?: string };
+  facts: {
+    faceless?: boolean;
+    nameless?: boolean;
+    owner_name?: string;
+    business_name?: string;
+  };
   onboarding_state: {
     status?: string;
     transcript?: Array<{ role?: string; content?: string; body?: string }>;
@@ -63,6 +70,25 @@ describe("faceless / nameless creatives", () => {
     const b = mini({ name: "Acme Dental", facts: { faceless: false } });
     expect(isNamelessCreative(b)).toBe(false);
     expect(overlayMasthead(b)).toBe("ACME DENTAL");
+  });
+
+  it("faceless café keeps the business name on the masthead (not a random personal stamp)", () => {
+    const b = mini({
+      name: "Sunrise Cafe",
+      facts: { faceless: true, business_name: "Sunrise Cafe" },
+    });
+    expect(isFacelessBrand(b)).toBe(true);
+    expect(looksLikePersonalBrandName(b)).toBe(false);
+    expect(isNamelessCreative(b)).toBe(false);
+    expect(overlayMasthead(b)).toBe("SUNRISE CAFE");
+    expect(facelessPhotoConstraint(b)).toMatch(/no faces/i);
+  });
+
+  it("does not randomly stamp a personal name just because the account is named after a person", () => {
+    const b = mini({ name: "Bill Calder", facts: { faceless: true, owner_name: "Bill Calder" } });
+    expect(looksLikePersonalBrandName(b)).toBe(true);
+    expect(overlayMasthead(b)).toBe("");
+    expect(facelessPhotoConstraint(b)).toMatch(/no people/i);
   });
 
   it("honors nameless===false override on a faceless brand", () => {

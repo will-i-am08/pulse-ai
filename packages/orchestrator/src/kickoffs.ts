@@ -16,6 +16,7 @@ import {
 import {
   generateTipCarousel,
   generateTypedCarousel,
+  generatePhotoTextCarousel,
   type TypedCarouselKind,
 } from "./formats.js";
 import { personaLines } from "./persona.js";
@@ -171,16 +172,25 @@ export function inferKickoffFromUserMessage(
   }
 
   if (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) {
-    const n = Number((/\b(\d+)\b/.exec(t) ?? [])[1] ?? 2);
-    const count = Math.min(5, Math.max(1, Number.isFinite(n) ? n : 2));
+    const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+    const n = Number((/\b(\d+)\b/.exec(t) ?? [])[1] ?? (wantsCarousel ? 1 : 2));
+    const count = Math.min(5, Math.max(1, Number.isFinite(n) ? n : wantsCarousel ? 1 : 2));
     const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
     const photoish = visuals !== "designed";
     return {
       kind: "draft_posts",
-      payload: { count, visuals },
-      ackSms: photoish
-        ? `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
-        : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
+      payload: {
+        count,
+        visuals,
+        topicHint: t.slice(0, 280),
+        preferCarousel: wantsCarousel,
+        format: wantsCarousel ? "carousel" : undefined,
+      },
+      ackSms: wantsCarousel
+        ? `On it — drafting a ${photoish ? "photo " : ""}carousel from your brief now. I'll text when it's ready to approve.`
+        : photoish
+          ? `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
+          : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
     };
   }
 
@@ -417,14 +427,24 @@ async function draftGeneratedPiece(
   prefer: "carousel" | "filler" = "carousel",
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
+  topicHint?: string | null,
 ): Promise<{ post: Post; mediaUrl: string; kindLabel: string } | null> {
-  // Photo mode: assume a real photo unless the ask is explicitly designed cards.
-  // Tip/step carousels stay designed only when visuals === "designed".
+  // Photo + carousel asks must become photo carousels — never a lone feed filler.
+  if (prefer === "carousel" && visuals === "photo") {
+    const photoCarousel = await generatePhotoTextCarousel(brand, pillar, { topicHint });
+    if (photoCarousel) {
+      return {
+        post: photoCarousel.post,
+        mediaUrl: photoCarousel.mediaUrl,
+        kindLabel: "photo carousel",
+      };
+    }
+    // Do not fall through to a random single filler (that produced the "old guy" feed cards).
+    return null;
+  }
   if (visuals === "photo") {
-    const filler = await generateFillerPost(brand, pillar, { visuals: "photo" });
+    const filler = await generateFillerPost(brand, pillar, { visuals: "photo", topicHint });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
-    // Do NOT fall through to tip/quote carousels — that silently re-ships
-    // plain text cards when the owner asked for (or defaulted to) photos.
     return null;
   }
   if (prefer === "carousel" || visuals === "designed") {
@@ -437,7 +457,7 @@ async function draftGeneratedPiece(
     const tip = await generateTipCarousel(brand, pillar);
     if (tip) return { post: tip.post, mediaUrl: tip.mediaUrl, kindLabel: "tip carousel" };
   }
-  const filler = await generateFillerPost(brand, pillar, { visuals: "designed" });
+  const filler = await generateFillerPost(brand, pillar, { visuals: "designed", topicHint });
   if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
 }
@@ -485,7 +505,7 @@ async function runFirstBatch(
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
     const kind = kinds[i % kinds.length]!;
-    const piece = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals);
+    const piece = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals, String(payload.topicHint ?? ""));
     if (!piece) return null;
     const when = piece.post.scheduled_at
       ? formatSlot(new Date(piece.post.scheduled_at))
@@ -549,12 +569,14 @@ async function runDraftPosts(
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
+    const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
     const piece = await draftGeneratedPiece(
       brand,
       pillar,
-      i % 2 === 0 ? "carousel" : "filler",
+      forceCarousel || i % 2 === 0 ? "carousel" : "filler",
       i % 2 === 0 ? "tip" : "steps",
       visuals,
+      String(payload.topicHint ?? ""),
     );
     if (!piece) return null;
     const when = piece.post.scheduled_at
@@ -648,7 +670,7 @@ async function runTrendOrCompetitorDraft(
 
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
-  const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip", resolveVisualMode(brand, payload));
+  const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip", resolveVisualMode(brand, payload), String(payload.topicHint ?? payload.hint ?? ""));
   if (!drafted) {
     return [
       {
