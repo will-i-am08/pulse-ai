@@ -12,6 +12,7 @@ import {
   generateHeadline,
   applyTextTile,
 } from "./imaging.js";
+import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
@@ -1449,6 +1450,51 @@ export async function processInbound(
           reply: 'Here\'s the updated image ✨. Reply "yes" to approve, or tell me another change.',
           postId: pending.id,
           mediaUrl,
+        };
+      }
+
+      // "Try something different" on a photo carousel must regenerate visuals —
+      // caption-only edits leave the same images (Bill's retest: pasted prior photos).
+      const styleMeta = (pending.style_meta ?? {}) as Record<string, unknown>;
+      if (
+        looksLikeCreativeRedoAsk(message.body) &&
+        styleMeta.photo_carousel === true
+      ) {
+        const topicHint =
+          (typeof styleMeta.topic_hint === "string" && styleMeta.topic_hint) ||
+          (typeof styleMeta.topicHint === "string" && styleMeta.topicHint) ||
+          message.body ||
+          "";
+        await query(
+          `update posts set status = 'rejected', updated_at = now() where id = $1 and brand_id = $2`,
+          [pending.id, brand.id],
+        );
+        await query(
+          `insert into approval_log (post_id, brand_id, action, actor, note)
+           values ($1, $2, 'rejected', $3, $4)`,
+          [pending.id, brand.id, brand.approver, "Owner asked for a different creative — regenerating"],
+        ).catch(() => {});
+        const kicked = await enqueueKickoff(brand, "draft_posts", {
+          payload: {
+            count: 1,
+            visuals: "photo",
+            preferCarousel: true,
+            topicHint: String(topicHint).slice(0, 400),
+            forceFresh: true,
+          },
+          reason: "user_request",
+          sourceMessageId: message.id,
+          ackSms: null,
+        });
+        if (kicked.alreadyQueued) {
+          return {
+            reply: "Already regenerating a fresh photo carousel — I'll text it over shortly.",
+            postId: pending.id,
+          };
+        }
+        return {
+          reply: "On it — ditching that set and generating a fresh photo carousel with new shots. I'll text when it's ready.",
+          postId: pending.id,
         };
       }
 

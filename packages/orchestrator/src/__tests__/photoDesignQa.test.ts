@@ -3,6 +3,7 @@ import {
   heuristicDesignQa,
   designQaSampleIndices,
   designQaFailureSms,
+  looksLikeCreativeRedoAsk,
   type DesignQaFixHints,
 } from "../designQa.js";
 import type { Brand } from "@pulse/shared";
@@ -59,6 +60,7 @@ describe("photo_overlay Design QA", () => {
   it("failure SMS names the brand", () => {
     expect(designQaFailureSms("Test Cafe")).toMatch(/Test Cafe/);
     expect(designQaFailureSms("Test Cafe")).toMatch(/design check/i);
+    expect(designQaFailureSms("Test Cafe")).toMatch(/regenerat/i);
   });
 
   it("DesignQaFixHints shape supports recompose signals", () => {
@@ -69,5 +71,15 @@ describe("photo_overlay Design QA", () => {
     };
     expect(hints.shortenOverlay).toBe(true);
     expect(hints.strongerPhoto).toBe(true);
+  });
+});
+
+
+describe("looksLikeCreativeRedoAsk", () => {
+  it("detects try something different / redo / new photos", () => {
+    expect(looksLikeCreativeRedoAsk("Yeah try something different")).toBe(true);
+    expect(looksLikeCreativeRedoAsk("redo it")).toBe(true);
+    expect(looksLikeCreativeRedoAsk("new photos please")).toBe(true);
+    expect(looksLikeCreativeRedoAsk("make the caption punchier")).toBe(false);
   });
 });

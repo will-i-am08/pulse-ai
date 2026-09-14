@@ -433,6 +433,7 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
+  genOpts?: { forceFresh?: boolean },
 ): Promise<
   | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
   | { qaSms: string }
@@ -440,9 +441,20 @@ async function draftGeneratedPiece(
 > {
   // Photo + carousel asks must become photo carousels — never a lone feed filler.
   if (prefer === "carousel" && visuals === "photo") {
-    const photoCarousel = await generatePhotoTextCarousel(brand, pillar, { topicHint });
+    let photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
+      topicHint,
+      forceFresh: genOpts?.forceFresh,
+    });
     if (photoCarousel && photoCarousel.ok === false) {
-      // Surface Design QA fail SMS (single-draft kickoffs use this instead of a generic fail).
+      console.warn("draftGeneratedPiece: photo carousel QA fail — silent retry with fresher brief");
+      photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
+        topicHint: topicHint
+          ? `${topicHint} (fresh unique cinematic frames, tighter overlays)`
+          : "fresh unique cinematic frames, tighter overlays",
+        forceFresh: true,
+      });
+    }
+    if (photoCarousel && photoCarousel.ok === false) {
       return { qaSms: photoCarousel.qaSms };
     }
     if (photoCarousel && photoCarousel.ok) {
@@ -484,6 +496,40 @@ function isDraftPiece(
   piece: unknown,
 ): piece is { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string } {
   return Boolean(piece && typeof piece === "object" && "post" in piece && "kindLabel" in piece);
+}
+
+/** After hard Design QA failure, queue one more photo-carousel attempt (capped). */
+async function maybeEnqueueQaSelfHeal(
+  brand: Brand,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  const qaRetry = Number(payload.qaRetryCount ?? 0);
+  if (!Number.isFinite(qaRetry) || qaRetry >= 1) return false;
+  if (resolveVisualMode(brand, payload) !== "photo") return false;
+  const baseHint = String(payload.topicHint ?? payload.hint ?? "").trim();
+  const topicHint = (
+    baseHint
+      ? `${baseHint} (fresh unique frames, new angles, tighter overlays)`
+      : "fresh unique cinematic frames, tighter overlays"
+  ).slice(0, 400);
+  try {
+    await enqueueKickoff(brand, "draft_posts", {
+      payload: {
+        count: 1,
+        visuals: "photo",
+        preferCarousel: true,
+        topicHint,
+        forceFresh: true,
+        qaRetryCount: qaRetry + 1,
+      },
+      reason: "system",
+      ackSms: null,
+    });
+    return true;
+  } catch (err) {
+    console.error("maybeEnqueueQaSelfHeal: enqueue failed", err);
+    return false;
+  }
 }
 
 /** SMS results that never went through the mid-batch stream (total failure / early exit). */
@@ -529,7 +575,15 @@ async function runFirstBatch(
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     const pillar = pillars[i % pillars.length]!;
     const kind = kinds[i % kinds.length]!;
-    const piece = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals, String(payload.topicHint ?? ""));
+    const piece = await draftGeneratedPiece(
+      brand,
+      pillar,
+      "carousel",
+      kind,
+      visuals,
+      String(payload.topicHint ?? ""),
+      { forceFresh: payload.forceFresh === true },
+    );
     if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
     if (!isDraftPiece(piece)) return null;
     const when = piece.post.scheduled_at
@@ -568,13 +622,15 @@ async function runFirstBatch(
       (r): r is KickoffDrainResult & { __qaOnly: true } =>
         r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
     );
+    const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
         {
           brandId: brand.id,
-          sms:
-            qaFail?.sms ??
-            "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
+          sms: selfHeal
+            ? "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight."
+            : (qaFail?.sms ??
+              "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?"),
         },
       ],
       opts?.deliver,
@@ -616,6 +672,7 @@ async function runDraftPosts(
       i % 2 === 0 ? "tip" : "steps",
       visuals,
       String(payload.topicHint ?? ""),
+      { forceFresh: payload.forceFresh === true },
     );
     if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
     if (!isDraftPiece(piece)) return null;
@@ -654,11 +711,14 @@ async function runDraftPosts(
       (r): r is KickoffDrainResult & { __qaOnly: true } =>
         r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
     );
+    const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
         {
           brandId: brand.id,
-          sms: qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
+          sms: selfHeal
+            ? "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight."
+            : (qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?"),
         },
       ],
       opts?.deliver,
@@ -728,9 +788,25 @@ async function runTrendOrCompetitorDraft(
 
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
-  const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip", resolveVisualMode(brand, payload), String(payload.topicHint ?? payload.hint ?? ""));
+  const drafted = await draftGeneratedPiece(
+    brand,
+    pillar,
+    "carousel",
+    "tip",
+    resolveVisualMode(brand, payload),
+    String(payload.topicHint ?? payload.hint ?? ""),
+    { forceFresh: payload.forceFresh === true },
+  );
   if (isQaSmsFailure(drafted)) {
-    return [{ brandId: brand.id, sms: drafted.qaSms }];
+    const selfHeal = await maybeEnqueueQaSelfHeal(brand, payload);
+    return [
+      {
+        brandId: brand.id,
+        sms: selfHeal
+          ? "That set didn't clear my design check — regenerating a fresh take with new shots. Hang tight."
+          : drafted.qaSms,
+      },
+    ];
   }
   if (!isDraftPiece(drafted)) {
     return [

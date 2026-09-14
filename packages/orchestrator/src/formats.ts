@@ -49,7 +49,7 @@ import {
   storyLinkCta,
 } from "./destinationLinks.js";
 import type { LinkOffer } from "@pulse/shared";
-import { ensureDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
+import { ensureDesignQa, runDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
 import { routeImageJob } from "./modelRouter.js";
 
 /** Brand visual DNA for photo prompts — prefer ./visualDna.js when present. */
@@ -526,13 +526,14 @@ export function wantsResearchedIdeaSlides(topic: string | null | undefined): boo
 export async function generatePhotoTextCarousel(
   brand: Brand,
   pillar: Pillar,
-  opts?: { topicHint?: string | null },
+  opts?: { topicHint?: string | null; forceFresh?: boolean },
 ): Promise<
   | { ok: true; post: Post; mediaUrl: string; mediaUrls: string[] }
   | { ok: false; qaSms: string }
   | null
 > {
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
+  const forceFresh = opts?.forceFresh === true;
   const ideaMode = wantsResearchedIdeaSlides(topic);
   const facelessLine = facelessPromptLine(brand) ?? "";
   const noFace = facelessPhotoConstraint(brand);
@@ -634,6 +635,37 @@ export async function generatePhotoTextCarousel(
 
   const { FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
 
+  const ANGLE_CUES = [
+    "low three-quarter angle, golden-hour rim light, wet asphalt reflections",
+    "eye-level tracking-shot feel, long lens compression, shallow depth of field",
+    "elevated wide establishing frame, misty dawn atmosphere",
+    "tight detail crop of bodywork/wheel, cinematic bokeh city lights",
+    "rear three-quarter, neon night reflections, premium editorial still",
+  ];
+
+  function mutatePhotoPrompt(base: string, pass: number, slideIndex: number): string {
+    const cue = ANGLE_CUES[(slideIndex + pass) % ANGLE_CUES.length]!;
+    return [
+      base,
+      `fresh unique frame (pass ${pass})`,
+      cue,
+      "distinct composition from any prior render — new angle, new lighting, new location detail",
+      "photoreal cinematic photography matching the brief, no text, no watermark, no logo",
+    ].join(". ");
+  }
+
+  // Owner redo / QA retry: diversify prompts before the first fal call so we
+  // don't re-render near-identical frames from the prior pending set.
+  if (forceFresh) {
+    for (let i = 0; i < slides.length; i++) {
+      slides[i]!.photoPrompt = mutatePhotoPrompt(slides[i]!.photoPrompt, 3, i);
+      slides[i]!.overlay = slides[i]!.overlay.slice(0, 40);
+      if (slides[i]!.ideaBlurb) {
+        slides[i]!.ideaBlurb = slides[i]!.ideaBlurb!.slice(0, 120);
+      }
+    }
+  }
+
   async function renderOneSlide(
     slide: { overlay: string; photoPrompt: string; ideaBlurb?: string },
     index: number,
@@ -713,38 +745,103 @@ export async function generatePhotoTextCarousel(
     [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
   );
 
-  const qa = await ensureDesignQa({
+  let qa = await ensureDesignQa({
     brand,
     mediaIds,
     slideTexts,
     layoutKey: "photo_overlay",
     mode: "photo_overlay",
-    recompose: async (_suggest, fixHints?: DesignQaFixHints) => {
+    maxRecomposes: 3,
+    recompose: async (_suggest, fixHints?: DesignQaFixHints, attempt = 1) => {
       const reasonsJoined = (fixHints?.reason ?? "").toLowerCase();
       const wantStrongerPhoto =
         Boolean(fixHints?.strongerPhoto) ||
-        /photo|niche|slop|generic|ai-slop|ai sludge/.test(reasonsJoined);
+        /photo|niche|slop|generic|ai-slop|ai sludge|clone|similar/.test(reasonsJoined);
       const wantShorter =
         Boolean(fixHints?.shortenOverlay) ||
-        /illegib|overflow|clip|margin|too long/.test(reasonsJoined);
+        /illegib|overflow|clip|margin|too long|layout/.test(reasonsJoined);
+
+      const rebuildAll = attempt >= 2;
+      const targets = rebuildAll
+        ? slides.map((_, idx) => idx)
+        : [...new Set([0, Math.floor(slides.length / 2)])].filter((idx) => idx < slides.length);
 
       const next = [...mediaIds];
-      // Regenerate the weakest slide (at least cover) when photo/overlay fails QA.
-      const weakIdx = 0;
-      const rebuilt = await renderOneSlide(slides[weakIdx]!, weakIdx, {
-        strongerPhoto: wantStrongerPhoto || !wantShorter,
-        shortenOverlay: wantShorter || !wantStrongerPhoto,
-      });
-      if (rebuilt) next[weakIdx] = rebuilt;
-      return { mediaIds: next, layoutKey: "photo_overlay" };
+      const nextSlides = slides.map((s) => ({ ...s }));
+      for (const idx of targets) {
+        const slide = nextSlides[idx]!;
+        if (wantStrongerPhoto || rebuildAll) {
+          slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, attempt, idx);
+        }
+        if (wantShorter || attempt >= 2) {
+          slide.overlay = slide.overlay.slice(0, attempt >= 3 ? 28 : 40);
+          if (slide.ideaBlurb) {
+            slide.ideaBlurb = slide.ideaBlurb.slice(0, attempt >= 3 ? 70 : 110);
+          }
+        }
+        const rebuilt = await renderOneSlide(slide, idx, {
+          strongerPhoto: true,
+          shortenOverlay: wantShorter || attempt >= 2,
+        });
+        if (rebuilt) next[idx] = rebuilt;
+      }
+      slides.splice(0, slides.length, ...nextSlides);
+      const nextTexts = slides.map((s) =>
+        [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
+      );
+      return { mediaIds: next, layoutKey: "photo_overlay", slideTexts: nextTexts };
     },
   });
 
+  let finalMediaIds = qa.mediaIds;
+  let qaRecomposed = qa.recomposed;
+
   if (!qa.qa.pass) {
-    return { ok: false, qaSms: designQaFailureSms(brand.name) };
+    // Final full-rebuild self-heal before we ever apologise.
+    console.warn(
+      "generatePhotoTextCarousel: QA still failing after recomposes — full rebuild",
+      qa.qa.reasons,
+    );
+    const rebuiltIds: string[] = [];
+    for (let idx = 0; idx < slides.length; idx++) {
+      const slide = slides[idx]!;
+      slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
+      slide.overlay = slide.overlay.slice(0, 32);
+      if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
+      const id = await renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true });
+      if (!id) {
+        return { ok: false, qaSms: designQaFailureSms(brand.name) };
+      }
+      rebuiltIds.push(id);
+    }
+    const finalTexts = slides.map((s) =>
+      [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
+    );
+    const qa2 = await runDesignQa({
+      brand,
+      mediaIds: rebuiltIds,
+      slideTexts: finalTexts,
+      layoutKey: "photo_overlay",
+      mode: "photo_overlay",
+    });
+    const hardFail = qa2.reasons.some((r) =>
+      /illegib|overflow|empty|recompose failed/i.test(r),
+    );
+    if (!qa2.pass && hardFail) {
+      return { ok: false, qaSms: designQaFailureSms(brand.name) };
+    }
+    if (!qa2.pass) {
+      console.warn(
+        "generatePhotoTextCarousel: soft QA remainders after full rebuild — shipping",
+        qa2.reasons,
+      );
+    }
+    qa = { qa: qa2, recomposed: true, mediaIds: rebuiltIds, attempts: (qa.attempts ?? 0) + 1 };
+    finalMediaIds = rebuiltIds;
+    qaRecomposed = true;
   }
 
-  const finalMediaIds = qa.mediaIds;
+  // keep using finalMediaIds below; replace first assignment
   const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, "carousel");
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
@@ -764,7 +861,7 @@ export async function generatePhotoTextCarousel(
         slides: finalMediaIds.length,
         topic_hint: topic || null,
         faceless: isFacelessBrand(brand),
-        qa_recomposed: qa.recomposed,
+        qa_recomposed: qaRecomposed,
       }),
     ],
   );
@@ -781,7 +878,7 @@ export async function generatePhotoTextCarousel(
         slides: finalMediaIds.length,
         photo: true,
         researched_ideas: ideaMode,
-        qa_recomposed: qa.recomposed,
+        qa_recomposed: qaRecomposed,
       }),
       ideaMode ? "AI photo+text carousel (researched ideas)" : "AI photo+text carousel",
     ],
