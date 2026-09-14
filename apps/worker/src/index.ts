@@ -18,6 +18,7 @@ import { runKickoffLoop } from "./proactive/kickoffLoop.js";
 import { runAutonomyLoop } from "./proactive/autonomyLoop.js";
 import { runRetentionPurgeLoop } from "./proactive/retention.js";
 import { runAdsSyncLoop } from "./proactive/adsSync.js";
+import { runCreativeRefreshLoop } from "./proactive/creativeRefresh.js";
 
 /** Overlap-safe interval runner — skips if the previous tick is still in flight. */
 function guardedInterval(
@@ -192,6 +193,14 @@ async function main(): Promise<void> {
     runSoonMs: 60_000,
   });
 
+  // Weekly creative refresh — library photo → 3 look variants → SMS pick.
+  const creativeRefreshTimer = guardedInterval(
+    "creative-refresh",
+    6 * 60 * 60 * 1000,
+    runCreativeRefreshLoop,
+    { runSoonMs: 180_000 },
+  );
+
   // Weekly data retention purge (design_memory + research_snapshots > RETENTION_DAYS).
   // Cron: Mondays 03:15 local — cheap, overlap-safe via guardedInterval on a long period.
   const retentionTimer = guardedInterval(
@@ -222,6 +231,7 @@ async function main(): Promise<void> {
     clearInterval(kickoffTimer);
     clearInterval(autonomyTimer);
     clearInterval(adsSyncTimer);
+    clearInterval(creativeRefreshTimer);
     clearInterval(retentionTimer);
     process.exit(0);
   };
@@ -230,7 +240,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   logger.info(
-    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video, kip-kickoffs, kip-autonomy, ads-sync, retention",
+    "worker ready — publish, trigger, engagement, voice, gap-fill, chase, competitor watch, niche plan, weekly digest, linq inbound, ai-video, kip-kickoffs, kip-autonomy, ads-sync, creative-refresh, retention",
   );
 }
 

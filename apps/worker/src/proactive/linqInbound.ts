@@ -55,12 +55,12 @@ export async function runLinqInboundLoop(): Promise<void> {
           })
           .catch(() => {});
       }
-      const { reply, mediaUrl } = await processInbound({ brand, message, newMedia });
+      const { reply, mediaUrl, mediaUrls } = await processInbound({ brand, message, newMedia });
       if (reply) {
         await linq.send({
           to: brand.client_phone,
           body: reply,
-          mediaUrls: mediaUrl ? [mediaUrl] : undefined,
+          mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : undefined,
         });
       }
     } catch (err) {

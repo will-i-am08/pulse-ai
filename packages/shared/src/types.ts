@@ -197,6 +197,8 @@ export const photoStyleSchema = z
     common_subjects: z.array(z.string()).default([]),
     framing: z.string().default(""),               // "flat-lay", "candid", "posed portrait"
     recurring_motifs: z.array(z.string()).default([]),
+    /** Niche look pack id (café-warm, salon-clean, …) — see lookPacks. */
+    look_pack: z.string().default(""),
   })
   .default({});
 export type PhotoStyle = z.infer<typeof photoStyleSchema>;
@@ -806,6 +808,10 @@ export interface BusinessFacts {
   differentiators?: string;
   /** Rolling weekly AI video/specialty spend estimate (ops cost guard). */
   ai_spend?: AiSpendFacts;
+  /** Active niche look pack id (café-warm, salon-clean, …). */
+  look_pack?: string;
+  /** Last weekly creative-refresh SMS (organic variant picks). */
+  creative_refresh?: { last_at?: string; week_key?: string };
   /** Preference chosen on signup / pricing before checkout (may differ from `plan`). */
   plan_preference?: BrandPlanFacts;
   /** Confirmed plan after payment UI submit. */

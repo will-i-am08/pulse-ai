@@ -110,6 +110,10 @@ A living profile captured at onboarding and editable by chat:
 | **G — Video + AI gen** | Reels · vision caption · motion · Kling/Runway | ✅ **done** | — |
 | **H — LinkedIn + TikTok** | Outbound SMS connect/publish · H0 aggregator spike (**Direct**, not Postiz) | 🟡 **landing** — see STATUS + [`PLATFORM_AGGREGATOR_SPIKE.md`](PLATFORM_AGGREGATOR_SPIKE.md) | A + deep links; paperwork parallel |
 | **I — Light CRM** | Reply polish · lead card · Zapier/Make webhook · toggles | ✅ **done** (thin) — see [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) | After A–H wave |
+| **V1 — Photo variants** | One MMS → 3 vertical looks → reply 1/2/3 → pending draft | ✅ **done** | C imaging |
+| **V2 — Niche look packs** | Café / salon / gym / tradie / food / retail studios; SMS override | ✅ **done** | V1 |
+| **V3 — Instant demo** | `/d/new` + `/d/[slug]` from website; landing CTA | ✅ **done** | V2 |
+| **V4 — Weekly creative refresh** | Worker parks 3 cuts from library photo when feed goes stale | ✅ **done** | V1+V2 |
 
 **Acceptance snapshot (selected):**
 - **A:** comment/DM gets auto/draft/escalate in minutes; owner can `"send"` a drafted reply from SMS.
@@ -117,7 +121,7 @@ A living profile captured at onboarding and editable by chat:
 - **G:** client video or AI video drafts as Reels, approve-gated.
 - **H:** LinkedIn Company Page + TikTok Direct Post publish from SMS (when Wave 3 ships).
 - **I:** lead card + optional webhook push — **not** a Kip CRM (parked).
-
+- **V1–V4:** photo → 3 looks → pick; look packs; public website demo; weekly refresh SMS — all approval-gated.
 ---
 
 ## Approvals & gating (the real critical path)

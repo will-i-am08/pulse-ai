@@ -551,17 +551,19 @@ export async function handleInbound(
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
-      const { reply, mediaUrl, finishOnboardingBrandId } = await processInbound({
+      const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId } = await processInbound({
         brand,
         message: messageForProcess,
         newMedia,
       });
       if (reply) {
         const toSend = textAckSent ? stripLeadingAck(reply) : reply;
+        const attach =
+          mediaUrls && mediaUrls.length > 0 ? mediaUrls : mediaUrl ? [mediaUrl] : undefined;
         if (toSend) {
-          await sendToBrand(brand.id, toSend, mediaUrl ? [mediaUrl] : undefined, { channel });
-        } else if (mediaUrl) {
-          await sendToBrand(brand.id, "", [mediaUrl], { channel });
+          await sendToBrand(brand.id, toSend, attach, { channel });
+        } else if (attach?.length) {
+          await sendToBrand(brand.id, "", attach, { channel });
         }
       }
       // Onboarding just completed: the ack is already with the owner. Now do
