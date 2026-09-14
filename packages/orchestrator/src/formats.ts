@@ -17,6 +17,7 @@ import {
   applyStoryCreative,
   generateHeadline,
 } from "./imaging.js";
+import { facelessPromptLine, isNamelessCreative, stripPersonalNames } from "./faceless.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
@@ -298,6 +299,7 @@ export async function draftStoryOverlay(
         "Do NOT write a feed-length caption. Output ONLY JSON:",
         '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
+        facelessPromptLine(brand) ?? "",
         profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
         "No hashtags, no emoji spam, no quotes.",
       ]
@@ -315,8 +317,8 @@ export async function draftStoryOverlay(
       overlay?: string;
       cta?: string;
     };
-    const overlay = humanizeCaption(String(parsed.overlay ?? "")).slice(0, 48);
-    let cta = humanizeCaption(String(parsed.cta ?? "")).slice(0, 48);
+    const overlay = stripPersonalNames(humanizeCaption(String(parsed.overlay ?? "")), brand).slice(0, 48);
+    let cta = stripPersonalNames(humanizeCaption(String(parsed.cta ?? "")), brand).slice(0, 48);
     const sticker = String((parsed as { sticker?: string }).sticker ?? "none");
     const q = humanizeCaption(String((parsed as { question_prompt?: string }).question_prompt ?? "")).slice(0, 60);
     if (sticker === "question" && q && !cta) cta = q;
@@ -324,7 +326,7 @@ export async function draftStoryOverlay(
   } catch (err) {
     console.error("draftStoryOverlay failed", err);
   }
-  return { overlay: brand.name.slice(0, 24) };
+  return { overlay: isNamelessCreative(brand) ? "START HERE" : brand.name.slice(0, 24) };
 }
 
 async function renderTypedSlides(

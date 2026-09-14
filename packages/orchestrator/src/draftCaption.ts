@@ -12,6 +12,7 @@ import {
   captionJobPrompt,
   humanizeCaption,
 } from "./humanizeCaption.js";
+import { facelessPromptLine, stripPersonalNames } from "./faceless.js";
 
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -59,6 +60,8 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
       "Never say you cannot see the image.",
   );
   lines.push("Output ONLY the caption text — no preamble, no surrounding quotes, no markdown.");
+  const facelessLine = facelessPromptLine(brand);
+  if (facelessLine) lines.push(facelessLine);
 
   if (profile.tone.length) lines.push(`Tone: ${profile.tone.join(", ")}.`);
   if (profile.dos.length) lines.push(`Do: ${profile.dos.join("; ")}.`);
@@ -329,5 +332,5 @@ export async function draftCaption(
     maxTokens: asReel ? 220 : 400,
   });
 
-  return { caption: humanizeCaption(caption), proposedTime: heuristicProposedTime(notes) };
+  return { caption: stripPersonalNames(humanizeCaption(caption), brand), proposedTime: heuristicProposedTime(notes) };
 }

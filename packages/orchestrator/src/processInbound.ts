@@ -96,6 +96,7 @@ import {
   maybeEnqueueFromKipCommit,
   enqueueKickoff,
 } from "./kickoffs.js";
+import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
   looksLikePhotoBackgroundAsk,
   inferVisualModeFromText,
@@ -194,7 +195,8 @@ const SEND_TO_CRM_RE = /^\s*(send|push|post)\s+(it |this |that )?(to\s+)?(crm|za
 const CRM_SETTINGS_RE =
   /^\s*(crm\s+(settings|webhook|link|connect)|connect\s+crm|set\s+up\s+crm)\b/i;
 
-const DRAFT_FILLER_RE = /\b(draft|write|make|create)\s+(one|it|a\s+post|something)\b|\byou\s+(draft|write|make)\b/i;
+// Gap-fill draft-one detection — see draftAsk.ts
+
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
 const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
 
@@ -1028,8 +1030,11 @@ export async function processInbound(
   // Content plan propose / rebuild (week or month) — apply only on accept.
   // Also catch short confirms like "From scratch" after Kip asked scratch-vs-tweak
   // (freeform chat cannot invoke the plan builder).
-  // Owner asks Kip to go do work (first batch / stock / drafts / trend) → self-kickoff.
-  if (message.body && newMedia.length === 0 && !pending && looksLikeKickoffRequest(message.body)) {
+  // Owner asks Kip to go do work (first batch / stock / drafts / trend / photo carousel)
+  // → self-kickoff. Allow even when a prior draft is still pending approval — a new
+  // creative ask should not stall behind an old "yes/no" (and must not fall through
+  // to the single-filler path that asks for uploads or ships a lone feed card).
+  if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
     const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
     if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
@@ -1664,7 +1669,13 @@ export async function processInbound(
       }
 
       // "Draft one" (in reply to a gap-fill nudge) → generate a held filler post.
-      if (message.body && DRAFT_FILLER_RE.test(message.body) && newMedia.length === 0) {
+      // Skip when the text is a photo/carousel/batch kickoff (handled above).
+      if (
+        message.body &&
+        DRAFT_FILLER_RE.test(message.body) &&
+        !looksLikeKickoffRequest(message.body) &&
+        newMedia.length === 0
+      ) {
         const pillars = await ensurePillars(brand.id);
         const target = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
         if (target) {

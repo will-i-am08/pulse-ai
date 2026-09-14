@@ -15,6 +15,7 @@ import { resolveVisualMode, type VisualMode } from "./visualMode.js";
 import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
+import { facelessPromptLine, stripPersonalNames } from "./faceless.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
@@ -39,12 +40,14 @@ export async function generateFillerPost(
   });
   const formatHint = formatBiasForJob(job);
   const captionJob = captionJobForFormat(formatHint);
+  const facelessLine = facelessPromptLine(brand);
   const system = [
     `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     `Content job for this slot: ${job}. Preferred format bias: ${formatHint}.`,
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
     "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
+    facelessLine ?? "",
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
@@ -69,8 +72,8 @@ export async function generateFillerPost(
   try {
     const drafted = await draftFillerFields(system, pillar.name, wantPhoto);
     if (!drafted) return null;
-    caption = drafted.caption;
-    card = drafted.card;
+    caption = stripPersonalNames(drafted.caption, brand);
+    card = stripPersonalNames(drafted.card, brand);
     photoPrompt = drafted.photoPrompt;
   } catch (err) {
     console.error("generateFillerPost: LLM/parse failed", err);
