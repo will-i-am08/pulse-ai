@@ -353,6 +353,51 @@ async function failKickoff(id: string, error: string): Promise<void> {
   );
 }
 
+/**
+ * Running kickoffs older than this are treated as abandoned (serverless kill /
+ * worker crash after claim). Must exceed worst-case legitimate photo batches.
+ */
+export const STALE_RUNNING_KICKOFF_MS = 12 * 60 * 1000;
+
+const STALE_FAIL_SMS =
+  "That draft run got stuck on my side and I had to stop it — say the word and I'll retry.";
+
+/**
+ * Fail kickoffs left in `running` after a crash/timeout so the brand+kind
+ * unique active index clears and the owner gets an SMS instead of silence.
+ * Mirror of reclaimStaleVoiceJobs — claim is durable, reclaim was missing.
+ */
+export async function reclaimStaleKickoffs(opts?: {
+  now?: Date;
+  staleMs?: number;
+  deliver?: KickoffDeliver;
+}): Promise<KickoffDrainResult[]> {
+  const staleMs = opts?.staleMs ?? STALE_RUNNING_KICKOFF_MS;
+  const cutoff = new Date((opts?.now ?? new Date()).getTime() - staleMs).toISOString();
+  const rows = await query<KipKickoff>(
+    `update kip_kickoffs
+        set status = 'failed',
+            error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
+            completed_at = now(),
+            updated_at = now()
+      where status = 'running'
+        and started_at is not null
+        and started_at < $1::timestamptz
+      returning *`,
+    [cutoff],
+  );
+  if (!rows.length) return [];
+  console.warn("[kickoffs] reclaimed stale running kickoffs", {
+    count: rows.length,
+    ids: rows.map((r) => r.id),
+  });
+  const results: KickoffDrainResult[] = rows.map((r) => ({
+    brandId: r.brand_id,
+    sms: STALE_FAIL_SMS,
+  }));
+  return deliverUnstreamed(results, opts?.deliver);
+}
+
 async function draftGeneratedPiece(
   brand: Brand,
   pillar: Pillar,
@@ -715,16 +760,17 @@ export async function processKickoff(
   }
 }
 
-/** Drain queued kickoffs (worker loop). */
+/** Drain queued kickoffs (worker loop). Reclaims abandoned running jobs first. */
 export async function runKickoffDrain(
   limit = 2,
   opts?: KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
+  const out: KickoffDrainResult[] = [];
+  out.push(...(await reclaimStaleKickoffs({ deliver: opts?.deliver })));
   const rows = await query<KipKickoff>(
     `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
     [limit],
   );
-  const out: KickoffDrainResult[] = [];
   for (const row of rows) {
     const results = await processKickoff(row.id, opts);
     out.push(...results);

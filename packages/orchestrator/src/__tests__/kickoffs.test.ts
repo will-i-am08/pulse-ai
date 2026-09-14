@@ -1,10 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.mock("@pulse/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@pulse/shared")>();
+  return {
+    ...actual,
+    query: vi.fn(async () => []),
+    queryOne: vi.fn(async () => null),
+  };
+});
+
+import { query } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
   inferKickoffFromUserMessage,
   inferKickoffFromKipCommit,
   deliverUnstreamed,
+  reclaimStaleKickoffs,
+  STALE_RUNNING_KICKOFF_MS,
+  runKickoffDrain,
 } from "../kickoffs.js";
+
+const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
 
 describe("looksLikeKickoffRequest", () => {
   it("catches first-batch / stock / no-photos asks", () => {
@@ -87,5 +103,72 @@ describe("deliverUnstreamed", () => {
   it("is a no-op when deliver is omitted", async () => {
     const results = [{ brandId: "b1", sms: "Need pillars before I draft." }];
     await expect(deliverUnstreamed(results)).resolves.toEqual(results);
+  });
+});
+
+describe("reclaimStaleKickoffs", () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue([]);
+  });
+
+  it("fails running kickoffs older than the stale window and delivers SMS", async () => {
+    mockedQuery.mockResolvedValueOnce([
+      {
+        id: "k1",
+        brand_id: "b1",
+        kind: "draft_posts",
+        status: "failed",
+        started_at: "2026-09-14T00:31:05.809Z",
+      },
+    ]);
+    const deliver = vi.fn(async () => {});
+    const now = new Date("2026-09-14T00:45:00.000Z");
+    const out = await reclaimStaleKickoffs({ now, deliver });
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockedQuery.mock.calls[0]!;
+    expect(String(sql)).toMatch(/status = 'failed'/);
+    expect(String(sql)).toMatch(/abandoned running kickoff/);
+    expect(params?.[0]).toBe(
+      new Date(now.getTime() - STALE_RUNNING_KICKOFF_MS).toISOString(),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.brandId).toBe("b1");
+    expect(out[0]?.sms).toMatch(/stuck|stop|retry/i);
+    expect(deliver).toHaveBeenCalledWith(out[0]);
+  });
+
+  it("returns nothing when no stale running rows exist", async () => {
+    mockedQuery.mockResolvedValueOnce([]);
+    const deliver = vi.fn(async () => {});
+    await expect(reclaimStaleKickoffs({ deliver })).resolves.toEqual([]);
+    expect(deliver).not.toHaveBeenCalled();
+  });
+});
+
+describe("runKickoffDrain", () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+  });
+
+  it("reclaims stale running kickoffs before selecting queued rows", async () => {
+    // 1) reclaim query
+    mockedQuery.mockResolvedValueOnce([
+      {
+        id: "stale-1",
+        brand_id: "b-stale",
+        kind: "draft_posts",
+        status: "failed",
+      },
+    ]);
+    // 2) queued select
+    mockedQuery.mockResolvedValueOnce([]);
+    const deliver = vi.fn(async () => {});
+    const out = await runKickoffDrain(2, { deliver });
+    expect(mockedQuery.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(String(mockedQuery.mock.calls[0]![0])).toMatch(/abandoned running kickoff/);
+    expect(String(mockedQuery.mock.calls[1]![0])).toMatch(/status = 'queued'/);
+    expect(out.some((r) => r.brandId === "b-stale")).toBe(true);
+    expect(deliver).toHaveBeenCalled();
   });
 });
