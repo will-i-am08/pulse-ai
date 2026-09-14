@@ -1,6 +1,6 @@
-import { query, queryOne } from "@pulse/shared";
-import type { Message } from "@pulse/shared";
+import { query, queryOne, type Brand, type Message } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { openLoopsPromptBlock, readOpenLoops } from "./speak/openLoops.js";
 
 const DEFAULT_LIMIT = 15;
 // If more history exists than this, summarise the overflow in one LLM call
@@ -11,6 +11,16 @@ function formatMessage(m: Message): string {
   const who = m.direction === "inbound" ? "Client" : "Kip";
   const media = m.media_ids?.length ? ` [${m.media_ids.length} media attached]` : "";
   return `${who}: ${m.body ?? "(no text)"}${media}`;
+}
+
+async function openLoopsBlock(brandId: string): Promise<string> {
+  try {
+    const brand = await queryOne<Pick<Brand, "facts">>(`select facts from brands where id = $1`, [brandId]);
+    if (!brand) return "";
+    return openLoopsPromptBlock(readOpenLoops(brand));
+  } catch {
+    return "";
+  }
 }
 
 export async function buildConversationContext(brandId: string, limit = DEFAULT_LIMIT): Promise<string> {
@@ -27,10 +37,12 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
 
   const total = countRow ? Number(countRow.count) : recent.length;
   const recentText = recent.map(formatMessage).join("\n") || "(no conversation history yet)";
+  const loops = await openLoopsBlock(brandId);
+  const loopsPrefix = loops ? `${loops}\n\n` : "";
 
   const olderCount = total - recent.length;
   if (olderCount <= 0 || total <= SUMMARISE_THRESHOLD) {
-    return recentText;
+    return `${loopsPrefix}${recentText}`;
   }
 
   const older = await query<Message>(
@@ -53,5 +65,5 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
     }
   }
 
-  return `--- Earlier conversation summary ---\n${summary.trim()}\n\n--- Recent messages ---\n${recentText}`;
+  return `${loopsPrefix}--- Earlier conversation summary ---\n${summary.trim()}\n\n--- Recent messages ---\n${recentText}`;
 }

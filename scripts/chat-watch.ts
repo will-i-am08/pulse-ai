@@ -157,17 +157,66 @@ async function tick(): Promise<void> {
     }
   }
 
+  // Heuristic 3: robotic repetition — same opener / same CTA / markdown leakage.
+  const outbound = fresh.filter((m) => m.direction === "outbound" && (m.body ?? "").trim());
+  const repeatedOpeners: string[] = [];
+  const repeatedCtas: string[] = [];
+  const markdownLeaks: string[] = [];
+  const openerCounts = new Map<string, { brand: string; count: number; sample: string }>();
+  const ctaCounts = new Map<string, { brand: string; count: number; sample: string }>();
+  for (const m of outbound) {
+    const body = (m.body ?? "").trim();
+    if (/(\*\*|__|^\s*[-*]\s|^\s*#\s|[—–])/m.test(body)) {
+      markdownLeaks.push(`${m.brand}: markdown/em-dash leak in "${body.slice(0, 80)}…"`);
+    }
+    const opener = body.split(/[.!?\n]/)[0]?.trim().toLowerCase().slice(0, 48) ?? "";
+    if (opener.split(/\s+/).length >= 3) {
+      const key = `${m.brand_id}::${opener}`;
+      const prev = openerCounts.get(key);
+      openerCounts.set(key, {
+        brand: m.brand,
+        count: (prev?.count ?? 0) + 1,
+        sample: body.slice(0, 80),
+      });
+    }
+    const cta =
+      body.match(/\b(want me to|shall i|got a photo|say the word|fire over|reply (yes|yep)|approve)\b/i)?.[0]?.toLowerCase() ??
+      "";
+    if (cta) {
+      const key = `${m.brand_id}::${cta}`;
+      const prev = ctaCounts.get(key);
+      ctaCounts.set(key, {
+        brand: m.brand,
+        count: (prev?.count ?? 0) + 1,
+        sample: body.slice(0, 80),
+      });
+    }
+  }
+  for (const v of openerCounts.values()) {
+    if (v.count >= 2) {
+      repeatedOpeners.push(`${v.brand}: opener ×${v.count} ("${v.sample}…")`);
+    }
+  }
+  for (const v of ctaCounts.values()) {
+    if (v.count >= 2) {
+      repeatedCtas.push(`${v.brand}: CTA "${v.sample.slice(0, 40)}" ×${v.count}`);
+    }
+  }
+
   const transcript = fresh
     .map((m) => `[${m.created_at}] ${m.brand} ${m.direction}/${m.channel}: ${(m.body ?? "").slice(0, 200)}`)
     .join("\n");
 
   const review = await callHaiku(
     "You review Pulse AI's owner-facing chat for bot-quality and UX problems. Be blunt and specific. " +
-      "Flag: nagging/repetitive proactive messages, unanswered owner messages, confusing wording, " +
-      "tone issues, missing acknowledgements, anything that would annoy a paying client. " +
-      "Reply in 3 short bullet points max, or 'All quiet.' if genuinely fine.",
+      "Flag: nagging/repetitive proactive messages, repeated openers or CTAs, unanswered owner messages, " +
+      "markdown/em-dash leakage, confusing wording, tone issues, missing acknowledgements, anything that " +
+      "would annoy a paying client. Reply in 3 short bullet points max, or 'All quiet.' if genuinely fine.",
     `Heuristic findings:\n- nag bursts: ${bursts.length ? bursts.join(" | ") : "none"}\n` +
       `- unanswered inbound: ${silent.length ? silent.join(" | ") : "none"}\n` +
+      `- repeated openers: ${repeatedOpeners.length ? repeatedOpeners.join(" | ") : "none"}\n` +
+      `- repeated CTAs: ${repeatedCtas.length ? repeatedCtas.join(" | ") : "none"}\n` +
+      `- markdown/em-dash leaks: ${markdownLeaks.length ? markdownLeaks.join(" | ") : "none"}\n` +
       `- failed inbound rows: ${failed.length ? failed.map((f: any) => `${f.brand ?? "?"} ${f.channel}: "${f.body}"`).join(" | ") : "none"}\n` +
       `- negative interactions not escalated: ${unhandledNeg.length ? unhandledNeg.map((n: any) => `${n.brand} ${n.kind}: "${n.text}" (${n.status})`).join(" | ") : "none"}\n\n` +
       `Fresh transcript:\n${transcript || "(none)"}`,
@@ -178,6 +227,9 @@ async function tick(): Promise<void> {
     `\n## ${stamp}\n\n**Heuristics**\n\n` +
       `- nag bursts: ${bursts.length ? bursts.join("; ") : "none"}\n` +
       `- unanswered inbound: ${silent.length ? silent.join("; ") : "none"}\n` +
+      `- repeated openers: ${repeatedOpeners.length ? repeatedOpeners.join("; ") : "none"}\n` +
+      `- repeated CTAs: ${repeatedCtas.length ? repeatedCtas.join("; ") : "none"}\n` +
+      `- markdown/em-dash leaks: ${markdownLeaks.length ? markdownLeaks.join("; ") : "none"}\n` +
       `- failed inbound: ${failed.length}\n- unhandled negatives: ${unhandledNeg.length}\n\n` +
       `**Review**\n\n${review}\n`,
   );

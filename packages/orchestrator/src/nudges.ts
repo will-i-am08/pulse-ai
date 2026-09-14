@@ -1,6 +1,5 @@
 import { sanitizeChatText, type Brand } from "@pulse/shared";
-import { personaLines } from "./persona.js";
-import { callLLM } from "./llm.js";
+import { speakSMS } from "./speak/index.js";
 
 // Proactive nudges in Kip's own voice — never a dashboard alert. No quotes round
 // the topic, no ratios, no "queue/pillar/planned" jargon. Just a mate texting.
@@ -17,17 +16,24 @@ function fallbackNudge(topic: string): string {
 
 /**
  * A warm, human nudge that a content area is running light. LLM-generated in the
- * brand's voice, with a human fallback if the model call fails.
+ * brand's voice via Speak (style bank + anti-echo), with a human fallback if the
+ * model call fails.
  */
 export async function gapNudgeMessage(brand: Brand, pillarName: string): Promise<string> {
   const topic = pillarName.toLowerCase();
   try {
-    const system = [
-      ...personaLines(brand),
-      `You're a bit light on ${topic} content this week. Nudge the owner: ask if they've got a photo for it, or offer to draft something so they don't have to lift a finger.`,
-      "Write ONE short, casual text, like you'd send a mate. Mention the topic naturally. No quotes around it, no numbers or ratios, no words like queue, pillar, planned or lined up. Under 25 words. At most one question.",
-    ].join("\n");
-    const text = await callLLM({ system, messages: [{ role: "user", content: "Write the nudge." }], maxTokens: 120 });
+    const text = await speakSMS({
+      brand,
+      mode: "nudge",
+      modeLines: [
+        `You're a bit light on ${topic} content this week. Nudge the owner: ask if they've got a photo for it, or offer to draft something so they don't have to lift a finger.`,
+        "Write ONE short, casual text, like you'd send a mate. Mention the topic naturally. No quotes around it, no numbers or ratios, no words like queue, pillar, planned or lined up. Under 25 words. At most one question.",
+      ],
+      userContent: "Write the nudge.",
+      maxTokens: 120,
+      think: false,
+      updateOpenLoops: false,
+    });
     const clean = sanitizeChatText(text).trim();
     if (clean) return clean;
   } catch {

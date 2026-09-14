@@ -814,6 +814,17 @@ export interface BusinessFacts {
   payment?: BrandPaymentFacts;
   /** Awaiting owner yes/no (or a corrected URL) for a discovered destination link. */
   pending_destination_link?: PendingDestinationLink | null;
+  /**
+   * Kip's private SMS scratchpad (MIRROR-lite): open loops so the next turn
+   * feels continuous. Never dump this verbatim to the owner.
+   */
+  open_loops?: {
+    waiting_on?: string[];
+    promised?: string[];
+    prefs?: string[];
+    energy?: string;
+    updated_at?: string;
+  };
 }
 
 /**
