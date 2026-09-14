@@ -1,7 +1,14 @@
 'use server';
 import 'server-only';
 import { redirect } from 'next/navigation';
-import { query, queryOne, type Brand, type BrandPlanFacts, type BusinessFacts } from '@pulse/shared';
+import {
+  query,
+  queryOne,
+  entitlementsFor,
+  type Brand,
+  type BrandPlanFacts,
+  type BusinessFacts,
+} from '@pulse/shared';
 import { kickOffOnboardingAfterPayment } from '@pulse/orchestrator';
 import { sendToBrand } from '@pulse/gateway';
 import { currentUser } from '@/lib/auth/current-user';
@@ -34,7 +41,10 @@ async function brandForUser(userId: string): Promise<Brand | null> {
 
 /**
  * Payment UI submit — no Stripe. Persists the chosen plan, marks payment as
- * submitted on the brand, and kicks off SMS onboarding. Does not gate /app.
+ * submitted on the brand, and kicks off SMS onboarding.
+ *
+ * Does not gate /app. Plan tier is preference-only until Stripe; see
+ * `@pulse/shared` `entitlementsFor()` (enforcement off by default).
  */
 export async function submitPaymentAction(formData: FormData): Promise<void> {
   const user = await currentUser();
@@ -60,6 +70,11 @@ export async function submitPaymentAction(formData: FormData): Promise<void> {
     JSON.stringify(facts),
     brand.id,
   ]);
+
+  // Touch entitlements so the Stripe path has a call site already. While
+  // PLAN_ENFORCEMENT is off this always returns the open Max envelope — never
+  // used to block features or tighten UGC/AI caps.
+  void entitlementsFor(facts);
 
   // Kick off SMS setup only once (first successful UI submit while still pending).
   const status = brand.onboarding_state?.status ?? 'none';

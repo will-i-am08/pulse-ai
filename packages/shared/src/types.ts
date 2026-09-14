@@ -734,7 +734,10 @@ export interface AiSpendFacts {
   spent_usd: number;
 }
 
-/** Plan choice collected on the payment UI (no processor wired yet). */
+/**
+ * Plan choice collected on signup / payment UI.
+ * Preference only until Stripe — see `plan.ts` entitlements (enforcement off).
+ */
 export interface BrandPlanFacts {
   tier: "pro" | "max";
   /** Billing interval — annual is shown as monthly equivalent on the landing page. */
@@ -742,7 +745,10 @@ export interface BrandPlanFacts {
   selected_at?: string;
 }
 
-/** Fake / future payment markers on the brand. Not a paywall. */
+/**
+ * Payment UI / future billing markers on the brand.
+ * Not a paywall — must not block /app or product features until Stripe.
+ */
 export interface BrandPaymentFacts {
   /** Set when the owner submits the payment UI (Stripe not connected yet). */
   submitted_at?: string;
