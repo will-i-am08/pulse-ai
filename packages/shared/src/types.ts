@@ -88,6 +88,13 @@ export interface AiVideoJob {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  /** t2v (default) or ugc multi-scene pipeline */
+  kind?: "t2v" | "ugc";
+  /** organic | ads | both — where the UGC output is meant to go */
+  destination?: "organic" | "ads" | "both";
+  /** Script/models/retune state for UGC jobs */
+  pipeline?: Record<string, unknown>;
+  preset_version?: string | null;
 }
 
 /** Kip self-kickoff job — work Kip queues for itself (user ask, verbal commit, or proactive). */

@@ -14,6 +14,7 @@ import { ensurePillars } from "./pillars.js";
 import { storeVideoAsset, storePhotoAsset, extractVideoFrames } from "./video.js";
 import { costEstimateSmsLine, estimateCost } from "./costEstimate.js";
 import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
+import { processUgcJob } from "./ugc/pipeline.js";
 
 /**
  * Phase G4 — AI video generation via gateway models (Kling primary, Runway secondary).
@@ -298,6 +299,8 @@ export async function processAiVideoJob(
 ): Promise<{ brandId: string; sms: string; mediaUrl?: string } | null> {
   const job = await queryOne<AiVideoJob>(`select * from ai_video_jobs where id = $1`, [jobId]);
   if (!job || job.status !== "queued") return null;
+  // UGC multi-scene jobs are handled by processUgcJob (routed stills/motion models).
+  if (job.kind === "ugc") return null;
 
   await query(
     `update ai_video_jobs set status = 'running', updated_at = now() where id = $1`,
@@ -462,7 +465,8 @@ export async function runAiVideoJobDrain(limit = 2): Promise<
   const out: Array<{ brandId: string; sms: string; mediaUrl?: string }> = [];
   for (const row of rows) {
     try {
-      const res = await processAiVideoJob(row.id);
+      const res =
+        row.kind === "ugc" ? await processUgcJob(row.id) : await processAiVideoJob(row.id);
       if (res) {
         console.info(
           JSON.stringify({

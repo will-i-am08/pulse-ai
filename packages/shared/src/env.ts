@@ -54,6 +54,32 @@ const serverEnvSchema = z.object({
   /** Purge design_memory / research_snapshots older than this many days (worker weekly). */
   RETENTION_DAYS: z.coerce.number().int().min(30).default(180),
   FAL_KEY: z.string().optional(),
+  /** UGC still primary: nano_banana | flux_dev | seedream */
+  UGC_STILL_MODEL: z.string().default("nano_banana"),
+  /** Comma-separated still fallbacks tried on failure. */
+  UGC_STILL_FALLBACKS: z.string().default("flux_dev,seedream"),
+  /** UGC motion primary: kling | seedance | wan */
+  UGC_MOTION_MODEL: z.string().default("kling"),
+  /** Comma-separated motion fallbacks (Seedance etc.). */
+  UGC_MOTION_FALLBACKS: z.string().default("seedance,wan"),
+  /** Optional fal path overrides (keep swappable without code changes). */
+  FAL_NANO_BANANA_MODEL: z.string().default("fal-ai/nano-banana"),
+  FAL_FLUX_STILL_MODEL: z.string().default("fal-ai/flux/dev"),
+  FAL_SEEDREAM_MODEL: z.string().default("fal-ai/bytedance/seedream/v4/text-to-image"),
+  FAL_KLING_I2V_MODEL: z.string().default("fal-ai/kling-video/v2.1/standard/image-to-video"),
+  /** ByteDance Seedance — cinematic I2V alternative to Kling. */
+  FAL_SEEDANCE_I2V_MODEL: z.string().default("fal-ai/bytedance/seedance/v1/pro/image-to-video"),
+  FAL_WAN_I2V_MODEL: z.string().default("fal-ai/wan/v2.1/image-to-video"),
+  /** ElevenLabs — conversational UGC voiceover. */
+  ELEVENLABS_API_KEY: z.string().optional(),
+  ELEVENLABS_VOICE_ID: z.string().optional(),
+  /** Raise default UGC job estimate (~$1.50/clip). Soft; monthly cap still applies. */
+  UGC_EST_COST_CENTS: z.coerce.number().int().positive().default(150),
+  /** Phase-2 talking-head UGC (off until product mode passes sniff tests). */
+  UGC_TALKING_HEAD_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
   GRAPH_MODE: z.enum(["mock", "live"]).default("mock"),
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),

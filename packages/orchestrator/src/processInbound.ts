@@ -36,6 +36,13 @@ import {
   queueAiVideoJob,
 } from "./aiVideo.js";
 import {
+  looksLikeUgcRequest,
+  looksLikeUgcRetune,
+  ugcDestinationFromBody,
+  queueUgcJob,
+  queueUgcRetune,
+} from "./ugc/index.js";
+import {
   proposeCampaign,
   activateCampaign,
   getProposedCampaign,
@@ -1068,6 +1075,19 @@ export async function processInbound(
       const cmdSeparate = SEPARATE_CMD_RE.test(body);
       const cmdReel = REEL_CMD_RE.test(body) || looksLikeMakeReelRequest(body);
 
+      // Photos + UGC / ad-creative ask → multi-model UGC pipeline (product refs).
+      if (photos.length >= 1 && looksLikeUgcRequest(body)) {
+        const queued = await queueUgcJob(
+          brand,
+          body || "UGC reel from these product photos",
+          photos.map((p) => p.id),
+          ugcDestinationFromBody(body),
+        );
+        return { reply: queued.sms };
+      }
+
+
+
       // Client-sent video → Reel with visual understanding (Phase G2).
       if (videos.length >= 1) {
         const video = videos[0]!;
@@ -1561,6 +1581,23 @@ export async function processInbound(
       if (message.body && CAMPAIGN_RE.test(message.body)) {
         const proposal = await proposeCampaign(brand, message.body);
         if (proposal) return { reply: proposal.summary };
+      }
+
+      // Soft UGC retune verbs ("more casual", "different hook", …).
+      if (message.body && looksLikeUgcRetune(message.body) && newMedia.length === 0) {
+        const queued = await queueUgcRetune(brand, message.body);
+        return { reply: queued.sms };
+      }
+
+      // "Make a UGC ad/reel" without media — queue if product refs not required, else ask.
+      if (message.body && looksLikeUgcRequest(message.body) && newMedia.length === 0) {
+        const queued = await queueUgcJob(
+          brand,
+          message.body,
+          [],
+          ugcDestinationFromBody(message.body),
+        );
+        return { reply: queued.sms };
       }
 
       // "Generate a video" / AI video → queue async job (Phase G4).
