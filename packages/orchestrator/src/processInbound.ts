@@ -1338,27 +1338,16 @@ export async function processInbound(
     }
 
     case "edit": {
-      if (!pending) {
-        // Thin A6: owner edit of an engagement reply draft (no post pending).
-        const revised = await editLatestDraft(brand, message.body ?? "");
-        if (revised) {
-          return {
-            reply: `Updated suggested reply:\n"${revised}"\n\nReply "approve that reply" or "send" to post it, or tell me another change.`,
-          };
-        }
-        return {
-            reply: "I don't have a pending draft to edit right now. Send a photo or video and I'll draft a caption for it.",
-        };
-      }
-
       // "Put pictures in the background of them" is NOT a Flux grade of a text card —
-      // reject pending drafts and regenerate with real photo creatives.
+      // reject any pending drafts and regenerate with real photo creatives.
+      // Must run even when nothing is pending (prior redo already rejected the batch),
+      // otherwise Kip promises visuals via the LLM and never enqueues work.
       if (looksLikePhotoBackgroundAsk(message.body)) {
         const pendingRows = await query<{ id: string }>(
           `select id from posts where brand_id = $1 and status = 'pending_approval'`,
           [brand.id],
         );
-        const n = Math.min(5, Math.max(pendingRows.length || 2, 2));
+        const n = Math.min(5, Math.max(pendingRows.length || 4, 2));
         if (pendingRows.length) {
           await query(
             `update posts set status = 'rejected', updated_at = now()
@@ -1381,7 +1370,22 @@ export async function processInbound(
         }
         const etaMin = Math.max(2, Math.ceil(n / 3) * 2);
         return {
-          reply: `Yeah sure — I'll redo all ${n} with photo backgrounds. Give me about ${etaMin} minutes and I'll text them over.`,
+          reply: pendingRows.length
+            ? `Yeah sure — I'll redo all ${n} with photo backgrounds. Give me about ${etaMin} minutes and I'll text them over.`
+            : `Yeah sure — I'll draft ${n} with photo backgrounds. Give me about ${etaMin} minutes and I'll text them over.`,
+        };
+      }
+
+      if (!pending) {
+        // Thin A6: owner edit of an engagement reply draft (no post pending).
+        const revised = await editLatestDraft(brand, message.body ?? "");
+        if (revised) {
+          return {
+            reply: `Updated suggested reply:\n"${revised}"\n\nReply "approve that reply" or "send" to post it, or tell me another change.`,
+          };
+        }
+        return {
+          reply: "I don't have a pending draft to edit right now. Send a photo or video and I'll draft a caption for it.",
         };
       }
 

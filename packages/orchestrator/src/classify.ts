@@ -124,9 +124,10 @@ export function ruleBasedClassify(
   }
 
   // "Could you put pictures in the background of them?" starts with Could → question,
-  // but with pending drafts it is a visual redo — route as edit so we regenerate
-  // with real photos instead of chatting + re-shipping text cards.
-  if (hasPendingPost && looksLikePhotoBackgroundAsk(text)) {
+  // but it is a visual redo — route as edit so we regenerate with real photos
+  // instead of chatting. Works even with zero pending drafts (e.g. prior batch
+  // already rejected): still enqueue a fresh photo draft_posts kickoff.
+  if (looksLikePhotoBackgroundAsk(text)) {
     return { classification: "edit", confidence: 0.9 };
   }
 
