@@ -21,8 +21,8 @@ describe("brief intent helpers", () => {
   });
 });
 
-describe("kickoff + creative plan honour singular post", () => {
-  it("routes Bill's ask to one photo feed draft (not carousel)", () => {
+describe("kickoff + creative plan default to feed for a post ask", () => {
+  it("defaults Bill's ask to one photo feed draft (carousel still allowed if chosen)", () => {
     const kick = inferKickoffFromUserMessage(BRIEF);
     expect(kick?.kind).toBe("draft_posts");
     expect(kick?.payload.count).toBe(1);
@@ -61,7 +61,7 @@ describe("heuristicBriefCompliance", () => {
     expect(r.pass).toBe(true);
   });
 
-  it("fails carousel surface when brief asked for a single post", () => {
+  it("allows carousel surface when content still hits the brief (a post may be a carousel)", () => {
     const r = heuristicBriefCompliance({
       brief: BRIEF,
       caption: "Cursor vs Copilot: Cursor edits the repo, Copilot completes the line.",
@@ -69,8 +69,7 @@ describe("heuristicBriefCompliance", () => {
       photoPrompts: ["City skyline dusk"],
       surface: "carousel",
     });
-    expect(r.pass).toBe(false);
-    expect(r.reasons.join(" ")).toMatch(/carousel/i);
+    expect(r.pass).toBe(true);
   });
 
   it("reinforceTopicHint appends compliance fix once", () => {

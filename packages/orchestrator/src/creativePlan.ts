@@ -72,13 +72,9 @@ export function planFromOwnerText(
   const topicHint = topicFromText(raw);
   const ideaMode = wantsResearchedIdeaSlides(raw);
   const visuals = inferVisualModeFromText(raw);
-  // Idea-mode carousels only when they actually asked for a carousel / slides —
-  // "a post comparing X" must stay a single feed post.
-  const singularPost =
-    /\b(a|an|one|single)\s+posts?\b/i.test(raw) ||
-    /\bdo\s*up\s+a\s+post\b/i.test(raw) ||
-    (/\bposts?\b/i.test(raw) && !CAROUSEL_ASK_RE.test(raw) && !ideaMode);
-  const preferCarousel = !singularPost && (ideaMode || CAROUSEL_ASK_RE.test(raw));
+  // Prefer carousel when they asked for one (or researched idea slides).
+  // "A post" alone does not forbid carousel — feed is just the default elsewhere.
+  const preferCarousel = ideaMode || CAROUSEL_ASK_RE.test(raw);
   const quality = inferQuality(raw, ideaMode);
 
   return {

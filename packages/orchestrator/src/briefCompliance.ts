@@ -89,10 +89,8 @@ export function heuristicBriefCompliance(input: BriefComplianceInput): BriefComp
     }
   }
 
-  if (looksLikeSingularPostBrief(brief) && input.surface === "carousel") {
-    reasons.push("brief asked for a single post but draft is a carousel");
-    reinforces.push("Deliver ONE feed post (not a multi-slide carousel)");
-  }
+  // "A post" can be a feed card OR a carousel — don't hard-fail format.
+  // Compliance is about whether the CONTENT matches the brief.
 
   // Subject drift: if brief names a clear noun phrase and caption is about hiring/email unrelated.
   if (
