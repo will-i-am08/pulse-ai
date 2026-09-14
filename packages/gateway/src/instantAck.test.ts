@@ -28,53 +28,14 @@ describe("looksLikeProgressCheck", () => {
 });
 
 describe("shouldSendInstantTextAck", () => {
-  it("skips during active onboarding (interview / connect / contact)", () => {
-    for (const status of [
-      "pending",
-      "awaiting_contact",
-      "awaiting_connect",
-      "reading_content",
-      "in_progress",
-      "wrapping_up",
-    ] as const) {
-      expect(shouldSendInstantTextAck({ onboarding_state: { status } }, "sounds good")).toBe(false);
-    }
-  });
-
-  it("skips affirmations and status checks after onboarding", () => {
+  it("never sends thin one-liner text acks (Makes sense / Got you)", () => {
     const done = { onboarding_state: { status: "done" as const } };
+    expect(shouldSendInstantTextAck(done, "can you make it shorter")).toBe(false);
     expect(shouldSendInstantTextAck(done, "Awesome")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "are you done?")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "still working?")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "How's it going?")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "any update")).toBe(false);
-  });
-
-  it("allows normal post-setup chat acks", () => {
+    expect(shouldSendInstantTextAck({ onboarding_state: { status: "none" } }, "hey")).toBe(false);
     expect(
-      shouldSendInstantTextAck({ onboarding_state: { status: "done" } }, "can you make it shorter"),
-    ).toBe(true);
-    expect(
-      shouldSendInstantTextAck({ onboarding_state: { status: "none" } }, "hey can you check this"),
-    ).toBe(true);
-  });
-
-  it("skips plan rebuild asks and scratch confirms", () => {
-    const done = { onboarding_state: { status: "done" as const } };
-    expect(shouldSendInstantTextAck(done, "From scratch")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "Can you rerun the plan build")).toBe(false);
-    expect(shouldSendInstantTextAck(done, "rebuild my niche plan")).toBe(false);
-  });
-
-  it("skips photo-background redo asks so the commitment SMS is the first reply", () => {
-    const done = { onboarding_state: { status: "done" as const } };
-    expect(
-      shouldSendInstantTextAck(
-        done,
-        "Could you put pictures in the background of them? All of them",
-      ),
+      shouldSendInstantTextAck({ onboarding_state: { status: "in_progress" } }, "sounds good"),
     ).toBe(false);
-    expect(shouldSendInstantTextAck(done, "add photo backgrounds to all of these")).toBe(false);
   });
 });
 
