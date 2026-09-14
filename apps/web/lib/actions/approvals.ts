@@ -2,6 +2,7 @@
 import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { applyCorrection } from '@pulse/orchestrator/applyCorrection';
+import { recordApprovedCreativeMemory, storeDesignMemoryRef } from '@pulse/orchestrator';
 import { getPost, updatePost } from '@/lib/data/posts';
 import { logApproval } from '@/lib/data/approval-log';
 
@@ -43,6 +44,12 @@ export async function approvePostAction(formData: FormData): Promise<void> {
     after: { status: 'approved', scheduled_at: scheduledAt },
   });
 
+  void recordApprovedCreativeMemory({
+    brandId,
+    post,
+    source: 'dashboard',
+  });
+
   revalidatePath(`/app/brands/${brandId}`);
   revalidatePath('/app');
   revalidatePath('/app/approvals');
@@ -82,6 +89,12 @@ export async function editAndApprovePostAction(formData: FormData): Promise<void
     after: { status: 'approved', scheduled_at: scheduledAt, caption: afterCaption },
   });
 
+  void recordApprovedCreativeMemory({
+    brandId,
+    post: { ...post, caption: afterCaption },
+    source: 'dashboard',
+  });
+
   revalidatePath(`/app/brands/${brandId}`);
   revalidatePath('/app');
   revalidatePath('/app/approvals');
@@ -105,6 +118,24 @@ export async function rejectPostAction(formData: FormData): Promise<void> {
     after: { status: 'rejected' },
     note: typeof note === 'string' && note.length > 0 ? note : undefined,
   });
+
+  // No rejected status in design_memory — record score 0 on cover for negative signal.
+  const firstMedia = post.media_ids?.[0];
+  if (firstMedia) {
+    void storeDesignMemoryRef({
+      brandId,
+      mediaId: firstMedia,
+      postId: post.id,
+      kind: post.format === 'carousel' ? 'carousel_slide' : post.format === 'story' ? 'story' : 'creative',
+      status: 'approved',
+      score: 0,
+      notes: JSON.stringify({
+        source: 'dashboard',
+        rejected: true,
+        note: typeof note === 'string' ? note.slice(0, 80) : undefined,
+      }).slice(0, 200),
+    }).catch(() => {});
+  }
 
   revalidatePath(`/app/brands/${brandId}`);
   revalidatePath('/app');

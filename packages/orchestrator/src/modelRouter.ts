@@ -1,6 +1,8 @@
 import { getServerEnv } from "@pulse/shared";
 import { costEstimateSmsLine } from "./costEstimate.js";
 import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
+import { pickStillIds } from "./ugc/creativePlan.js";
+import { resolveStillChain } from "./ugc/modelRouter.js";
 
 /**
  * Phase C9 — model router.
@@ -8,6 +10,48 @@ import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
  * generatePhotoImage prefers the fal still chain first, then Replicate Flux Schnell.
  * Designed text slides → Satori composer. Ideogram / Recraft when env models are set.
  */
+
+/** Feed / still quality tier for fal chain selection. */
+export type CreativeQuality = "draft" | "standard" | "premium";
+
+/**
+ * Ordered still model ids for a quality tier.
+ * draft → cheaper/faster first; standard → resolveStillChain defaults; premium → brief-aware pick.
+ */
+export function stillChainForQuality(quality: CreativeQuality, brief?: string): string[] {
+  if (quality === "draft") {
+    return ["flux_dev", "seedream", "nano_banana"];
+  }
+  if (quality === "premium") {
+    return pickStillIds({
+      brief: brief ?? "cinematic premium editorial",
+      hasProductRefs: false,
+    }).ids;
+  }
+  return resolveStillChain().map((e) => e.id);
+}
+
+/** Route a feed photo job to a quality tier (reason for logs / SMS). */
+export function routeFeedPhoto(quality: CreativeQuality): { quality: CreativeQuality; reason: string } {
+  switch (quality) {
+    case "draft":
+      return {
+        quality: "draft",
+        reason: "Draft tier → Flux Dev / Seedream first (faster, cheaper stills)",
+      };
+    case "premium":
+      return {
+        quality: "premium",
+        reason: "Premium tier → brief-aware still pick (cinematic / editorial bias)",
+      };
+    case "standard":
+    default:
+      return {
+        quality: "standard",
+        reason: "Standard tier → default fal still chain (Nano Banana → Flux → Seedream)",
+      };
+  }
+}
 
 export type ImageJob =
   | "photo_edit"

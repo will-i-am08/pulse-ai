@@ -132,6 +132,8 @@ export {
   listRecentDesignMemory,
   listTopDesignMemory,
   updateDesignMemoryStatus,
+  recordApprovedCreativeMemory,
+  buildApprovedCreativeMemoryNotes,
 } from "./designMemory.js";
 export {
   resolveBrandPalette,
@@ -143,6 +145,7 @@ export {
   messageWantsText,
   brandPhotoStyleBits,
   gradePhotoBundle,
+  generatePhotoImage,
 } from "./imaging.js";
 export {
   composeSlide,
@@ -153,9 +156,16 @@ export {
   rolesForCarouselKind,
 } from "./designComposer.js";
 export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer.js";
-export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms } from "./designQa.js";
-export { routeImageJob, specialtyReplicateGenerate, specialtyCostSmsHint } from "./modelRouter.js";
-export type { ImageJob, ImageEngine, RouteDecision } from "./modelRouter.js";
+export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms, designQaSampleIndices } from "./designQa.js";
+export type { DesignQaResult, DesignQaFixHints, DesignQaMode } from "./designQa.js";
+export {
+  routeImageJob,
+  specialtyReplicateGenerate,
+  specialtyCostSmsHint,
+  stillChainForQuality,
+  routeFeedPhoto,
+} from "./modelRouter.js";
+export type { ImageJob, ImageEngine, RouteDecision, CreativeQuality } from "./modelRouter.js";
 export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY } from "./concurrency.js";
 export {
   createInteraction,
@@ -489,3 +499,16 @@ export {
 } from "./humanizeCaption.js";
 export type { CaptionJob } from "./humanizeCaption.js";
 export { qualitySignalsLine } from "./insights.js";
+
+export {
+  planFromOwnerText,
+  planFromKickoffPayload,
+  type CreativePlan,
+  type CreativeSurface,
+  type CreativeQuality as CreativePlanQuality,
+} from "./creativePlan.js";
+export {
+  gatherVisualDna,
+  visualDnaPromptLine,
+  type VisualDna,
+} from "./visualDna.js";

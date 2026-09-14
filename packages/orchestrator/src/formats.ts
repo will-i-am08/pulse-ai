@@ -20,6 +20,7 @@ import {
   generateHeadline,
   generatePhotoImage,
   applyTextTile,
+  brandPhotoStyleBits,
 } from "./imaging.js";
 import {
   facelessPromptLine,
@@ -28,6 +29,7 @@ import {
   overlayMasthead,
   stripPersonalNames,
 } from "./faceless.js";
+import { visualReference } from "./library.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
@@ -47,8 +49,33 @@ import {
   storyLinkCta,
 } from "./destinationLinks.js";
 import type { LinkOffer } from "@pulse/shared";
-import { ensureDesignQa, designQaFailureSms } from "./designQa.js";
+import { ensureDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
 import { routeImageJob } from "./modelRouter.js";
+
+/** Brand visual DNA for photo prompts — prefer ./visualDna.js when present. */
+async function gatherVisualDnaForBrand(brand: Brand): Promise<string> {
+  try {
+    const mod = await import("./visualDna.js");
+    if (typeof mod.gatherVisualDna === "function") {
+      const dna = await mod.gatherVisualDna(brand);
+      if (typeof mod.visualDnaPromptLine === "function") {
+        const line = mod.visualDnaPromptLine(dna);
+        if (line?.trim()) return line.trim();
+      }
+      const block = (dna as { promptBlock?: unknown }).promptBlock;
+      if (typeof block === "string" && block.trim()) return block.trim();
+    }
+  } catch {
+    /* module not shipped yet */
+  }
+  const bits = [
+    visualReference(brand, false),
+    ...brandPhotoStyleBits(brand),
+    facelessPromptLine(brand) ?? "",
+    facelessPhotoConstraint(brand),
+  ].filter(Boolean);
+  return bits.join(". ");
+}
 
 // Post-format handling. When several photos arrive at once we don't guess — we
 // park them as a holding 'draft' carousel and ask "carousel or separate?", then
@@ -500,20 +527,33 @@ export async function generatePhotoTextCarousel(
   brand: Brand,
   pillar: Pillar,
   opts?: { topicHint?: string | null },
-): Promise<{ post: Post; mediaUrl: string; mediaUrls: string[] } | null> {
+): Promise<
+  | { ok: true; post: Post; mediaUrl: string; mediaUrls: string[] }
+  | { ok: false; qaSms: string }
+  | null
+> {
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const ideaMode = wantsResearchedIdeaSlides(topic);
   const facelessLine = facelessPromptLine(brand) ?? "";
   const noFace = facelessPhotoConstraint(brand);
+  const visualDna = await gatherVisualDnaForBrand(brand);
+  let photoQuality: "draft" | "standard" | "premium" = ideaMode ? "premium" : "standard";
+  try {
+    const { planFromOwnerText } = await import("./creativePlan.js");
+    photoQuality = planFromOwnerText(topic || "photo carousel", brand).quality;
+  } catch {
+    /* creativePlan optional */
+  }
   const system = [
     `You write a swipeable Instagram carousel for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
+    visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
     topic ? `Owner brief (honour the subject matter and vibe): ${topic}` : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤10 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<1 sentence: what the idea is + why it works now>"}]}'
+      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤8 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
       : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
-      ? "4 to 5 slides. EACH slide is ONE distinct, concrete, researched idea (name a real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Prefer AI / business ideas grounded in current market demand. Overlay = idea name only. idea_blurb = what it is + why now. No emoji. No personal names."
+      ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
     "photo_prompt must match the owner brief visual (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
     "photo_prompt must read like a real photographer brief: specific make/model or vehicle class if cars, real location/time of day, lens feel — never 'epic AI fantasy' or abstract CGI.",
@@ -539,7 +579,7 @@ export async function generatePhotoTextCarousel(
             : `Write today's ${pillar.name} photo carousel.`,
         },
       ],
-      maxTokens: ideaMode ? 1200 : 900,
+      maxTokens: ideaMode ? 1600 : 900,
       webSearch: ideaMode ? 5 : undefined,
     });
     const startIdx = raw.indexOf("{");
@@ -561,18 +601,22 @@ export async function generatePhotoTextCarousel(
         overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
           .replace(/["']/g, "")
           .trim()
-          .slice(0, ideaMode ? 80 : 64),
+          .slice(0, ideaMode ? 64 : 64),
         photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
         ideaBlurb: stripPersonalNames(
           sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
           brand,
         )
           .trim()
-          .slice(0, 180),
+          .slice(0, ideaMode ? 220 : 180),
       }))
       .filter((s) => s.overlay && s.photoPrompt)
       .slice(0, 6);
     if (!caption || slides.length < 3) return null;
+    // Soft first slide / opener frame is often the weakest photo — drop it when we have 5+.
+    if (ideaMode && slides.length >= 5) {
+      slides = slides.slice(1);
+    }
     // Fold idea blurbs into caption so the SMS preview isn't empty fluff.
     if (ideaMode) {
       const ideaLines = slides
@@ -589,14 +633,40 @@ export async function generatePhotoTextCarousel(
   }
 
   const { FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
-  const mediaIds: string[] = [];
-  for (const slide of slides) {
-    const prompt = [slide.photoPrompt, FEED_PHOTO_REALISM_CUE, noFace].filter(Boolean).join(". ");
-    const img = await generatePhotoImage(prompt);
-    if (!img) {
-      console.error("generatePhotoTextCarousel: photo generation failed for a slide");
-      return null;
+
+  async function renderOneSlide(
+    slide: { overlay: string; photoPrompt: string; ideaBlurb?: string },
+    index: number,
+    opts?: { strongerPhoto?: boolean; shortenOverlay?: boolean },
+  ): Promise<string | null> {
+    const stronger = opts?.strongerPhoto || index === 0;
+    const dnaBit = visualDna || "";
+    let prompt = [
+      slide.photoPrompt,
+      FEED_PHOTO_REALISM_CUE,
+      dnaBit,
+      stronger
+        ? "hero composition, sharp subject, clean background, premium editorial still, photoreal not AI-slop"
+        : "",
+      noFace,
+    ]
+      .filter(Boolean)
+      .join(". ");
+    let img = await generatePhotoImage(prompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+    if (index === 0 && img && !opts?.strongerPhoto) {
+      const retryPrompt = [
+        slide.photoPrompt,
+        FEED_PHOTO_REALISM_CUE,
+        dnaBit,
+        "hero composition, sharp subject, clean background, premium editorial still",
+        noFace,
+      ]
+        .filter(Boolean)
+        .join(". ");
+      const retry = await generatePhotoImage(retryPrompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+      if (retry) img = retry;
     }
+    if (!img) return null;
     const mediaId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
@@ -604,11 +674,77 @@ export async function generatePhotoTextCarousel(
       [mediaId, brand.id, mediaId],
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
-    const tiled = await applyTextTile(brand, mediaId, slide.overlay);
-    mediaIds.push(tiled ?? mediaId);
+
+    let body = ideaMode ? slide.ideaBlurb || undefined : undefined;
+    let eyebrow: string | undefined = ideaMode ? "IDEA" : undefined;
+    let overlay = slide.overlay;
+    if (opts?.shortenOverlay) {
+      overlay = overlay.slice(0, 36);
+      if (body) body = body.slice(0, 90);
+      eyebrow = undefined;
+    }
+    const tiled = await applyTextTile(
+      brand,
+      mediaId,
+      overlay,
+      ideaMode || body
+        ? {
+            body,
+            eyebrow,
+            mixedFonts: ideaMode || Boolean(body),
+          }
+        : undefined,
+    );
+    return tiled ?? mediaId;
+  }
+
+  const mediaIds: string[] = [];
+  for (let i = 0; i < slides.length; i++) {
+    const id = await renderOneSlide(slides[i]!, i);
+    if (!id) {
+      console.error("generatePhotoTextCarousel: photo generation failed for a slide");
+      return null;
+    }
+    mediaIds.push(id);
   }
   if (mediaIds.length < 3) return null;
 
+  const slideTexts = slides.map((s) =>
+    [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
+  );
+
+  const qa = await ensureDesignQa({
+    brand,
+    mediaIds,
+    slideTexts,
+    layoutKey: "photo_overlay",
+    mode: "photo_overlay",
+    recompose: async (_suggest, fixHints?: DesignQaFixHints) => {
+      const reasonsJoined = (fixHints?.reason ?? "").toLowerCase();
+      const wantStrongerPhoto =
+        Boolean(fixHints?.strongerPhoto) ||
+        /photo|niche|slop|generic|ai-slop|ai sludge/.test(reasonsJoined);
+      const wantShorter =
+        Boolean(fixHints?.shortenOverlay) ||
+        /illegib|overflow|clip|margin|too long/.test(reasonsJoined);
+
+      const next = [...mediaIds];
+      // Regenerate the weakest slide (at least cover) when photo/overlay fails QA.
+      const weakIdx = 0;
+      const rebuilt = await renderOneSlide(slides[weakIdx]!, weakIdx, {
+        strongerPhoto: wantStrongerPhoto || !wantShorter,
+        shortenOverlay: wantShorter || !wantStrongerPhoto,
+      });
+      if (rebuilt) next[weakIdx] = rebuilt;
+      return { mediaIds: next, layoutKey: "photo_overlay" };
+    },
+  });
+
+  if (!qa.qa.pass) {
+    return { ok: false, qaSms: designQaFailureSms(brand.name) };
+  }
+
+  const finalMediaIds = qa.mediaIds;
   const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, "carousel");
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
@@ -617,7 +753,7 @@ export async function generatePhotoTextCarousel(
     [
       brand.id,
       humanizeCaption(caption),
-      mediaIds,
+      finalMediaIds,
       pillar.id,
       slot.toISOString(),
       JSON.stringify({
@@ -625,9 +761,10 @@ export async function generatePhotoTextCarousel(
         wants_text: true,
         photo_carousel: true,
         researched_ideas: ideaMode,
-        slides: mediaIds.length,
+        slides: finalMediaIds.length,
         topic_hint: topic || null,
         faceless: isFacelessBrand(brand),
+        qa_recomposed: qa.recomposed,
       }),
     ],
   );
@@ -641,17 +778,19 @@ export async function generatePhotoTextCarousel(
       JSON.stringify({
         caption,
         format: "carousel",
-        slides: mediaIds.length,
+        slides: finalMediaIds.length,
         photo: true,
         researched_ideas: ideaMode,
+        qa_recomposed: qa.recomposed,
       }),
       ideaMode ? "AI photo+text carousel (researched ideas)" : "AI photo+text carousel",
     ],
   ).catch(() => {});
   const mediaUrls = (
-    await Promise.all(mediaIds.map((id) => previewUrlForPost(brand, post, id)))
+    await Promise.all(finalMediaIds.map((id) => previewUrlForPost(brand, post, id)))
   ).filter((u): u is string => Boolean(u));
   return {
+    ok: true,
     post,
     mediaUrl: mediaUrls[0] ?? (await previewUrlForPost(brand, post, post.media_ids[0]!)),
     mediaUrls,

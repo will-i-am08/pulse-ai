@@ -62,7 +62,7 @@ import {
   savePainPointsDraft,
   savePositioningDraft,
 } from "./brandContext.js";
-import { storeDesignMemoryRef } from "./designMemory.js";
+import { recordApprovedCreativeMemory } from "./designMemory.js";
 import {
   sendLatestDraft,
   editLatestDraft,
@@ -1527,20 +1527,12 @@ export async function processInbound(
         postNow,
       });
 
-      // Design-memory hook: remember the first creative on owner-approved posts.
-      const firstMedia = pending.media_ids?.[0];
-      if (firstMedia) {
-        void storeDesignMemoryRef({
-          brandId: brand.id,
-          mediaId: firstMedia,
-          postId: pending.id,
-          kind: pending.format === "carousel" ? "carousel_slide" : pending.format === "story" ? "story" : "creative",
-          status: "approved",
-          notes: pending.caption?.slice(0, 120) ?? null,
-        }).catch(() => {
-          /* non-blocking */
-        });
-      }
+      // Design-memory hook: cover (+ mid slide for long carousels) on owner approve.
+      void recordApprovedCreativeMemory({
+        brandId: brand.id,
+        post: pending,
+        source: "sms",
+      });
 
       const immediate = postNow || shouldPublishImmediately(dests, false);
       const when = immediate

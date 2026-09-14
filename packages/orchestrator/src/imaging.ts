@@ -14,7 +14,7 @@ import {
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { routeImageJob } from "./modelRouter.js";
+import { routeImageJob, stillChainForQuality, type CreativeQuality } from "./modelRouter.js";
 import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
@@ -260,19 +260,28 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
  * Flux Dev → Seedream) used by UGC — better realism + negatives than bare
  * Flux Schnell on Replicate. Falls back to Replicate when fal is unset/fails.
  * Image edits of real uploads still use Replicate Kontext via editImageForBrand.
+ * Optional `opts.quality` selects the still chain (default: standard).
  */
-export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
+export async function generatePhotoImage(
+  prompt: string,
+  aspectRatio = "1:1",
+  opts?: { quality?: CreativeQuality; brief?: string },
+): Promise<Buffer | null> {
   routeImageJob("photo_generate");
   const ratio = aspectRatio.includes(":") ? aspectRatio : "1:1";
+  const quality: CreativeQuality = opts?.quality ?? "standard";
 
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
+    const { resolveStillChain } = await import("./ugc/modelRouter.js");
     const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
     if (falConfigured()) {
+      const chain = resolveStillChain(stillChainForQuality(quality, opts?.brief));
       const routed = await falGenerateImageRouted({
         prompt,
         aspectRatio: ratio,
         negativePrompt: FEED_PHOTO_NEGATIVE,
+        chain,
       });
       if (routed?.buffer?.length) {
         console.info(
@@ -280,6 +289,7 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
             evt: "feed_photo_fal",
             modelId: routed.modelId,
             falId: routed.falId,
+            quality,
           }),
         );
         return sharp(routed.buffer).jpeg({ quality: 88 }).toBuffer();
@@ -493,20 +503,52 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   return nameless ? "START HERE" : brand.name.toUpperCase();
 }
 
-/** Scale overlay type so longer lines still fit inside the safe pad. */
-function overlayFontSize(width: number, text: string): number {
-  const len = text.replace(/\s+/g, " ").trim().length;
-  if (len > 36) return Math.round(width * 0.052);
-  if (len > 28) return Math.round(width * 0.062);
-  if (len > 20) return Math.round(width * 0.072);
-  return Math.round(width * 0.085);
+/**
+ * Horizontal safe inset for burned-in overlays.
+ * Parent padding + child width must NOT both subtract this (that overflows left/right).
+ * ~11% each side leaves room for tall phone crops / MMS letterboxing.
+ */
+export function overlaySafeInset(width: number): number {
+  return Math.max(Math.round(width * 0.11), 48);
 }
+
+/** Scale overlay title so longer lines still fit inside the safe pad. */
+function overlayFontSize(width: number, text: string, hasBody: boolean): number {
+  const len = text.replace(/\s+/g, " ").trim().length;
+  // With a body block, keep the title smaller so detail copy fits.
+  if (hasBody) {
+    if (len > 32) return Math.round(width * 0.042);
+    if (len > 22) return Math.round(width * 0.048);
+    return Math.round(width * 0.055);
+  }
+  if (len > 36) return Math.round(width * 0.048);
+  if (len > 28) return Math.round(width * 0.055);
+  if (len > 20) return Math.round(width * 0.065);
+  return Math.round(width * 0.075);
+}
+
+function overlayBodyFontSize(width: number, text: string): number {
+  const len = text.replace(/\s+/g, " ").trim().length;
+  if (len > 160) return Math.round(width * 0.028);
+  if (len > 100) return Math.round(width * 0.032);
+  return Math.round(width * 0.036);
+}
+
+export type TextTileOptions = {
+  /** Extra detail under the headline (idea blurbs, etc.). */
+  body?: string;
+  /** Small eyebrow above the title (e.g. "AI IDEA"). */
+  eyebrow?: string;
+  /** Force mixed display+body fonts (idea carousels). */
+  mixedFonts?: boolean;
+};
 
 async function renderTile(
   imgBytes: Uint8Array,
   headline: string,
   masthead: string,
   visual?: VisualProfile | null,
+  opts?: TextTileOptions,
 ): Promise<Buffer> {
   const palette = resolveBrandPalette(visual);
   const meta = await sharp(Buffer.from(imgBytes)).metadata();
@@ -514,10 +556,18 @@ async function renderTile(
   const height = meta.height ?? 1350;
   const jpeg = await sharp(Buffer.from(imgBytes)).jpeg({ quality: 90 }).toBuffer();
   const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
-  const fontSize = overlayFontSize(width, headline);
-  const mastheadSize = Math.round(width * 0.048);
-  const pad = Math.round(width * 0.07);
-  const textWidth = width - pad * 2;
+  const body = (opts?.body ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+  const eyebrow = (opts?.eyebrow ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
+  const hasBody = Boolean(body);
+  // Idea slides: Anton title + Inter body so type isn't one flat weight.
+  const titleFont = opts?.mixedFonts || hasBody ? "Anton" : palette.displayFont;
+  const detailFont = opts?.mixedFonts || hasBody ? "Inter" : palette.bodyFont;
+  const fontSize = overlayFontSize(width, headline, hasBody);
+  const bodySize = overlayBodyFontSize(width, body);
+  const mastheadSize = Math.round(width * 0.036);
+  const eyebrowSize = Math.round(width * 0.028);
+  const pad = overlaySafeInset(width);
+  const padY = Math.round(height * 0.045);
   const scrim = hexToRgb(palette.bgFrom);
   const showMasthead = Boolean(masthead?.trim());
 
@@ -562,19 +612,87 @@ async function renderTile(
                 display: "flex",
                 flexWrap: "wrap",
                 justifyContent: "center",
-                maxWidth: `${textWidth}px`,
-                width: `${textWidth}px`,
+                width: "100%",
+                maxWidth: "100%",
                 color: palette.text,
-                fontFamily: palette.bodyFont,
+                fontFamily: detailFont,
                 fontSize: `${mastheadSize}px`,
-                letterSpacing: "0.02em",
+                letterSpacing: "0.08em",
                 textAlign: "center",
-                lineHeight: 1.1,
+                lineHeight: 1.15,
+                textTransform: "uppercase",
               },
               children: masthead,
             },
           },
         ],
+      },
+    });
+  }
+
+  const textStack: Array<Record<string, unknown>> = [];
+  if (eyebrow) {
+    textStack.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          width: "100%",
+          maxWidth: "100%",
+          marginBottom: `${Math.round(height * 0.012)}px`,
+          color: palette.muted,
+          fontFamily: "Inter",
+          fontSize: `${eyebrowSize}px`,
+          fontWeight: 700,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          lineHeight: 1.2,
+        },
+        children: eyebrow,
+      },
+    });
+  }
+  textStack.push({
+    type: "div",
+    props: {
+      style: {
+        display: "flex",
+        flexWrap: "wrap",
+        width: "100%",
+        maxWidth: "100%",
+        color: palette.text,
+        fontFamily: titleFont,
+        fontSize: `${fontSize}px`,
+        lineHeight: 1.1,
+        textTransform: hasBody ? "none" : "uppercase",
+        wordBreak: "break-word",
+        overflowWrap: "break-word",
+      },
+      children: headline,
+    },
+  });
+  if (hasBody) {
+    textStack.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          width: "100%",
+          maxWidth: "100%",
+          marginTop: `${Math.round(height * 0.018)}px`,
+          color: palette.text,
+          fontFamily: detailFont,
+          fontSize: `${bodySize}px`,
+          fontWeight: 400,
+          lineHeight: 1.28,
+          letterSpacing: "0.01em",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+          opacity: 0.92,
+        },
+        children: body,
       },
     });
   }
@@ -588,30 +706,13 @@ async function renderTile(
         left: 0,
         width: `${width}px`,
         display: "flex",
-        padding: `${pad}px`,
-        background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.85), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+        flexDirection: "column",
+        justifyContent: "flex-end",
+        // Pad only — children use width 100% of the content box (do NOT also subtract pad).
+        padding: `${Math.round(pad * 1.35)}px ${pad}px ${padY}px ${pad}px`,
+        background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.9) 0%, rgba(${scrim.r},${scrim.g},${scrim.b},0.72) 55%, rgba(${scrim.r},${scrim.g},${scrim.b},0) 100%)`,
       },
-      children: [
-        {
-          type: "div",
-          props: {
-            style: {
-              display: "flex",
-              flexWrap: "wrap",
-              maxWidth: `${textWidth}px`,
-              width: `${textWidth}px`,
-              color: palette.text,
-              fontFamily: palette.displayFont,
-              fontSize: `${fontSize}px`,
-              lineHeight: 1.08,
-              textTransform: "uppercase",
-              wordBreak: "break-word",
-              overflowWrap: "break-word",
-            },
-            children: headline,
-          },
-        },
-      ],
+      children: textStack,
     },
   });
 
@@ -660,8 +761,7 @@ export async function renderQuoteCard(
 
   const width = 1080;
   const height = 1080;
-  const pad = Math.round(width * 0.11);
-  const textWidth = width - pad * 2;
+  const pad = overlaySafeInset(width);
   const fontSize = Math.round(
     width * (body.length > 90 ? 0.058 : body.length > 50 ? 0.072 : 0.092),
   );
@@ -674,8 +774,8 @@ export async function renderQuoteCard(
           display: "flex",
           flexWrap: "wrap",
           justifyContent: "center",
-          maxWidth: `${textWidth}px`,
-          width: `${textWidth}px`,
+          maxWidth: "100%",
+          width: "100%",
           color: palette.text,
           fontFamily: palette.bodyFont,
           fontSize: `${fontSize}px`,
@@ -698,7 +798,7 @@ export async function renderQuoteCard(
           justifyContent: "center",
           position: "absolute",
           bottom: `${pad}px`,
-          maxWidth: `${textWidth}px`,
+          maxWidth: "100%",
           color: palette.muted,
           fontFamily: palette.displayFont,
           fontSize: `${Math.round(width * 0.03)}px`,
@@ -745,13 +845,24 @@ export async function renderQuoteCard(
   return sharp(png).jpeg({ quality: 88 }).toBuffer();
 }
 
-/** Overlay a headline on a stored image; store + return the new media id (or null). */
-export async function applyTextTile(brand: Brand, mediaId: string, headline: string): Promise<string | null> {
+/** Overlay a headline (and optional body) on a stored image; store + return the new media id (or null). */
+export async function applyTextTile(
+  brand: Brand,
+  mediaId: string,
+  headline: string,
+  opts?: TextTileOptions,
+): Promise<string | null> {
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
     const safeHeadline = stripPersonalNames(headline, brand);
-    const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual);
+    const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
+    const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
+    const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual, {
+      ...opts,
+      body: safeBody,
+      eyebrow: safeEyebrow,
+    });
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
@@ -790,9 +901,8 @@ export async function applyStoryCreative(
     const scrim = hexToRgb(palette.bgFrom);
     const headline = stripPersonalNames(overlay, brand).toUpperCase().slice(0, 48);
     const ctaLine = stripPersonalNames((cta ?? "").trim(), brand).slice(0, 36);
-    const padX = Math.round(width * 0.08);
-    const textWidth = width - padX * 2;
-    const headlineSize = overlayFontSize(width, headline);
+    const padX = overlaySafeInset(width);
+    const headlineSize = overlayFontSize(width, headline, Boolean(ctaLine));
 
     const svg = await satori(
       {
@@ -838,8 +948,8 @@ export async function applyStoryCreative(
                       style: {
                         display: "flex",
                         flexWrap: "wrap",
-                        maxWidth: `${textWidth}px`,
-                        width: `${textWidth}px`,
+                        maxWidth: "100%",
+                        width: "100%",
                         color: palette.text,
                         fontFamily: palette.displayFont,
                         fontSize: `${headlineSize}px`,
@@ -858,8 +968,8 @@ export async function applyStoryCreative(
                           style: {
                             display: "flex",
                             flexWrap: "wrap",
-                            maxWidth: `${textWidth}px`,
-                            width: `${textWidth}px`,
+                            maxWidth: "100%",
+                            width: "100%",
                             marginTop: `${Math.round(height * 0.02)}px`,
                             color: palette.muted,
                             fontFamily: palette.bodyFont,

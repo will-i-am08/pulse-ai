@@ -433,11 +433,19 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-): Promise<{ post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string } | null> {
+): Promise<
+  | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
+  | { qaSms: string }
+  | null
+> {
   // Photo + carousel asks must become photo carousels — never a lone feed filler.
   if (prefer === "carousel" && visuals === "photo") {
     const photoCarousel = await generatePhotoTextCarousel(brand, pillar, { topicHint });
-    if (photoCarousel) {
+    if (photoCarousel && photoCarousel.ok === false) {
+      // Surface Design QA fail SMS (single-draft kickoffs use this instead of a generic fail).
+      return { qaSms: photoCarousel.qaSms };
+    }
+    if (photoCarousel && photoCarousel.ok) {
       return {
         post: photoCarousel.post,
         mediaUrl: photoCarousel.mediaUrl,
@@ -466,6 +474,16 @@ async function draftGeneratedPiece(
   const filler = await generateFillerPost(brand, pillar, { visuals: "designed", topicHint });
   if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
+}
+
+function isQaSmsFailure(piece: unknown): piece is { qaSms: string } {
+  return Boolean(piece && typeof piece === "object" && "qaSms" in piece && typeof (piece as { qaSms: unknown }).qaSms === "string");
+}
+
+function isDraftPiece(
+  piece: unknown,
+): piece is { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string } {
+  return Boolean(piece && typeof piece === "object" && "post" in piece && "kindLabel" in piece);
 }
 
 /** SMS results that never went through the mid-batch stream (total failure / early exit). */
@@ -512,7 +530,8 @@ async function runFirstBatch(
     const pillar = pillars[i % pillars.length]!;
     const kind = kinds[i % kinds.length]!;
     const piece = await draftGeneratedPiece(brand, pillar, "carousel", kind, visuals, String(payload.topicHint ?? ""));
-    if (!piece) return null;
+    if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+    if (!isDraftPiece(piece)) return null;
     const when = piece.post.scheduled_at
       ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
@@ -541,13 +560,21 @@ async function runFirstBatch(
     return result;
   });
 
-  const out = drafted.filter((r): r is KickoffDrainResult => r != null);
+  const out = drafted.filter(
+    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
+  );
   if (!out.length) {
+    const qaFail = drafted.find(
+      (r): r is KickoffDrainResult & { __qaOnly: true } =>
+        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
+    );
     return deliverUnstreamed(
       [
         {
           brandId: brand.id,
-          sms: "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
+          sms:
+            qaFail?.sms ??
+            "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
         },
       ],
       opts?.deliver,
@@ -590,7 +617,8 @@ async function runDraftPosts(
       visuals,
       String(payload.topicHint ?? ""),
     );
-    if (!piece) return null;
+    if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+    if (!isDraftPiece(piece)) return null;
     const when = piece.post.scheduled_at
       ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
@@ -615,12 +643,24 @@ async function runDraftPosts(
     return result;
   });
 
-  const out = drafted.filter((r): r is KickoffDrainResult => r != null);
+  const out = drafted.filter(
+    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
+  );
   if (!out.length) {
     // Must deliver here — unlike successful drafts, this path never streamed SMS mid-batch.
     // Otherwise Kip goes silent after an instant ack while the kickoff result still claims smsCount: 1.
+    // Prefer Design QA fail SMS when the only (or all) photo carousel attempts failed QA.
+    const qaFail = drafted.find(
+      (r): r is KickoffDrainResult & { __qaOnly: true } =>
+        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
+    );
     return deliverUnstreamed(
-      [{ brandId: brand.id, sms: "Couldn't finish those drafts just then — try again in a moment?" }],
+      [
+        {
+          brandId: brand.id,
+          sms: qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
+        },
+      ],
       opts?.deliver,
     );
   }
@@ -689,7 +729,10 @@ async function runTrendOrCompetitorDraft(
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
   const drafted = await draftGeneratedPiece(brand, pillar, "carousel", "tip", resolveVisualMode(brand, payload), String(payload.topicHint ?? payload.hint ?? ""));
-  if (!drafted) {
+  if (isQaSmsFailure(drafted)) {
+    return [{ brandId: brand.id, sms: drafted.qaSms }];
+  }
+  if (!isDraftPiece(drafted)) {
     return [
       {
         brandId: brand.id,

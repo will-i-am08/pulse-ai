@@ -31,6 +31,83 @@ export async function storeDesignMemoryRef(input: {
   );
 }
 
+function memoryKindForPost(format?: string | null): DesignMemoryKind {
+  if (format === "carousel") return "carousel_slide";
+  if (format === "story") return "story";
+  return "creative";
+}
+
+/** Compact JSON-ish notes for approved creative learning (≤200 chars). */
+export function buildApprovedCreativeMemoryNotes(opts: {
+  post: {
+    caption?: string | null;
+    style_meta?: Record<string, unknown> | null;
+  };
+  source: "sms" | "dashboard" | "calendar";
+}): string {
+  const meta = opts.post.style_meta ?? {};
+  const caption = (opts.post.caption ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const payload: Record<string, unknown> = {
+    source: opts.source,
+    caption,
+  };
+  if (meta.photo_carousel === true) payload.photo_carousel = true;
+  if (meta.researched_ideas != null) payload.researched_ideas = meta.researched_ideas;
+  let notes = JSON.stringify(payload);
+  if (notes.length > 200) {
+    payload.caption = caption.slice(0, Math.max(0, 80 - (notes.length - 200)));
+    notes = JSON.stringify(payload).slice(0, 200);
+  }
+  return notes;
+}
+
+/**
+ * On approval, remember cover media — and for carousels with ≥3 slides, also the mid slide.
+ * Non-throwing; at most two storeDesignMemoryRef calls.
+ */
+export async function recordApprovedCreativeMemory(opts: {
+  brandId: string;
+  post: {
+    id: string;
+    format?: string | null;
+    caption?: string | null;
+    media_ids?: string[] | null;
+    style_meta?: Record<string, unknown> | null;
+  };
+  source: "sms" | "dashboard" | "calendar";
+}): Promise<void> {
+  try {
+    const mediaIds = (opts.post.media_ids ?? []).filter(Boolean);
+    if (!mediaIds.length) return;
+
+    const kind = memoryKindForPost(opts.post.format);
+    const notes = buildApprovedCreativeMemoryNotes({
+      post: opts.post,
+      source: opts.source,
+    });
+
+    const indices = [0];
+    if (opts.post.format === "carousel" && mediaIds.length >= 3) {
+      indices.push(Math.floor(mediaIds.length / 2));
+    }
+
+    for (const idx of indices) {
+      const mediaId = mediaIds[idx];
+      if (!mediaId) continue;
+      await storeDesignMemoryRef({
+        brandId: opts.brandId,
+        mediaId,
+        postId: opts.post.id,
+        kind,
+        status: "approved",
+        notes,
+      });
+    }
+  } catch {
+    /* non-blocking design-memory learn */
+  }
+}
+
 /** Recent visual refs for a brand (newest first). */
 export async function listRecentDesignMemory(
   brandId: string,
