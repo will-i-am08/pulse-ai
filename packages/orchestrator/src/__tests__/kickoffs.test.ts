@@ -118,6 +118,11 @@ describe("format-menu outbound gating", () => {
         "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
       ),
     ).toBe(false);
+    expect(
+      looksLikeDraftPreviewOutbound(
+        'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
+      ),
+    ).toBe(false);
   });
 });
 

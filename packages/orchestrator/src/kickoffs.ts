@@ -121,12 +121,15 @@ export function looksLikeFormatMenuOutbound(body: string | null | undefined): bo
 /** Outbound that actually showed a draft for approval. */
 export function looksLikeDraftPreviewOutbound(body: string | null | undefined): boolean {
   if (!body?.trim()) return false;
+  // Low-confidence clarify reuses "Reply yes to approve" without ever showing a draft.
+  if (/Not quite sure what you'?d like/i.test(body)) return false;
   return (
     /Reply\s+["']yes["']\s+to\s+approve/i.test(body) ||
     /\bDraft ready\b/i.test(body) ||
     /\bProposed for\b/i.test(body) ||
     /\bWant me to post it\b/i.test(body) ||
-    /Here's your (Reel|story|carousel|post)\b/i.test(body)
+    /Here's your (Reel|story|carousel|post)\b/i.test(body) ||
+    /Got your photo — drafted this\b/i.test(body)
   );
 }
 
