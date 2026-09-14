@@ -432,15 +432,13 @@ export function stripLeadingAck(reply: string): string {
   return parts.slice(1).join("\n\n").trim();
 }
 
-export function acknowledgeThenContinue(brand: Brand, inbound: string, next: string): string {
-  const nextTrim = (next ?? "").trim();
-  if (!nextTrim) return craftHumanAck(brand, inbound);
-  if (!inbound.trim()) return nextTrim;
-  if (replyAlreadyAcked(nextTrim)) return nextTrim;
-  const ack = craftHumanAck(brand, inbound);
-  if (!ack) return nextTrim;
-  if (nextTrim === ack || nextTrim.startsWith(`${ack}\n`)) return nextTrim;
-  return `${ack}\n\n${nextTrim}`;
+/**
+ * Pass the next beat through as-is.
+ * We no longer prepend "Makes sense, Bill." / "Got you, Bill." — those thin
+ * one-liners sounded robotic. The real reply should stand alone.
+ */
+export function acknowledgeThenContinue(_brand: Brand, _inbound: string, next: string): string {
+  return (next ?? "").trim();
 }
 
 const CONNECT_LINK_FRESH_MS = 14 * 60 * 1000;

@@ -49,32 +49,20 @@ describe("craftHumanAck", () => {
 });
 
 describe("acknowledgeThenContinue", () => {
-  it("goes straight to the next beat on status checks (no wrapping filler)", () => {
-    const out = acknowledgeThenContinue(
-      brandWithName("Bill"),
-      "Are you done?",
-      "Hey Bill — what's your niche?",
-    );
-    expect(out).toBe("Hey Bill — what's your niche?");
-  });
-
-  it("puts a real ack before the next beat", () => {
-    const out = acknowledgeThenContinue(
-      brandWithName("Bill"),
-      "We help busy cafe owners fill weekday mornings",
-      "What's your niche?",
-    );
-    expect(out).toMatch(/^Makes sense/i);
-    expect(out).toContain("\n\nWhat's your niche?");
-  });
-
-  it("does not double-ack when next already opens with one", () => {
-    const out = acknowledgeThenContinue(
-      brandWithName("Bill"),
-      "hey",
-      "Hey Bill!\n\nWhat's your niche?",
-    );
-    expect(out).toBe("Hey Bill!\n\nWhat's your niche?");
+  it("never prepends Makes sense / Got you — passes the next beat through", () => {
+    expect(
+      acknowledgeThenContinue(
+        brandWithName("Bill"),
+        "We help busy cafe owners fill weekday mornings",
+        "What's your niche?",
+      ),
+    ).toBe("What's your niche?");
+    expect(
+      acknowledgeThenContinue(brandWithName("Bill"), "Are you done?", "Hey Bill — what's your niche?"),
+    ).toBe("Hey Bill — what's your niche?");
+    expect(
+      acknowledgeThenContinue(brandWithName("Bill"), "hey", "Hey Bill!\n\nWhat's your niche?"),
+    ).toBe("Hey Bill!\n\nWhat's your niche?");
   });
 });
 

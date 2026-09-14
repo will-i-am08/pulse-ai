@@ -59,44 +59,16 @@ export function looksLikeProgressCheck(text: string): boolean {
   );
 }
 
-/** Instant plain-text acks are for post-setup chat only — and never for pure vibes. */
+/**
+ * Instant plain-text acks ("Makes sense, Bill." / "Got you, Bill.") are OFF.
+ * They read as robotic one-liners before the real reply. Photo acks still fire
+ * elsewhere; typing indicators + the actual reply cover liveness.
+ */
 export function shouldSendInstantTextAck(
-  brand: Pick<Brand, "onboarding_state">,
-  inboundText: string,
+  _brand: Pick<Brand, "onboarding_state">,
+  _inboundText: string,
 ): boolean {
-  const status = brand.onboarding_state?.status;
-  if (
-    status === "pending" ||
-    status === "awaiting_contact" ||
-    status === "awaiting_connect" ||
-    status === "reading_content" ||
-    status === "in_progress" ||
-    status === "wrapping_up"
-  ) {
-    return false;
-  }
-  const t = (inboundText ?? "").trim();
-  if (!t) return false;
-  // Affirmations / thanks get a real reply — no separate "Got you, Bill." SMS.
-  if (looksLikeAffirmation(t)) return false;
-  // Status / progress checks ("how's it going?", "are you done?") — go straight
-  // to the real answer. A standalone "On it — wrapping that up" before the
-  // status SMS feels like filler, not progress.
-  if (looksLikeProgressCheck(t)) return false;
-  // Photo-background redo asks — skip the thin "Makes sense" SMS; the orchestrator
-  // reply is the real commitment ("Yeah sure — on it, ~N min").
-  if (looksLikePhotoBackgroundAsk(t)) return false;
-  // Plan rebuild asks / scratch confirms — avoid a lone "Got you" while research runs;
-  // the plan SMS (or a real holding line) is the reply.
-  if (
-    /^(from\s+)?scratch\b/i.test(t) ||
-    /\b(content|niche)\s+plan\b/i.test(t) ||
-    /\bplan\b[\s\S]{0,20}\b(build|rebuild|re-?run)\b/i.test(t) ||
-    /\b(re-?run|re-?build|re-?do)\b[\s\S]{0,40}\bplan\b/i.test(t)
-  ) {
-    return false;
-  }
-  return true;
+  return false;
 }
 
 /**
