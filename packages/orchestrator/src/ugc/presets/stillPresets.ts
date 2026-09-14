@@ -3,6 +3,10 @@
 export const STILL_NEGATIVE =
   "extra fingers, waxy plastic skin, beauty filter, deformed hands, mismatched eyes, studio lighting, cinematic color grade, CGI, floating product, warped label, beauty retouch, glossy commercial ad";
 
+/** Extra bans for feed photo drafts — stops random AI prop clutter. */
+export const FEED_PHOTO_NEGATIVE =
+  `${STILL_NEGATIVE}, random water bottle, laptop, desktop computer, smartphone in frame, coffee cup unless essential, cluttered desk props, unrelated packaging, plastic CGI look, AI artifact, extra limbs, warped objects, illegible text, watermark, logo, typography in image, poster text, caption burned into photo`;
+
 export function productOnlyStillPrompt(opts: {
   productDescription: string;
   context: string;

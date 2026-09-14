@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { query, queryOne, putMedia, brandVoiceProfileSchema, type Brand, type Pillar, type Post } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { renderQuoteCard, generatePhotoImage } from "./imaging.js";
+import {
+  renderQuoteCard,
+  generatePhotoImage,
+  generateHeadline,
+  applyTextTile,
+} from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { brandContextForPrompt } from "./brandContext.js";
@@ -12,9 +17,10 @@ import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
 
 /**
- * Generate a text-only filler post for a pillar (used when a slot is starving and
- * the client asks the agent to draft one). Always lands as pending_approval —
- * agent-generated content never auto-posts.
+ * Generate a filler post for a pillar (used when a slot is starving and the
+ * client asks the agent to draft one). Always lands as pending_approval —
+ * agent-generated content never auto-posts. Photo mode burns a headline onto
+ * the generated still (models stay text-free; overlay is applied after).
  */
 export async function generateFillerPost(
   brand: Brand,
@@ -43,10 +49,15 @@ export async function generateFillerPost(
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
     wantPhoto
-      ? 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","photo_prompt":"<one vivid sentence describing a realistic photo that fits the post — lifestyle/product/scene, no text overlays, no logos, no watermarks>","card":"<optional 4-12 word fallback line if a photo cannot be generated>"}'
+      ? 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","photo_prompt":"<one vivid sentence: subject + place + lighting that matches THIS post — candid stock-photo realism>","card":"<4-12 word punchy overlay headline for the photo>"}'
       : 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","card":"<a punchy 4-12 word line to display big on a text card>"}',
     wantPhoto
-      ? "Prefer a photographic scene. photo_prompt must describe a real-looking stock/AI photo, not a graphic or text card."
+      ? [
+          "photo_prompt rules: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
+          "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
+          "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
+          "card is the on-image headline (short, readable at a glance).",
+        ].join(" ")
       : "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
   ]
     .filter(Boolean)
@@ -69,13 +80,14 @@ export async function generateFillerPost(
     return null;
   }
 
-  const mediaId = randomUUID();
+  let mediaId = randomUUID();
+  let photoHeadline: string | undefined;
   try {
     let img: Buffer | null = null;
     if (wantPhoto && photoPrompt) {
       const ref = visualReference(brand, false);
       const stockCue =
-        "Authentic royalty-free stock photo look, natural lighting, no text, no logos, no watermark, no UI.";
+        "Authentic royalty-free stock photo, natural lighting, shallow depth of field, no text, no logos, no watermark, no UI, no random props unrelated to the subject.";
       img = await generatePhotoImage(
         ref ? `${photoPrompt}. ${stockCue}. ${ref}` : `${photoPrompt}. ${stockCue}`,
       );
@@ -96,6 +108,15 @@ export async function generateFillerPost(
       [mediaId, brand.id, mediaId],
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
+
+    // Burn headline onto generated photos (models stay text-free).
+    if (wantPhoto) {
+      photoHeadline =
+        (card && card.replace(/["']/g, "").trim()) ||
+        (await generateHeadline(brand, caption));
+      const tiledId = await applyTextTile(brand, mediaId, photoHeadline);
+      if (tiledId) mediaId = tiledId;
+    }
   } catch (err) {
     console.error("generateFillerPost: render/store failed", err);
     return null;
@@ -109,7 +130,14 @@ export async function generateFillerPost(
     format: formatHint === "story" ? "feed" : formatHint === "reel" ? "reel" : formatHint === "carousel" ? "carousel" : "feed",
   });
   caption = humanizeCaption(caption);
-  const styleMeta = { content_job: job, format_bias: formatHint, generated: true };
+  const styleMeta = {
+    content_job: job,
+    format_bias: formatHint,
+    generated: true,
+    ...(wantPhoto
+      ? { wants_text: true, ...(photoHeadline ? { headline: photoHeadline } : {}) }
+      : {}),
+  };
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
      values ($1, $2, $3::uuid[], $4, false, $6::jsonb, 'instagram', 'pending_approval', $5)

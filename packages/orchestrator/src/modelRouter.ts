@@ -4,8 +4,9 @@ import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
 
 /**
  * Phase C9 — model router.
- * Photo restyle/generate → Flux (Replicate). Designed text slides → Satori composer.
- * Ideogram / Recraft only when env models are set (specialty posters / illustrations).
+ * Photo edit → Flux Kontext (Replicate). Photo generate is logged here as Flux;
+ * generatePhotoImage prefers the fal still chain first, then Replicate Flux Schnell.
+ * Designed text slides → Satori composer. Ideogram / Recraft when env models are set.
  */
 
 export type ImageJob =
@@ -66,7 +67,7 @@ export function routeImageJob(job: ImageJob): RouteDecision {
       return {
         engine: "flux",
         model: env.REPLICATE_TEXT_IMAGE_MODEL,
-        reason: "Photo-style text-to-image uses Flux",
+        reason: "Feed T2I prefers fal still router; Replicate Flux is fallback",
       };
     case "designed_slide":
       return {

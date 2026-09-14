@@ -32,6 +32,8 @@ vi.mock("../imaging.js", async (importOriginal) => {
     ...actual,
     generatePhotoImage: vi.fn(async () => null),
     renderQuoteCard: vi.fn(async () => Buffer.from("fake-card")),
+    generateHeadline: vi.fn(async () => "FALLBACK HEADLINE"),
+    applyTextTile: vi.fn(async () => "tiled-media-id"),
   };
 });
 
@@ -76,25 +78,65 @@ describe("generateFillerPost photo mode", () => {
     vi.clearAllMocks();
   });
 
+  const brand = {
+    id: "b1",
+    name: "Bill",
+    brand_voice_profile: {},
+    visual: {},
+  } as any;
+  const pillar = {
+    id: "p1",
+    key: "tips",
+    name: "Tips",
+    description: "Tips",
+    posts_per_week: 3,
+  } as any;
+
   it("returns null instead of a quote card when photo generation fails", async () => {
     const { generateFillerPost } = await import("../fillers.js");
-    const { generatePhotoImage, renderQuoteCard } = await import("../imaging.js");
-    const brand = {
-      id: "b1",
-      name: "Bill",
-      brand_voice_profile: {},
-      visual: {},
-    } as any;
-    const pillar = {
-      id: "p1",
-      key: "tips",
-      name: "Tips",
-      description: "Tips",
-      posts_per_week: 3,
-    } as any;
+    const { generatePhotoImage, renderQuoteCard, applyTextTile } = await import("../imaging.js");
     const out = await generateFillerPost(brand, pillar, { visuals: "photo" });
     expect(out).toBeNull();
     expect(generatePhotoImage).toHaveBeenCalled();
     expect(renderQuoteCard).not.toHaveBeenCalled();
+    expect(applyTextTile).not.toHaveBeenCalled();
+  });
+
+  it("burns card headline onto photo and persists wants_text", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, applyTextTile, generateHeadline } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-1",
+      caption: "A real caption about hiring",
+      media_ids: ["tiled-media-id"],
+    } as any);
+
+    const out = await generateFillerPost(brand, pillar, { visuals: "photo" });
+    expect(out).not.toBeNull();
+    expect(applyTextTile).toHaveBeenCalledWith(
+      brand,
+      expect.any(String),
+      "HIRE FOR SKILL NOT VIBES",
+    );
+    expect(generateHeadline).not.toHaveBeenCalled();
+
+    const insertArgs = vi.mocked(queryOne).mock.calls[0];
+    const styleJson = String(insertArgs?.[1]?.[5] ?? "");
+    const meta = JSON.parse(styleJson);
+    expect(meta.wants_text).toBe(true);
+    expect(meta.headline).toBe("HIRE FOR SKILL NOT VIBES");
+    expect(insertArgs?.[1]?.[2]).toEqual(["tiled-media-id"]);
+  });
+});
+
+describe("FEED_PHOTO_NEGATIVE", () => {
+  it("bans common AI clutter props and on-image typography", async () => {
+    const { FEED_PHOTO_NEGATIVE } = await import("../ugc/presets/stillPresets.js");
+    expect(FEED_PHOTO_NEGATIVE).toMatch(/water bottle/i);
+    expect(FEED_PHOTO_NEGATIVE).toMatch(/laptop/i);
+    expect(FEED_PHOTO_NEGATIVE).toMatch(/typography in image/i);
   });
 });
