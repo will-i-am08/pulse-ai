@@ -43,6 +43,23 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /** Quiet window so rapid SMS from one owner become a single turn. */
 const INBOUND_BURST_MS = 2800;
 
+/**
+ * Extra wait when the owner says "with this photo" but this webhook has no media.
+ * Carriers often deliver the MMS image as a second empty-body message a beat later.
+ */
+const PHOTO_ARRIVAL_WAIT_MS = 4500;
+const PHOTO_ARRIVAL_POLL_MS = 700;
+
+/** Owner clearly meant an attached image/video ("with this photo"). */
+export function refersToAttachedMedia(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return (
+    /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b/i.test(t) ||
+    /\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b/i.test(t)
+  );
+}
+
 /** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */
 export function looksLikeProgressCheck(text: string): boolean {
   const t = (text ?? "").trim();
@@ -400,6 +417,41 @@ export type HandleInboundOpts = {
   resolveBrand?: (from: string) => Promise<Brand | null>;
 };
 
+
+async function loadMediaAssets(ids: string[]): Promise<MediaAsset[]> {
+  if (ids.length === 0) return [];
+  return query<MediaAsset>(
+    `select * from media_assets where id = any($1::uuid[]) order by created_at asc`,
+    [ids],
+  );
+}
+
+/** Poll for a sibling inbound in the burst window that already captured media. */
+async function waitForSiblingMedia(
+  brandId: string,
+  message: Message,
+  budgetMs: number,
+): Promise<MediaAsset[]> {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    await sleep(PHOTO_ARRIVAL_POLL_MS);
+    const row = await queryOne<{ media_ids: string[] | null }>(
+      `select media_ids from messages
+       where brand_id = $1
+         and direction = 'inbound'
+         and id <> $2
+         and created_at >= $3::timestamptz - ($4::text || ' milliseconds')::interval
+         and coalesce(cardinality(media_ids), 0) > 0
+       order by created_at desc
+       limit 1`,
+      [brandId, message.id, message.created_at, String(INBOUND_BURST_MS + budgetMs)],
+    );
+    const ids = row?.media_ids?.filter(Boolean) ?? [];
+    if (ids.length > 0) return loadMediaAssets(ids);
+  }
+  return [];
+}
+
 export async function handleInbound(
   inbound: InboundMessage,
   opts?: HandleInboundOpts,
@@ -437,7 +489,29 @@ export async function handleInbound(
       }
     }
 
-    const newMedia = await captureMedia(brand.id, channel, inbound.media);
+    // Webhook sometimes arrives with NumMedia=0 even when Twilio has attachments —
+    // recover via the Message Media subresource before we give up on the photo.
+    let inboundMedia = inbound.media ?? [];
+    if (
+      inboundMedia.length === 0 &&
+      inbound.providerMessageId &&
+      typeof channel.listMessageMedia === "function"
+    ) {
+      try {
+        const recovered = await channel.listMessageMedia(inbound.providerMessageId);
+        if (recovered.length > 0) {
+          console.warn(
+            `handleInbound: recovered ${recovered.length} media via listMessageMedia for ${inbound.providerMessageId}`,
+          );
+          inboundMedia = recovered;
+        }
+      } catch (err) {
+        console.warn(`handleInbound: listMessageMedia failed for ${inbound.providerMessageId}`, err);
+      }
+    }
+
+    let newMedia = await captureMedia(brand.id, channel, inboundMedia);
+    const mediaDownloadFailed = inboundMedia.length > 0 && newMedia.length === 0;
 
     let message: Message;
     try {
@@ -468,7 +542,7 @@ export async function handleInbound(
     // "Makes sense, Bill" SMS before every turn feels robotic.
     // stripLeadingAck drops a leading ack from the orchestrator reply when we
     // already sent one, so we don't double-tap.
-    const photoAckSent = newMedia.some((m) => m.kind === "photo");
+    let photoAckSent = newMedia.some((m) => m.kind === "photo");
     const inboundText = (inbound.body ?? "").trim();
 
     // If another inbound from this brand landed in the last few seconds, this
@@ -503,10 +577,90 @@ export async function handleInbound(
       }
     }
 
+    // Text said "with this photo" but media wasn't on this webhook — wait briefly
+    // for a sibling MMS (empty-body image) before we tell them it never arrived.
+    // In a text burst (retries), only the latest message should wait/reply.
+    if (
+      !newMedia.length &&
+      !mediaDownloadFailed &&
+      inboundText &&
+      refersToAttachedMedia(inboundText)
+    ) {
+      await sleep(INBOUND_BURST_MS);
+      const latestInBurst = await queryOne<{ id: string }>(
+        `select id from messages
+         where brand_id = $1
+           and direction = 'inbound'
+           and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
+         order by created_at desc
+         limit 1`,
+        [brand.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+      );
+      if (latestInBurst && latestInBurst.id !== message.id) {
+        return { brandId: brand.id, messageId: message.id };
+      }
+      const siblingMedia = await waitForSiblingMedia(brand.id, message, PHOTO_ARRIVAL_WAIT_MS);
+      if (siblingMedia.length > 0) {
+        newMedia = siblingMedia;
+        await query(`update messages set media_ids = $1::uuid[] where id = $2`, [
+          newMedia.map((m) => m.id),
+          message.id,
+        ]).catch(() => {});
+        message = { ...message, media_ids: newMedia.map((m) => m.id) };
+        photoAckSent = true;
+        await sendToBrand(
+          brand.id,
+          "Got it — styling your photo and writing the caption now, one sec ✨",
+          undefined,
+          { pace: false, channel },
+        ).catch(() => {});
+      } else {
+        await sendToBrand(
+          brand.id,
+          "I didn't get the photo on that text — SMS sometimes drops pictures. Send the image again (on its own is fine) and I'll draft it straight away.",
+          undefined,
+          { pace: false, channel },
+        ).catch(() => {});
+        return { brandId: brand.id, messageId: message.id };
+      }
+    }
+
+    if (mediaDownloadFailed) {
+      await sendToBrand(
+        brand.id,
+        "Got your text but I couldn't download the photo — mind sending the image one more time?",
+        undefined,
+        { pace: false, channel },
+      ).catch(() => {});
+      return { brandId: brand.id, messageId: message.id };
+    }
+
+    // Photo-only MMS (empty body) often arrives a beat before the caption text.
+    // Wait the burst window; if a sibling text shows up, defer so that turn
+    // owns the combined "photo + brief" instead of drafting a captionless post.
+    if (photoAckSent && !inboundText) {
+      await sleep(INBOUND_BURST_MS);
+      const captionSibling = await queryOne<{ id: string }>(
+        `select id from messages
+         where brand_id = $1
+           and direction = 'inbound'
+           and id <> $2
+           and created_at >= $3::timestamptz - ($4::text || ' milliseconds')::interval
+           and coalesce(trim(body), '') <> ''
+         order by created_at desc
+         limit 1`,
+        [brand.id, message.id, message.created_at, String(INBOUND_BURST_MS + 500)],
+      );
+      if (captionSibling) {
+        return { brandId: brand.id, messageId: message.id };
+      }
+    }
+
     // Coalesce rapid SMS: wait briefly, then let only the latest message in the
     // burst run the orchestrator on the combined body (so "tips" + "and quotes"
     // become one turn instead of two racing replies).
     let messageForProcess = message;
+    let mediaForProcess = newMedia;
     if (!photoAckSent && inboundText) {
       await sleep(INBOUND_BURST_MS);
       const latest = await queryOne<{ id: string }>(
@@ -522,8 +676,8 @@ export async function handleInbound(
         // A newer inbound will handle the combined burst.
         return { brandId: brand.id, messageId: message.id };
       }
-      const burst = await query<{ body: string | null }>(
-        `select body from messages
+      const burst = await query<{ body: string | null; media_ids: string[] | null }>(
+        `select body, media_ids from messages
          where brand_id = $1
            and direction = 'inbound'
            and created_at >= $2::timestamptz - ($3::text || ' milliseconds')::interval
@@ -536,6 +690,25 @@ export async function handleInbound(
         .join("\n");
       if (combined && combined !== inboundText) {
         messageForProcess = { ...message, body: combined };
+      }
+      const burstMediaIds = [
+        ...new Set(
+          burst.flatMap((r) => (Array.isArray(r.media_ids) ? r.media_ids : [])).filter(Boolean),
+        ),
+      ];
+      if (burstMediaIds.length > 0) {
+        const merged = await loadMediaAssets(burstMediaIds);
+        if (merged.length > 0) {
+          mediaForProcess = merged;
+          await query(`update messages set media_ids = $1::uuid[] where id = $2`, [
+            merged.map((m) => m.id),
+            message.id,
+          ]).catch(() => {});
+          messageForProcess = {
+            ...messageForProcess,
+            media_ids: merged.map((m) => m.id),
+          };
+        }
       }
     }
 
@@ -554,7 +727,7 @@ export async function handleInbound(
       const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId } = await processInbound({
         brand,
         message: messageForProcess,
-        newMedia,
+        newMedia: mediaForProcess,
       });
       if (reply) {
         const toSend = textAckSent ? stripLeadingAck(reply) : reply;
