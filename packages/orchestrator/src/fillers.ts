@@ -15,7 +15,7 @@ import { resolveVisualMode, type VisualMode } from "./visualMode.js";
 import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
-import { facelessPromptLine, stripPersonalNames } from "./faceless.js";
+import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames } from "./faceless.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
@@ -26,9 +26,10 @@ import { facelessPromptLine, stripPersonalNames } from "./faceless.js";
 export async function generateFillerPost(
   brand: Brand,
   pillar: Pillar,
-  opts?: { visuals?: VisualMode },
+  opts?: { visuals?: VisualMode; topicHint?: string | null },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const visuals = opts?.visuals ?? resolveVisualMode(brand);
+  const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
@@ -41,12 +42,14 @@ export async function generateFillerPost(
   const formatHint = formatBiasForJob(job);
   const captionJob = captionJobForFormat(formatHint);
   const facelessLine = facelessPromptLine(brand);
+  const noFace = facelessPhotoConstraint(brand);
   const system = [
     `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     `Content job for this slot: ${job}. Preferred format bias: ${formatHint}.`,
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
     "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
+    topic ? `Owner brief (honour the subject matter): ${topic}` : "",
     facelessLine ?? "",
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
@@ -58,9 +61,12 @@ export async function generateFillerPost(
       ? [
           "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
+          noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
-        ].join(" ")
+        ]
+          .filter(Boolean)
+          .join(" ")
       : "The card line must be short enough to read at a glance. No quotes around it, no emoji in the card.",
   ]
     .filter(Boolean)
@@ -70,7 +76,11 @@ export async function generateFillerPost(
   let card: string;
   let photoPrompt = "";
   try {
-    const drafted = await draftFillerFields(system, pillar.name, wantPhoto);
+    const drafted = await draftFillerFields(
+      system,
+      topic ? `Brief: ${topic}` : pillar.name,
+      wantPhoto,
+    );
     if (!drafted) return null;
     caption = stripPersonalNames(drafted.caption, brand);
     card = stripPersonalNames(drafted.card, brand);
@@ -88,9 +98,8 @@ export async function generateFillerPost(
       const ref = visualReference(brand, false);
       const stockCue =
         "Authentic royalty-free stock photo, natural lighting, shallow depth of field, no text, no logos, no watermark, no UI, no random props unrelated to the subject.";
-      img = await generatePhotoImage(
-        ref ? `${photoPrompt}. ${stockCue}. ${ref}` : `${photoPrompt}. ${stockCue}`,
-      );
+      const prompt = [photoPrompt, stockCue, noFace, ref].filter(Boolean).join(". ");
+      img = await generatePhotoImage(prompt);
     }
     if (!img) {
       // Photo mode must never silently ship a text card — that is how
