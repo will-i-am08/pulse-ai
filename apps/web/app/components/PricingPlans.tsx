@@ -32,8 +32,8 @@ export function PricingPlans() {
           <p className={styles.planBlurb}>One brand. Everyday posting. You stay in the thread.</p>
           <ul className={styles.planList}>
             <li>Instagram, Facebook, X, Threads</li>
-            <li>Drafts in your voice</li>
-            <li>Approvals in the thread</li>
+            <li>Drafts in your voice — approve in the thread</li>
+            <li>Photo styling + light AI UGC clips</li>
             <li>Calendar + content plan</li>
             <li>Weekly check-in + Friday recap</li>
           </ul>
@@ -51,9 +51,9 @@ export function PricingPlans() {
           <ul className={styles.planList}>
             <li>Everything in Pro</li>
             <li>Autopilot with a heads-up</li>
-            <li>Editable memory files</li>
-            <li>Routines you write in a sentence</li>
-            <li>Priority setup with Pulse</li>
+            <li>Full UGC budget + inbox, leads &amp; ads</li>
+            <li>Competitor watch + editable memory</li>
+            <li>Routines + priority setup with Pulse</li>
           </ul>
           <Link className={styles.pillDark} href={`/signup?plan=max&billing=${billingParam}`}>
             Start Max

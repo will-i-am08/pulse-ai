@@ -104,8 +104,8 @@ export function PaymentForm({ initialTier, initialInterval, error }: Props) {
               </p>
               <p className={styles.planBlurb}>
                 {id === 'pro'
-                  ? 'One brand. Everyday posting.'
-                  : 'Autopilot + memory + priority setup.'}
+                  ? 'Everyday posting + light UGC.'
+                  : 'Autopilot, full UGC, inbox & ads.'}
               </p>
             </button>
           );
