@@ -131,6 +131,16 @@ export function ruleBasedClassify(
     return { classification: "edit", confidence: 0.9 };
   }
 
+  // "Can you make me a carousel…?" reads as a question grammatically but is an
+  // instruction to draft — don't siphon it into Q&A / clarify loops.
+  if (
+    /\b(can|could|would|will)\s+you\b/i.test(text) &&
+    /\b(make|draft|create|write|generate|put together|pull together)\b/i.test(text) &&
+    /\b(post|posts|carr?ousel|carr?ousels|reel|story|stories|content|batch)\b/i.test(text)
+  ) {
+    return { classification: "instruction", confidence: 0.9 };
+  }
+
   const looksLikeQuestion =
     text.endsWith("?") || QUESTION_WORDS.some((w) => lower.startsWith(w + " "));
   if (looksLikeQuestion) {

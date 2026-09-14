@@ -63,13 +63,13 @@ export type KickoffDrainOpts = {
 };
 
 const COMMIT_RE =
-  /\b(i('ll| will)|i'm (gonna|going to)|let me|i'll (go )?(ahead|get|pull|draft|make|put|knock|spin)|on it|i('ve)? got (this|you)|leave it (with|to) me|i'll handle)\b/i;
+  /\b(i('ll| will)|i'm (gonna|going to|drafting|on it)|let me|i'll (go )?(ahead|get|pull|draft|make|put|knock|spin)|on it|drafting (a |your |the )?(carr?ousel|post|batch)|i('ve)? got (this|you)|leave it (with|to) me|i'll handle)\b/i;
 
 const CONTENT_WORK_RE =
-  /\b(first batch|starter batch|batch of (posts?|carousels?)|draft(s|ing)?|carousel|post(s)?|stock|generated|visuals?|content|fill(ing)? (your |the )?slots?|put together|pull together)\b/i;
+  /\b(first batch|starter batch|batch of (posts?|carr?ousels?)|draft(s|ing)?|carr?ousel|post(s)?|stock|generated|visuals?|content|fill(ing)? (your |the )?slots?|put together|pull together)\b/i;
 
 const FIRST_BATCH_RE =
-  /\b(first batch|starter batch|first (few|set) of (posts?|carousels?)|start filling|fill my slots?|kick.?off (my )?content)\b/i;
+  /\b(first batch|starter batch|first (few|set) of (posts?|carr?ousels?)|start filling|fill my slots?|kick.?off (my )?content)\b/i;
 
 const STOCK_OR_GENERATED_RE =
   /\b(stock|generated|ai[- ]?(generated|made|created)|synthetic)\b/i;
@@ -77,8 +77,16 @@ const STOCK_OR_GENERATED_RE =
 const NO_PHOTOS_RE =
   /\b(no|don'?t have|dont have|haven'?t got|without|zero)\b.{0,48}\b(photos?|pics?|images?|shots?)\b/i;
 
+/** "make me a carousel" / misspelled carrousel — allow optional a/an before the noun. */
 const DRAFT_POSTS_RE =
-  /\b((draft|make|create|write)\s+(me\s+)?(\d+\s+)?(posts?|carousels?|a post|something)|draft (me )?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b/i;
+  /\b((draft|make|create|write)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|a post|something)|draft (me )?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b/i;
+
+/**
+ * Owner wants a photo/carousel creative but did not attach media and did not
+ * ask to use their own shots — default to generating / sourcing photos.
+ */
+const PHOTO_OR_CAROUSEL_DRAFT_RE =
+  /\b(carr?ousels?).{0,80}\b(photos?|pictures?|pics?|imagery|cinematic|stock|generated|text)\b|\b((cinematic|business|stock|generated)\s+)?(photos?|pictures?).{0,60}\b(carr?ousel|text (over|on|overlay|on top))\b|\b(generate|source|find|get)\s+(the\s+|some\s+|me\s+)?(photos?|pictures?|pics?|imagery|visuals?)\b/i;
 
 const TREND_RE =
   /\b(trend(ing)?|what'?s (hot|new)|newsjack|timely|in the news|cultural moment)\b/i;
@@ -112,7 +120,8 @@ export function looksLikeKickoffRequest(body: string | null | undefined): boolea
   }
   if (STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t)) return true;
   if (DRAFT_POSTS_RE.test(t)) return true;
-  if (TREND_RE.test(t) && /\b(draft|make|post|carousel)\b/i.test(t)) return true;
+  if (PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) return true;
+  if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) return true;
   if (COMPETITOR_MOVE_RE.test(t)) return true;
   return false;
 }
@@ -124,7 +133,7 @@ export function inferKickoffFromUserMessage(
   const t = body.trim();
   if (!t) return null;
 
-  if (TREND_RE.test(t) && /\b(draft|make|post|carousel)\b/i.test(t)) {
+  if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) {
     return {
       kind: "trend_draft",
       payload: { topicHint: t.slice(0, 280), count: 1 },
@@ -161,13 +170,17 @@ export function inferKickoffFromUserMessage(
     }
   }
 
-  if (DRAFT_POSTS_RE.test(t)) {
+  if (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) {
     const n = Number((/\b(\d+)\b/.exec(t) ?? [])[1] ?? 2);
     const count = Math.min(5, Math.max(1, Number.isFinite(n) ? n : 2));
+    const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
+    const photoish = visuals !== "designed";
     return {
       kind: "draft_posts",
-      payload: { count, visuals: visualsPayloadValue(inferVisualModeFromText(t), t) },
-      ackSms: `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
+      payload: { count, visuals },
+      ackSms: photoish
+        ? `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
+        : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
     };
   }
 
