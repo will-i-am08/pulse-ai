@@ -80,7 +80,7 @@ export async function generateFillerPost(
     return null;
   }
 
-  let mediaId = randomUUID();
+  let mediaId: string = randomUUID();
   let photoHeadline: string | undefined;
   try {
     let img: Buffer | null = null;
