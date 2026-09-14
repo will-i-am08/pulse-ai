@@ -384,6 +384,22 @@ async function draftGeneratedPiece(
   return null;
 }
 
+/** SMS results that never went through the mid-batch stream (total failure / early exit). */
+export async function deliverUnstreamed(
+  results: KickoffDrainResult[],
+  deliver?: KickoffDrainOpts["deliver"],
+): Promise<KickoffDrainResult[]> {
+  if (!deliver) return results;
+  for (const r of results) {
+    try {
+      await deliver(r);
+    } catch (err) {
+      console.error("kickoff: deliver failed for unstreamed SMS", err);
+    }
+  }
+  return results;
+}
+
 async function runFirstBatch(
   brand: Brand,
   payload: Record<string, unknown>,
@@ -392,12 +408,15 @@ async function runFirstBatch(
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 3) || 3));
   const pillars = await ensurePillars(brand.id);
   if (!pillars.length) {
-    return [
-      {
-        brandId: brand.id,
-        sms: "Tried to draft your first batch but you don't have pillars set yet — say \"rebuild my plan\" and I'll set those up first.",
-      },
-    ];
+    return deliverUnstreamed(
+      [
+        {
+          brandId: brand.id,
+          sms: "Tried to draft your first batch but you don't have pillars set yet — say \"rebuild my plan\" and I'll set those up first.",
+        },
+      ],
+      opts?.deliver,
+    );
   }
   const visuals = resolveVisualMode(brand, payload);
   await rememberPreferredVisuals(brand, visuals);
@@ -434,12 +453,15 @@ async function runFirstBatch(
 
   const out = drafted.filter((r): r is KickoffDrainResult => r != null);
   if (!out.length) {
-    return [
-      {
-        brandId: brand.id,
-        sms: "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
-      },
-    ];
+    return deliverUnstreamed(
+      [
+        {
+          brandId: brand.id,
+          sms: "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
+        },
+      ],
+      opts?.deliver,
+    );
   }
   return out;
 }
@@ -452,12 +474,15 @@ async function runDraftPosts(
   const count = Math.min(5, Math.max(1, Number(payload.count ?? 2) || 2));
   const pillars = await ensurePillars(brand.id);
   if (!pillars.length) {
-    return [
-      {
-        brandId: brand.id,
-        sms: "Need pillars before I draft — say \"rebuild my plan\" and I'll set those up.",
-      },
-    ];
+    return deliverUnstreamed(
+      [
+        {
+          brandId: brand.id,
+          sms: "Need pillars before I draft — say \"rebuild my plan\" and I'll set those up.",
+        },
+      ],
+      opts?.deliver,
+    );
   }
   const visuals = resolveVisualMode(brand, payload);
   await rememberPreferredVisuals(brand, visuals);
@@ -494,7 +519,12 @@ async function runDraftPosts(
 
   const out = drafted.filter((r): r is KickoffDrainResult => r != null);
   if (!out.length) {
-    return [{ brandId: brand.id, sms: "Couldn't finish those drafts just then — try again in a moment?" }];
+    // Must deliver here — unlike successful drafts, this path never streamed SMS mid-batch.
+    // Otherwise Kip goes silent after an instant ack while the kickoff result still claims smsCount: 1.
+    return deliverUnstreamed(
+      [{ brandId: brand.id, sms: "Couldn't finish those drafts just then — try again in a moment?" }],
+      opts?.deliver,
+    );
   }
   return out;
 }
