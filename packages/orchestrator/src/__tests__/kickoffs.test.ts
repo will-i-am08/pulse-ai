@@ -77,6 +77,18 @@ describe("inferKickoffFromUserMessage", () => {
     expect(String(r?.ackSms ?? "")).toMatch(/photo carousel/i);
   });
 
+
+  it("acks idea carousels as researched one-idea-per-slide drafts", () => {
+    const brief =
+      "Can you make me a carousel with cinematic car photos with text over the top with some business ideas";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.preferCarousel).toBe(true);
+    expect(r?.payload.format).toBe("carousel");
+    expect(String(r?.ackSms ?? "")).toMatch(/researching concrete ideas/i);
+    expect(String(r?.ackSms ?? "")).toMatch(/one idea per slide/i);
+  });
+
   it("honors explicit text-card asks as designed", () => {
     const r = inferKickoffFromUserMessage("draft me 2 posts as text cards please");
     expect(r?.kind).toBe("draft_posts");

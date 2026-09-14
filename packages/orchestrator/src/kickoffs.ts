@@ -17,6 +17,7 @@ import {
   generateTipCarousel,
   generateTypedCarousel,
   generatePhotoTextCarousel,
+  wantsResearchedIdeaSlides,
   type TypedCarouselKind,
 } from "./formats.js";
 import { personaLines } from "./persona.js";
@@ -52,6 +53,8 @@ export type KickoffDrainResult = {
   brandId: string;
   sms: string;
   mediaUrl?: string;
+  /** All carousel slide preview URLs (SMS may attach several). */
+  mediaUrls?: string[];
 };
 
 /** Optional per-draft delivery hook — SMS as soon as each draft is ready. */
@@ -187,7 +190,9 @@ export function inferKickoffFromUserMessage(
         format: wantsCarousel ? "carousel" : undefined,
       },
       ackSms: wantsCarousel
-        ? `On it — drafting a ${photoish ? "photo " : ""}carousel from your brief now. I'll text when it's ready to approve.`
+        ? wantsResearchedIdeaSlides(t)
+          ? `On it — researching concrete ideas and drafting a ${photoish ? "photo " : ""}carousel (one idea per slide). I'll text when it's ready to approve.`
+          : `On it — drafting a ${photoish ? "photo " : ""}carousel from your brief now. I'll text when it's ready to approve.`
         : photoish
           ? `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
           : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
@@ -428,7 +433,7 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-): Promise<{ post: Post; mediaUrl: string; kindLabel: string } | null> {
+): Promise<{ post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string } | null> {
   // Photo + carousel asks must become photo carousels — never a lone feed filler.
   if (prefer === "carousel" && visuals === "photo") {
     const photoCarousel = await generatePhotoTextCarousel(brand, pillar, { topicHint });
@@ -436,6 +441,7 @@ async function draftGeneratedPiece(
       return {
         post: photoCarousel.post,
         mediaUrl: photoCarousel.mediaUrl,
+        mediaUrls: photoCarousel.mediaUrls,
         kindLabel: "photo carousel",
       };
     }
@@ -511,13 +517,19 @@ async function runFirstBatch(
       ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
     const n = i + 1;
+    const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
+    const slideNote =
+      piece.kindLabel.includes("carousel") && slideN > 1
+        ? ` (${slideN} slides — swipe)`
+        : "";
     const result: KickoffDrainResult = {
       brandId: brand.id,
       sms:
         n === 1
-          ? `First batch, ${n}/${count} — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
-          : `Batch ${n}/${count} — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+          ? `First batch, ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
+          : `Batch ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
       mediaUrl: piece.mediaUrl,
+      mediaUrls: piece.mediaUrls,
     };
     if (opts?.deliver) {
       try {
@@ -582,10 +594,16 @@ async function runDraftPosts(
     const when = piece.post.scheduled_at
       ? formatSlot(new Date(piece.post.scheduled_at))
       : "soon";
+    const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
+    const slideNote =
+      piece.kindLabel.includes("carousel") && slideN > 1
+        ? ` (${slideN} slides — swipe)`
+        : "";
     const result: KickoffDrainResult = {
       brandId: brand.id,
-      sms: `Draft ready — ${piece.kindLabel} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+      sms: `Draft ready — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
       mediaUrl: piece.mediaUrl,
+      mediaUrls: piece.mediaUrls,
     };
     if (opts?.deliver) {
       try {

@@ -21,7 +21,7 @@ export async function POST(_request: NextRequest) {
     const sent: { brandId: string; preview: string }[] = [];
     const results = await runKickoffDrain(3, {
       deliver: async (r) => {
-        await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
+        await sendToBrand(r.brandId, r.sms, r.mediaUrls?.length ? r.mediaUrls : r.mediaUrl ? [r.mediaUrl] : undefined);
         sent.push({ brandId: r.brandId, preview: r.sms.slice(0, 120) });
       },
     });

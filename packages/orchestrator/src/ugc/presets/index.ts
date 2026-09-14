@@ -12,6 +12,7 @@ export type { UgcAngle } from "./scriptPresets.js";
 export {
   STILL_NEGATIVE,
   FEED_PHOTO_NEGATIVE,
+  FEED_PHOTO_REALISM_CUE,
   productOnlyStillPrompt,
   productInHandStillPrompt,
   actorSelfiePrompt,
