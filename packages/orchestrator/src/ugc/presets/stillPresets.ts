@@ -3,9 +3,13 @@
 export const STILL_NEGATIVE =
   "extra fingers, waxy plastic skin, beauty filter, deformed hands, mismatched eyes, studio lighting, cinematic color grade, CGI, floating product, warped label, beauty retouch, glossy commercial ad";
 
-/** Extra bans for feed photo drafts — stops random AI prop clutter. */
+/** Extra bans for feed photo drafts — stops random AI prop clutter + obvious gen-AI slop. */
 export const FEED_PHOTO_NEGATIVE =
-  `${STILL_NEGATIVE}, random water bottle, laptop, desktop computer, smartphone in frame, coffee cup unless essential, cluttered desk props, unrelated packaging, plastic CGI look, AI artifact, extra limbs, warped objects, illegible text, watermark, logo, typography in image, poster text, caption burned into photo`;
+  `${STILL_NEGATIVE}, random water bottle, laptop, desktop computer, smartphone in frame, coffee cup unless essential, cluttered desk props, unrelated packaging, plastic CGI look, AI artifact, AI generated look, Midjourney look, oversmoothed skin, waxy surfaces, unreal HDR glow, neon rim light, melted chrome, warped wheels, melted reflections, extra limbs, warped objects, illegible text, watermark, logo, typography in image, poster text, caption burned into photo, 3D render, Unreal Engine, concept art`;
+
+/** Photoreal cue appended to every feed/carousel text-to-image prompt. */
+export const FEED_PHOTO_REALISM_CUE =
+  "Photorealistic editorial photograph, full-frame camera, natural grain, real-world physics and materials, documentary lighting — not CGI, not 3D render, not AI art, not plastic HDR, no text, no logos, no watermark, no UI";
 
 export function productOnlyStillPrompt(opts: {
   productDescription: string;

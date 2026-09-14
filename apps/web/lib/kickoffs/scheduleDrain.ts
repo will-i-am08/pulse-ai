@@ -19,7 +19,7 @@ export function scheduleKickoffDrain(reason = 'inbound'): void {
     try {
       const results = await runKickoffDrain(2, {
         deliver: async (r) => {
-          await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
+          await sendToBrand(r.brandId, r.sms, r.mediaUrls?.length ? r.mediaUrls : r.mediaUrl ? [r.mediaUrl] : undefined);
         },
       });
       if (results.length) {

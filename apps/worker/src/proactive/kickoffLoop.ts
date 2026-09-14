@@ -11,7 +11,7 @@ export async function runKickoffLoop(): Promise<void> {
     await runKickoffDrain(2, {
       deliver: async (r) => {
         logger.info(`kickoff: deliver to brand ${r.brandId}`);
-        await sendToBrand(r.brandId, r.sms, r.mediaUrl ? [r.mediaUrl] : undefined);
+        await sendToBrand(r.brandId, r.sms, r.mediaUrls?.length ? r.mediaUrls : r.mediaUrl ? [r.mediaUrl] : undefined);
       },
     });
   } catch (err) {

@@ -97,7 +97,7 @@ export async function generateFillerPost(
     if (wantPhoto && photoPrompt) {
       const ref = visualReference(brand, false);
       const stockCue =
-        "Authentic royalty-free stock photo, natural lighting, shallow depth of field, no text, no logos, no watermark, no UI, no random props unrelated to the subject.";
+        "Photorealistic editorial photograph, full-frame camera, natural grain, real-world materials, documentary lighting — not CGI, not AI art, not plastic HDR, no text, no logos, no watermark, no UI, no random props unrelated to the subject";
       const prompt = [photoPrompt, stockCue, noFace, ref].filter(Boolean).join(". ");
       img = await generatePhotoImage(prompt);
     }
