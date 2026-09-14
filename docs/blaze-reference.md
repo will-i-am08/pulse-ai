@@ -29,6 +29,8 @@ matter to us:
 - **Style categories they demo** (this is a good taxonomy for our own styles):
   Product Photography · Selfies & Portraits · Lifestyle Photos · Travel & Landscape · Food & Drink.
 
+**Kip look packs (shipped V2):** `cafe_warm`, `salon_clean`, `gym_punchy`, `tradie_daylight`, `food_hero`, `retail_shelf`, `generic_faithful` — see `packages/orchestrator/src/lookPacks/`. Combined with V1 photo→3 variant picks in SMS (faithful-by-default for business).
+
 ### What their output actually looks like — my observation
 Their headline before/after (a skier) is a **dramatic, generative reinterpretation**, not a
 faithful edit: the "Original" is an ordinary mid-distance phone snap; the "AI Style" result is

@@ -80,9 +80,9 @@ export default function LandingPage() {
             <Link className={styles.pill} href="/signup">
               Get started
             </Link>
-            <a className={styles.pillGhost} href="#demo">
-              Watch how it works
-            </a>
+            <Link className={styles.pillGhost} href="/d/new">
+              Try with your website
+            </Link>
           </div>
           <p className={styles.trust}>Kip can take the lot. Nothing posts without your yes.</p>
         </div>

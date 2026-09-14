@@ -41,6 +41,7 @@ export {
   ensureOwnerNameFromUser,
   extractVisualHintsFromHtml,
   seedVisualProfileFromWebsite,
+  readWebsite,
 } from "./onboarding.js";
 export {
   brandsDueForConnectNudge,
@@ -147,6 +148,41 @@ export {
   gradePhotoBundle,
   generatePhotoImage,
 } from "./imaging.js";
+export {
+  generatePhotoVariants,
+  parkVariantPick,
+  getPendingVariantPick,
+  parseVariantChoice,
+  variantPickSms,
+  variantMediaUrls,
+  discardVariantPick,
+  promoteVariantToDraft,
+  lookPackForBrand,
+  setBrandLookPack,
+  frameFeedImage,
+  VARIANT_COUNT,
+} from "./variants.js";
+export {
+  LOOK_PACKS_V1,
+  getLookPack,
+  resolveLookPackFromNiche,
+  parseLookChangeRequest,
+  listLookPackSms,
+} from "./lookPacks/index.js";
+export type { LookPack, LookPackId } from "./lookPacks/index.js";
+export {
+  createDemoSession,
+  getDemoSession,
+  normalizeDemoSlug,
+  countRecentDemosForIp,
+} from "./demoSession.js";
+export type { DemoSample, DemoSession } from "./demoSession.js";
+export {
+  runCreativeRefreshPass,
+  runCreativeRefreshForBrand,
+  brandNeedsCreativeRefresh,
+  alreadyRefreshedThisWeek,
+} from "./creativeRefresh.js";
 export {
   composeSlide,
   composeAndStoreSlide,

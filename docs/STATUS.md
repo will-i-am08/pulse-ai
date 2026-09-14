@@ -22,6 +22,10 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 | **G** — Video & AI gen | First-class Reels, vision caption, motion templates, Kling/Runway AI video | ✅ **done** |
 | **H** — LinkedIn + TikTok outbound | SMS connect/publish; H0 aggregator spike; paperwork parallel | ✅ **Direct adapters** (H0–H6) — mock SMS connect + publish; live gated on app creds + `TIKTOK_AUDIT_PASSED` |
 | **I** — Engagement → light CRM | Reply-verb polish, lead card, thin Zapier/Make webhook, toggles | ✅ **done** (thin) — [`PHASE_I_CRM_SCOPE.md`](PHASE_I_CRM_SCOPE.md) |
+| **V1** — Photo → 3 variant picks | MMS park/resolve 1/2/3; faithful enhance; `variants.ts` | ✅ **done** |
+| **V2** — Niche look packs | `lookPacks/` studios + onboarding seed + SMS change-look | ✅ **done** |
+| **V3** — Instant demo | `/d/new`, `/d/[slug]`, `demo_sessions` migration | ✅ **done** |
+| **V4** — Weekly creative refresh | Worker loop + library photo → variant park | ✅ **done** |
 
 **Cross-cutting (X1–X4):** approvals absolute; quiet hours via `isDaytime` (8am–7pm); `platformConfigured()` mock fallbacks; cohort go-live still gated on Meta App Review.
 
@@ -35,6 +39,9 @@ _Living snapshot of what's built, what's gated, and what's next. Audited 2026-09
 - Smart scheduler: per-platform windows, daily caps, spacing, pillar pins (`scheduler.ts`).
 - Pillars + photo auto-classification, gap-fill filler, conversational campaigns.
 - AI image editing + context-driven design composer / Design QA (Phase C).
+- **V1–V2:** single photo → three niche look variants → reply `1`/`2`/`3` (or original/skip); look packs (café, salon, gym, tradie, food, retail).
+- **V3:** public website demo at `/d/new` → `/d/[slug]` (48h samples).
+- **V4:** weekly creative-refresh worker when the feed goes stale.
 - Formats: feed / carousel / story / **reel** with explicit commands.
 - IG mockup preview on every draft (`mockup.ts`).
 

@@ -177,6 +177,19 @@ import {
   selectedDestinations,
   shouldPublishImmediately,
 } from "./destinations.js";
+import {
+  generatePhotoVariants,
+  parkVariantPick,
+  getPendingVariantPick,
+  parseVariantChoice,
+  variantPickSms,
+  variantMediaUrls,
+  discardVariantPick,
+  promoteVariantToDraft,
+  lookPackForBrand,
+  setBrandLookPack,
+} from "./variants.js";
+import { parseLookChangeRequest } from "./lookPacks/index.js";
 
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
 const REPURPOSE_RE = /\b(repurpose|turn (my|this|the) (site|website|page|blog|menu)|make posts? (from|out of)|posts? from (my|this))\b/i;
@@ -413,7 +426,13 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
  */
 export async function processInbound(
   ctx: InboundContext,
-): Promise<{ reply: string; postId?: string; mediaUrl?: string; finishOnboardingBrandId?: string }> {
+): Promise<{
+  reply: string;
+  postId?: string;
+  mediaUrl?: string;
+  mediaUrls?: string[];
+  finishOnboardingBrandId?: string;
+}> {
   // Backfill owner_name from signup so persona/interview never re-ask who they are.
   let brand = await ensureOwnerNameFromUser(ctx.brand);
   const { message, newMedia } = ctx;
@@ -550,6 +569,102 @@ export async function processInbound(
         }
         const n = await resolveAsSeparate(brand, parked);
         return { reply: `Done, drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve. Reply "yes" to the first, or tell me a change.` };
+      }
+    }
+  }
+
+  // Variant pick: reply 1 / 2 / 3 / original / skip on a parked three-look draft.
+  if (message.body && newMedia.length === 0) {
+    const parkedVariants = await getPendingVariantPick(brand.id);
+    if (parkedVariants) {
+      const lookChange = parseLookChangeRequest(message.body);
+      if (lookChange) {
+        const sourceId = parkedVariants.source_media_ids?.[0];
+        if (!sourceId) {
+          await discardVariantPick(parkedVariants);
+          return { reply: "Lost the original photo for that pick — mind sending it again?" };
+        }
+        if (lookChange.kind === "set") {
+          await setBrandLookPack(brand.id, lookChange.packId);
+          brand = (await queryOne<Brand>(`select * from brands where id = $1`, [brand.id])) ?? brand;
+        }
+        const pack = lookPackForBrand(brand);
+        const gen = await generatePhotoVariants(brand, sourceId, {
+          pack,
+          extraHint: lookChange.kind === "hint" ? lookChange.hint : undefined,
+        });
+        if (!gen.ok) {
+          if (gen.reason === "spend_cap") return { reply: gen.spendSms };
+          return {
+            reply: `Couldn't re-roll those looks. Stick with 1–${parkedVariants.media_ids.length}, or send a fresh photo.`,
+          };
+        }
+        await discardVariantPick(parkedVariants);
+        await parkVariantPick(brand.id, sourceId, gen.mediaIds, gen.pack.id);
+        return {
+          reply: `Fresh ${gen.pack.smsName} set.\n\n${variantPickSms(gen.pack, gen.mediaIds.length)}`,
+          mediaUrls: variantMediaUrls(gen.mediaIds),
+          mediaUrl: variantMediaUrls(gen.mediaIds)[0],
+        };
+      }
+
+      const vChoice = parseVariantChoice(message.body);
+      if (vChoice) {
+        if (vChoice.kind === "skip") {
+          await discardVariantPick(parkedVariants);
+          return { reply: "Scrapped those looks. Send another photo whenever." };
+        }
+        const sourceId = parkedVariants.source_media_ids?.[0];
+        let chosenId: string | null = null;
+        if (vChoice.kind === "original") {
+          chosenId = sourceId ?? parkedVariants.media_ids[0] ?? null;
+        } else {
+          chosenId = parkedVariants.media_ids[vChoice.index] ?? null;
+        }
+        if (!chosenId) {
+          return {
+            reply: `That pick's out of range — reply 1–${parkedVariants.media_ids.length}, "original", or "skip".`,
+          };
+        }
+
+        const captionResult = await draftCaption(brand.id, sourceId ? [sourceId] : [chosenId]);
+        const caption = captionResult.caption;
+        const pillars = await ensurePillars(brand.id);
+        const pillar = await classifyPhotoPillar(brand, pillars, sourceId ?? chosenId);
+        const slot = await scheduleSlot({
+          brandId: brand.id,
+          platform: "instagram",
+          pillarId: pillar?.id ?? null,
+          postsPerWeek: pillar?.posts_per_week ?? 0,
+          format: "feed",
+        });
+        const wantsText = shouldOverlayHeadline(brand, message.body, { caption, format: "feed" });
+        let finalId = chosenId;
+        let headline: string | undefined;
+        if (wantsText) {
+          headline = await generateHeadline(brand, caption);
+          const tiledId = await applyTextTile(brand, finalId, headline);
+          if (tiledId) finalId = tiledId;
+        }
+        const captions = buildPlatformCaptions(caption);
+        const post = await promoteVariantToDraft({
+          brand,
+          parked: parkedVariants,
+          chosenMediaId: finalId,
+          caption,
+          pillarId: pillar?.id ?? null,
+          pillarName: pillar?.name ?? null,
+          slot,
+          styleMeta: { wants_text: wantsText, ...(headline ? { headline } : {}) },
+          destinations: [],
+          captions,
+        });
+        const replyImageUrl = await previewUrlForPost(brand, post, finalId);
+        return {
+          reply: `Locked in look ${vChoice.kind === "original" ? "original" : vChoice.index + 1} ✨\n\n"${caption}"\n\n${pillar?.name ?? "Feed"} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.\n\n${DEST_HINT}`,
+          postId: post.id,
+          mediaUrl: replyImageUrl,
+        };
       }
     }
   }
@@ -961,7 +1076,9 @@ export async function processInbound(
       await maybeEnqueueFromKipCommit(brand, message.body, chat, message.id);
       return { reply: chat };
     }
-  }const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
+  }
+
+  const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
   const result = await classifyInbound({
     body: message.body,
     hasMedia: newMedia.length > 0,
@@ -1188,6 +1305,27 @@ export async function processInbound(
 
       const originalIds = newMedia.map((m) => m.id);
       const firstPhoto = newMedia.find((m) => m.kind === "photo");
+
+      // Single photo → three look variants (Kive-style), then pick 1/2/3.
+      // Falls back to the classic one-enhance draft if variants can't run.
+      if (firstPhoto && photos.length === 1 && videos.length === 0) {
+        const pack = lookPackForBrand(brand);
+        const gen = await generatePhotoVariants(brand, firstPhoto.id, { pack });
+        if (gen.ok && gen.mediaIds.length >= 1) {
+          await parkVariantPick(brand.id, firstPhoto.id, gen.mediaIds, gen.pack.id);
+          const urls = variantMediaUrls(gen.mediaIds);
+          const welcomeBack =
+            gap.bucket === "yesterday" || gap.bucket === "recent" || gap.bucket === "long"
+              ? "Good to have you back! "
+              : "";
+          return {
+            reply: `${welcomeBack}${variantPickSms(gen.pack, gen.mediaIds.length)}`,
+            mediaUrls: urls,
+            mediaUrl: urls[0],
+          };
+        }
+        // spend_cap / no_replicate / failed → fall through to single-enhance draft
+      }
 
       // C6: caption + photo grade in parallel (independent LLM/vision steps).
       const [captionResult, editedId] = await Promise.all([

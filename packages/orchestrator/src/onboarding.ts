@@ -61,6 +61,17 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { niche?: string; exemplars?: string };
     const niche = parsed.niche?.trim();
     if (niche) await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
+    // Seed niche look pack from niche + brand name (Kive-style studios for Kip).
+    try {
+      const { resolveLookPackFromNiche } = await import("./lookPacks/index.js");
+      const { setBrandLookPack } = await import("./variants.js");
+      const pack = resolveLookPackFromNiche(`${niche ?? ""} ${brand.name}`);
+      if (pack.id !== "generic_faithful") {
+        await setBrandLookPack(brand.id, pack.id);
+      }
+    } catch {
+      /* non-fatal */
+    }
   } catch {
     /* best-effort — no plan seeded just means no custom plan this run */
   }
@@ -147,7 +158,8 @@ function toMessages(transcript: OnboardingTurnMsg[]): { role: "user" | "assistan
 }
 
 /** Strip a web page to rough text, then summarise the brand from it (best-effort). */
-async function readWebsite(url: string): Promise<{ summary: string; html: string } | null> {
+/** Fetch + summarise a website for onboarding / public demos. */
+export async function readWebsite(url: string): Promise<{ summary: string; html: string } | null> {
   try {
     const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
     const res = await fetch(withProto, { headers: { "User-Agent": "PulseBot/1.0" } });
