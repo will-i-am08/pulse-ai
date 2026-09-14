@@ -140,3 +140,37 @@ describe("FEED_PHOTO_NEGATIVE", () => {
     expect(FEED_PHOTO_NEGATIVE).toMatch(/typography in image/i);
   });
 });
+
+describe("extractJsonObject / draftFillerFields", () => {
+  it("extracts fenced and bare JSON objects", async () => {
+    const { extractJsonObject } = await import("../fillers.js");
+    expect(extractJsonObject('{"a":1}')).toBe('{"a":1}');
+    expect(extractJsonObject('Here:\n```json\n{"a":1}\n```')).toBe('{"a":1}');
+    expect(extractJsonObject("no json here")).toBeNull();
+    expect(extractJsonObject("")).toBeNull();
+    expect(extractJsonObject("{truncated")).toBeNull();
+  });
+
+  it("retries when the first LLM reply is truncated JSON", async () => {
+    const { callLLM } = await import("../llm.js");
+    const { draftFillerFields } = await import("../fillers.js");
+    vi.mocked(callLLM).mockReset();
+    vi.mocked(callLLM)
+      .mockResolvedValueOnce('{"caption":"cut off mid')
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          caption: "Recovered caption",
+          photo_prompt: "Quiet office desk, morning light",
+          card: "SHIP THE WORK",
+        }),
+      );
+    const out = await draftFillerFields("system", "Tips", true);
+    expect(out).toEqual({
+      caption: "Recovered caption",
+      card: "SHIP THE WORK",
+      photoPrompt: "Quiet office desk, morning light",
+    });
+    expect(callLLM).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(callLLM).mock.calls[0]![0].maxTokens).toBe(700);
+  });
+});
