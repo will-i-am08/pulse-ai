@@ -88,8 +88,12 @@ export function resolveVisualMode(
 export function visualsPayloadValue(mode: VisualMode, text?: string | null): string {
   if (mode === "designed") return "designed";
   const t = text ?? "";
-  if (/\bstock\b/i.test(t) && !/\b(generated|ai)\b/i.test(t)) return "stock";
-  if (/\b(generated|ai)\b/i.test(t)) return "generated";
+  // Bare "AI" in a topic ("AI coding tools") is NOT a visuals mode — require
+  // generated / ai-generated / synthetic cues.
+  if (/\bstock\b/i.test(t) && !/\b(generated|ai[- ]?(generated|made|created)|synthetic)\b/i.test(t)) {
+    return "stock";
+  }
+  if (/\b(generated|ai[- ]?(generated|made|created)|synthetic)\b/i.test(t)) return "generated";
   return "photo";
 }
 

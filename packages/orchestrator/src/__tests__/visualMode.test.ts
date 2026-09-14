@@ -53,6 +53,15 @@ describe("visualsPayloadValue", () => {
     expect(visualsPayloadValue("photo", "draft posts")).toBe("photo");
     expect(visualsPayloadValue("designed", "text cards")).toBe("designed");
   });
+
+  it("does not treat topic 'AI coding tools' as generated visuals", () => {
+    expect(
+      visualsPayloadValue(
+        "photo",
+        "comparing ai coding tools with a city scape as the background",
+      ),
+    ).toBe("photo");
+  });
 });
 
 describe("looksLikePhotoBackgroundAsk", () => {
