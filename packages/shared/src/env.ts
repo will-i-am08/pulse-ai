@@ -20,6 +20,14 @@ const serverEnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true" || v === "1"),
+  /**
+   * When "true"/"1", question turns use a bounded Anthropic tool loop
+   * (brand facts, recent posts, calendar, kickoffs, remember). Off by default.
+   */
+  KIP_TOOL_LOOP: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),

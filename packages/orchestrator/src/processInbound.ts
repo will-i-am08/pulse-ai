@@ -1,4 +1,4 @@
-import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination, getServerEnv } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
 import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
@@ -124,6 +124,7 @@ import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } fro
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
+import { answerWithTools } from "./smartAnswer.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -339,7 +340,15 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
   return text.trim();
 }
 
-async function answerQuestion(brand: Brand, context: string, question: string): Promise<string> {
+async function answerQuestion(
+  brand: Brand,
+  context: string,
+  question: string,
+  sourceMessageId?: string | null,
+): Promise<string> {
+  if (getServerEnv().KIP_TOOL_LOOP) {
+    return answerWithTools(brand, context, question, { sourceMessageId });
+  }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   return speakSMS({
     brand,
@@ -1729,7 +1738,7 @@ export async function processInbound(
 
     case "question": {
       const context = await buildConversationContext(brand.id);
-      const answer = await answerQuestion(brand, context, message.body ?? "");
+      const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
       await maybeEnqueueFromKipCommit(brand, message.body, answer, message.id);
       return { reply: answer };
     }

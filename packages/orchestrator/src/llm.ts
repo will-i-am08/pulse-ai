@@ -189,3 +189,139 @@ export async function callLLM(opts: CallLLMOptions): Promise<string> {
     `callLLM failed on all models (${plan.map((p) => p.model).join(", ")}): ${String(lastErr)}`,
   );
 }
+
+export interface CallLLMWithToolsOptions {
+  system?: string;
+  messages: Anthropic.MessageParam[];
+  maxTokens?: number;
+  temperature?: number;
+  /** Model routing tier. Default `"smart"` for tool loops. */
+  tier?: LlmTier;
+  /** Short label for structured logs (e.g. "smart_answer"). */
+  task?: string;
+  tools: Anthropic.Tool[];
+  toolExecutor: (name: string, input: unknown) => Promise<string>;
+  /** Max assistant↔tool rounds before returning best text so far. Default 3. */
+  maxRounds?: number;
+}
+
+function extractTextFromContent(content: Anthropic.ContentBlock[]): string {
+  return content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+}
+
+/**
+ * Call the LLM with client-defined tools and a bounded tool-use loop.
+ *
+ * v1 does **not** combine Anthropic's server `web_search` tool here — custom
+ * tools + brand data only. Prefer a clean client tool loop over mixing server tools.
+ *
+ * On max rounds, returns the best text so far or a short fallback (does not throw
+ * solely for hitting the round cap).
+ */
+export async function callLLMWithTools(opts: CallLLMWithToolsOptions): Promise<string> {
+  const env = getServerEnv();
+  const tier: LlmTier = opts.tier ?? "smart";
+  const plan = resolveModelPlan(tier, env);
+  const started = Date.now();
+  const maxRounds = opts.maxRounds ?? 3;
+
+  let lastErr: unknown;
+  let lastModel = plan[0]?.model ?? env.DRAFT_MODEL;
+
+  for (const { model, retries } of plan) {
+    lastModel = model;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const text = await attemptWithTools(model, opts, maxRounds);
+        logLlmCall({
+          task: opts.task,
+          tier,
+          model,
+          ok: true,
+          ms: Date.now() - started,
+        });
+        return text;
+      } catch (err) {
+        lastErr = err;
+        const isVeryLastAttempt =
+          model === plan[plan.length - 1]!.model && i === retries - 1;
+        if (isVeryLastAttempt) break;
+        await sleep(BASE_DELAY_MS * 2 ** i);
+      }
+    }
+  }
+
+  logLlmCall({
+    task: opts.task,
+    tier,
+    model: lastModel,
+    ok: false,
+    ms: Date.now() - started,
+  });
+
+  throw new Error(
+    `callLLMWithTools failed on all models (${plan.map((p) => p.model).join(", ")}): ${String(lastErr)}`,
+  );
+}
+
+const TOOL_LOOP_FALLBACK =
+  "I looked into that but hit my step limit — ask me again with a narrower question.";
+
+async function attemptWithTools(
+  model: string,
+  opts: CallLLMWithToolsOptions,
+  maxRounds: number,
+): Promise<string> {
+  const messages: Anthropic.MessageParam[] = opts.messages.map((m) => ({ ...m }));
+  let bestText = "";
+
+  for (let round = 0; round < maxRounds; round++) {
+    const res = await getClient().messages.create({
+      model,
+      max_tokens: opts.maxTokens ?? 1024,
+      temperature: opts.temperature,
+      system: opts.system,
+      messages,
+      tools: opts.tools,
+    });
+
+    const text = extractTextFromContent(res.content);
+    if (text) bestText = text;
+
+    const toolUses = res.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+    );
+
+    if (!toolUses.length) {
+      if (bestText) return bestText;
+      throw new Error("LLM tool-loop response contained no text content");
+    }
+
+    messages.push({ role: "assistant", content: res.content });
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const tu of toolUses) {
+      let result: string;
+      try {
+        result = await opts.toolExecutor(tu.name, tu.input);
+      } catch (err) {
+        result = JSON.stringify({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: result,
+      });
+    }
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  return bestText || TOOL_LOOP_FALLBACK;
+}

@@ -64,8 +64,11 @@ export {
 export { computeTextStats } from "./voice/textStats.js";
 export type { TextStats } from "./voice/textStats.js";
 
-export { callLLM } from "./llm.js";
-export type { CallLLMOptions } from "./llm.js";
+export { callLLM, callLLMWithTools, resolveModelPlan, stripMarkdown } from "./llm.js";
+export type { CallLLMOptions, CallLLMWithToolsOptions, LlmTier, ModelPlanStep, ModelPlanEnv } from "./llm.js";
+export { answerWithTools } from "./smartAnswer.js";
+export { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
+export type { AgentToolContext } from "./agentTools.js";
 
 export {
   classifyInbound,
