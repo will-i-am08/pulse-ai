@@ -255,18 +255,53 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
 }
 
 /**
- * Text-to-image generation (Replicate Flux Schnell by default): produce a clean,
- * photo-style image from a prompt when the client has no real photo for a slot.
- * Returns JPEG bytes, or null if generation is unavailable/failed.
+ * Text-to-image for feed drafts. Prefers the fal still router (Nano Banana →
+ * Flux Dev → Seedream) used by UGC — better realism + negatives than bare
+ * Flux Schnell on Replicate. Falls back to Replicate when fal is unset/fails.
+ * Image edits of real uploads still use Replicate Kontext via editImageForBrand.
  */
 export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
+  routeImageJob("photo_generate");
+  const ratio = aspectRatio.includes(":") ? aspectRatio : "1:1";
+
+  try {
+    const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
+    const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
+    if (falConfigured()) {
+      const routed = await falGenerateImageRouted({
+        prompt,
+        aspectRatio: ratio,
+        negativePrompt: FEED_PHOTO_NEGATIVE,
+      });
+      if (routed?.buffer?.length) {
+        console.info(
+          JSON.stringify({
+            evt: "feed_photo_fal",
+            modelId: routed.modelId,
+            falId: routed.falId,
+          }),
+        );
+        return sharp(routed.buffer).jpeg({ quality: 88 }).toBuffer();
+      }
+    }
+  } catch (err) {
+    console.warn("generatePhotoImage: fal still router failed, trying Replicate", err);
+  }
+
+  return generatePhotoImageViaReplicate(prompt, ratio);
+}
+
+/** Replicate Flux Schnell fallback when fal is unavailable. */
+async function generatePhotoImageViaReplicate(
+  prompt: string,
+  aspectRatio: string,
+): Promise<Buffer | null> {
   const env = getServerEnv();
   const token = env.REPLICATE_API_TOKEN;
   if (!token) {
-    console.error("generatePhotoImage: REPLICATE_API_TOKEN missing — cannot text-to-image");
+    console.error("generatePhotoImage: no FAL_KEY and REPLICATE_API_TOKEN missing — cannot text-to-image");
     return null;
   }
-  routeImageJob("photo_generate");
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
   try {
     let body: any;
@@ -298,7 +333,7 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
     const raw = Buffer.from(await (await fetch(out)).arrayBuffer());
     return sharp(raw).jpeg({ quality: 88 }).toBuffer();
   } catch (err) {
-    console.error("generatePhotoImage failed", err);
+    console.error("generatePhotoImage Replicate failed", err);
     return null;
   }
 }
