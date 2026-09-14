@@ -1,0 +1,30 @@
+{
+  "invisible_codepoints": ["\u200b", "\u200c", "\u200d", "\ufeff", "\u00ad", "\u2060"],
+  "phrases": [
+    {"find": "delve into", "replace": "look at"},
+    {"find": "dive deep into", "replace": "get into"},
+    {"find": "deep dive", "replace": "breakdown"},
+    {"find": "leverage", "replace": "use"},
+    {"find": "leveraging", "replace": "using"},
+    {"find": "utilize", "replace": "use"},
+    {"find": "utilizing", "replace": "using"},
+    {"find": "game-changer", "replace": "big shift"},
+    {"find": "game changer", "replace": "big shift"},
+    {"find": "in today's digital landscape", "replace": "right now"},
+    {"find": "in the digital landscape", "replace": "online"},
+    {"find": "unlock your potential", "replace": "get better results"},
+    {"find": "take it to the next level", "replace": "improve it"},
+    {"find": "stop scrolling", "replace": ""},
+    {"find": "hey guys", "replace": ""},
+    {"find": "in this video", "replace": ""},
+    {"find": "without further ado", "replace": ""},
+    {"find": "it's important to note that", "replace": ""},
+    {"find": "at the end of the day", "replace": ""},
+    {"find": "nestled", "replace": "set"},
+    {"find": "testament to", "replace": "proof of"},
+    {"find": "elevate your", "replace": "improve your"},
+    {"find": "seamless experience", "replace": "smooth experience"},
+    {"find": "revolutionize", "replace": "change"},
+    {"find": "cutting-edge", "replace": "modern"}
+  ]
+}

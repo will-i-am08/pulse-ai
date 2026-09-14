@@ -60,8 +60,34 @@ export type PerformanceAnalysis = {
   enoughData: boolean;
 };
 
-const score = (e: Record<string, number> | null | undefined): number =>
-  Object.values(e ?? {}).reduce((a, b) => a + (Number(b) || 0), 0);
+const score = (e: Record<string, number> | null | undefined): number => {
+  if (!e) return 0;
+  const likes = Number(e.likes ?? e.like_count ?? 0) || 0;
+  const comments = Number(e.comments ?? e.comment_count ?? 0) || 0;
+  const saves = Number(e.saves ?? e.saved ?? 0) || 0;
+  const shares = Number(e.shares ?? e.sends ?? e.shares_count ?? 0) || 0;
+  const reach = Number(e.reach ?? e.impressions ?? e.views ?? 0) || 0;
+  const hold = Number(e.hold_at_3s ?? e.holds_at_3 ?? e.ig_reels_avg_watch_time ?? 0) || 0;
+  // Prefer quality signals Jake cares about when Meta provides them.
+  const sendsPerReach = reach > 0 ? shares / reach : 0;
+  const base = likes + comments * 2 + saves * 3 + shares * 4;
+  const qualityBoost = sendsPerReach * 200 + (hold > 0 && hold < 60 ? hold * 2 : 0);
+  return base + qualityBoost;
+};
+
+/** Extra analyst line when Insights include hold/sends/reach. */
+export function qualitySignalsLine(e: Record<string, number> | null | undefined): string | null {
+  if (!e) return null;
+  const reach = Number(e.reach ?? e.impressions ?? e.views ?? 0) || 0;
+  const shares = Number(e.shares ?? e.sends ?? 0) || 0;
+  const hold = Number(e.hold_at_3s ?? e.holds_at_3 ?? 0) || 0;
+  const bits: string[] = [];
+  if (reach > 0 && shares > 0) bits.push(`sends/reach ${(shares / reach * 100).toFixed(1)}%`);
+  if (hold > 0) bits.push(`hold@3s ${hold}${hold <= 1 ? "" : "s"}`);
+  const nonFollow = Number(e.non_follower_reach ?? e.reach_from_non_followers ?? 0) || 0;
+  if (reach > 0 && nonFollow > 0) bits.push(`non-follower reach ${Math.round((nonFollow / reach) * 100)}%`);
+  return bits.length ? bits.join(" · ") : null;
+}
 
 function partOfDay(iso: string | null): string {
   if (!iso) return "anytime";
@@ -271,6 +297,7 @@ export function analyzePerformance(
     rec += ` Your ${bestTime.k} slots do best, so I'll favour those.`;
   }
 
+  const quality = qualitySignalsLine(top.engagement);
   const topLine = top.caption
     ? `"${top.caption.slice(0, 80)}${top.caption.length > 80 ? "…" : ""}"`
     : "(a recent post)";
@@ -294,6 +321,7 @@ export function analyzePerformance(
 
   const paidLine = formatPaidLine(opts?.paid ?? null);
 
+  const qualityNote = quality ? `\nQuality: ${quality}` : "";
   return {
     text:
       `📊 Weekly recap\n\n` +
@@ -301,9 +329,10 @@ export function analyzePerformance(
       `⭐ Top post: ${topLine} (${top.s} interactions)\n\n` +
       `💡 ${insight}\n\n` +
       `👉 ${rec}` +
+      qualityNote +
       paidLine,
     insight,
-    recommendation: rec,
+    recommendation: rec + (quality ? ` (${quality})` : ""),
     winners,
     suggestion,
     enoughData: true,

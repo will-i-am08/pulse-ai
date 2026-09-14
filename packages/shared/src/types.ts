@@ -207,6 +207,10 @@ export const brandVoiceProfileSchema = z.object({
   writing_mechanics: writingMechanicsSchema,
   photo_style: photoStyleSchema,
   analysis_source: z.string().default(""),        // "148 posts (instagram, facebook); 30 images"
+  /** Verified proof lines the model may cite — never invent numbers beyond these. */
+  proof_bank: z.array(z.string()).default([]),
+  /** Public stances the brand will defend (may cost followers). */
+  positions: z.array(z.string()).default([]),
 });
 export type BrandVoiceProfile = z.infer<typeof brandVoiceProfileSchema>;
 
@@ -543,6 +547,8 @@ export interface PlanPillar {
   description: string;
   posts_per_week: number;
   format_bias?: PostFormat;
+  /** Jake-style content job: proof | teach | opinion | story | offer */
+  content_job?: "proof" | "teach" | "opinion" | "story" | "offer";
 }
 export interface NichePlan {
   summary: string; // one punchy line for the SMS
@@ -550,6 +556,8 @@ export interface NichePlan {
   format_mix: string; // e.g. "carousel-heavy — ~50% carousel, 30% feed, 20% story"
   best_times: string; // e.g. "Tue & Thu 6–8pm, Sat mornings"
   starter_ideas: string[];
+  /** Optional job-mix line, e.g. "1 proof, 2 teach, 1 opinion, 0.5 story, 0.5 offer /wk" */
+  job_mix?: string;
 }
 export interface ContentPlan {
   id: string;
@@ -595,6 +603,10 @@ export interface ResearchFindings {
   organic_themes?: string[];
   sources?: string[];
   notes?: string;
+  /** Outlier-style swipe formulas (views÷account median angles). */
+  swipe_formulas?: string[];
+  /** Concrete angles that outperformed a peer median. */
+  outlier_angles?: string[];
   [key: string]: unknown;
 }
 

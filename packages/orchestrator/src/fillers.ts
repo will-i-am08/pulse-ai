@@ -7,6 +7,9 @@ import { scheduleSlot } from "./scheduler.js";
 import { brandContextForPrompt } from "./brandContext.js";
 import { visualReference } from "./library.js";
 import { resolveVisualMode, type VisualMode } from "./visualMode.js";
+import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { hooksPromptBlock } from "./hooks.js";
+import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
 
 /**
  * Generate a text-only filler post for a pillar (used when a slot is starving and
@@ -22,11 +25,23 @@ export async function generateFillerPost(
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
+  const job = inferContentJob({
+    key: pillar.key,
+    name: pillar.name,
+    description: pillar.description,
+    content_job: (pillar as { content_job?: string }).content_job,
+  });
+  const formatHint = formatBiasForJob(job);
+  const captionJob = captionJobForFormat(formatHint);
   const system = [
     `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
+    `Content job for this slot: ${job}. Preferred format bias: ${formatHint}.`,
+    captionJobPrompt(captionJob),
+    hooksPromptBlock(job, 2),
+    "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
-    "Never invent discounts, awards, or testimonials not in offers/facts.",
+    "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
     wantPhoto
       ? 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","photo_prompt":"<one vivid sentence describing a realistic photo that fits the post — lifestyle/product/scene, no text overlays, no logos, no watermarks>","card":"<optional 4-12 word fallback line if a photo cannot be generated>"}'
       : 'Output ONLY JSON: {"caption":"<the full post caption, no hashtags unless natural>","card":"<a punchy 4-12 word line to display big on a text card>"}',
@@ -91,13 +106,15 @@ export async function generateFillerPost(
     platform: "instagram",
     pillarId: pillar.id,
     postsPerWeek: pillar.posts_per_week,
-    format: "feed",
+    format: formatHint === "story" ? "feed" : formatHint === "reel" ? "reel" : formatHint === "carousel" ? "carousel" : "feed",
   });
+  caption = humanizeCaption(caption);
+  const styleMeta = { content_job: job, format_bias: formatHint, generated: true };
   const post = await queryOne<Post>(
     `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
-     values ($1, $2, $3::uuid[], $4, false, '{}'::jsonb, 'instagram', 'pending_approval', $5)
+     values ($1, $2, $3::uuid[], $4, false, $6::jsonb, 'instagram', 'pending_approval', $5)
      returning *`,
-    [brand.id, caption, [mediaId], pillar.id, slot.toISOString()],
+    [brand.id, caption, [mediaId], pillar.id, slot.toISOString(), JSON.stringify(styleMeta)],
   );
   if (!post) return null;
 

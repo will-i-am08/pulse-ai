@@ -435,3 +435,34 @@ export {
 export type { AiVideoProvider, AiVideoRoute, QueueAiVideoResult } from "./aiVideo.js";
 export type { DraftCaptionOpts } from "./draftCaption.js";
 
+export {
+  CONTENT_JOBS,
+  DEFAULT_JOB_MIX,
+  inferContentJob,
+  formatBiasForJob,
+  jobMixPromptBlock,
+  pickUnderrepresentedJob,
+  isContentJob,
+} from "./contentJobs.js";
+export type { ContentJob } from "./contentJobs.js";
+export {
+  listHookFormulas,
+  pickHookFormulas,
+  scoreHookLine,
+  isBannedHookOpener,
+  hooksPromptBlock,
+} from "./hooks.js";
+export type { HookFormula } from "./hooks.js";
+export {
+  FEED_FOLD_CHARS,
+  MAX_HASHTAGS,
+  captionJobForFormat,
+  stripInvisibleChars,
+  replaceSlopPhrases,
+  limitHashtags,
+  feedFoldPreview,
+  captionJobPrompt,
+  humanizeCaption,
+} from "./humanizeCaption.js";
+export type { CaptionJob } from "./humanizeCaption.js";
+export { qualitySignalsLine } from "./insights.js";

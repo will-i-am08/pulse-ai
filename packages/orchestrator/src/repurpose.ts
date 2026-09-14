@@ -5,16 +5,23 @@ import { renderQuoteCard, generatePhotoImage } from "./imaging.js";
 import { visualReference } from "./library.js";
 import { ensurePillars } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
+import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { hooksPromptBlock } from "./hooks.js";
+import { humanizeCaption } from "./humanizeCaption.js";
 
 // Content atomisation: take one existing asset (a website page, blog post, menu)
 // and turn it into a batch of on-brand posts spread across the calendar.
 
+type ExtractKind = "claim" | "number" | "story" | "mechanism" | "mistake" | "line";
 type PlanItem = {
   caption: string;
   pillar_key?: string;
   visual: "card" | "photo";
   card?: string;
   photo_prompt?: string;
+  extract_kind?: ExtractKind;
+  content_job?: string;
+  hook_formula_id?: string;
 };
 
 function isBlockedHost(hostname: string): boolean {
@@ -66,8 +73,11 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
     `You turn a page of the client's own content into a batch of 4-6 social posts for "${brand.name}".`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     `Available pillars: ${pillarList}.`,
-    'Output ONLY JSON: {"posts":[{"caption":"","pillar_key":"","visual":"card|photo","card":"<punchy line if visual=card>","photo_prompt":"<image description if visual=photo>"}]}',
-    "Each post must stand on its own and be specific to the content. Vary the pillars. Use visual=card for quotes/tips/offers and visual=photo when a described scene fits.",
+    "First extract atoms from the page into these kinds: claim, number, story, mechanism, mistake, line.",
+    "Then turn each atom into one standalone post. Vary content_job across proof/teach/opinion/story/offer.",
+    hooksPromptBlock("teach", 3),
+    'Output ONLY JSON: {"posts":[{"extract_kind":"claim|number|story|mechanism|mistake|line","content_job":"proof|teach|opinion|story|offer","hook_formula_id":"<id or empty>","caption":"","pillar_key":"","visual":"card|photo","card":"<punchy line if visual=card>","photo_prompt":"<image description if visual=photo>"}]}',
+    "Each post must stand on its own and be specific to the content. Never invent numbers not on the page. Vary the pillars and extract_kind. Use visual=card for quotes/tips/offers and visual=photo when a described scene fits.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -118,10 +128,29 @@ export async function repurposeUrl(brand: Brand, url: string): Promise<string | 
       postsPerWeek: pillar?.posts_per_week ?? 0,
       format: "feed",
     });
+    const job = inferContentJob({
+      key: pillar?.key,
+      name: pillar?.name,
+      description: pillar?.description,
+      content_job: item.content_job,
+    });
     const post = await queryOne<{ id: string }>(
       `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
-       values ($1, $2, $3::uuid[], $4, false, '{}'::jsonb, 'instagram', 'pending_approval', $5) returning id`,
-      [brand.id, item.caption, [mediaId], pillar?.id ?? null, slot.toISOString()],
+       values ($1, $2, $3::uuid[], $4, false, $6::jsonb, 'instagram', 'pending_approval', $5) returning id`,
+      [
+        brand.id,
+        humanizeCaption(item.caption),
+        [mediaId],
+        pillar?.id ?? null,
+        slot.toISOString(),
+        JSON.stringify({
+          repurposed: true,
+          extract_kind: item.extract_kind ?? null,
+          content_job: job,
+          hook_formula_id: item.hook_formula_id ?? null,
+          format_bias: formatBiasForJob(job),
+        }),
+      ],
     );
     if (!post) continue;
     await query(
