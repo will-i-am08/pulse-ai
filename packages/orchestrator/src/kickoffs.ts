@@ -82,11 +82,20 @@ const NO_PHOTOS_RE =
   /\b(no|don'?t have|dont have|haven'?t got|without|zero)\b.{0,48}\b(photos?|pics?|images?|shots?)\b/i;
 
 /**
- * "make me a carousel" / "could you do up a post" / misspelled carrousel —
- * allow optional a/an and casual verbs (do up / whip up / put together).
+ * Natural creative asks — not only "draft a post".
+ * Catches: "Post a good morning post…", "do a post…", "I want a carousel…",
+ * "need a post about…", "a post comparing…", plus make/create/do up/whip up.
  */
 const DRAFT_POSTS_RE =
-  /\b((can|could)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*up|put\s+together|produce)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b/i;
+  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b/i;
+
+/** Owner said "with this photo" (etc.) — expects attached media, not generated art. */
+export const REFERS_TO_ATTACHED_MEDIA_RE =
+  /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b/i;
+
+export function refersToAttachedMedia(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && REFERS_TO_ATTACHED_MEDIA_RE.test(body));
+}
 
 /**
  * Owner wants a photo/carousel creative but did not attach media and did not
@@ -851,7 +860,7 @@ async function runTrendOrCompetitorDraft(
         brandId: brand.id,
         sms:
           researched
-            ? `Spotted this: ${researched.angle}. ${researched.why || ""} I couldn't finish the draft visual just then — say "draft a post" and I'll retry.`
+            ? `Spotted this: ${researched.angle}. ${researched.why || ""} I couldn't finish the draft visual just then — ask me again and I'll retry.`
             : "Couldn't land a timely draft just then — try again shortly?",
       },
     ];
