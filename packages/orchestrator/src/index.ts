@@ -156,7 +156,7 @@ export {
   rolesForCarouselKind,
 } from "./designComposer.js";
 export type { LayoutPrimitive, SlideRole, DesignContext } from "./designComposer.js";
-export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms, designQaSampleIndices } from "./designQa.js";
+export { runDesignQa, ensureDesignQa, heuristicDesignQa, designQaFailureSms, looksLikeCreativeRedoAsk, designQaSampleIndices } from "./designQa.js";
 export type { DesignQaResult, DesignQaFixHints, DesignQaMode } from "./designQa.js";
 export {
   routeImageJob,

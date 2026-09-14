@@ -42,9 +42,18 @@ const LAYOUT_CYCLE: LayoutPrimitive[] = [
   "editorial_quote",
 ];
 
-/** Honest SMS when design still fails QA after one recompose. */
+/** Last-resort SMS when design still fails QA after self-heal recomposes. */
 export function designQaFailureSms(brandName: string): string {
-  return `I drafted something for ${brandName} but the graphic didn't clear my design check (legibility / on-brand / too similar to recent posts). Want me to try a different layout, or send a photo and I'll style that instead?`;
+  return `I kept tweaking the ${brandName} graphic but it still didn't clear my design check. I'm regenerating a fresh take now — hang tight, or send a photo and I'll style that instead.`;
+}
+
+/** Owner wants a full creative redo (new photos/layout), not a caption tweak. */
+export function looksLikeCreativeRedoAsk(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return /\b((try|do|make|give me|show me)\s+(something|it|this|that)\s+)?(different|again|fresh|new)\b|\b(redo|regenerate|start over|from scratch|another (one|version|take|layout|set))\b|\b(new|different|fresh)\s+(photos?|images?|pics?|visuals?|layout|slides?|carousel)\b/i.test(
+    t,
+  );
 }
 
 /** Max copy length before heuristic overflow — overlays need tighter budgets. */
@@ -286,8 +295,9 @@ export async function runDesignQa(opts: {
 }
 
 /**
- * Run QA; on fail invoke `recompose` once and re-check.
- * Returns final QA + whether a recompose happened.
+ * Run QA; on fail invoke `recompose` up to `maxRecomposes` times (default 1)
+ * and re-check after each pass. Photo carousels should pass 2–3 so Kip can
+ * self-heal prompts instead of apologising to the client.
  */
 export async function ensureDesignQa(opts: {
   brand: Brand;
@@ -295,38 +305,57 @@ export async function ensureDesignQa(opts: {
   slideTexts?: string[];
   layoutKey?: string;
   mode?: DesignQaMode;
+  /** Extra recompose attempts after the first fail. Default 1. */
+  maxRecomposes?: number;
   recompose: (
     suggest?: LayoutPrimitive,
     fixHints?: DesignQaFixHints,
-  ) => Promise<{ mediaIds: string[]; layoutKey?: string }>;
-}): Promise<{ qa: DesignQaResult; recomposed: boolean; mediaIds: string[] }> {
+    attempt?: number,
+  ) => Promise<{ mediaIds: string[]; layoutKey?: string; slideTexts?: string[] }>;
+}): Promise<{ qa: DesignQaResult; recomposed: boolean; mediaIds: string[]; attempts: number }> {
   const mode = opts.mode ?? "designed";
+  const maxRecomposes = Math.max(1, Math.min(4, opts.maxRecomposes ?? 1));
   let mediaIds = opts.mediaIds;
   let layoutKey = opts.layoutKey;
+  let slideTexts = opts.slideTexts;
   let qa = await runDesignQa({
     brand: opts.brand,
     mediaIds,
-    slideTexts: opts.slideTexts,
+    slideTexts,
     layoutKey,
     mode,
   });
-  if (qa.pass) return { qa, recomposed: false, mediaIds };
+  if (qa.pass) return { qa, recomposed: false, mediaIds, attempts: 0 };
 
-  try {
-    const next = await opts.recompose(qa.suggestLayout, qa.fixHints);
-    mediaIds = next.mediaIds;
-    layoutKey = next.layoutKey ?? layoutKey;
-  } catch (err) {
-    console.error("ensureDesignQa: recompose failed", err);
-    return { qa: { pass: false, reasons: [...qa.reasons, "recompose failed"], fixHints: qa.fixHints }, recomposed: false, mediaIds };
+  let recomposed = false;
+  let attempts = 0;
+  for (let i = 1; i <= maxRecomposes; i++) {
+    attempts = i;
+    try {
+      const next = await opts.recompose(qa.suggestLayout, qa.fixHints, i);
+      mediaIds = next.mediaIds;
+      layoutKey = next.layoutKey ?? layoutKey;
+      if (next.slideTexts) slideTexts = next.slideTexts;
+      recomposed = true;
+    } catch (err) {
+      console.error(`ensureDesignQa: recompose attempt ${i} failed`, err);
+      return {
+        qa: { pass: false, reasons: [...qa.reasons, `recompose failed (attempt ${i})`], fixHints: qa.fixHints },
+        recomposed,
+        mediaIds,
+        attempts,
+      };
+    }
+
+    qa = await runDesignQa({
+      brand: opts.brand,
+      mediaIds,
+      slideTexts,
+      layoutKey,
+      mode,
+    });
+    if (qa.pass) break;
   }
 
-  qa = await runDesignQa({
-    brand: opts.brand,
-    mediaIds,
-    slideTexts: opts.slideTexts,
-    layoutKey,
-    mode,
-  });
-  return { qa, recomposed: true, mediaIds };
+  return { qa, recomposed, mediaIds, attempts };
 }
