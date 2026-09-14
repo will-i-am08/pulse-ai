@@ -423,6 +423,8 @@ export {
   maybeEnqueueFromKipCommit,
   processKickoff,
   runKickoffDrain,
+  reclaimStaleKickoffs,
+  STALE_RUNNING_KICKOFF_MS,
 } from "./kickoffs.js";
 export type { KickoffEnqueueResult, KickoffDrainResult, KickoffDeliver, KickoffDrainOpts } from "./kickoffs.js";
 
