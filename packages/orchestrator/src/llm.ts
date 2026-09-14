@@ -1,10 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getServerEnv } from "@pulse/shared";
+import { getServerEnv, type ServerEnv } from "@pulse/shared";
 
 // Every LLM call in this package goes through here. Handles client caching,
-// retry-with-backoff on the primary (DRAFT_MODEL) model, and a fallback to
-// FALLBACK_MODEL if the primary keeps failing (per BUILD_CONTRACTS.md
-// resilience rule: every external call wrapped in retry-with-backoff).
+// retry-with-backoff on the primary model, optional fallback, and (when
+// KIP_SMART_ROUTING is on) tier-based model selection.
 
 let client: Anthropic | null = null;
 
@@ -14,6 +13,9 @@ function getClient(): Anthropic {
   }
   return client;
 }
+
+/** Task difficulty for model routing. Ignored for selection when routing is off. */
+export type LlmTier = "fast" | "standard" | "smart";
 
 export interface CallLLMOptions {
   system?: string;
@@ -26,13 +28,56 @@ export interface CallLLMOptions {
    * summarise, never instructions to follow.
    */
   webSearch?: boolean | number;
+  /** Model routing tier. Default `"standard"`. Used for logging even when routing is off. */
+  tier?: LlmTier;
+  /** Short label for structured logs (e.g. "classify", "think", "speak"). */
+  task?: string;
 }
+
+export interface ModelPlanStep {
+  model: string;
+  retries: number;
+}
+
+/** Env slice needed to resolve a model plan (full ServerEnv or a test stub). */
+export type ModelPlanEnv = Pick<
+  ServerEnv,
+  "DRAFT_MODEL" | "FALLBACK_MODEL" | "SMART_MODEL" | "KIP_SMART_ROUTING"
+>;
 
 const PRIMARY_RETRIES = 2;
 const BASE_DELAY_MS = 500;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Resolve which models to try (and how many attempts) for a tier.
+ * When `KIP_SMART_ROUTING` is false/unset, always returns the standard plan
+ * (DRAFT retries → FALLBACK once), regardless of `tier`.
+ */
+export function resolveModelPlan(tier: LlmTier | undefined, env: ModelPlanEnv): ModelPlanStep[] {
+  const effective: LlmTier = env.KIP_SMART_ROUTING ? (tier ?? "standard") : "standard";
+
+  if (effective === "fast") {
+    // Cost-predictable: Haiku only, no Sonnet fallback.
+    return [{ model: env.DRAFT_MODEL, retries: PRIMARY_RETRIES }];
+  }
+
+  if (effective === "smart") {
+    const smart = env.SMART_MODEL || env.FALLBACK_MODEL;
+    return [
+      { model: smart, retries: PRIMARY_RETRIES },
+      { model: env.DRAFT_MODEL, retries: 1 },
+    ];
+  }
+
+  // standard (and routing-off)
+  return [
+    { model: env.DRAFT_MODEL, retries: PRIMARY_RETRIES },
+    { model: env.FALLBACK_MODEL, retries: 1 },
+  ];
 }
 
 async function attempt(model: string, opts: CallLLMOptions): Promise<string> {
@@ -79,23 +124,49 @@ export function stripMarkdown(s: string): string {
     .trim();
 }
 
+function logLlmCall(fields: {
+  task: string | undefined;
+  tier: LlmTier;
+  model: string;
+  ok: boolean;
+  ms: number;
+}): void {
+  console.info({
+    event: "llm_call",
+    task: fields.task ?? null,
+    tier: fields.tier,
+    model: fields.model,
+    ok: fields.ok,
+    ms: fields.ms,
+  });
+}
+
 /**
- * Call the LLM. Retries the primary model (env DRAFT_MODEL) with exponential
- * backoff, then falls back to FALLBACK_MODEL for one final attempt if the
- * primary is still failing.
+ * Call the LLM. Model order depends on tier when KIP_SMART_ROUTING is enabled;
+ * otherwise DRAFT_MODEL retries then FALLBACK_MODEL once (legacy behaviour).
  */
 export async function callLLM(opts: CallLLMOptions): Promise<string> {
   const env = getServerEnv();
-  const plan: Array<{ model: string; retries: number }> = [
-    { model: env.DRAFT_MODEL, retries: PRIMARY_RETRIES },
-    { model: env.FALLBACK_MODEL, retries: 1 },
-  ];
+  const tier: LlmTier = opts.tier ?? "standard";
+  const plan = resolveModelPlan(tier, env);
+  const started = Date.now();
 
   let lastErr: unknown;
+  let lastModel = plan[0]?.model ?? env.DRAFT_MODEL;
+
   for (const { model, retries } of plan) {
+    lastModel = model;
     for (let i = 0; i < retries; i++) {
       try {
-        return await attempt(model, opts);
+        const text = await attempt(model, opts);
+        logLlmCall({
+          task: opts.task,
+          tier,
+          model,
+          ok: true,
+          ms: Date.now() - started,
+        });
+        return text;
       } catch (err) {
         lastErr = err;
         const isVeryLastAttempt =
@@ -105,6 +176,14 @@ export async function callLLM(opts: CallLLMOptions): Promise<string> {
       }
     }
   }
+
+  logLlmCall({
+    task: opts.task,
+    tier,
+    model: lastModel,
+    ok: false,
+    ms: Date.now() - started,
+  });
 
   throw new Error(
     `callLLM failed on all models (${plan.map((p) => p.model).join(", ")}): ${String(lastErr)}`,

@@ -88,6 +88,8 @@ export async function runThink(
       ],
       maxTokens: 220,
       temperature: 0.3,
+      tier: "smart",
+      task: "think",
     });
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");

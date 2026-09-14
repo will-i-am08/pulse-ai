@@ -330,6 +330,8 @@ export async function draftCaption(
     system,
     messages: [{ role: "user", content }],
     maxTokens: asReel ? 220 : 400,
+    tier: "standard",
+    task: "draft_caption",
   });
 
   return { caption: stripPersonalNames(humanizeCaption(caption), brand), proposedTime: heuristicProposedTime(notes) };

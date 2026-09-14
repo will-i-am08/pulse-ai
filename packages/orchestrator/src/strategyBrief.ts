@@ -127,6 +127,8 @@ export async function proposeStrategyBrief(
         },
       ],
       maxTokens: 1100,
+      tier: "smart",
+      task: "strategy_brief",
     });
     parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as StrategyBriefPieces;
   } catch (err) {
@@ -321,6 +323,8 @@ export async function reviseStrategyBrief(
       system,
       messages: [{ role: "user", content: instruction }],
       maxTokens: 1100,
+      tier: "smart",
+      task: "strategy_brief",
     });
     parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as StrategyBriefPieces;
   } catch {

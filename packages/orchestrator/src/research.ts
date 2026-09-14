@@ -250,6 +250,8 @@ export async function runDeepResearch(
       messages: [{ role: "user", content: request.slice(0, 1500) }],
       maxTokens: 1400,
       webSearch: 8,
+      tier: "smart",
+      task: "research",
     });
     parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as DeepResearchParsed;
   } catch (err) {

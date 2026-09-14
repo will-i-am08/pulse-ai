@@ -10,6 +10,17 @@ const serverEnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1),
   DRAFT_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   FALLBACK_MODEL: z.string().default("claude-sonnet-5"),
+  /** Optional override for smart-tier primary. When unset, smart uses FALLBACK_MODEL. */
+  SMART_MODEL: z.string().optional(),
+  /**
+   * When "true"/"1", callLLM routes by tier (fast/standard/smart).
+   * Off by default — tier/task still accepted for logging.
+   */
+  KIP_SMART_ROUTING: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   // Preferred for sending/media (revocable API key). Signature validation still

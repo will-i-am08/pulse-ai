@@ -53,6 +53,8 @@ async function scoutTrend(brand: Brand): Promise<{ angle: string; why: string } 
       ],
       maxTokens: 250,
       webSearch: 4,
+      tier: "smart",
+      task: "autonomy",
     });
     const cleaned = stripMarkdown(raw);
     const parsed = JSON.parse(

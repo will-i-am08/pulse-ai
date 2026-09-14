@@ -117,6 +117,8 @@ export async function speakSMS(opts: SpeakOptions): Promise<string> {
       maxTokens: opts.maxTokens ?? 500,
       temperature: opts.temperature ?? 0.9,
       webSearch: opts.webSearch,
+      tier: shouldThink ? "smart" : "standard",
+      task: "speak",
     });
     return humanizeChat(text);
   };

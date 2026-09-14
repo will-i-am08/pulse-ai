@@ -89,6 +89,8 @@ export async function updateOpenLoopsAfterTurn(
       ],
       maxTokens: 280,
       temperature: 0.2,
+      tier: "fast",
+      task: "open_loops",
     });
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");

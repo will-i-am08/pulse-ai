@@ -26,6 +26,8 @@ async function summariseDelta(before: string, after: string): Promise<string> {
       },
     ],
     maxTokens: 100,
+    tier: "standard",
+    task: "apply_correction",
   });
   return text.trim().replace(/^["']|["']$/g, "");
 }
