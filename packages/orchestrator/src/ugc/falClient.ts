@@ -105,8 +105,10 @@ export async function falGenerateImageRouted(opts: {
   imageUrls?: string[];
   aspectRatio?: string;
   negativePrompt?: string;
+  /** Optional pre-planned chain (from planUgcCreative); else env/auto default */
+  chain?: UgcModelEndpoint[];
 }): Promise<RoutedResult | null> {
-  const chain = resolveStillChain();
+  const chain = opts.chain?.length ? opts.chain : resolveStillChain();
   const errors: string[] = [];
   for (const endpoint of chain) {
     try {
@@ -133,8 +135,10 @@ export async function falImageToVideoRouted(opts: {
   duration?: string | number;
   negativePrompt?: string;
   generateAudio?: boolean;
+  /** Optional pre-planned chain (from planUgcCreative); else env/auto default */
+  chain?: UgcModelEndpoint[];
 }): Promise<RoutedResult | null> {
-  const chain = resolveMotionChain();
+  const chain = opts.chain?.length ? opts.chain : resolveMotionChain();
   const errors: string[] = [];
   for (const endpoint of chain) {
     try {
@@ -193,12 +197,17 @@ export async function falImageToVideo(opts: {
   return routed?.buffer ?? null;
 }
 
-export function describeUgcModelChains(): {
+export function describeUgcModelChains(plan?: {
+  still: UgcModelEndpoint[];
+  motion: UgcModelEndpoint[];
+}): {
   still: Array<{ id: string; falId: string; label: string }>;
   motion: Array<{ id: string; falId: string; label: string }>;
 } {
+  const still = plan?.still?.length ? plan.still : resolveStillChain();
+  const motion = plan?.motion?.length ? plan.motion : resolveMotionChain();
   return {
-    still: resolveStillChain().map(({ id, falId, label }) => ({ id, falId, label })),
-    motion: resolveMotionChain().map(({ id, falId, label }) => ({ id, falId, label })),
+    still: still.map(({ id, falId, label }) => ({ id, falId, label })),
+    motion: motion.map(({ id, falId, label }) => ({ id, falId, label })),
   };
 }

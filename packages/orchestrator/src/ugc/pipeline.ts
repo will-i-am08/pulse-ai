@@ -30,6 +30,7 @@ import {
 import { falConfigured, falGenerateImageRouted, falImageToVideoRouted, describeUgcModelChains } from "./falClient.js";
 import { elevenLabsConfigured, synthesizeUgcVoiceover } from "./elevenLabs.js";
 import { assembleUgcReel } from "./assemble.js";
+import { planUgcCreative, summarizeCreativePlan, type UgcCreativePlan } from "./creativePlan.js";
 import {
   hardGateUgc,
   scoreUgcStill,
@@ -125,8 +126,8 @@ export type QueueUgcResult =
 
 /**
  * Queue a multi-scene UGC job (routed stills → routed I2V → ElevenLabs → ffmpeg).
- * Stills try Nano Banana → Flux → Seedream; motion tries Kling → Seedance → Wan
- * (env-overridable). Product refs strongly preferred; required when PRESETS_V1.requireProductRefs.
+ * Kip auto-picks still/motion/voice per brief (Nano Banana/Flux/Seedream + Kling/Seedance/Wan
+ * + voice slots) unless env pins a model. Product refs strongly preferred.
  */
 export async function queueUgcJob(
   brand: Brand,
@@ -138,7 +139,7 @@ export async function queueUgcJob(
   if (!ugcConfigured()) {
     return {
       ok: false,
-      sms: "UGC video isn't fully set up yet (need fal key + ElevenLabs). Stills/motion models are swappable (Nano Banana/Flux/Seedream + Kling/Seedance/Wan). Send a clip and I'll draft a Reel — or ask for a plain AI video.",
+      sms: "UGC video isn't fully set up yet (need fal key + ElevenLabs). Kip auto-picks stills/motion/voice for each brief. Send a clip and I'll draft a Reel — or ask for a plain AI video.",
     };
   }
 
@@ -178,13 +179,26 @@ export async function queueUgcJob(
   }
 
   const dest = destination || ugcDestinationFromBody(clean);
-  const chains = describeUgcModelChains();
+const creative = planUgcCreative({
+    brief: clean,
+    brand,
+    hasProductRefs: sourceMediaIds.length > 0,
+    destination: dest,
+  });
+  const chains = describeUgcModelChains(creative);
   const pipeline = {
     version: PRESETS_V1.version,
     destination: dest,
     angle: pickAngle(clean),
     retune: retune,
     model_chains: chains,
+    creative: {
+      mode: creative.mode,
+      voiceSlot: creative.voiceSlot,
+      reasons: creative.reasons,
+      still: creative.still.map((c) => c.id),
+      motion: creative.motion.map((c) => c.id),
+    },
   };
 
   const job = await queryOne<AiVideoJob>(
@@ -195,7 +209,7 @@ export async function queueUgcJob(
     [
       brand.id,
       clean,
-      `ugc:${chains.still.map((c) => c.id).join(">")}+${chains.motion.map((c) => c.id).join(">")}+elevenlabs`,
+      `ugc:${chains.still.map((c) => c.id).join(">")}+${chains.motion.map((c) => c.id).join(">")}+${creative.voiceSlot}`,
       sourceMediaIds,
       est,
       dest,
@@ -212,7 +226,7 @@ export async function queueUgcJob(
   return {
     ok: true,
     job,
-    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; stills ${chains.still.map((c) => c.id).join("→")}, motion ${chains.motion.map((c) => c.id).join("→")}, seeded presets + auto-tune) ${costEstimateSmsLine("video")}. I'll text when it's ready for approval 🎬`,
+    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; Kip picked ${summarizeCreativePlan(creative)}; auto-tune on) ${costEstimateSmsLine("video")}. I'll text when it's ready for approval 🎬`,
   };
 }
 
@@ -298,6 +312,7 @@ async function stillForScene(opts: {
   scene: UgcScriptScene;
   productUrls: string[];
   productLabel: string;
+  stillChain: UgcCreativePlan["still"];
 }): Promise<{ buf: Buffer; prompt: string; modelId: string; falId: string }> {
   const visual = opts.scene.visual || opts.productLabel;
   const prompt = productOnlyStillPrompt({
@@ -319,6 +334,7 @@ async function stillForScene(opts: {
       imageUrls: opts.productUrls.length ? opts.productUrls : undefined,
       aspectRatio: "9:16",
       negativePrompt: STILL_NEGATIVE,
+      chain: opts.stillChain,
     });
     if (!routed) continue;
     last = routed.buffer;
@@ -346,6 +362,7 @@ async function stillForScene(opts: {
 async function motionForStill(opts: {
   stillUrl: string;
   scene: UgcScriptScene;
+  motionChain: UgcCreativePlan["motion"];
 }): Promise<{ buf: Buffer; modelId: string; falId: string }> {
   const prompt = motionPromptForScene({
     role: opts.scene.role,
@@ -364,6 +381,7 @@ async function motionForStill(opts: {
       duration: String(opts.scene.seconds ?? MOTION_SECONDS_PER_SCENE),
       negativePrompt: MOTION_NEGATIVE,
       generateAudio: false,
+      chain: opts.motionChain,
     });
     if (!routed) continue;
     last = routed.buffer;
@@ -419,8 +437,15 @@ export async function processUgcJob(
       brand.name +
       (/\bfor\b/i.test(job.prompt) ? ` — ${job.prompt.replace(/^.*?for\s+/i, "").slice(0, 80)}` : " product");
 
-    // VO first (timing driver)
-    const vo = await synthesizeUgcVoiceover({ text: script.script });
+    const creative = planUgcCreative({
+      brief: job.prompt,
+      brand,
+      hasProductRefs: sourceIds.length > 0,
+      destination: ((job as { destination?: UgcDestination }).destination as UgcDestination) || "organic",
+    });
+
+    // VO first (timing driver) — Kip-picked voice slot unless UGC_VOICE_MODE=fixed
+    const vo = await synthesizeUgcVoiceover({ text: script.script, slot: creative.voiceSlot });
     if (!vo) throw new Error("voiceover failed");
 
     const sceneClips: Array<{ video: Buffer; voText: string }> = [];
@@ -428,11 +453,11 @@ export async function processUgcJob(
     const modelsUsed: Array<{ scene: string; still?: string; motion?: string }> = [];
 
     for (const scene of script.scenes.slice(0, 3)) {
-      const still = await stillForScene({ brand, scene, productUrls, productLabel });
+      const still = await stillForScene({ brand, scene, productUrls, productLabel, stillChain: creative.still });
       const stillId = await storePhotoAsset(brand.id, still.buf);
       stillMediaIds.push(stillId);
       const stillUrl = publicMediaUrl(stillId);
-      const motion = await motionForStill({ stillUrl, scene });
+      const motion = await motionForStill({ stillUrl, scene, motionChain: creative.motion });
       sceneClips.push({ video: motion.buf, voText: scene.vo });
       modelsUsed.push({
         scene: scene.role,
@@ -509,7 +534,7 @@ export async function processUgcJob(
           still_media_ids: stillMediaIds,
           assembled: true,
           models_used: modelsUsed,
-          model_chains: describeUgcModelChains(),
+          model_chains: describeUgcModelChains(creative),
         }),
       ],
     );

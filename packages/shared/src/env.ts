@@ -54,14 +54,19 @@ const serverEnvSchema = z.object({
   /** Purge design_memory / research_snapshots older than this many days (worker weekly). */
   RETENTION_DAYS: z.coerce.number().int().min(30).default(180),
   FAL_KEY: z.string().optional(),
-  /** UGC still primary: nano_banana | flux_dev | seedream */
-  UGC_STILL_MODEL: z.string().default("nano_banana"),
-  /** Comma-separated still fallbacks tried on failure. */
+  /** UGC still primary: auto | nano_banana | flux_dev | seedream — auto lets Kip pick per brief */
+  UGC_STILL_MODEL: z.string().default("auto"),
+  /** Comma-separated still fallbacks tried on failure (used when primary is pinned). */
   UGC_STILL_FALLBACKS: z.string().default("flux_dev,seedream"),
-  /** UGC motion primary: kling | seedance | wan */
-  UGC_MOTION_MODEL: z.string().default("kling"),
-  /** Comma-separated motion fallbacks (Seedance etc.). */
+  /** UGC motion primary: auto | kling | seedance | wan — auto lets Kip pick per brief */
+  UGC_MOTION_MODEL: z.string().default("auto"),
+  /** Comma-separated motion fallbacks (used when primary is pinned). */
   UGC_MOTION_FALLBACKS: z.string().default("seedance,wan"),
+  /**
+   * Voice selection: auto (Kip picks casual_f / casual_m / calm from brief+brand)
+   * or fixed (always use ELEVENLABS_VOICE_ID when set).
+   */
+  UGC_VOICE_MODE: z.string().default("auto"),
   /** Optional fal path overrides (keep swappable without code changes). */
   FAL_NANO_BANANA_MODEL: z.string().default("fal-ai/nano-banana"),
   FAL_FLUX_STILL_MODEL: z.string().default("fal-ai/flux/dev"),

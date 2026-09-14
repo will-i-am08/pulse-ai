@@ -18,3 +18,5 @@ export {
   resolveMotionChain,
 } from "./modelRouter.js";
 export { PRESETS_V1 } from "./presets/index.js";
+export { planUgcCreative, summarizeCreativePlan, pickStillIds, pickMotionIds, pickVoiceSlot } from "./creativePlan.js";
+export type { UgcCreativePlan } from "./creativePlan.js";

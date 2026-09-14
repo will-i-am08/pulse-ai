@@ -1,5 +1,6 @@
 import { getServerEnv } from "@pulse/shared";
 import { VOICE_PRESET_V1, UGC_VOICE_SLOTS, formatVoScript, type UgcVoiceSlot } from "./presets/voicePresets.js";
+import { voiceModeFixed } from "./creativePlan.js";
 
 function elevenKey(): string | undefined {
   return (
@@ -18,13 +19,24 @@ export function elevenLabsConfigured(): boolean {
   return Boolean(elevenKey());
 }
 
+/**
+ * Resolve ElevenLabs voice id.
+ * - Explicit override wins
+ * - UGC_VOICE_MODE=fixed → ELEVENLABS_VOICE_ID (if set)
+ * - Otherwise use the planned slot (Kip auto-pick)
+ */
 export function resolveUgcVoiceId(slot: UgcVoiceSlot = "casual_f", override?: string | null): string {
   if (override && override.length > 5) return override;
-  try {
-    const envDefault = getServerEnv().ELEVENLABS_VOICE_ID;
-    if (envDefault) return envDefault;
-  } catch {
-    /* ignore */
+  if (voiceModeFixed()) {
+    try {
+      const envDefault = getServerEnv().ELEVENLABS_VOICE_ID;
+      if (envDefault) return envDefault;
+    } catch {
+      /* ignore */
+    }
+    if (process.env.ELEVENLABS_VOICE_ID && process.env.ELEVENLABS_VOICE_ID.length > 5) {
+      return process.env.ELEVENLABS_VOICE_ID;
+    }
   }
   return UGC_VOICE_SLOTS[slot] ?? UGC_VOICE_SLOTS.casual_f;
 }
