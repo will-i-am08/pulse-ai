@@ -33,6 +33,16 @@ describe("looksLikeKickoffRequest", () => {
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
   });
 
+  it("treats carousel/photo asks without client media as kickoffs (generate/stock)", () => {
+    expect(
+      looksLikeKickoffRequest(
+        "Can you make me a carrousel with cinematic business photos with text over the top?",
+      ),
+    ).toBe(true);
+    expect(looksLikeKickoffRequest("make me a carousel")).toBe(true);
+    expect(looksLikeKickoffRequest("Generate the photos")).toBe(true);
+  });
+
   it("ignores plain chat", () => {
     expect(looksLikeKickoffRequest("thanks!")).toBe(false);
     expect(looksLikeKickoffRequest("what do you think of carousels?")).toBe(false);
@@ -52,6 +62,15 @@ describe("inferKickoffFromUserMessage", () => {
     const r = inferKickoffFromUserMessage("draft me 2 posts");
     expect(r?.kind).toBe("draft_posts");
     expect(r?.payload.visuals).toBe("photo");
+  });
+
+  it("maps cinematic carousel asks to draft_posts with photo visuals (no client upload)", () => {
+    const r = inferKickoffFromUserMessage(
+      "Can you make me a carrousel with cinematic business photos with text over the top?",
+    );
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.visuals).toBe("photo");
+    expect(String(r?.ackSms ?? "")).toMatch(/generated\/stock photos/i);
   });
 
   it("honors explicit text-card asks as designed", () => {

@@ -1753,8 +1753,8 @@ export async function processInbound(
       }
       return {
         reply:
-          "Got it, noted. Send me a photo any time to draft a new post, or let me know specifically " +
-          "what you'd like changed.",
+          "Got it, noted. Say \"draft a post\" or \"make a carousel\" and I'll generate the visuals — " +
+          "or tell me specifically what you'd like changed.",
       };
     }
   }
