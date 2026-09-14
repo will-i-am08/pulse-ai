@@ -188,6 +188,19 @@ export function brandContextForPrompt(brand: Brand): string {
     }
   }
 
+  const voice = brand.brand_voice_profile as {
+    proof_bank?: string[];
+    positions?: string[];
+  } | null | undefined;
+  if (voice?.proof_bank?.length) {
+    lines.push("Proof bank (never invent numbers beyond these):");
+    for (const p of voice.proof_bank.slice(0, 12)) lines.push(`- ${p}`);
+  }
+  if (voice?.positions?.length) {
+    lines.push("Brand positions (take these stands when relevant):");
+    for (const p of voice.positions.slice(0, 8)) lines.push(`- ${p}`);
+  }
+
   return lines.join("\n");
 }
 

@@ -1,0 +1,99 @@
+[
+  {
+    "id": "cost_confession",
+    "name": "Cost Confession",
+    "jobs": ["proof", "story"],
+    "template": "{Specific amount} is what {one mistake} cost me.",
+    "example": "$18,000 is what one missing clause cost me.",
+    "on_screen": "$18,000 MISTAKE",
+    "ban": ["stop scrolling", "hey guys", "in this video"]
+  },
+  {
+    "id": "negative_command",
+    "name": "Negative Command",
+    "jobs": ["teach", "opinion"],
+    "template": "Stop {common action}. Do {alternative} instead.",
+    "example": "Stop posting three times a day. Post twice and reply for an hour.",
+    "on_screen": "STOP POSTING DAILY"
+  },
+  {
+    "id": "nobody_tells_you",
+    "name": "Nobody Tells You",
+    "jobs": ["opinion", "teach"],
+    "template": "Nobody tells you that {uncomfortable truth}.",
+    "example": "Nobody tells you that your first 30 reels are supposed to flop.",
+    "on_screen": "YOUR FIRST 30 WILL FLOP"
+  },
+  {
+    "id": "time_collapse",
+    "name": "Time Collapse",
+    "jobs": ["teach", "proof"],
+    "template": "This used to take me {long time}. It now takes {short time}.",
+    "example": "Proposals used to take me five hours. They take twenty minutes now.",
+    "on_screen": "5 HOURS -> 20 MIN"
+  },
+  {
+    "id": "the_receipt",
+    "name": "The Receipt",
+    "jobs": ["proof"],
+    "template": "I {did thing} for {N days}. Here are the actual numbers.",
+    "example": "I posted one reel a day for 60 days. Here is what it did to my DMs.",
+    "on_screen": "60 DAYS. REAL NUMBERS."
+  },
+  {
+    "id": "wrong_right",
+    "name": "Wrong Way, Right Way",
+    "jobs": ["teach"],
+    "template": "You are doing {thing} wrong, and it is not your fault. {The fix}.",
+    "example": "You are writing captions wrong, and it is not your fault. Instagram hides everything after line one.",
+    "on_screen": "YOUR CAPTIONS ARE CUT"
+  },
+  {
+    "id": "insider_leak",
+    "name": "Insider Leak",
+    "jobs": ["story", "opinion"],
+    "template": "I spent {N years} {inside the thing}. Here is what we never said out loud.",
+    "example": "I spent six years selling agency retainers. Here is what we never put in the proposal.",
+    "on_screen": "6 YEARS INSIDE"
+  },
+  {
+    "id": "the_steal",
+    "name": "The Steal",
+    "jobs": ["teach", "offer"],
+    "template": "Steal this {artifact}. It took me {time} to get right.",
+    "example": "Steal this four-line follow-up. It took me two years and a lot of dead leads.",
+    "on_screen": "STEAL THIS"
+  },
+  {
+    "id": "if_this_then",
+    "name": "If This, Then Watch",
+    "jobs": ["teach", "offer"],
+    "template": "If you {specific situation}, this {short time} fixes it.",
+    "example": "If your reels get views and no followers, the next 40 seconds fix it.",
+    "on_screen": "VIEWS BUT NO FOLLOWERS?"
+  },
+  {
+    "id": "numbered_favourite",
+    "name": "Numbered With A Favourite",
+    "jobs": ["teach"],
+    "template": "{N} {things} that {outcome}. Number {k} is the one nobody uses.",
+    "example": "Five caption edits that double saves. Number four is the one nobody does.",
+    "on_screen": "5 EDITS. #4 IS THE ONE."
+  },
+  {
+    "id": "pattern_interrupt",
+    "name": "Pattern Interrupt",
+    "jobs": ["opinion", "story"],
+    "template": "{Bold claim that contradicts the niche default}.",
+    "example": "Posting every day is why your account is stuck.",
+    "on_screen": "DAILY POSTING IS THE TRAP"
+  },
+  {
+    "id": "offer_quiet",
+    "name": "Quiet Offer",
+    "jobs": ["offer"],
+    "template": "If you want {outcome}, comment {keyword} and I will send {deliverable}.",
+    "example": "If you want the booking script, comment SCRIPT and I will DM it.",
+    "on_screen": "COMMENT SCRIPT"
+  }
+]

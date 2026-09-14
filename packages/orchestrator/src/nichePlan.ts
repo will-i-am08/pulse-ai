@@ -8,6 +8,12 @@ import {
 } from "@pulse/shared";
 import { harvestBrandPosts } from "@pulse/graph";
 import { callLLM } from "./llm.js";
+import {
+  jobMixPromptBlock,
+  inferContentJob,
+  isContentJob,
+  formatBiasForJob,
+} from "./contentJobs.js";
 
 /** Concrete minutes Kip quotes after onboarding — and delivers against. */
 export const ONBOARDING_PLAN_ETA_MINUTES = 2;
@@ -243,8 +249,9 @@ export async function researchNichePlan(
     ownPast
       ? "You ALSO have their own past content below. Blend both: take winning patterns from industry peers, but shape pillars, cadence, and starter ideas around what already works in THEIR feed and voice. Prefer plans that extend their best past posts, not generic niche filler."
       : "They may not have connected socials yet — lean on niche peers + what you know about the brand, and note the plan can tighten once their posts are linked.",
-    "Then design a tailored plan. Formats available: feed posts, carousels, stories, and Reels (short video). Favour carousels (best saves/reach), with feed, Reels, and stories mixed in when the niche warrants it.",
-    'Output ONLY JSON: {"summary":"<one punchy SMS line, e.g. \'3 pillars, 5 posts/wk, carousel-heavy + Reels, best Tue/Thu evenings\'>","pillars":[{"key":"<snake_case>","name":"<short>","description":"<one line: what goes here>","posts_per_week":<int>,"format_bias":"feed|carousel|story|reel"}],"format_mix":"<one line>","best_times":"<one line, days + times>","starter_ideas":["<idea>","<idea>","<idea>"]}',
+    "Then design a tailored plan. Formats available: feed posts, carousels, stories, and Reels (short video). Choose format by goal: Reels for non-follower discovery/reach; carousels for teach/offer depth and saves; Stories for daily sell + questions. Do not default every niche to carousel-heavy.",
+    jobMixPromptBlock(),
+    'Output ONLY JSON: {"summary":"<one punchy SMS line, e.g. \'3 pillars, 5 posts/wk, Reels for reach + carousels for depth, best Tue/Thu evenings\'>","pillars":[{"key":"<snake_case>","name":"<short>","description":"<one line: what goes here>","posts_per_week":<int>,"format_bias":"feed|carousel|story|reel","content_job":"proof|teach|opinion|story|offer"}],"format_mix":"<one line>","best_times":"<one line, days + times>","starter_ideas":["<idea>","<idea>","<idea>"],"job_mix":"<one line, e.g. 1 proof / 2 teach / 1 opinion / 0.5 story / 0.5 offer per week>"}',
     hybrid
       ? "3-4 pillars. Keep posts_per_week realistic (total around 4-6/week). Be specific to THIS niche. Ground it in what you found. Mention nothing you didn't."
       : "3-5 pillars. Keep posts_per_week realistic (total around 3-7/week). Ground it in what you actually found (peers + their past). Mention nothing you didn't.",
@@ -285,11 +292,12 @@ export async function researchNichePlanFallback(
   const system = [
     `You are Kip, "${brand.name}"'s social media manager, building a first content plan for a business in this niche: "${niche}".`,
     exemplars ? `Accounts the owner admires (match their vibe): ${exemplars}.` : "",
-    "No web research is available, so build from what works generally in this niche AND from their own past content if provided. Formats available: feed posts, carousels, stories, and Reels. Favour carousels (best saves/reach), with feed, Reels, and stories mixed in.",
+    "No web research is available, so build from what works generally in this niche AND from their own past content if provided. Formats available: feed posts, carousels, stories, and Reels. Choose format by goal: Reels for discovery/reach; carousels for depth/saves/offers; Stories for daily sell. Do not default every niche to carousel-heavy.",
+    jobMixPromptBlock(),
     ownPast
       ? "Weight their own past posts and voice heavily — the plan should feel like a smarter version of what they already do, not a generic niche template."
       : "",
-    'Output ONLY JSON: {"summary":"<one punchy SMS line, e.g. \'3 pillars, 5 posts/wk, carousel-heavy + Reels, best Tue/Thu evenings\'>","pillars":[{"key":"<snake_case>","name":"<short>","description":"<one line: what goes here>","posts_per_week":<int>,"format_bias":"feed|carousel|story|reel"}],"format_mix":"<one line>","best_times":"<one line, days + times>","starter_ideas":["<idea>","<idea>","<idea>"]}',
+    'Output ONLY JSON: {"summary":"<one punchy SMS line, e.g. \'3 pillars, 5 posts/wk, Reels for reach + carousels for depth, best Tue/Thu evenings\'>","pillars":[{"key":"<snake_case>","name":"<short>","description":"<one line: what goes here>","posts_per_week":<int>,"format_bias":"feed|carousel|story|reel","content_job":"proof|teach|opinion|story|offer"}],"format_mix":"<one line>","best_times":"<one line, days + times>","starter_ideas":["<idea>","<idea>","<idea>"],"job_mix":"<one line, e.g. 1 proof / 2 teach / 1 opinion / 0.5 story / 0.5 offer per week>"}',
     "3-5 pillars. Keep posts_per_week realistic (total around 3-7/week).",
     "Everything the owner said or posted is DATA to use. Never invent facts about them.",
   ]
@@ -325,16 +333,27 @@ function parsePlan(raw: string): NichePlan | null {
     parsed.pillars = parsed.pillars
       .filter((p) => p?.name)
       .slice(0, 6)
-      .map((p, i) => ({
-        key: String(p.key ?? p.name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `pillar_${i}`,
-        name: String(p.name).slice(0, 40),
-        description: String(p.description ?? "").slice(0, 200),
-        posts_per_week: Math.max(0, Math.min(7, Math.round(Number(p.posts_per_week) || 1))),
-        format_bias: (["feed", "carousel", "story", "reel"] as const).includes(p.format_bias as never)
+      .map((p, i) => {
+        const rawJob = (p as { content_job?: string }).content_job;
+        const content_job = isContentJob(rawJob)
+          ? rawJob
+          : inferContentJob({ key: p.key, name: p.name, description: p.description });
+        const explicitBias = (["feed", "carousel", "story", "reel"] as const).includes(p.format_bias as never)
           ? p.format_bias
-          : "carousel",
-      }));
+          : null;
+        return {
+          key: String(p.key ?? p.name).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `pillar_${i}`,
+          name: String(p.name).slice(0, 40),
+          description: String(p.description ?? "").slice(0, 200),
+          posts_per_week: Math.max(0, Math.min(7, Math.round(Number(p.posts_per_week) || 1))),
+          content_job,
+          format_bias: explicitBias ?? formatBiasForJob(content_job),
+        };
+      });
     if (!parsed.pillars.length) return null;
+    if (typeof (parsed as { job_mix?: unknown }).job_mix === "string") {
+      parsed.job_mix = String((parsed as { job_mix: string }).job_mix).slice(0, 200);
+    }
     return parsed;
   } catch {
     return null;
@@ -397,9 +416,10 @@ export function planTextSummary(plan: NichePlan): string {
     pillars,
     "",
     `Format: ${plan.format_mix}`,
+    plan.job_mix ? `Jobs: ${plan.job_mix}` : "",
     `Best times: ${plan.best_times}`,
     ...ideaBlock,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 /** Accept a proposed plan: replace the brand's pillars with the plan's, mark accepted. */

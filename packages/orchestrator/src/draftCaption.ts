@@ -1,10 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
-import { query, queryOne, brandVoiceProfileSchema, getMedia, sanitizeChatText } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, getMedia } from "@pulse/shared";
 import type { Brand, MediaAsset, StrategyNote } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
+import { inferContentJob, type ContentJob } from "./contentJobs.js";
+import { hooksPromptBlock } from "./hooks.js";
+import {
+  captionJobForFormat,
+  captionJobPrompt,
+  humanizeCaption,
+} from "./humanizeCaption.js";
 
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -59,6 +66,14 @@ function buildSystemPrompt(brand: Brand, notes: StrategyNote | null): string {
   if (profile.banned_words.length) lines.push(`Never use these words: ${profile.banned_words.join(", ")}.`);
   lines.push(`Emoji policy: ${profile.emoji_policy}.`);
   if (profile.hashtag_policy) lines.push(`Hashtag policy: ${profile.hashtag_policy}.`);
+  if (profile.proof_bank?.length) {
+    lines.push("Proof bank (cite only these; never invent numbers/results):");
+    for (const p of profile.proof_bank.slice(0, 12)) lines.push(`- ${p}`);
+  }
+  if (profile.positions?.length) {
+    lines.push("Brand positions (safe to take a stand on):");
+    for (const p of profile.positions.slice(0, 8)) lines.push(`- ${p}`);
+  }
 
   // Micro-tells learned from real post history — the difference between
   // "sounds like AI" and "sounds like them". Only emit what's actually set.
@@ -180,6 +195,10 @@ export type DraftCaptionOpts = {
   asReel?: boolean;
   /** Extra user hint (e.g. AI video prompt). */
   hint?: string;
+  /** Jake-style content job; inferred from pillar when omitted. */
+  contentJob?: ContentJob;
+  /** Pillar key/name/description for job inference. */
+  pillar?: { key?: string | null; name?: string | null; description?: string | null; content_job?: string | null };
 };
 
 function pushJpegFrame(content: ContentPart[], jpeg: Buffer): boolean {
@@ -289,9 +308,20 @@ export async function draftCaption(
   if (opts?.hint) instruction += ` Context: ${opts.hint.slice(0, 400)}`;
   content.push({ type: "text", text: instruction });
 
-  const system = asReel
-    ? `${buildSystemPrompt(brand, notes)}\nThis is a REEL — keep the caption punchy (1–3 short lines). Lead with a hook.`
-    : buildSystemPrompt(brand, notes);
+  const job =
+    opts?.contentJob ??
+    inferContentJob(opts?.pillar ?? {});
+  const captionJob = captionJobForFormat(asReel ? "reel" : "feed");
+  const craft = [
+    captionJobPrompt(captionJob),
+    asReel || captionJob === "B" ? hooksPromptBlock(job, 3) : "",
+    asReel
+      ? "This is a REEL — keep the caption punchy (1–3 short lines). Job A: do not re-hook if the video already hooked."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const system = `${buildSystemPrompt(brand, notes)}\n${craft}`;
 
   const caption = await callLLM({
     system,
@@ -299,5 +329,5 @@ export async function draftCaption(
     maxTokens: asReel ? 220 : 400,
   });
 
-  return { caption: sanitizeChatText(caption), proposedTime: heuristicProposedTime(notes) };
+  return { caption: humanizeCaption(caption), proposedTime: heuristicProposedTime(notes) };
 }

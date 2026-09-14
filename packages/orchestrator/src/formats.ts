@@ -9,6 +9,8 @@ import {
   type PostFormat,
 } from "@pulse/shared";
 import { draftCaption } from "./draftCaption.js";
+import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { humanizeCaption } from "./humanizeCaption.js";
 import {
   editImageForBrand,
   gradePhotoBundle,
@@ -178,12 +180,20 @@ export async function chooseNextFormat(
 
   if (pillarId) {
     try {
-      const row = await queryOne<{ format_bias: PostFormat | null }>(
-        `select format_bias from pillars where id = $1 and brand_id = $2`,
+      const row = await queryOne<{ format_bias: PostFormat | null; key?: string; name?: string; description?: string }>(
+        `select format_bias, key, name, description from pillars where id = $1 and brand_id = $2`,
         [pillarId, brandId],
       );
       if (row?.format_bias && ["feed", "carousel", "story", "reel"].includes(row.format_bias)) {
         preferred = row.format_bias;
+      } else if (row) {
+        // No explicit bias — derive from content job (Reels for discovery jobs).
+        const job = inferContentJob({
+          key: (row as { key?: string }).key,
+          name: (row as { name?: string }).name,
+          description: (row as { description?: string }).description,
+        });
+        preferred = formatBiasForJob(job, { needDiscovery: true });
       }
     } catch {
       /* column may be missing pre-migration */
@@ -286,7 +296,8 @@ export async function draftStoryOverlay(
       system: [
         `Write STORY overlay copy for "${brand.name}" — Instagram Stories are ephemeral and vertical.`,
         "Do NOT write a feed-length caption. Output ONLY JSON:",
-        '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>"}',
+        '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
+        "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
         profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
         "No hashtags, no emoji spam, no quotes.",
       ]
@@ -304,8 +315,11 @@ export async function draftStoryOverlay(
       overlay?: string;
       cta?: string;
     };
-    const overlay = sanitizeChatText(String(parsed.overlay ?? "")).slice(0, 48);
-    const cta = sanitizeChatText(String(parsed.cta ?? "")).slice(0, 36);
+    const overlay = humanizeCaption(String(parsed.overlay ?? "")).slice(0, 48);
+    let cta = humanizeCaption(String(parsed.cta ?? "")).slice(0, 48);
+    const sticker = String((parsed as { sticker?: string }).sticker ?? "none");
+    const q = humanizeCaption(String((parsed as { question_prompt?: string }).question_prompt ?? "")).slice(0, 60);
+    if (sticker === "question" && q && !cta) cta = q;
     if (overlay) return { overlay, cta: cta || undefined };
   } catch (err) {
     console.error("draftStoryOverlay failed", err);
