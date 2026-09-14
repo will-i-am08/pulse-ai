@@ -29,6 +29,12 @@ import {
   overlayMasthead,
   stripPersonalNames,
 } from "./faceless.js";
+import {
+  looksLikeCityscapeBrief,
+  looksLikeComparisonBrief,
+  reinforceTopicHint,
+  reviewBriefCompliance,
+} from "./briefCompliance.js";
 import { visualReference } from "./library.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -549,7 +555,13 @@ export async function generatePhotoTextCarousel(
     `You write a swipeable Instagram carousel for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
     visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
-    topic ? `Owner brief (honour the subject matter and vibe): ${topic}` : "",
+    topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    looksLikeComparisonBrief(topic)
+      ? "COMPARISON brief: each relevant overlay/caption must name specific options and state a concrete difference — category tips without named tools FAIL."
+      : "",
+    looksLikeCityscapeBrief(topic)
+      ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
+      : "",
     ideaMode
       ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤8 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
       : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
@@ -565,73 +577,116 @@ export async function generatePhotoTextCarousel(
     .filter(Boolean)
     .join("\n");
 
-  let caption: string;
-  let slides: Array<{ overlay: string; photoPrompt: string; ideaBlurb?: string }>;
+  let caption: string = "";
+  let slides: Array<{ overlay: string; photoPrompt: string; ideaBlurb?: string }> = [];
   try {
-    const raw = await callLLM({
-      system,
-      messages: [
-        {
-          role: "user",
-          content: topic
-            ? ideaMode
-              ? `Research concrete ideas, then build the carousel for: ${topic}`
-              : `Build the carousel for: ${topic}`
-            : `Write today's ${pillar.name} photo carousel.`,
-        },
-      ],
-      maxTokens: ideaMode ? 1600 : 900,
-      webSearch: ideaMode ? 5 : undefined,
-    });
-    const startIdx = raw.indexOf("{");
-    const endIdx = raw.lastIndexOf("}");
-    if (startIdx < 0 || endIdx <= startIdx) return null;
-    const parsed = JSON.parse(raw.slice(startIdx, endIdx + 1)) as {
-      caption?: string;
-      slides?: Array<{
-        overlay?: string;
-        photo_prompt?: string;
-        photoPrompt?: string;
-        idea_blurb?: string;
-        ideaBlurb?: string;
-      }>;
-    };
-    caption = stripPersonalNames(sanitizeChatText(String(parsed.caption ?? "")), brand).trim();
-    slides = (parsed.slides ?? [])
-      .map((s) => ({
-        overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
-          .replace(/["']/g, "")
-          .trim()
-          .slice(0, ideaMode ? 64 : 64),
-        photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
-        ideaBlurb: stripPersonalNames(
-          sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
-          brand,
-        )
-          .trim()
-          .slice(0, ideaMode ? 220 : 180),
-      }))
-      .filter((s) => s.overlay && s.photoPrompt)
-      .slice(0, 6);
-    if (!caption || slides.length < 3) return null;
-    // Soft first slide / opener frame is often the weakest photo — drop it when we have 5+.
-    if (ideaMode && slides.length >= 5) {
-      slides = slides.slice(1);
-    }
-    // Fold idea blurbs into caption so the SMS preview isn't empty fluff.
-    if (ideaMode) {
-      const ideaLines = slides
-        .map((s, i) => (s.ideaBlurb ? `${i + 1}. ${s.overlay} — ${s.ideaBlurb}` : null))
-        .filter(Boolean)
-        .slice(0, 5);
-      if (ideaLines.length) {
-        caption = `${caption}\n\n${ideaLines.join("\n")}`.slice(0, 900);
+    let briefForDraft = topic;
+    let ok = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const attemptSystem =
+        attempt === 0
+          ? system
+          : [
+              system,
+              briefForDraft && briefForDraft !== topic
+                ? `COMPLIANCE RETRY — previous draft missed the brief. Fix: ${briefForDraft}`
+                : "COMPLIANCE RETRY — previous draft missed the owner brief. Satisfy every constraint.",
+            ]
+              .filter(Boolean)
+              .join("\n");
+      const raw = await callLLM({
+        system: attemptSystem,
+        messages: [
+          {
+            role: "user",
+            content: briefForDraft
+              ? ideaMode
+                ? `Research concrete ideas, then build the carousel for: ${briefForDraft}`
+                : `Build the carousel for: ${briefForDraft}`
+              : `Write today's ${pillar.name} photo carousel.`,
+          },
+        ],
+        maxTokens: ideaMode ? 1600 : 900,
+        webSearch: ideaMode ? 5 : undefined,
+      });
+      const startIdx = raw.indexOf("{");
+      const endIdx = raw.lastIndexOf("}");
+      if (startIdx < 0 || endIdx <= startIdx) {
+        if (attempt === 0) continue;
+        return null;
+      }
+      const parsed = JSON.parse(raw.slice(startIdx, endIdx + 1)) as {
+        caption?: string;
+        slides?: Array<{
+          overlay?: string;
+          photo_prompt?: string;
+          photoPrompt?: string;
+          idea_blurb?: string;
+          ideaBlurb?: string;
+        }>;
+      };
+      caption = stripPersonalNames(sanitizeChatText(String(parsed.caption ?? "")), brand).trim();
+      slides = (parsed.slides ?? [])
+        .map((s) => ({
+          overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
+            .replace(/["']/g, "")
+            .trim()
+            .slice(0, ideaMode ? 64 : 64),
+          photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
+          ideaBlurb: stripPersonalNames(
+            sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
+            brand,
+          )
+            .trim()
+            .slice(0, ideaMode ? 220 : 180),
+        }))
+        .filter((s) => s.overlay && s.photoPrompt)
+        .slice(0, 6);
+      if (!caption || slides.length < 3) {
+        if (attempt === 0) continue;
+        return null;
+      }
+      // Soft first slide / opener frame is often the weakest photo — drop it when we have 5+.
+      if (ideaMode && slides.length >= 5) {
+        slides = slides.slice(1);
+      }
+      // Fold idea blurbs into caption so the SMS preview isn't empty fluff.
+      if (ideaMode) {
+        const ideaLines = slides
+          .map((s, i) => (s.ideaBlurb ? `${i + 1}. ${s.overlay} — ${s.ideaBlurb}` : null))
+          .filter(Boolean)
+          .slice(0, 5);
+        if (ideaLines.length) {
+          caption = `${caption}\n\n${ideaLines.join("\n")}`.slice(0, 900);
+        }
+      }
+      if (!topic) {
+        ok = true;
+        break;
+      }
+      const compliance = await reviewBriefCompliance({
+        brief: topic,
+        caption,
+        overlays: slides.flatMap((s) => [s.overlay, s.ideaBlurb].filter(Boolean) as string[]),
+        photoPrompts: slides.map((s) => s.photoPrompt),
+        surface: "carousel",
+      });
+      if (compliance.pass) {
+        ok = true;
+        break;
+      }
+      console.warn("generatePhotoTextCarousel: brief compliance fail", compliance.reasons);
+      if (attempt === 0) {
+        briefForDraft = reinforceTopicHint(topic, compliance.reinforceHint);
+        continue;
       }
     }
+    if (!ok || !caption || slides.length < 3) return null;
   } catch (err) {
     console.error("generatePhotoTextCarousel: LLM/parse failed", err);
     return null;
   }
+
 
   const { FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
 
