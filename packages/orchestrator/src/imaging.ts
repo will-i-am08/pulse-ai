@@ -15,6 +15,7 @@ import {
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { routeImageJob } from "./modelRouter.js";
+import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
@@ -468,13 +469,37 @@ export function messageWantsImageEdit(body: string | null | undefined): boolean 
 
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
+  const nameless = isNamelessCreative(brand);
   const out = await callLLM({
-    system:
-      "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Just the words.",
-    messages: [{ role: "user", content: `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.` }],
+    system: nameless
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never include a person's name. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Just the words.",
+    messages: [
+      {
+        role: "user",
+        content: nameless
+          ? `Faceless brand voice. Post caption: "${caption}". Give the overlay headline (no personal names).`
+          : `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.`,
+      },
+    ],
     maxTokens: 20,
   });
-  return sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42) || brand.name.toUpperCase();
+  const cleaned = stripPersonalNames(
+    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42),
+    brand,
+  );
+  // Never fall back to the owner's personal brand name on faceless accounts.
+  if (cleaned) return cleaned;
+  return nameless ? "START HERE" : brand.name.toUpperCase();
+}
+
+/** Scale overlay type so longer lines still fit inside the safe pad. */
+function overlayFontSize(width: number, text: string): number {
+  const len = text.replace(/\s+/g, " ").trim().length;
+  if (len > 36) return Math.round(width * 0.052);
+  if (len > 28) return Math.round(width * 0.062);
+  if (len > 20) return Math.round(width * 0.072);
+  return Math.round(width * 0.085);
 }
 
 async function renderTile(
@@ -489,84 +514,113 @@ async function renderTile(
   const height = meta.height ?? 1350;
   const jpeg = await sharp(Buffer.from(imgBytes)).jpeg({ quality: 90 }).toBuffer();
   const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
-  const fontSize = Math.round(width * 0.085);
-  const mastheadSize = Math.round(width * 0.062);
-  const pad = Math.round(width * 0.05);
+  const fontSize = overlayFontSize(width, headline);
+  const mastheadSize = Math.round(width * 0.048);
+  const pad = Math.round(width * 0.07);
+  const textWidth = width - pad * 2;
   const scrim = hexToRgb(palette.bgFrom);
+  const showMasthead = Boolean(masthead?.trim());
+
+  const children: Array<Record<string, unknown>> = [
+    {
+      type: "img",
+      props: {
+        src: dataUri,
+        width,
+        height,
+        style: {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: `${width}px`,
+          height: `${height}px`,
+          objectFit: "cover",
+        },
+      },
+    },
+  ];
+
+  if (showMasthead) {
+    children.push({
+      type: "div",
+      props: {
+        style: {
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: `${width}px`,
+          display: "flex",
+          justifyContent: "center",
+          padding: `${Math.round(height * 0.03)}px ${pad}px`,
+          background: `linear-gradient(to bottom, rgba(${scrim.r},${scrim.g},${scrim.b},0.55), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+        },
+        children: [
+          {
+            type: "div",
+            props: {
+              style: {
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                maxWidth: `${textWidth}px`,
+                width: `${textWidth}px`,
+                color: palette.text,
+                fontFamily: palette.bodyFont,
+                fontSize: `${mastheadSize}px`,
+                letterSpacing: "0.02em",
+                textAlign: "center",
+                lineHeight: 1.1,
+              },
+              children: masthead,
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  children.push({
+    type: "div",
+    props: {
+      style: {
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        width: `${width}px`,
+        display: "flex",
+        padding: `${pad}px`,
+        background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.85), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
+      },
+      children: [
+        {
+          type: "div",
+          props: {
+            style: {
+              display: "flex",
+              flexWrap: "wrap",
+              maxWidth: `${textWidth}px`,
+              width: `${textWidth}px`,
+              color: palette.text,
+              fontFamily: palette.displayFont,
+              fontSize: `${fontSize}px`,
+              lineHeight: 1.08,
+              textTransform: "uppercase",
+              wordBreak: "break-word",
+              overflowWrap: "break-word",
+            },
+            children: headline,
+          },
+        },
+      ],
+    },
+  });
 
   const svg = await satori(
     {
       type: "div",
       props: {
         style: { display: "flex", width: `${width}px`, height: `${height}px`, position: "relative" },
-        children: [
-          {
-            type: "img",
-            props: { src: dataUri, width, height, style: { position: "absolute", top: 0, left: 0, width: `${width}px`, height: `${height}px`, objectFit: "cover" } },
-          },
-          {
-            type: "div",
-            props: {
-              style: {
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: `${width}px`,
-                display: "flex",
-                justifyContent: "center",
-                padding: `${Math.round(height * 0.03)}px ${pad}px`,
-                background: `linear-gradient(to bottom, rgba(${scrim.r},${scrim.g},${scrim.b},0.55), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
-              },
-              children: [
-                {
-                  type: "div",
-                  props: {
-                    style: {
-                      display: "flex",
-                      color: palette.text,
-                      fontFamily: palette.bodyFont,
-                      fontSize: `${mastheadSize}px`,
-                      letterSpacing: "0.02em",
-                      textAlign: "center",
-                      lineHeight: 1.05,
-                    },
-                    children: masthead,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            type: "div",
-            props: {
-              style: {
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                width: `${width}px`,
-                display: "flex",
-                padding: `${pad}px`,
-                background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.85), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
-              },
-              children: [
-                {
-                  type: "div",
-                  props: {
-                    style: {
-                      display: "flex",
-                      color: palette.text,
-                      fontFamily: palette.displayFont,
-                      fontSize: `${fontSize}px`,
-                      lineHeight: 1.02,
-                      textTransform: "uppercase",
-                    },
-                    children: headline,
-                  },
-                },
-              ],
-            },
-          },
-        ],
+        children,
       },
     } as unknown as Parameters<typeof satori>[0],
     {
@@ -594,15 +648,68 @@ export async function renderQuoteCard(
   brandOrName: Brand | string,
   visualOverride?: VisualProfile | null,
 ): Promise<Buffer> {
-  const brandName = typeof brandOrName === "string" ? brandOrName : brandOrName.name;
+  const isBrand = typeof brandOrName !== "string";
   const visual =
-    visualOverride ?? (typeof brandOrName === "string" ? null : (brandOrName.visual ?? null));
+    visualOverride ?? (isBrand ? (brandOrName.visual ?? null) : null);
   const palette = resolveBrandPalette(visual);
+  // Faceless/nameless brands: no personal-name footer on the card.
+  const masthead = isBrand
+    ? overlayMasthead(brandOrName)
+    : brandOrName.trim().toUpperCase();
+  const body = isBrand ? stripPersonalNames(text, brandOrName) : text;
 
   const width = 1080;
   const height = 1080;
   const pad = Math.round(width * 0.11);
-  const fontSize = Math.round(width * (text.length > 90 ? 0.058 : text.length > 50 ? 0.072 : 0.092));
+  const textWidth = width - pad * 2;
+  const fontSize = Math.round(
+    width * (body.length > 90 ? 0.058 : body.length > 50 ? 0.072 : 0.092),
+  );
+
+  const children: Array<Record<string, unknown>> = [
+    {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          maxWidth: `${textWidth}px`,
+          width: `${textWidth}px`,
+          color: palette.text,
+          fontFamily: palette.bodyFont,
+          fontSize: `${fontSize}px`,
+          lineHeight: 1.2,
+          letterSpacing: "0.01em",
+          wordBreak: "break-word",
+          overflowWrap: "break-word",
+        },
+        children: body,
+      },
+    },
+  ];
+  if (masthead) {
+    children.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          position: "absolute",
+          bottom: `${pad}px`,
+          maxWidth: `${textWidth}px`,
+          color: palette.muted,
+          fontFamily: palette.displayFont,
+          fontSize: `${Math.round(width * 0.03)}px`,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          textAlign: "center",
+        },
+        children: masthead,
+      },
+    });
+  }
 
   const svg = await satori(
     {
@@ -618,39 +725,9 @@ export async function renderQuoteCard(
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
+          position: "relative",
         },
-        children: [
-          {
-            type: "div",
-            props: {
-              style: {
-                display: "flex",
-                color: palette.text,
-                fontFamily: palette.bodyFont,
-                fontSize: `${fontSize}px`,
-                lineHeight: 1.2,
-                letterSpacing: "0.01em",
-              },
-              children: text,
-            },
-          },
-          {
-            type: "div",
-            props: {
-              style: {
-                display: "flex",
-                position: "absolute",
-                bottom: `${pad}px`,
-                color: palette.muted,
-                fontFamily: palette.displayFont,
-                fontSize: `${Math.round(width * 0.03)}px`,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-              },
-              children: brandName.toUpperCase(),
-            },
-          },
-        ],
+        children,
       },
     } as unknown as Parameters<typeof satori>[0],
     {
@@ -673,7 +750,8 @@ export async function applyTextTile(brand: Brand, mediaId: string, headline: str
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const tiled = await renderTile(blob.bytes, headline, brand.name.toUpperCase(), brand.visual);
+    const safeHeadline = stripPersonalNames(headline, brand);
+    const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual);
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
@@ -710,8 +788,11 @@ export async function applyStoryCreative(
     const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
     const palette = resolveBrandPalette(brand.visual);
     const scrim = hexToRgb(palette.bgFrom);
-    const headline = overlay.toUpperCase().slice(0, 48);
-    const ctaLine = (cta ?? "").trim().slice(0, 36);
+    const headline = stripPersonalNames(overlay, brand).toUpperCase().slice(0, 48);
+    const ctaLine = stripPersonalNames((cta ?? "").trim(), brand).slice(0, 36);
+    const padX = Math.round(width * 0.08);
+    const textWidth = width - padX * 2;
+    const headlineSize = overlayFontSize(width, headline);
 
     const svg = await satori(
       {
@@ -747,7 +828,7 @@ export async function applyStoryCreative(
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "flex-end",
-                  padding: `0 ${Math.round(width * 0.08)}px ${Math.round(height * 0.04)}px`,
+                  padding: `0 ${padX}px ${Math.round(height * 0.04)}px`,
                   background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.72), rgba(${scrim.r},${scrim.g},${scrim.b},0))`,
                 },
                 children: [
@@ -756,11 +837,16 @@ export async function applyStoryCreative(
                     props: {
                       style: {
                         display: "flex",
+                        flexWrap: "wrap",
+                        maxWidth: `${textWidth}px`,
+                        width: `${textWidth}px`,
                         color: palette.text,
                         fontFamily: palette.displayFont,
-                        fontSize: `${Math.round(width * 0.09)}px`,
-                        lineHeight: 1.05,
+                        fontSize: `${headlineSize}px`,
+                        lineHeight: 1.08,
                         textTransform: "uppercase",
+                        wordBreak: "break-word",
+                        overflowWrap: "break-word",
                       },
                       children: headline,
                     },
@@ -771,11 +857,15 @@ export async function applyStoryCreative(
                         props: {
                           style: {
                             display: "flex",
+                            flexWrap: "wrap",
+                            maxWidth: `${textWidth}px`,
+                            width: `${textWidth}px`,
                             marginTop: `${Math.round(height * 0.02)}px`,
                             color: palette.muted,
                             fontFamily: palette.bodyFont,
                             fontSize: `${Math.round(width * 0.045)}px`,
                             letterSpacing: "0.04em",
+                            wordBreak: "break-word",
                           },
                           children: ctaLine,
                         },

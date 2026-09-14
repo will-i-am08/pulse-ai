@@ -792,6 +792,10 @@ export interface BusinessFacts {
   lab?: boolean;
   // The owner's name, for personal address ("Morning, Sarah!").
   owner_name?: string;
+  /** No face on camera — also treated as nameless in creatives unless nameless===false. */
+  faceless?: boolean;
+  /** When true, never burn/mention the owner's personal name on drafts. */
+  nameless?: boolean;
   hours?: string;
   address?: string;
   service_area?: string;

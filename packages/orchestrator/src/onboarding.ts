@@ -1129,6 +1129,12 @@ export async function finishOnboarding(brandId: string): Promise<OnboardingRundo
     answers,
   });
   await captureOwnerName(brand, transcript);
+  // Persist faceless so drafts stay nameless (no owner name on tiles/captions).
+  if (transcript.some((t) => /faceless/i.test(t.content))) {
+    const withFlag = (await queryOne<Brand>("select * from brands where id = $1", [brand.id])) ?? brand;
+    const facts = { ...(withFlag.facts ?? {}), faceless: true as const };
+    await query("update brands set facts = $1::jsonb where id = $2", [JSON.stringify(facts), brand.id]);
+  }
   const latest = (await queryOne<Brand>("select * from brands where id = $1", [brand.id])) ?? brand;
   await ensureOwnerNameFromUser(latest);
   await captureNicheAndSeedPlan(brand, transcript);

@@ -14,6 +14,7 @@ import { listRecentDesignMemory, listTopDesignMemory } from "./designMemory.js";
 import { listVisualExemplars } from "./research.js";
 import { ensureNicheExemplarBootstrap } from "./designBootstrap.js";
 import { routeImageJob } from "./modelRouter.js";
+import { overlayMasthead, stripPersonalNames } from "./faceless.js";
 
 /**
  * Phase C7 — context-driven design composer.
@@ -170,8 +171,9 @@ export async function composeSlide(input: ComposeSlideInput): Promise<Buffer> {
   const height = input.height ?? 1080;
   const pad = Math.round(width * 0.1);
   const label = roleLabel(input.role, input.index + 1);
-  const masthead = input.brand.name.toUpperCase();
-  const text = input.text.trim();
+  const masthead = overlayMasthead(input.brand);
+  const text = stripPersonalNames(input.text.trim(), input.brand);
+  const textWidth = width - pad * 2;
   const fontSize = Math.round(
     width * (text.length > 90 ? 0.048 : text.length > 50 ? 0.062 : text.length > 28 ? 0.078 : 0.095),
   );
@@ -179,18 +181,22 @@ export async function composeSlide(input: ComposeSlideInput): Promise<Buffer> {
   type Node = Record<string, unknown>;
   const children: Node[] = [];
 
-  if (layout === "top_masthead" || layout === "editorial_quote") {
+  if (masthead && (layout === "top_masthead" || layout === "editorial_quote")) {
     children.push({
       type: "div",
       props: {
         style: {
           display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          maxWidth: `${textWidth}px`,
           color: palette.muted,
           fontFamily: palette.bodyFont,
           fontSize: `${Math.round(width * 0.032)}px`,
           letterSpacing: "0.14em",
           textTransform: "uppercase",
           marginBottom: `${Math.round(height * 0.06)}px`,
+          textAlign: "center",
         },
         children: masthead,
       },
@@ -235,31 +241,41 @@ export async function composeSlide(input: ComposeSlideInput): Promise<Buffer> {
     props: {
       style: {
         display: "flex",
+        flexWrap: "wrap",
+        justifyContent: layout === "bottom_band" ? "flex-start" : "center",
         color: palette.text,
         fontFamily: layout === "editorial_quote" ? palette.bodyFont : palette.displayFont,
         fontSize: `${fontSize}px`,
         lineHeight: layout === "editorial_quote" ? 1.25 : 1.08,
         textAlign: layout === "bottom_band" ? "left" : "center",
         textTransform: layout === "editorial_quote" ? "none" : "uppercase",
-        maxWidth: `${Math.round(width * 0.82)}px`,
+        maxWidth: `${textWidth}px`,
+        width: `${textWidth}px`,
+        wordBreak: "break-word",
+        overflowWrap: "break-word",
       },
       children: text,
     },
   });
 
-  if (layout !== "top_masthead" && layout !== "editorial_quote") {
+  // Faceless/nameless: masthead is empty — do not reserve a footer stamp.
+  if (masthead && layout !== "top_masthead" && layout !== "editorial_quote") {
     children.push({
       type: "div",
       props: {
         style: {
           display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
           position: "absolute",
           bottom: `${pad}px`,
+          maxWidth: `${textWidth}px`,
           color: palette.muted,
           fontFamily: palette.displayFont,
           fontSize: `${Math.round(width * 0.028)}px`,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
+          textAlign: "center",
         },
         children: masthead,
       },
