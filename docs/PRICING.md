@@ -170,10 +170,24 @@ Current `PricingPlans` bullets are directionally right. Prefer concrete ceilings
 
 ---
 
-## 7. Open implementation work
+## 7. Wiring status (pre-Stripe)
 
-1. Gate `brands.features` + UGC/video caps on `facts.plan.tier` (`pro` | `max`).
-2. Per-tier `AI_VIDEO_COST_CAP` / weekly spend (Pro $6–8 video mo; Max keep $20).
-3. Default `autopilot` / `ads` false on Pro signup; true-capable on Max.
-4. Keep Kling primary; only expose Seedance path on Max or as explicit “premium regen.”
-5. Revisit AUD list price if AU Twilio stays primary *and* average UGC > 8 clips on Pro.
+**Enforcement is off.** Pro/Max are marketing + preference storage only.
+
+| Piece | Status |
+|-------|--------|
+| Landing prices + bullets | Live (AUD $79 / $149) |
+| `facts.plan` / `plan_preference` | Stored on payment UI submit |
+| `packages/shared/src/plan.ts` | Catalog + `entitlementsFor()` — always open until Stripe |
+| Per-plan UGC / AI / feature locks | **Not applied** |
+| Ops caps (`AI_WEEKLY_*`, `AI_VIDEO_COST_CAP_*`) | Global safety rails only — same for every brand |
+
+When Stripe ships:
+
+1. Set `PLAN_ENFORCEMENT=true` **and** `STRIPE_SECRET_KEY` (both required).
+2. Map Stripe Prices → `facts.plan.tier`.
+3. Then optionally apply intended ceilings in `plan.ts` (Pro ~$6 UGC/mo, Max ~$20, etc.).
+4. Default `autopilot` / `ads` from entitlements on signup — not before.
+5. Keep Kling primary; Seedance as fallback / explicit premium regen.
+
+Until then: do **not** branch product behavior on Pro vs Max.
