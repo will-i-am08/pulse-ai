@@ -103,13 +103,22 @@ describe("classifyInbound", () => {
   });
 });
 
-
+describe("creative ask classification", () => {
   it("routes imperative creative asks as instruction (no 'draft' verb required)", () => {
     expect(ruleBasedClassify("Post a good morning post with this photo", false, false)?.classification).toBe(
       "instruction",
     );
     expect(ruleBasedClassify("I want a post about hiring", false, false)?.classification).toBe("instruction");
   });
+
+  it("routes use-this / format-menu replies as instruction", () => {
+    expect(ruleBasedClassify("Use this a do something inspirational", false, false)?.classification).toBe(
+      "instruction",
+    );
+    expect(ruleBasedClassify("A post", false, true)?.classification).toBe("instruction");
+    expect(ruleBasedClassify("carousel", false, true)?.classification).toBe("instruction");
+  });
+});
 
 describe("photo background redo classification", () => {
   it("routes pictures-in-background as edit when a draft is pending", () => {

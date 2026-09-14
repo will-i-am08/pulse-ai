@@ -85,7 +85,15 @@ export {
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
 export { scheduleSlot } from "./scheduler.js";
 export { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-export { pickFreshPhoto, pickFreshPhotos, pickReusablePhoto, bankedPhotoCount, draftPostFromPhoto, visualReference } from "./library.js";
+export {
+  pickFreshPhoto,
+  pickFreshPhotos,
+  pickRecentClientPhoto,
+  pickReusablePhoto,
+  bankedPhotoCount,
+  draftPostFromPhoto,
+  visualReference,
+} from "./library.js";
 export { gapNudgeMessage } from "./nudges.js";
 export {
   chooseNextFormat,
@@ -473,6 +481,12 @@ export {
 
 export {
   looksLikeKickoffRequest,
+  looksLikeUseThisBrief,
+  looksLikeFormatMenuReply,
+  looksLikeFormatMenuOutbound,
+  looksLikeDraftPreviewOutbound,
+  refersToAttachedMedia,
+  REFERS_TO_ATTACHED_MEDIA_RE,
   inferKickoffFromUserMessage,
   inferKickoffFromKipCommit,
   enqueueKickoff,

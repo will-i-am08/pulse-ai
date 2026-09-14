@@ -84,17 +84,50 @@ const NO_PHOTOS_RE =
 /**
  * Natural creative asks — not only "draft a post".
  * Catches: "Post a good morning post…", "do a post…", "I want a carousel…",
- * "need a post about…", "a post comparing…", plus make/create/do up/whip up.
+ * "need a post about…", "a post comparing…", plus make/create/do up/whip up,
+ * "do something inspirational", bare format-menu replies ("a post" / "carousel").
  */
 const DRAFT_POSTS_RE =
-  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b/i;
+  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
 
-/** Owner said "with this photo" (etc.) — expects attached media, not generated art. */
+/** Owner said "with this photo" / "use this" — expects attached media, not generated art. */
 export const REFERS_TO_ATTACHED_MEDIA_RE =
-  /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b/i;
+  /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\buse\s+th(is|ese)\b/i;
 
 export function refersToAttachedMedia(body: string | null | undefined): boolean {
   return Boolean(body?.trim() && REFERS_TO_ATTACHED_MEDIA_RE.test(body));
+}
+
+/** Creative "use this / inspirational" briefs (with or without an attached photo). */
+const USE_THIS_BRIEF_RE =
+  /\buse\s+th(is|ese)\b|\b(do\s+)?something\s+inspirational\b|\binspirational\b/i;
+
+export function looksLikeUseThisBrief(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && USE_THIS_BRIEF_RE.test(body));
+}
+
+/** Bare format-menu replies after "Tell me what to make — a post, a carousel…". */
+const FORMAT_MENU_REPLY_RE = /^\s*(an?\s+)?(posts?|carr?ousels?)\s*[.!]?\s*$/i;
+
+export function looksLikeFormatMenuReply(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && FORMAT_MENU_REPLY_RE.test(body.trim()));
+}
+
+/** Kip's format chooser SMS — not a draft preview awaiting yes/no. */
+export function looksLikeFormatMenuOutbound(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && /Tell me what to make/i.test(body));
+}
+
+/** Outbound that actually showed a draft for approval. */
+export function looksLikeDraftPreviewOutbound(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  return (
+    /Reply\s+["']yes["']\s+to\s+approve/i.test(body) ||
+    /\bDraft ready\b/i.test(body) ||
+    /\bProposed for\b/i.test(body) ||
+    /\bWant me to post it\b/i.test(body) ||
+    /Here's your (Reel|story|carousel|post)\b/i.test(body)
+  );
 }
 
 /**
@@ -162,6 +195,8 @@ export function looksLikeKickoffRequest(body: string | null | undefined): boolea
     return true;
   }
   if (STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t)) return true;
+  if (looksLikeFormatMenuReply(t)) return true;
+  if (looksLikeUseThisBrief(t)) return true;
   if (DRAFT_POSTS_RE.test(t)) return true;
   if (PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) return true;
   if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) return true;
@@ -213,8 +248,21 @@ export function inferKickoffFromUserMessage(
     }
   }
 
-  if (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) {
+  if (
+    looksLikeFormatMenuReply(t) ||
+    looksLikeUseThisBrief(t) ||
+    DRAFT_POSTS_RE.test(t) ||
+    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)
+  ) {
     const payload = draftPostsPayloadFromText(t);
+    // Bare "A post" / "carousel" menu replies → single piece of that format.
+    if (looksLikeFormatMenuReply(t)) {
+      const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+      payload.count = 1;
+      payload.preferCarousel = wantsCarousel;
+      payload.format = wantsCarousel ? "carousel" : undefined;
+      payload.topicHint = t.slice(0, 280);
+    }
     const count = Number(payload.count) || 1;
     const wantsCarousel = payload.preferCarousel === true;
     const photoish = payload.visuals !== "designed";
