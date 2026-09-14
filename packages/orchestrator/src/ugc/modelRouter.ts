@@ -7,7 +7,8 @@ import { getServerEnv } from "@pulse/shared";
  * - still: product/scene images (Nano Banana, Flux, Seedream, …)
  * - motion: image→video (Kling, Seedance, Wan, …)
  *
- * Env picks primary + ordered fallbacks so Kip is never locked to one model.
+ * Default env is `auto` — Kip's creative planner picks per brief.
+ * Pin with UGC_STILL_MODEL / UGC_MOTION_MODEL set to a catalog id.
  * fal.ai is the transport; model IDs are swappable.
  */
 
@@ -84,48 +85,80 @@ function parseIdList(raw: string, allowed: string[]): string[] {
     .filter((s) => allowed.includes(s));
 }
 
-/** Ordered still chain: primary then fallbacks (deduped). */
-export function resolveStillChain(): UgcModelEndpoint[] {
+function isAutoModelEnv(raw: string): boolean {
+  const t = raw.trim().toLowerCase();
+  return !t || t === "auto" || t === "best" || t === "kip";
+}
+
+function applyStillFalOverrides(base: UgcModelEndpoint, id: string): UgcModelEndpoint {
+  if (id === "nano_banana") {
+    return { ...base, falId: envString("FAL_NANO_BANANA_MODEL", base.falId) };
+  }
+  if (id === "flux_dev") {
+    return { ...base, falId: envString("FAL_FLUX_STILL_MODEL", base.falId) };
+  }
+  if (id === "seedream") {
+    return { ...base, falId: envString("FAL_SEEDREAM_MODEL", base.falId) };
+  }
+  return base;
+}
+
+function applyMotionFalOverrides(base: UgcModelEndpoint, id: string): UgcModelEndpoint {
+  if (id === "kling") {
+    return { ...base, falId: envString("FAL_KLING_I2V_MODEL", base.falId) };
+  }
+  if (id === "seedance") {
+    return { ...base, falId: envString("FAL_SEEDANCE_I2V_MODEL", base.falId) };
+  }
+  if (id === "wan") {
+    return { ...base, falId: envString("FAL_WAN_I2V_MODEL", base.falId) };
+  }
+  return base;
+}
+
+/**
+ * Ordered still chain from env pin, or a safe default when auto.
+ * Prefer `planUgcCreative()` for per-brief selection; this is the fallback / pin path.
+ */
+export function resolveStillChain(overrideIds?: string[]): UgcModelEndpoint[] {
   const allowed = Object.keys(STILL_MODELS);
-  const primary = envString("UGC_STILL_MODEL", "nano_banana");
+  if (overrideIds?.length) {
+    const ids = overrideIds.filter((id, i, arr) => allowed.includes(id) && arr.indexOf(id) === i);
+    const chain = ids.map((id) => applyStillFalOverrides(STILL_MODELS[id as UgcStillModelId]!, id));
+    if (chain.length) return chain;
+  }
+  const primary = envString("UGC_STILL_MODEL", "auto");
+  if (isAutoModelEnv(primary)) {
+    return ["nano_banana", "flux_dev", "seedream"]
+      .filter((id) => allowed.includes(id))
+      .map((id) => applyStillFalOverrides(STILL_MODELS[id as UgcStillModelId]!, id));
+  }
   const fallbacks = parseIdList(envString("UGC_STILL_FALLBACKS", "flux_dev,seedream"), allowed);
   const ids = [primary, ...fallbacks].filter((id, i, arr) => allowed.includes(id) && arr.indexOf(id) === i);
-  const chain = ids.map((id) => {
-    const base = STILL_MODELS[id as UgcStillModelId]!;
-    // Allow env override of fal path for primary catalog entries
-    if (id === "nano_banana") {
-      return { ...base, falId: envString("FAL_NANO_BANANA_MODEL", base.falId) };
-    }
-    if (id === "flux_dev") {
-      return { ...base, falId: envString("FAL_FLUX_STILL_MODEL", base.falId) };
-    }
-    if (id === "seedream") {
-      return { ...base, falId: envString("FAL_SEEDREAM_MODEL", base.falId) };
-    }
-    return base;
-  });
+  const chain = ids.map((id) => applyStillFalOverrides(STILL_MODELS[id as UgcStillModelId]!, id));
   return chain.length ? chain : [STILL_MODELS.nano_banana];
 }
 
-/** Ordered motion chain: primary then fallbacks (deduped). */
-export function resolveMotionChain(): UgcModelEndpoint[] {
+/**
+ * Ordered motion chain from env pin, or Kling→Seedance→Wan when auto.
+ * Prefer `planUgcCreative()` for per-brief selection.
+ */
+export function resolveMotionChain(overrideIds?: string[]): UgcModelEndpoint[] {
   const allowed = Object.keys(MOTION_MODELS);
-  const primary = envString("UGC_MOTION_MODEL", "kling");
+  if (overrideIds?.length) {
+    const ids = overrideIds.filter((id, i, arr) => allowed.includes(id) && arr.indexOf(id) === i);
+    const chain = ids.map((id) => applyMotionFalOverrides(MOTION_MODELS[id as UgcMotionModelId]!, id));
+    if (chain.length) return chain;
+  }
+  const primary = envString("UGC_MOTION_MODEL", "auto");
+  if (isAutoModelEnv(primary)) {
+    return ["kling", "seedance", "wan"]
+      .filter((id) => allowed.includes(id))
+      .map((id) => applyMotionFalOverrides(MOTION_MODELS[id as UgcMotionModelId]!, id));
+  }
   const fallbacks = parseIdList(envString("UGC_MOTION_FALLBACKS", "seedance,wan"), allowed);
   const ids = [primary, ...fallbacks].filter((id, i, arr) => allowed.includes(id) && arr.indexOf(id) === i);
-  const chain = ids.map((id) => {
-    const base = MOTION_MODELS[id as UgcMotionModelId]!;
-    if (id === "kling") {
-      return { ...base, falId: envString("FAL_KLING_I2V_MODEL", base.falId) };
-    }
-    if (id === "seedance") {
-      return { ...base, falId: envString("FAL_SEEDANCE_I2V_MODEL", base.falId) };
-    }
-    if (id === "wan") {
-      return { ...base, falId: envString("FAL_WAN_I2V_MODEL", base.falId) };
-    }
-    return base;
-  });
+  const chain = ids.map((id) => applyMotionFalOverrides(MOTION_MODELS[id as UgcMotionModelId]!, id));
   return chain.length ? chain : [MOTION_MODELS.kling];
 }
 
