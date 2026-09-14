@@ -9,6 +9,8 @@ export { applyCorrection } from "./applyCorrection.js";
 export { seedBrandVoice } from "./seedBrandVoice.js";
 
 export { buildConversationContext } from "./conversationContext.js";
+export { speakSMS, buildSpeakSystem, needsThink, humanizeChat, readOpenLoops } from "./speak/index.js";
+export type { SpeakMode, SpeakOptions, ThinkResult } from "./speak/index.js";
 
 export {
   startOnboarding,
