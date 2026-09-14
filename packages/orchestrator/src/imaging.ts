@@ -262,7 +262,10 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
 export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
   const env = getServerEnv();
   const token = env.REPLICATE_API_TOKEN;
-  if (!token) return null;
+  if (!token) {
+    console.error("generatePhotoImage: REPLICATE_API_TOKEN missing — cannot text-to-image");
+    return null;
+  }
   routeImageJob("photo_generate");
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
   try {

@@ -112,4 +112,13 @@ describe("photo background redo classification", () => {
     );
     expect(r?.classification).toBe("edit");
   });
+
+  it("still routes pictures-in-background as edit with zero pending drafts", () => {
+    const r = ruleBasedClassify(
+      "Could you put pictures in the background of them? All of them",
+      false,
+      false,
+    );
+    expect(r?.classification).toBe("edit");
+  });
 });
