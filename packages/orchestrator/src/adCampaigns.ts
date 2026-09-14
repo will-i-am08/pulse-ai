@@ -100,6 +100,28 @@ function previewText(c: AdCampaign, destinationUrl?: string | null): string {
   );
 }
 
+
+/** Prefer latest ready UGC/AIGC reel media when the ask implies video creative. */
+async function latestUgcCreativeMediaIds(brandId: string): Promise<string[]> {
+  const job = await queryOne<{ result_media_id: string | null; post_id: string | null }>(
+    `select result_media_id, post_id from ai_video_jobs
+      where brand_id = $1 and kind = 'ugc' and status = 'ready' and result_media_id is not null
+      order by created_at desc limit 1`,
+    [brandId],
+  );
+  if (job?.result_media_id) return [job.result_media_id];
+  const post = await queryOne<{ media_ids: string[] }>(
+    `select media_ids from posts
+      where brand_id = $1
+        and status in ('pending_approval','approved','scheduled','published')
+        and (style_meta->>'ugc' = 'true' or style_meta->>'aigc' = 'true')
+        and format = 'reel'
+      order by created_at desc limit 1`,
+    [brandId],
+  );
+  return post?.media_ids?.length ? post.media_ids : [];
+}
+
 export async function proposeAdCampaign(
   brand: Brand, request: string,
 ): Promise<{ ok: true; campaign: AdCampaign; summary: string } | { ok: false; summary: string }> {
@@ -121,8 +143,16 @@ export async function proposeAdCampaign(
   if (/\bretarget/i.test(request)) audience = audiences[1]!;
   if (/\blookalike|lal\b/i.test(request)) audience = audiences[2]!;
   const offer = offerCopy(brand);
+  const wantsVideoCreative =
+    detectCreativeSource(request) === "video" ||
+    /\b(ugc|this reel|that reel|with this|ai video|aigc)\b/i.test(request);
+  const ugcMediaIds = wantsVideoCreative ? await latestUgcCreativeMediaIds(brand.id) : [];
   const creative: AdCreativeSpec = {
-    source: detectCreativeSource(request), primary_text: offer.primary, headline: offer.headline, cta: offer.cta,
+    source: ugcMediaIds.length ? "video" : detectCreativeSource(request),
+    primary_text: offer.primary,
+    headline: offer.headline,
+    cta: offer.cta,
+    media_ids: ugcMediaIds.length ? ugcMediaIds : undefined,
     notes: brandContextForPrompt(brand)?.slice(0, 200),
   };
   let name = `${brand.name} ${objective}`.slice(0, 60);

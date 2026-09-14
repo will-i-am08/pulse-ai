@@ -435,6 +435,25 @@ export {
 } from "./autonomy.js";
 
 export type { AiVideoProvider, AiVideoRoute, QueueAiVideoResult } from "./aiVideo.js";
+
+export {
+  looksLikeUgcRequest,
+  ugcDestinationFromBody,
+  ugcConfigured,
+  queueUgcJob,
+  processUgcJob,
+  queueUgcRetune,
+  looksLikeUgcRetune,
+  parseUgcRetune,
+  describeUgcModelChains,
+  falConfigured as ugcFalConfigured,
+  STILL_MODELS as UGC_STILL_MODELS,
+  MOTION_MODELS as UGC_MOTION_MODELS,
+  resolveStillChain,
+  resolveMotionChain,
+  PRESETS_V1 as UGC_PRESETS_V1,
+} from "./ugc/index.js";
+export type { UgcDestination, UgcRetuneHint, QueueUgcResult } from "./ugc/index.js";
 export type { DraftCaptionOpts } from "./draftCaption.js";
 
 export {
