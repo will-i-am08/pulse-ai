@@ -1,5 +1,10 @@
 /**
- * Faceless accounts: no face on camera.
+ * Faceless accounts: nothing depicting the owner.
+ *
+ * Visuals:
+ * - Do NOT show the owner's face, likeness, or "about me" presence.
+ * - Other people ARE allowed (crowd, customers, models, stock talent).
+ * - Prefer scenes that aren't personal portraits of the account holder.
  *
  * Naming:
  * - Do NOT stamp the owner's personal name onto creatives.
@@ -119,19 +124,23 @@ export function facelessPromptLine(brand: FacelessBrandBits): string | null {
     ? ` Never use these personal names in captions or headlines: ${names.join(", ")}.`
     : "";
   const face =
-    " Never depict the owner's face or any recognisable person portrait — keep visuals object/scene based.";
-  return `This is a FACELESS account: no face on camera.${face} Write as a guide/brand voice, not a personal diary.${avoid}`;
+    " Never depict the owner (no selfie, no portrait of them, nothing that is 'about them' on camera)." +
+    " Other people are fine — customers, crowds, models, stock talent — as long as it is not the owner.";
+  return `This is a FACELESS account: creatives must not feature the owner.${face} Write as a guide/brand voice, not a personal diary.${avoid}`;
 }
 
 /**
- * Extra photo-prompt constraints for faceless brands — blocks the "random old guy"
- * portrait fallback that kept showing up on Bill's drafts.
+ * Photo-prompt constraints for faceless brands.
+ * Blocks owner likeness — does NOT ban people in general.
  */
 export function facelessPhotoConstraint(brand: FacelessBrandBits): string {
   if (!isFacelessBrand(brand)) return "";
+  const names = personalNameTokens(brand);
+  const who = names.length ? ` (not ${names.join(" / ")})` : "";
   return (
-    "Faceless creative: no people, no faces, no portraits, no hands holding product, " +
-    "no model, no human silhouette — scene, object, vehicle, or environment only."
+    `Faceless creative: do not depict the account owner${who} — no owner selfie, no owner portrait, ` +
+    "nothing that presents as the owner's personal appearance. " +
+    "Other people are allowed (crowd, customers, models, stock talent)."
   );
 }
 

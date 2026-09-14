@@ -61,7 +61,7 @@ export async function generateFillerPost(
       ? [
           "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption.",
-          noFace || "Prefer object/scene photography unless the brief clearly needs people.",
+          noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
         ]

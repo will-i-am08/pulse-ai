@@ -501,7 +501,7 @@ export async function generatePhotoTextCarousel(
     'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
     "photo_prompt must match the owner brief (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
-    noFace || "Prefer object/scene photography unless the brief clearly needs people.",
+    noFace || "People in frame are fine when the brief calls for them; otherwise prefer clear subject photography.",
     "No text/logos/watermarks in the photo itself — overlay is burned on afterward.",
   ]
     .filter(Boolean)

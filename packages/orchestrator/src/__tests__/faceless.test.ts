@@ -81,14 +81,25 @@ describe("faceless / nameless creatives", () => {
     expect(looksLikePersonalBrandName(b)).toBe(false);
     expect(isNamelessCreative(b)).toBe(false);
     expect(overlayMasthead(b)).toBe("SUNRISE CAFE");
-    expect(facelessPhotoConstraint(b)).toMatch(/no faces/i);
+    expect(facelessPhotoConstraint(b)).toMatch(/account owner/i);
+    expect(facelessPhotoConstraint(b)).toMatch(/other people are allowed/i);
   });
 
   it("does not randomly stamp a personal name just because the account is named after a person", () => {
     const b = mini({ name: "Bill Calder", facts: { faceless: true, owner_name: "Bill Calder" } });
     expect(looksLikePersonalBrandName(b)).toBe(true);
     expect(overlayMasthead(b)).toBe("");
-    expect(facelessPhotoConstraint(b)).toMatch(/no people/i);
+    expect(facelessPhotoConstraint(b)).toMatch(/not bill \/ calder/i);
+    expect(facelessPhotoConstraint(b)).toMatch(/other people are allowed/i);
+    expect(facelessPhotoConstraint(b)).not.toMatch(/no people/i);
+  });
+
+  it("faceless means no owner on camera — other people are still allowed", () => {
+    const b = mini({ name: "Bill Calder", facts: { faceless: true, owner_name: "Bill Calder" } });
+    const line = facelessPromptLine(b) ?? "";
+    expect(line).toMatch(/not feature the owner/i);
+    expect(line).toMatch(/other people are fine/i);
+    expect(line).not.toMatch(/object\/scene based/i);
   });
 
   it("honors nameless===false override on a faceless brand", () => {
