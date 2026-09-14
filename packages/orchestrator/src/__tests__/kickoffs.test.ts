@@ -105,6 +105,19 @@ describe("inferKickoffFromUserMessage", () => {
     const r = inferKickoffFromUserMessage("draft something on a trending topic for me");
     expect(r?.kind).toBe("trend_draft");
   });
+
+  it("routes casual 'do up a post' briefs with topicHint and count 1", () => {
+    const brief =
+      "Could you do up a post comparing ai coding tools with a city scape as the background";
+    expect(looksLikeKickoffRequest(brief)).toBe(true);
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
+    // "AI coding tools" must not flip visuals to generated
+    expect(r?.payload.visuals).toBe("photo");
+    expect(String(r?.ackSms ?? "")).toMatch(/that post from your brief/i);
+  });
 });
 
 describe("inferKickoffFromKipCommit", () => {
@@ -115,6 +128,19 @@ describe("inferKickoffFromKipCommit", () => {
     );
     expect(r?.kind).toBe("first_batch");
     expect(r?.payload.visuals).toBe("generated");
+  });
+
+  it("keeps the owner's brief when Kip commits after chat (no dropped topicHint)", () => {
+    const brief =
+      "Could you do up a post comparing ai coding tools with a city scape as the background";
+    const r = inferKickoffFromKipCommit(
+      brief,
+      "On it, drafting a text-on-image post (cityscape bg) comparing a couple AI coding tools in your voice.",
+    );
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.visuals).toBe("photo");
   });
 
   it("does not queue on pure acknowledgement", () => {

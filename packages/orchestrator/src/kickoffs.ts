@@ -81,9 +81,12 @@ const STOCK_OR_GENERATED_RE =
 const NO_PHOTOS_RE =
   /\b(no|don'?t have|dont have|haven'?t got|without|zero)\b.{0,48}\b(photos?|pics?|images?|shots?)\b/i;
 
-/** "make me a carousel" / misspelled carrousel — allow optional a/an before the noun. */
+/**
+ * "make me a carousel" / "could you do up a post" / misspelled carrousel —
+ * allow optional a/an and casual verbs (do up / whip up / put together).
+ */
 const DRAFT_POSTS_RE =
-  /\b((draft|make|create|write)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|a post|something)|draft (me )?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b/i;
+  /\b((can|could)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*up|put\s+together|produce)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b/i;
 
 /**
  * Owner wants a photo/carousel creative but did not attach media and did not
@@ -112,6 +115,33 @@ function clipCaption(caption: string | null | undefined, max = 140): string {
   if (!t) return "(no caption)";
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+/** How many drafts to queue from a freeform ask (singular "a post" → 1). */
+function inferDraftCount(t: string, wantsCarousel: boolean): number {
+  const explicit = /\b(\d+)\b/.exec(t);
+  if (explicit) {
+    const n = Number(explicit[1]);
+    if (Number.isFinite(n)) return Math.min(5, Math.max(1, n));
+  }
+  if (wantsCarousel) return 1;
+  if (/\b(a|an|one|single)\s+(post|carr?ousel)\b/i.test(t)) return 1;
+  if (/\b(post|carr?ousel)\s+(comparing|about|with|on|for)\b/i.test(t)) return 1;
+  return 2;
+}
+
+/** Shared draft_posts payload so user-ask and Kip-commit paths keep the brief. */
+function draftPostsPayloadFromText(t: string): Record<string, unknown> {
+  const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+  const count = inferDraftCount(t, wantsCarousel);
+  const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
+  return {
+    count,
+    visuals,
+    topicHint: t.slice(0, 280),
+    preferCarousel: wantsCarousel,
+    format: wantsCarousel ? "carousel" : undefined,
+  };
 }
 
 /** Owner is asking Kip to go do content work (not just chat about it). */
@@ -175,27 +205,24 @@ export function inferKickoffFromUserMessage(
   }
 
   if (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) {
-    const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
-    const n = Number((/\b(\d+)\b/.exec(t) ?? [])[1] ?? (wantsCarousel ? 1 : 2));
-    const count = Math.min(5, Math.max(1, Number.isFinite(n) ? n : wantsCarousel ? 1 : 2));
-    const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
-    const photoish = visuals !== "designed";
+    const payload = draftPostsPayloadFromText(t);
+    const count = Number(payload.count) || 1;
+    const wantsCarousel = payload.preferCarousel === true;
+    const photoish = payload.visuals !== "designed";
     return {
       kind: "draft_posts",
-      payload: {
-        count,
-        visuals,
-        topicHint: t.slice(0, 280),
-        preferCarousel: wantsCarousel,
-        format: wantsCarousel ? "carousel" : undefined,
-      },
+      payload,
       ackSms: wantsCarousel
         ? wantsResearchedIdeaSlides(t)
           ? `On it — researching concrete ideas and drafting a ${photoish ? "photo " : ""}carousel (one idea per slide). I'll text when it's ready to approve.`
           : `On it — drafting a ${photoish ? "photo " : ""}carousel from your brief now. I'll text when it's ready to approve.`
         : photoish
-          ? `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
-          : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
+          ? count === 1
+            ? "On it — drafting that post from your brief now. I'll text when it's ready to approve."
+            : `On it — drafting ${count} with generated/stock photos now. I'll text when they're ready to approve.`
+          : count === 1
+            ? "On it — drafting that post from your brief now. I'll text when it's ready to approve."
+            : `On it — drafting ${count} post${count === 1 ? "" : "s"} now. I'll text when they're ready to approve.`,
     };
   }
 
@@ -217,6 +244,12 @@ export function inferKickoffFromKipCommit(
     return null;
   }
 
+  // Prefer structured inference from the owner's ask so the brief (topicHint) survives.
+  const fromUser = userMessage?.trim() ? inferKickoffFromUserMessage(userMessage) : null;
+  if (fromUser) {
+    return { kind: fromUser.kind, payload: { ...fromUser.payload } };
+  }
+
   if (TREND_RE.test(blob)) {
     return { kind: "trend_draft", payload: { topicHint: (userMessage ?? kipReply).slice(0, 280), count: 1 } };
   }
@@ -227,7 +260,8 @@ export function inferKickoffFromKipCommit(
     return { kind: "first_batch", payload: { count: 3, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
   }
   if (DRAFT_POSTS_RE.test(blob) || CONTENT_WORK_RE.test(blob)) {
-    return { kind: "draft_posts", payload: { count: 2, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
+    const topicSource = (userMessage?.trim() || kipReply).trim();
+    return { kind: "draft_posts", payload: draftPostsPayloadFromText(topicSource) };
   }
   return null;
 }
