@@ -14,7 +14,7 @@ import {
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { routeImageJob } from "./modelRouter.js";
+import { routeImageJob, stillChainForQuality, type CreativeQuality } from "./modelRouter.js";
 import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
@@ -260,19 +260,28 @@ async function normalizeExposure(buf: Buffer): Promise<Buffer> {
  * Flux Dev → Seedream) used by UGC — better realism + negatives than bare
  * Flux Schnell on Replicate. Falls back to Replicate when fal is unset/fails.
  * Image edits of real uploads still use Replicate Kontext via editImageForBrand.
+ * Optional `opts.quality` selects the still chain (default: standard).
  */
-export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): Promise<Buffer | null> {
+export async function generatePhotoImage(
+  prompt: string,
+  aspectRatio = "1:1",
+  opts?: { quality?: CreativeQuality; brief?: string },
+): Promise<Buffer | null> {
   routeImageJob("photo_generate");
   const ratio = aspectRatio.includes(":") ? aspectRatio : "1:1";
+  const quality: CreativeQuality = opts?.quality ?? "standard";
 
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
+    const { resolveStillChain } = await import("./ugc/modelRouter.js");
     const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
     if (falConfigured()) {
+      const chain = resolveStillChain(stillChainForQuality(quality, opts?.brief));
       const routed = await falGenerateImageRouted({
         prompt,
         aspectRatio: ratio,
         negativePrompt: FEED_PHOTO_NEGATIVE,
+        chain,
       });
       if (routed?.buffer?.length) {
         console.info(
@@ -280,6 +289,7 @@ export async function generatePhotoImage(prompt: string, aspectRatio = "1:1"): P
             evt: "feed_photo_fal",
             modelId: routed.modelId,
             falId: routed.falId,
+            quality,
           }),
         );
         return sharp(routed.buffer).jpeg({ quality: 88 }).toBuffer();
