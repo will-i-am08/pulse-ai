@@ -294,7 +294,7 @@ describe("executeAgentTool", () => {
 
   it("escalate_to_human records operatorAlerts / calls notifyOperator", async () => {
     const alerts: string[] = [];
-    const notifyOperator = vi.fn(async () => true);
+    const notifyOperator = vi.fn(async (_body: string): Promise<boolean> => true);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const raw = await executeAgentTool(
       "escalate_to_human",
