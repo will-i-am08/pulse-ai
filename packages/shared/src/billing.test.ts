@@ -9,6 +9,7 @@ import {
   planFromStripePrice,
   planFromStripePriceId,
   shouldKickOffOnboarding,
+  stripeKeyAllowedOnDeploy,
   stripePriceIdForPlan,
   stripeSubscriptionToPaymentStatus,
 } from "./billing.js";
@@ -42,6 +43,27 @@ describe("stripe price mapping", () => {
       planFromStripePrice({ metadata: { tier: "max", interval: "month" } })?.interval,
     ).toBe("month");
     expect(planFromStripePrice({ id: "price_unknown" })).toBeNull();
+  });
+});
+
+describe("stripe deploy key guard", () => {
+  it("allows test keys everywhere and live keys only on production", () => {
+    expect(
+      stripeKeyAllowedOnDeploy({ secretKey: "sk_test_abc", vercelEnv: "preview" }),
+    ).toBe(true);
+    expect(
+      stripeKeyAllowedOnDeploy({ secretKey: "sk_live_abc", vercelEnv: "preview" }),
+    ).toBe(false);
+    expect(
+      stripeKeyAllowedOnDeploy({ secretKey: "sk_live_abc", vercelEnv: "production" }),
+    ).toBe(true);
+    expect(
+      stripeKeyAllowedOnDeploy({
+        secretKey: "sk_live_abc",
+        vercelEnv: "preview",
+        allowLive: true,
+      }),
+    ).toBe(true);
   });
 });
 

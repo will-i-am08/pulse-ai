@@ -18,6 +18,7 @@ type Props = {
   initialInterval: PaymentInterval;
   error?: string | null;
   canceled?: boolean;
+  testMode?: boolean;
 };
 
 function SubmitButton({ label }: { label: string }) {
@@ -35,7 +36,13 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-export function PaymentForm({ initialTier, initialInterval, error, canceled }: Props) {
+export function PaymentForm({
+  initialTier,
+  initialInterval,
+  error,
+  canceled,
+  testMode,
+}: Props) {
   const [tier, setTier] = useState<PaymentPlanTier>(initialTier);
   const [interval, setInterval] = useState<PaymentInterval>(initialInterval);
   const annual = interval === 'year';
@@ -52,6 +59,11 @@ export function PaymentForm({ initialTier, initialInterval, error, canceled }: P
         <p className={styles.error}>Checkout cancelled. Pick a plan when you’re ready.</p>
       )}
       {error && <p className={styles.error}>{error}</p>}
+      {testMode && (
+        <p className={styles.testMode}>
+          Stripe test mode — use card 4242 4242 4242 4242. No real charges.
+        </p>
+      )}
 
       <input type="hidden" name="tier" value={tier} />
       <input type="hidden" name="interval" value={interval} />

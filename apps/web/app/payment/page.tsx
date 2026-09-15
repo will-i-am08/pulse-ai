@@ -5,6 +5,7 @@ import { listBrandsForOwner } from '@/lib/data/brands';
 import { hasPaidAccess } from '@pulse/shared';
 import { PaymentForm, type PaymentInterval, type PaymentPlanTier } from './PaymentForm';
 import styles from './payment.module.css';
+import { isStripeTestMode } from '@/lib/stripe';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Payment | Kip' };
@@ -71,6 +72,7 @@ export default async function PaymentPage({
         initialInterval={interval}
         error={msg}
         canceled={canceled === '1' || canceled === 'true'}
+        testMode={isStripeTestMode()}
       />
     </main>
   );

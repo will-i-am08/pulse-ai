@@ -144,12 +144,15 @@ if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<toke
 
 ---
 
-## Stripe (live charges)
+## Stripe (sandbox first, then live)
 
-- [ ] AU Stripe account in live mode, KYC + payouts
-- [ ] Four AUD Prices (GST-inclusive) with lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year`
-- [ ] Production webhook `https://<APP_BASE_URL>/api/webhooks/billing` (checkout.session.completed, customer.subscription.*, invoice.paid, invoice.payment_failed)
-- [ ] Customer Portal: switch among those Prices; **cancel at period end**
+Operator walkthrough: [`STRIPE_SETUP.md`](STRIPE_SETUP.md).
+
+- [ ] **Now:** Vercel Preview + Development = `sk_test_` + preview `STRIPE_WEBHOOK_SECRET` from **Kip ai test** (not Production)
+- [ ] **Now:** Customer Portal on Kip ai test — four Prices, cancel at period end
+- [ ] **Now:** Preview Checkout with `4242…` → webhook 2xx → onboarding SMS
+- [ ] Later: AU Stripe **Kip Ai** live KYC + payouts
+- [ ] Later: re-enable production webhook; Production env = `sk_live_` + live webhook secret
 - [ ] Invoice settings: legal name + ABN; customer emails (receipts + failed payments) on
 - [ ] Do **not** enable Stripe Tax exclusive GST on top of list prices
 - [ ] `PLAN_ENFORCEMENT` remains false

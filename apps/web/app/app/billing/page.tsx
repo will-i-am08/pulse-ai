@@ -3,6 +3,7 @@ import { canAccessBillingPortal, hasPaidAccess } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
 import { createPortalSessionAction } from '@/lib/actions/billing';
+import { isStripeTestMode } from '@/lib/stripe';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Billing | Kip' };
@@ -61,6 +62,9 @@ export default async function BillingPage({
         <p className="lead">Manage your Kip plan in Stripe. Prices are AUD, inc. GST.</p>
 
         {error && <p className="banner bad">{ERRORS[error] ?? 'Something went wrong.'}</p>}
+        {isStripeTestMode() && (
+          <p className="banner">Stripe test mode — changes here do not charge a real card.</p>
+        )}
         {pastDue && (
           <p className="banner bad">
             The last invoice didn’t go through. Update your card in the portal — access stays on

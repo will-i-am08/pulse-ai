@@ -29,6 +29,22 @@ export const STRIPE_LOOKUP_KEYS = {
   max_year: "kip_max_year",
 } as const;
 
+/** Preview/Development must use `sk_test_`. Live keys are Production-only. */
+export function stripeKeyAllowedOnDeploy(opts: {
+  secretKey: string;
+  vercelEnv?: string | null;
+  allowLive?: boolean;
+}): boolean {
+  const key = opts.secretKey.trim();
+  if (!key.startsWith("sk_live_")) return true;
+  if (opts.allowLive) return true;
+  return (opts.vercelEnv ?? "").toLowerCase() === "production";
+}
+
+export function isStripeTestSecret(secretKey: string | null | undefined): boolean {
+  return (secretKey ?? "").trim().startsWith("sk_test_");
+}
+
 export type StripePriceHint = {
   id?: string | null;
   lookup_key?: string | null;
