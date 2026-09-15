@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kip — Charcoal Field v4</title>
+  <title>Kip — Charcoal Field · mark kinship</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -12,17 +12,13 @@
       --void: #0a0a0a;
       --ink: #1d1d1f;
       --cat: #202020;
-      --disc: #f4f1ea;
-      --paper: #f7f4ee;
+      --disc: #f4f1ea; /* exact logo disc */
+      --paper: #f4f1ea;
       --mute: #6e6e73;
       --line: #e6e2da;
-      --graphite: #2c2c2e;
-      --wash: #5c6570;
-      --smoulder: #6b5344;
       --display: "Syne", system-ui, sans-serif;
       --text: "DM Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     }
-
     * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
     body {
@@ -36,674 +32,386 @@
     a { color: inherit; text-decoration: none; }
     img { max-width: 100%; display: block; }
 
-    /* —— chrome —— */
     .proof {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 1.25rem;
-      padding: 8px 16px;
-      background: #050505;
-      border-bottom: 1px solid rgba(247,244,238,0.08);
-      font-size: 11px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.45);
-      overflow: hidden;
-      white-space: nowrap;
+      display: flex; align-items: center; justify-content: center; gap: 1rem;
+      padding: 8px 16px; background: #050505;
+      border-bottom: 1px solid rgba(244,241,234,0.08);
+      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.45);
     }
-    .proof b { color: var(--disc); font-weight: 600; letter-spacing: 0.14em; }
+    .proof b { color: var(--disc); font-weight: 600; }
     .proof .dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--disc); opacity: 0.7;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--disc);
       animation: pulse 2.4s ease-in-out infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.35; }
-      50% { opacity: 0.9; }
-    }
+    @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
 
     .top {
-      position: sticky;
-      top: 0;
-      z-index: 40;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
       padding: 14px 22px;
-      background: rgba(10,10,10,0.9);
+      background: rgba(10,10,10,0.92);
       backdrop-filter: blur(14px);
-      border-bottom: 1px solid rgba(247,244,238,0.08);
+      border-bottom: 1px solid rgba(244,241,234,0.08);
     }
     .top-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      font-size: 17px;
+      display: inline-flex; align-items: center; gap: 10px;
+      font-weight: 600; letter-spacing: -0.02em; font-size: 17px;
     }
-    .top-brand img {
-      width: 28px; height: 28px; border-radius: 50%;
-    }
+    .top-brand img { width: 32px; height: 32px; border-radius: 50%; }
     .top nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 18px;
-      font-size: 13px;
-      color: rgba(247,244,238,0.5);
+      display: flex; flex-wrap: wrap; gap: 8px 18px;
+      font-size: 13px; color: rgba(244,241,234,0.5);
     }
     .top nav a:hover { color: var(--paper); }
 
-    /* —— hero: one composition —— */
+    /* —— Logo-led hero on disc paper —— */
     .hero {
-      position: relative;
-      min-height: 100svh;
-      display: grid;
-      grid-template-rows: 1fr auto;
-      overflow: hidden;
-    }
-    .hero-art {
-      position: absolute;
-      inset: 0;
-      z-index: 0;
-    }
-    .hero-art img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: left center;
-    }
-    .hero-scrim {
-      position: absolute;
-      inset: 0;
-      background:
-        linear-gradient(90deg, rgba(10,10,10,0.88) 0%, rgba(10,10,10,0.62) 38%, rgba(10,10,10,0.28) 68%, rgba(10,10,10,0.12) 100%),
-        linear-gradient(0deg, rgba(10,10,10,0.7) 0%, rgba(10,10,10,0.2) 45%, transparent 70%);
-      z-index: 1;
-    }
-    .hero-body {
-      position: relative;
-      z-index: 2;
-      padding: clamp(100px, 16vh, 160px) clamp(24px, 6vw, 80px) 48px;
-      max-width: 920px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      min-height: 100svh;
-    }
-    .hero-body .mark {
-      width: 56px; height: 56px; border-radius: 50%;
-      margin-bottom: 28px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
-      animation: settle 0.9s ease both;
-    }
-    .hero-body .brand {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(18px, 2.2vw, 22px);
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      margin: 0 0 18px;
-      color: var(--disc);
-      animation: arrive 0.7s 0.05s ease both;
-    }
-    .hero-body h1 {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(48px, 9vw, 104px);
-      letter-spacing: -0.05em;
-      line-height: 0.9;
-      margin: 0 0 20px;
-      max-width: 11ch;
-      animation: arrive 0.8s 0.12s ease both;
-    }
-    .hero-body p {
-      max-width: 34ch;
-      color: rgba(247,244,238,0.72);
-      font-size: clamp(16px, 1.6vw, 19px);
-      margin: 0 0 32px;
-      animation: arrive 0.8s 0.2s ease both;
-    }
-    .hero-body .cta {
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
       background: var(--disc);
       color: var(--ink);
-      font-weight: 600;
-      font-size: 15px;
-      padding: 14px 22px;
-      border-radius: 999px;
+      min-height: 100svh;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      align-items: stretch;
+    }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+    .hero-copy {
+      padding: clamp(72px, 12vh, 120px) clamp(24px, 5vw, 64px);
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .hero-copy .mark {
+      width: 96px; height: 96px; border-radius: 50%;
+      margin-bottom: 28px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+      animation: settle 0.9s ease both;
+    }
+    .hero-copy .brand {
+      font-family: var(--display);
+      font-weight: 800; font-size: 15px;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      margin: 0 0 14px; color: var(--cat);
+      animation: arrive 0.7s 0.05s ease both;
+    }
+    .hero-copy h1 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(44px, 7vw, 84px);
+      letter-spacing: -0.05em; line-height: 0.92;
+      margin: 0 0 18px; max-width: 10ch;
+      animation: arrive 0.8s 0.12s ease both;
+    }
+    .hero-copy p {
+      max-width: 34ch; color: rgba(29,29,31,0.62);
+      font-size: 17px; margin: 0 0 28px;
+      animation: arrive 0.8s 0.2s ease both;
+    }
+    .hero-copy .cta {
+      display: inline-flex; width: fit-content;
+      background: var(--void); color: var(--disc);
+      font-weight: 600; font-size: 15px;
+      padding: 14px 22px; border-radius: 999px;
       animation: arrive 0.8s 0.28s ease both;
     }
-    .hero-meta {
-      position: relative;
-      z-index: 2;
-      padding: 14px 24px 22px;
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.4);
-      border-top: 1px solid rgba(247,244,238,0.08);
-      background: rgba(10,10,10,0.55);
-      backdrop-filter: blur(8px);
+    .hero-art {
+      position: relative; min-height: 70svh; overflow: hidden;
+      background: var(--disc);
     }
-
-    @keyframes settle { from { opacity: 0; } to { opacity: 1; } }
+    .hero-art img {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: left center;
+      animation: settle 1.1s ease both;
+    }
+    @keyframes settle { from{opacity:0} to{opacity:1} }
     @keyframes arrive {
-      from { opacity: 0; transform: translateY(16px); }
-      to { opacity: 1; transform: translateY(0); }
+      from{opacity:0;transform:translateY(14px)}
+      to{opacity:1;transform:translateY(0)}
     }
     @media (prefers-reduced-motion: reduce) {
-      .hero-body .mark, .hero-body .brand, .hero-body h1, .hero-body p, .hero-body .cta,
-      .proof .dot { animation: none !important; }
+      .hero-copy .mark, .hero-copy .brand, .hero-copy h1,
+      .hero-copy p, .hero-copy .cta, .hero-art img { animation: none !important; }
     }
 
     section {
       padding: 88px 24px;
-      border-top: 1px solid rgba(247,244,238,0.08);
+      border-top: 1px solid rgba(244,241,234,0.08);
     }
     .wrap { max-width: 1160px; margin: 0 auto; }
     .kicker {
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.42);
-      font-weight: 600;
-      margin: 0 0 10px;
+      font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.42); font-weight: 600; margin: 0 0 10px;
     }
     .section-title {
-      font-family: var(--display);
-      font-weight: 700;
-      font-size: clamp(32px, 5vw, 52px);
-      letter-spacing: -0.04em;
-      line-height: 1;
-      margin: 0 0 14px;
-      max-width: 18ch;
+      font-family: var(--display); font-weight: 700;
+      font-size: clamp(30px, 4.5vw, 48px);
+      letter-spacing: -0.04em; line-height: 1.02;
+      margin: 0 0 12px; max-width: 18ch;
     }
     .lede {
-      color: rgba(247,244,238,0.58);
-      max-width: 56ch;
-      margin: 0 0 40px;
-      font-size: 16px;
+      color: rgba(244,241,234,0.58); max-width: 54ch;
+      margin: 0 0 40px; font-size: 16px;
     }
 
-    /* —— study —— */
-    .study-grid {
+    /* kinship */
+    .kin-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 18px; align-items: stretch;
       margin-bottom: 28px;
     }
-    @media (max-width: 800px) { .study-grid { grid-template-columns: 1fr; } }
-    .study-card {
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
-      overflow: hidden;
+    @media (max-width: 800px) { .kin-grid { grid-template-columns: 1fr; } }
+    .kin-mark {
+      background: var(--disc);
+      border: 1px solid rgba(244,241,234,0.12);
+      padding: 48px 32px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      text-align: center; color: var(--ink);
     }
-    .study-card img {
-      width: 100%;
-      aspect-ratio: 16 / 10;
-      object-fit: cover;
-      object-position: top center;
+    .kin-mark img { width: 180px; height: 180px; border-radius: 50%; }
+    .kin-mark h3 {
+      margin: 0; font-family: var(--display);
+      font-size: 22px; letter-spacing: -0.03em;
     }
-    .study-card .body { padding: 18px 18px 20px; }
-    .study-card h3 {
-      margin: 0 0 8px;
-      font-family: var(--display);
-      font-size: 22px;
-      letter-spacing: -0.03em;
+    .kin-mark p { margin: 0; font-size: 14px; color: rgba(29,29,31,0.58); max-width: 28ch; }
+    .kin-dna {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
     }
-    .study-card p {
-      margin: 0;
-      font-size: 14px;
-      color: rgba(247,244,238,0.58);
+    .dna-card {
+      background: #111; border: 1px solid rgba(244,241,234,0.1); overflow: hidden;
     }
-    .study-wall {
-      margin: 18px 0 28px;
-      border: 1px solid rgba(247,244,238,0.1);
-      overflow: hidden;
+    .dna-card img { width: 100%; aspect-ratio: 1; object-fit: cover; object-position: top; }
+    .dna-card .meta { padding: 12px 14px 14px; }
+    .dna-card h4 {
+      margin: 0 0 4px; font-family: var(--display);
+      font-size: 16px; letter-spacing: -0.02em;
     }
-    .study-wall img {
-      width: 100%;
-      max-height: 360px;
-      object-fit: cover;
-      object-position: center;
+    .dna-card p { margin: 0; font-size: 12px; color: rgba(244,241,234,0.5); }
+
+    .vocab {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
     }
-    .steal {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
+    @media (max-width: 800px) { .vocab { grid-template-columns: 1fr 1fr; } }
+    .vocab-item {
+      background: var(--disc); color: var(--ink);
+      padding: 18px; border: 1px solid rgba(244,241,234,0.08);
     }
-    @media (max-width: 760px) { .steal { grid-template-columns: 1fr; } }
+    .vocab-item strong {
+      display: block; font-family: var(--display);
+      font-size: 15px; margin-bottom: 6px;
+    }
+    .vocab-item span { font-size: 13px; color: rgba(29,29,31,0.58); }
+
+    .compare {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    @media (max-width: 760px) { .compare { grid-template-columns: 1fr; } }
     .panel {
-      border: 1px solid rgba(247,244,238,0.1);
-      padding: 22px;
-      background: #111;
+      border: 1px solid rgba(244,241,234,0.1);
+      padding: 22px; background: #111;
     }
     .panel h3 {
-      margin: 0 0 12px;
-      font-size: 12px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.45);
+      margin: 0 0 12px; font-size: 12px;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: rgba(244,241,234,0.45);
     }
     .panel.kip h3 { color: var(--disc); }
     .panel ul {
-      margin: 0;
-      padding-left: 1.1rem;
-      color: rgba(247,244,238,0.78);
-      font-size: 14px;
+      margin: 0; padding-left: 1.1rem;
+      color: rgba(244,241,234,0.78); font-size: 14px;
     }
     .panel li + li { margin-top: 8px; }
 
-    /* —— outcome —— */
-    .compare {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-    @media (max-width: 760px) { .compare { grid-template-columns: 1fr; } }
-
-    /* —— plates —— */
     .series-label {
-      display: block;
-      margin: 36px 0 14px;
-      font-size: 12px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.4);
-      font-weight: 600;
+      display: block; margin: 36px 0 14px;
+      font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.4); font-weight: 600;
     }
     .series-label:first-of-type { margin-top: 0; }
     .plates {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
     }
     @media (max-width: 900px) { .plates { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .plates { grid-template-columns: 1fr; } }
     .plate-card {
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
-      overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1);
+      background: #111; overflow: hidden;
     }
     .plate-card img {
-      width: 100%;
-      aspect-ratio: 3 / 4;
-      object-fit: cover;
-      object-position: top center;
+      width: 100%; aspect-ratio: 3/4;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
     }
-    .plate-card.square img { aspect-ratio: 1 / 1; }
-    .plate-card.wide img { aspect-ratio: 16 / 9; }
-    .plate-card.story img { aspect-ratio: 9 / 16; }
-    .plate-card .meta { padding: 14px 14px 16px; }
+    .plate-card.square img { aspect-ratio: 1; }
+    .plate-card.wide img { aspect-ratio: 16/9; }
+    .plate-card .meta { padding: 14px; }
     .plate-card h3 {
-      margin: 0 0 4px;
-      font-family: var(--display);
-      font-size: 18px;
-      letter-spacing: -0.02em;
+      margin: 0 0 4px; font-family: var(--display);
+      font-size: 18px; letter-spacing: -0.02em;
     }
-    .plate-card p {
-      margin: 0;
-      font-size: 13px;
-      color: rgba(247,244,238,0.5);
-    }
+    .plate-card p { margin: 0; font-size: 13px; color: rgba(244,241,234,0.5); }
     .plate-card .tag {
-      display: inline-block;
-      margin-top: 8px;
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.35);
+      display: inline-block; margin-top: 8px;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(244,241,234,0.35);
     }
 
-    /* —— manifesto wall (Polsia density, Kip costume) —— */
     .wall {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
     }
     @media (max-width: 1000px) { .wall { grid-template-columns: 1fr 1fr; } }
     .billboard {
-      display: grid;
-      grid-template-rows: 1.35fr 0.65fr;
-      aspect-ratio: 3 / 4;
-      overflow: hidden;
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
+      display: grid; grid-template-rows: 1.4fr 0.6fr;
+      aspect-ratio: 3/4; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
     }
-    .billboard .art {
-      position: relative;
-      overflow: hidden;
-      min-height: 0;
-    }
+    .billboard .art { overflow: hidden; min-height: 0; }
     .billboard .art img {
       width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: top center;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
     }
     .billboard .typeband {
       padding: 14px 14px 16px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 6px;
-      min-height: 0;
-      position: relative;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      background: var(--disc); color: var(--ink);
     }
-    .billboard .seal {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      margin-bottom: 8px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.18);
-    }
-    .billboard.on-light .typeband { background: var(--paper); color: var(--ink); }
     .billboard.on-dark .typeband { background: var(--void); color: var(--paper); }
+    .billboard .seal {
+      width: 36px; height: 36px; border-radius: 50%; margin-bottom: 6px;
+    }
     .billboard .line {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(22px, 2.4vw, 32px);
-      letter-spacing: -0.045em;
-      line-height: 0.92;
-      text-transform: uppercase;
-      margin: 0;
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(20px, 2.2vw, 28px);
+      letter-spacing: -0.045em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
     }
     .billboard .whisper {
-      font-size: 12px;
-      font-weight: 500;
-      line-height: 1.35;
-      max-width: 28ch;
-      opacity: 0.62;
+      font-size: 12px; opacity: 0.62; line-height: 1.35; max-width: 26ch;
     }
 
-    /* —— large posters —— */
     .posters {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 18px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
     }
     @media (max-width: 860px) { .posters { grid-template-columns: 1fr; } }
     .poster {
-      display: grid;
-      grid-template-rows: 1.35fr 0.65fr;
-      aspect-ratio: 3 / 4;
-      overflow: hidden;
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
+      display: grid; grid-template-rows: 1.4fr 0.6fr;
+      aspect-ratio: 3/4; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
     }
-    .poster .art { position: relative; overflow: hidden; min-height: 0; }
+    .poster .art { overflow: hidden; min-height: 0; }
     .poster .art img {
       width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: top center;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
     }
     .poster .typeband {
       padding: 22px 20px 24px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 8px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+      background: var(--disc); color: var(--ink);
     }
+    .poster.on-dark .typeband { background: var(--void); color: var(--paper); }
     .poster .seal {
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      margin-bottom: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.16);
+      width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px;
     }
-    .poster.on-light .typeband { background: var(--paper); }
-    .poster.on-dark .typeband { background: var(--void); }
     .poster .line {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(32px, 4.2vw, 48px);
-      letter-spacing: -0.05em;
-      line-height: 0.92;
-      text-transform: uppercase;
-      margin: 0;
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(30px, 4vw, 44px);
+      letter-spacing: -0.05em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
     }
-    .poster.on-light .line { color: var(--ink); }
-    .poster.on-dark .line { color: var(--paper); }
-    .poster .whisper {
-      font-size: 14px;
-      line-height: 1.4;
-      max-width: 32ch;
-    }
-    .poster.on-light .whisper { color: rgba(29,29,31,0.58); }
-    .poster.on-dark .whisper { color: rgba(247,244,238,0.62); }
+    .poster .whisper { font-size: 14px; opacity: 0.62; max-width: 32ch; }
 
-    /* type-as-architecture (almost solid field + huge claim) */
-    .manifesto {
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-      gap: 14px;
-      margin-top: 18px;
+    .lockups {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
     }
-    @media (max-width: 900px) { .manifesto { grid-template-columns: 1fr; } }
-    .manifesto-card {
-      position: relative;
-      min-height: 420px;
-      border: 1px solid rgba(247,244,238,0.1);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      padding: 36px 28px;
+    @media (max-width: 800px) { .lockups { grid-template-columns: 1fr; } }
+    .lockup {
+      background: var(--disc); color: var(--ink);
+      padding: 36px 28px; min-height: 200px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 14px;
+      border: 1px solid rgba(244,241,234,0.08);
     }
-    .manifesto-card img {
-      position: absolute;
-      inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: top center;
-      z-index: 0;
+    .lockup.on-void { background: var(--void); color: var(--paper); }
+    .lockup .row {
+      display: flex; align-items: center; gap: 12px;
     }
-    .manifesto-card .veil {
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      background: linear-gradient(0deg, rgba(10,10,10,0.88) 0%, rgba(10,10,10,0.25) 55%, rgba(10,10,10,0.15) 100%);
+    .lockup .row img { width: 56px; height: 56px; border-radius: 50%; }
+    .lockup .row span {
+      font-family: var(--display); font-weight: 700;
+      font-size: 28px; letter-spacing: -0.03em;
     }
-    .manifesto-card.on-paper .veil {
-      background: linear-gradient(0deg, rgba(247,244,238,0.96) 0%, rgba(247,244,238,0.55) 50%, rgba(247,244,238,0.2) 100%);
-    }
-    .manifesto-card .content { position: relative; z-index: 2; }
-    .manifesto-card .seal {
-      width: 44px; height: 44px; border-radius: 50%;
-      margin-bottom: 22px;
-    }
-    .manifesto-card h3 {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(40px, 5.5vw, 64px);
-      letter-spacing: -0.05em;
-      line-height: 0.9;
-      text-transform: uppercase;
-      margin: 0 0 14px;
-      max-width: 10ch;
-    }
-    .manifesto-card.on-paper h3 { color: var(--ink); }
-    .manifesto-card.on-dark h3 { color: var(--paper); }
-    .manifesto-card p {
-      margin: 0;
-      font-size: 15px;
-      max-width: 30ch;
-    }
-    .manifesto-card.on-paper p { color: rgba(29,29,31,0.6); }
-    .manifesto-card.on-dark p { color: rgba(247,244,238,0.62); }
+    .lockup p { margin: 0; font-size: 14px; opacity: 0.62; max-width: 28ch; }
 
-    /* formats */
-    .formats {
-      display: grid;
-      grid-template-columns: 0.7fr 1.3fr;
-      gap: 18px;
-      align-items: start;
-    }
-    @media (max-width: 900px) { .formats { grid-template-columns: 1fr; } }
-    .format-stack { display: grid; gap: 18px; }
-    .story-frame, .og-frame, .feed-frame {
-      display: grid;
-      grid-template-rows: 1.35fr 0.65fr;
-      overflow: hidden;
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
-    }
-    .story-frame { aspect-ratio: 9 / 16; max-width: 300px; }
-    .og-frame { aspect-ratio: 16 / 9; }
-    .feed-frame { aspect-ratio: 1 / 1; max-width: 340px; }
-    .story-frame .art, .og-frame .art, .feed-frame .art {
-      position: relative; overflow: hidden; min-height: 0;
-    }
-    .story-frame .art img, .og-frame .art img, .feed-frame .art img {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: top center;
-    }
-    .story-frame .typeband, .og-frame .typeband, .feed-frame .typeband {
-      padding: 14px 14px 16px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 8px;
-      background: var(--paper);
-    }
-    .feed-frame .typeband { background: var(--void); }
-    .story-frame .seal, .og-frame .seal, .feed-frame .seal {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-    }
-    .story-frame .line, .og-frame .line, .feed-frame .line {
-      font-family: var(--display);
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 0.92;
-      text-transform: uppercase;
-      margin: 0;
-    }
-    .story-frame .line { font-size: clamp(24px, 3.2vw, 34px); color: var(--ink); }
-    .og-frame .line { font-size: clamp(26px, 3.6vw, 42px); color: var(--ink); }
-    .feed-frame .line { font-size: clamp(22px, 2.6vw, 30px); color: var(--paper); }
-    .format-caption {
-      margin: 10px 0 0;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: rgba(247,244,238,0.4);
-    }
-
-    /* feed wall */
     .feed {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
     }
     @media (max-width: 900px) { .feed { grid-template-columns: 1fr 1fr; } }
     .tile {
-      display: grid;
-      grid-template-rows: 1.35fr 0.65fr;
-      aspect-ratio: 1;
-      overflow: hidden;
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
+      display: grid; grid-template-rows: 1.35fr 0.65fr;
+      aspect-ratio: 1; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
     }
-    .tile .art { position: relative; overflow: hidden; min-height: 0; }
+    .tile .art { overflow: hidden; min-height: 0; }
     .tile .art img {
       width: 100%; height: 100%;
-      object-fit: cover;
-      object-position: top center;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
     }
     .tile .typeband {
       padding: 10px 12px 12px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      gap: 6px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      background: var(--disc); color: var(--ink);
     }
-    .tile .seal {
-      width: 24px; height: 24px;
-      border-radius: 50%;
-    }
-    .tile.on-light .typeband { background: var(--paper); }
-    .tile.on-dark .typeband { background: var(--void); }
+    .tile.on-dark .typeband { background: var(--void); color: var(--paper); }
+    .tile .seal { width: 28px; height: 28px; border-radius: 50%; }
     .tile .line {
-      font-family: var(--display);
-      font-weight: 800;
-      font-size: clamp(20px, 2.2vw, 28px);
-      letter-spacing: -0.04em;
-      line-height: 0.92;
-      text-transform: uppercase;
-      margin: 0;
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(18px, 2vw, 24px);
+      letter-spacing: -0.04em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
     }
-    .tile.on-light .line { color: var(--ink); }
-    .tile.on-dark .line { color: var(--paper); }
 
-    /* colour + rules */
     .swatches {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-      gap: 10px;
-      margin-bottom: 20px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px; margin-bottom: 20px;
     }
     .swatch {
-      aspect-ratio: 1 / 1.05;
-      border: 1px solid rgba(247,244,238,0.12);
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      font-size: 12px;
-      font-weight: 600;
+      aspect-ratio: 1/1.05; border: 1px solid rgba(244,241,234,0.12);
+      padding: 12px; display: flex; flex-direction: column; justify-content: flex-end;
+      font-size: 12px; font-weight: 600;
     }
     .swatch span { opacity: 0.65; font-weight: 500; margin-top: 2px; }
-    .note {
-      font-size: 14px;
-      color: rgba(247,244,238,0.55);
-      max-width: 60ch;
-      margin: 0;
-    }
     .rules {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
     }
     @media (max-width: 700px) { .rules { grid-template-columns: 1fr; } }
     .rule {
-      padding: 20px;
-      border: 1px solid rgba(247,244,238,0.1);
-      background: #111;
+      padding: 20px; border: 1px solid rgba(244,241,234,0.1); background: #111;
     }
     .rule h3 {
-      margin: 0 0 10px;
-      font-size: 13px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
+      margin: 0 0 10px; font-size: 13px;
+      letter-spacing: 0.1em; text-transform: uppercase;
     }
     .rule.do h3 { color: var(--disc); }
-    .rule.dont h3 { color: rgba(247,244,238,0.4); }
+    .rule.dont h3 { color: rgba(244,241,234,0.4); }
     .rule ul {
-      margin: 0;
-      padding-left: 1.1rem;
-      font-size: 14px;
-      color: rgba(247,244,238,0.78);
+      margin: 0; padding-left: 1.1rem; font-size: 14px;
+      color: rgba(244,241,234,0.78);
     }
     .rule li + li { margin-top: 6px; }
 
     footer {
-      padding: 36px 24px 64px;
-      text-align: center;
-      color: rgba(247,244,238,0.4);
-      font-size: 13px;
-      border-top: 1px solid rgba(247,244,238,0.08);
+      padding: 36px 24px 64px; text-align: center;
+      color: rgba(244,241,234,0.4); font-size: 13px;
+      border-top: 1px solid rgba(244,241,234,0.08);
     }
-    footer a { color: rgba(247,244,238,0.7); text-decoration: underline; }
+    footer a { color: rgba(244,241,234,0.7); text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="proof">
     <span class="dot" aria-hidden="true"></span>
-    <span><b>Kip</b> · social, handled · cheap · completely done · off your mind</span>
+    <span><b>Kip</b> · same hand as the mark · disc <b>#f4f1ea</b> · charcoal <b>#202020</b></span>
   </div>
 
   <header class="top">
@@ -712,83 +420,95 @@
       Kip
     </a>
     <nav>
-      <a href="#study">Study</a>
+      <a href="#kin">Kinship</a>
       <a href="#outcome">Outcome</a>
-      <a href="#series04">Series 04</a>
+      <a href="#plates">Plates</a>
+      <a href="#lockups">Lockups</a>
       <a href="#wall">Wall</a>
       <a href="#posters">Posters</a>
-      <a href="#formats">Formats</a>
       <a href="#feed">Feed</a>
       <a href="#rules">Rules</a>
     </nav>
   </header>
 
   <main id="top">
-    <!-- Full-bleed hero: brand first, one claim, one CTA, dominant plate -->
     <section class="hero" style="padding:0;border:0;">
-      <div class="hero-art" aria-hidden="true">
-        <img src="plates/plate-relief-banner.png" alt="" />
-        <div class="hero-scrim"></div>
-      </div>
-      <div class="hero-body">
+      <div class="hero-copy">
         <img class="mark" src="kip-logo.png" alt="Kip" />
         <p class="brand">Kip</p>
         <h1>Social’s handled.</h1>
-        <p>Cheap social media management that is simply done — so it’s off their mind. Charcoal Field v4 after studying Polsia and Lindy.</p>
-        <a class="cta" href="#wall">See the poster wall</a>
+        <p>
+          Marketing that still looks like the cat: charcoal on the disc colour, dry-brush marks from the same hand — not a second brand costume.
+        </p>
+        <a class="cta" href="#kin">See mark kinship</a>
       </div>
-      <div class="hero-meta">Charcoal Field · v4 · Series 04 relief plates · type as architecture</div>
+      <div class="hero-art">
+        <img src="plates/plate-kin-wide.png" alt="Kin banner plate from logo strokes" />
+      </div>
     </section>
 
-    <section id="study">
+    <section id="kin">
       <div class="wrap">
-        <p class="kicker">Research → system</p>
-        <h2 class="section-title">Polsia stop-scroll. Lindy clarity. Kip studio.</h2>
+        <p class="kicker">Mark → system</p>
+        <h2 class="section-title">Same hand as the logo.</h2>
         <p class="lede">
-          We studied both landings, social (including video), and posters. We stole physics — not costumes. Kip stays paper, charcoal, and the cat disc.
+          Abstract plates were drifting into generic gallery charcoal. Series 05 <em>Kin</em> rebuilds the art from the logo’s actual stroke vocabulary — whiskers, closed-eye arcs, forehead ticks, ear arches — on exact disc paper <code>#f4f1ea</code>. Never a second cat face. Always recognisably Kip.
         </p>
 
-        <div class="study-grid">
-          <article class="study-card">
-            <img src="refs/polsia-hero.png" alt="Polsia landing hero" />
-            <div class="body">
-              <h3>Polsia</h3>
-              <p>One claim owns the frame. Empty offices. Terminal whisper. Wheatpaste walls. Type as doctrine. Orange + Times + cult — their costume, not ours.</p>
-            </div>
-          </article>
-          <article class="study-card">
-            <img src="refs/lindy-hero.png" alt="Lindy landing hero" />
-            <div class="body">
-              <h3>Lindy</h3>
-              <p>One promise (“3x your output”). Teammate framing. Product UI after the feeling. Cream + blue PLG — clear, but not Kip.</p>
-            </div>
-          </article>
-        </div>
-
-        <div class="study-wall">
-          <img src="refs/polsia-posters.jpg" alt="Polsia street poster wall" />
-        </div>
-
-        <div class="steal">
-          <div class="panel">
-            <h3>Steal</h3>
-            <ul>
-              <li>One claim owns the viewport</li>
-              <li>Hard contrast · print / wall density</li>
-              <li>Type large enough to be the visual</li>
-              <li>Live proof as a quiet whisper strip</li>
-              <li>Outcome before product mechanics</li>
-              <li>Social as “done for you” proof, not feature tours first</li>
-            </ul>
+        <div class="kin-grid">
+          <div class="kin-mark">
+            <img src="kip-logo.png" alt="Kip logo" />
+            <h3>The source</h3>
+            <p>Charcoal cat on circular disc. Sacred. Unaltered. Everything else is kinship, not a redraw.</p>
           </div>
-          <div class="panel kip">
-            <h3>Never wear</h3>
-            <ul>
-              <li>Polsia orange · Times · terminal chrome · cult scripture</li>
-              <li>“Never hire” / apocalypse founder cosplay</li>
-              <li>Lindy electric blue · integration orbits · UI-first heroes</li>
-              <li>Generic SaaS card stacks in the first viewport</li>
-            </ul>
+          <div class="kin-dna">
+            <article class="dna-card">
+              <img src="plates/plate-kin-hand.png" alt="" />
+              <div class="meta">
+                <h4>Hand</h4>
+                <p>Ticks + arcs + whiskers — logo DNA</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-whisk.png" alt="" />
+              <div class="meta">
+                <h4>Whisk</h4>
+                <p>Whisker horizontals + three ticks</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-smile.png" alt="" />
+              <div class="meta">
+                <h4>Smile</h4>
+                <p>Closed-eye arcs from the content face</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-wide.png" alt="" />
+              <div class="meta">
+                <h4>Wide</h4>
+                <p>Ear arches left · empty right for type</p>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="vocab">
+          <div class="vocab-item">
+            <strong>Forehead ticks</strong>
+            <span>Three short verticals — tabby mark, reused as rhythm</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Closed-eye arcs</strong>
+            <span>The content smile — calm, not cute stickers</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Whiskers</strong>
+            <span>Long horizontal dry-brush pairs</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Ear arches</strong>
+            <span>Open U strokes — structure without a face</span>
           </div>
         </div>
       </div>
@@ -796,233 +516,192 @@
 
     <section id="outcome">
       <div class="wrap">
-        <p class="kicker">Emotion → outcome</p>
-        <h2 class="section-title">Sell the feeling after.</h2>
+        <p class="kicker">Still sell the feeling</p>
+        <h2 class="section-title">On-brand look. Outcome copy.</h2>
         <p class="lede">
-          Same north star as v3 — now with Polsia-scale claims and Lindy-clear promises. Every poster should feel like an exhale.
+          Polsia/Lindy taught stop-scroll physics and clear promises. The costume stays Kip: disc, charcoal hand, mate voice.
         </p>
         <div class="compare">
           <div class="panel">
-            <h3>Don’t lead with product</h3>
+            <h3>Don’t</h3>
             <ul>
-              <li>Text Kip a photo</li>
-              <li>AI drafts your captions</li>
-              <li>Approve in the thread</li>
-              <li>SMS social media manager</li>
+              <li>Generic gallery ink that could be any AI brand</li>
+              <li>Tiny disc lost in the corner while art steals identity</li>
+              <li>Lead with SMS / AI / approve-flow mechanics</li>
+              <li>Wear Polsia orange or Lindy blue chrome</li>
             </ul>
           </div>
           <div class="panel kip">
-            <h3>Lead with life after Kip</h3>
+            <h3>Do</h3>
             <ul>
-              <li>Social’s handled.</li>
-              <li>You don’t think about it.</li>
-              <li>Posted. You’re free.</li>
-              <li>Off your mind.</li>
+              <li>Lead with the disc — hero-scale when it’s the brand signal</li>
+              <li>Build plates from logo stroke DNA on <code>#f4f1ea</code></li>
+              <li>Sell “social’s handled / off your mind”</li>
+              <li>Keep the cat unaltered — kinship marks, not redraws</li>
             </ul>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="series04">
+    <section id="plates">
       <div class="wrap">
-        <p class="kicker">Series 04 · primary</p>
-        <h2 class="section-title">Relief doctrine plates.</h2>
+        <p class="kicker">Series 05 · Kin · primary</p>
+        <h2 class="section-title">Plates from the mark.</h2>
         <p class="lede">
-          New default for posters and posts. Bigger empty type zones (≥40%). Marks behave like wheatpaste fields and exhales — not decoration fighting the headline.
+          Default for new posters and posts. Relief plates (Series 04) stay in the kit for heavier night moods — Kin is the everyday brand voice.
         </p>
+        <p class="series-label">Series 05 · Kin</p>
         <div class="plates">
           <article class="plate-card">
-            <img src="plates/plate-relief-exhale.png" alt="" />
+            <img src="plates/plate-kin-hand.png" alt="" />
             <div class="meta">
-              <h3>Exhale</h3>
-              <p>Heavy mass lifting off the top</p>
-              <span class="tag">3:4 · hero posters</span>
+              <h3>Hand</h3>
+              <p>Full stroke vocabulary, upper field</p>
+              <span class="tag">3:4 · primary</span>
             </div>
           </article>
           <article class="plate-card">
-            <img src="plates/plate-relief-field.png" alt="" />
+            <img src="plates/plate-kin-whisk.png" alt="" />
             <div class="meta">
-              <h3>Field</h3>
-              <p>Solid charcoal manifesto panel</p>
-              <span class="tag">3:4 · type as architecture</span>
-            </div>
-          </article>
-          <article class="plate-card">
-            <img src="plates/plate-relief-quiet.png" alt="" />
-            <div class="meta">
-              <h3>Quiet</h3>
-              <p>Sparse ticks + air</p>
-              <span class="tag">3:4 · soft claims</span>
-            </div>
-          </article>
-          <article class="plate-card">
-            <img src="plates/plate-relief-nightband.png" alt="" />
-            <div class="meta">
-              <h3>Nightband</h3>
-              <p>Void over cream type band</p>
-              <span class="tag">3:4 · runs while you sleep</span>
+              <h3>Whisk</h3>
+              <p>Whiskers + forehead ticks</p>
+              <span class="tag">3:4</span>
             </div>
           </article>
           <article class="plate-card square">
-            <img src="plates/plate-relief-stripe.png" alt="" />
+            <img src="plates/plate-kin-smile.png" alt="" />
             <div class="meta">
-              <h3>Stripe</h3>
-              <p>Vertical charcoal stripe</p>
-              <span class="tag">1:1 · feed wall</span>
+              <h3>Smile</h3>
+              <p>Closed-eye arcs</p>
+              <span class="tag">1:1 feed</span>
             </div>
           </article>
           <article class="plate-card wide">
-            <img src="plates/plate-relief-banner.png" alt="" />
+            <img src="plates/plate-kin-wide.png" alt="" />
             <div class="meta">
-              <h3>Banner</h3>
-              <p>Left bloom → empty right</p>
-              <span class="tag">16:9 · landing / OG</span>
+              <h3>Wide</h3>
+              <p>Ears left · room for claim</p>
+              <span class="tag">16:9 banner</span>
             </div>
           </article>
-          <article class="plate-card story">
-            <img src="plates/plate-relief-clearing.png" alt="" />
+          <article class="plate-card">
+            <img src="plates/plate-kin-night.png" alt="" />
             <div class="meta">
-              <h3>Clearing</h3>
-              <p>Storm hatch → silence</p>
-              <span class="tag">9:16 · stories</span>
+              <h3>Night</h3>
+              <p>Ghost strokes over void + cream band</p>
+              <span class="tag">3:4 night</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-kin-seal-field.png" alt="" />
+            <div class="meta">
+              <h3>Seal field</h3>
+              <p>Quiet paper for lockup-first posters</p>
+              <span class="tag">3:4 quiet</span>
             </div>
           </article>
         </div>
+      </div>
+    </section>
 
-        <p class="series-label">Series 03 · margin (still in kit)</p>
-        <div class="plates">
-          <article class="plate-card">
-            <img src="plates/plate-margin-arc.png" alt="" />
-            <div class="meta"><h3>Margin arc</h3><p>Soft arc, upper third</p><span class="tag">3:4</span></div>
-          </article>
-          <article class="plate-card">
-            <img src="plates/plate-margin-night.png" alt="" />
-            <div class="meta"><h3>Margin night</h3><p>Dark void, faint wash</p><span class="tag">3:4</span></div>
-          </article>
-          <article class="plate-card">
-            <img src="plates/plate-margin-corners.png" alt="" />
-            <div class="meta"><h3>Margin corners</h3><p>Corner ticks only</p><span class="tag">3:4</span></div>
-          </article>
+    <section id="lockups">
+      <div class="wrap">
+        <p class="kicker">Brand presence</p>
+        <h2 class="section-title">The disc is the brand.</h2>
+        <p class="lede">
+          On marketing surfaces the mark should read as Kip immediately — not a 24px afterthought. Use the real disc. Never invert it.
+        </p>
+        <div class="lockups">
+          <div class="lockup">
+            <div class="row">
+              <img src="kip-logo.png" alt="" />
+              <span>Kip</span>
+            </div>
+            <p>Standard lockup on disc paper — product + marketing shared DNA.</p>
+          </div>
+          <div class="lockup on-void">
+            <div class="row">
+              <img src="kip-logo.png" alt="" />
+              <span>Kip</span>
+            </div>
+            <p>On void: disc stays cream. Cat never goes white.</p>
+          </div>
+          <div class="lockup">
+            <img src="kip-logo.png" alt="" style="width:88px;height:88px;border-radius:50%;" />
+            <p>Seal-only when the claim is huge — still unmistakably Kip.</p>
+          </div>
         </div>
       </div>
     </section>
 
     <section id="wall">
       <div class="wrap">
-        <p class="kicker">Poster wall · Polsia density</p>
-        <h2 class="section-title">Billboard the relief.</h2>
+        <p class="kicker">Poster wall</p>
+        <h2 class="section-title">Billboard the relief — in Kip’s hand.</h2>
         <p class="lede">
-          Same template every tile — only plate and line change. Meant to feel like a wheatpaste wall, not a SaaS carousel.
+          Same template every tile. Kin plates + larger disc in the type band. Wheatpaste density, logo kinship.
         </p>
         <div class="wall">
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-exhale.png" alt="" />
-
-            </div>
-
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Social’s handled.</p>
               <span class="whisper">Cheap. Completely done.</span>
             </div>
           </article>
           <article class="billboard on-dark">
-            <div class="art">
-
-              <img src="plates/plate-relief-nightband.png" alt="" />
-
-            </div>
-
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Off your mind.</p>
               <span class="whisper">The old cost was thinking about it.</span>
             </div>
           </article>
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-quiet.png" alt="" />
-
-            </div>
-
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Posted. You’re free.</p>
               <span class="whisper">One small act. Then silence.</span>
             </div>
           </article>
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-field.png" alt="" />
-
-            </div>
-
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">You don’t think about it.</p>
               <span class="whisper">That’s the product.</span>
             </div>
           </article>
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-margin-arc.png" alt="" />
-
-            </div>
-
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-seal-field.png" alt="" /></div>
             <div class="typeband">
-
+              <img class="seal" src="kip-logo.png" alt="" />
+              <p class="line">Sorted.</p>
+              <span class="whisper">Without the agency bill.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-wide.png" alt="" /></div>
+            <div class="typeband">
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">It goes out. You don’t.</p>
               <span class="whisper">While you’re on the tools.</span>
             </div>
           </article>
           <article class="billboard on-dark">
-            <div class="art">
-
-              <img src="plates/plate-margin-night.png" alt="" />
-
-            </div>
-
+            <div class="art"><img src="plates/plate-relief-nightband.png" alt="" /></div>
             <div class="typeband">
-
-              <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Sorted.</p>
-              <span class="whisper">Without the agency bill.</span>
-            </div>
-          </article>
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-single-stroke.png" alt="" />
-
-            </div>
-
-            <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Done.</p>
               <span class="whisper">Social, off the list.</span>
             </div>
           </article>
-          <article class="billboard on-light">
-            <div class="art">
-
-              <img src="plates/plate-margin-corners.png" alt="" />
-
-            </div>
-
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Quiet calendar.</p>
               <span class="whisper">Feeds stay alive anyway.</span>
@@ -1034,238 +713,63 @@
 
     <section id="posters">
       <div class="wrap">
-        <p class="kicker">Large posters · type as architecture</p>
-        <h2 class="section-title">Claims big enough to stop a street.</h2>
+        <p class="kicker">Large posters</p>
+        <h2 class="section-title">Mark present. Claim huge.</h2>
         <p class="lede">
-          Gallery split (art above, solid band below) plus manifesto cards where the line is the monument — Polsia scale, Kip voice.
+          Art from the logo hand. Disc readable. Type band solid — never stroke through glyphs.
         </p>
-
         <div class="posters">
-          <article class="poster on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-exhale.png" alt="" />
-
-            </div>
-
+          <article class="poster">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <h3 class="line">Social’s handled.</h3>
               <p class="whisper">Cheap social media management — completely done.</p>
             </div>
           </article>
           <article class="poster on-dark">
-            <div class="art">
-
-              <img src="plates/plate-relief-nightband.png" alt="" />
-
-            </div>
-
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <h3 class="line">You don’t think about it.</h3>
               <p class="whisper">The old cost was the mental load.</p>
             </div>
           </article>
         </div>
-
-        <div class="manifesto">
-          <article class="manifesto-card on-dark">
-            <img src="plates/plate-relief-field.png" alt="" />
-            <div class="veil"></div>
-            <div class="content">
-              <img class="seal" src="kip-logo.png" alt="" />
-              <h3>Off your mind.</h3>
-              <p>Not a platform. Not a workflow. Just social that isn’t yours to carry.</p>
-            </div>
-          </article>
-          <article class="manifesto-card on-paper">
-            <img src="plates/plate-relief-quiet.png" alt="" />
-            <div class="veil"></div>
-            <div class="content">
-              <img class="seal" src="kip-logo.png" alt="" />
-              <h3>Posted. You’re free.</h3>
-              <p>One small act. Then the day belongs to you again.</p>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="formats">
-      <div class="wrap">
-        <p class="kicker">Format kit</p>
-        <h2 class="section-title">Story, feed, wide.</h2>
-        <p class="lede">
-          Same law in every crop: art zone, then a solid type band. Series 04 plates preferred.
-        </p>
-        <div class="formats">
-          <div>
-            <div class="story-frame">
-              <div class="art">
-
-                <img src="plates/plate-relief-clearing.png" alt="" />
-
-              </div>
-
-              <div class="typeband">
-
-                <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Off your mind.</p>
-              </div>
-            </div>
-            <p class="format-caption">9:16 · Clearing · noise → quiet</p>
-          </div>
-          <div class="format-stack">
-            <div>
-              <div class="og-frame">
-                <div class="art">
-
-                  <img src="plates/plate-relief-banner.png" alt="" />
-
-                </div>
-
-                <div class="typeband">
-
-                  <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Social’s handled.</p>
-                </div>
-              </div>
-              <p class="format-caption">16:9 · Banner · OG / landing</p>
-            </div>
-            <div>
-              <div class="feed-frame">
-                <div class="art">
-
-                  <img src="plates/plate-relief-stripe.png" alt="" />
-
-                </div>
-
-                <div class="typeband">
-
-                  <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Handled.</p>
-                </div>
-              </div>
-              <p class="format-caption">1:1 · Stripe · feed wall</p>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
 
     <section id="feed">
       <div class="wrap">
-        <p class="kicker">Social posts</p>
-        <h2 class="section-title">Short shouts. Wall density.</h2>
-        <p class="lede">
-          Glanceable like Lindy’s promise, dense like Polsia’s street wall. Still plates first; video later if it serves the exhale.
-        </p>
+        <p class="kicker">Social</p>
+        <h2 class="section-title">Short shouts. Same hand.</h2>
         <div class="feed">
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-stripe.png" alt="" />
-
-            </div>
-
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Handled.</p>
             </div>
           </article>
           <article class="tile on-dark">
-            <div class="art">
-
-              <img src="plates/plate-relief-nightband.png" alt="" />
-
-            </div>
-
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Off you.</p>
             </div>
           </article>
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-quiet.png" alt="" />
-
-            </div>
-
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Sorted.</p>
             </div>
           </article>
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-exhale.png" alt="" />
-
-            </div>
-
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-
               <img class="seal" src="kip-logo.png" alt="" />
               <p class="line">Free.</p>
-            </div>
-          </article>
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-margin-dust.png" alt="" />
-
-            </div>
-
-            <div class="typeband">
-
-              <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Done.</p>
-            </div>
-          </article>
-          <article class="tile on-dark">
-            <div class="art">
-
-              <img src="plates/plate-margin-night.png" alt="" />
-
-            </div>
-
-            <div class="typeband">
-
-              <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Quiet.</p>
-            </div>
-          </article>
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-margin-corners.png" alt="" />
-
-            </div>
-
-            <div class="typeband">
-
-              <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Out.</p>
-            </div>
-          </article>
-          <article class="tile on-light">
-            <div class="art">
-
-              <img src="plates/plate-relief-field.png" alt="" />
-
-            </div>
-
-            <div class="typeband">
-
-              <img class="seal" src="kip-logo.png" alt="" />
-              <p class="line">Yours again.</p>
             </div>
           </article>
         </div>
@@ -1275,21 +779,17 @@
     <section id="colour">
       <div class="wrap">
         <p class="kicker">Colour</p>
-        <h2 class="section-title">Pigment, not neon</h2>
+        <h2 class="section-title">Disc paper is sacred.</h2>
         <p class="lede">
-          No Polsia orange. No Lindy blue chrome. Atmosphere lives in the plates; CTAs stay disc-on-void or ink-on-paper.
+          Marketing paper matches the logo disc exactly. Charcoal matches the cat strokes. No guest accents from other brands.
         </p>
         <div class="swatches">
-          <div class="swatch" style="background:#0a0a0a;color:#f7f4ee;">void<span>#0A0A0A</span></div>
-          <div class="swatch" style="background:#1d1d1f;color:#f7f4ee;">ink<span>#1D1D1F</span></div>
-          <div class="swatch" style="background:#202020;color:#f7f4ee;">cat<span>#202020</span></div>
-          <div class="swatch" style="background:#f4f1ea;color:#1d1d1f;">disc<span>#F4F1EA</span></div>
-          <div class="swatch" style="background:#f7f4ee;color:#1d1d1f;">paper<span>#F7F4EE</span></div>
-          <div class="swatch" style="background:#2c2c2e;color:#f7f4ee;">graphite<span>#2C2C2E</span></div>
-          <div class="swatch" style="background:#5c6570;color:#f7f4ee;">wash<span>#5C6570</span></div>
-          <div class="swatch" style="background:#6b5344;color:#f7f4ee;">smoulder<span>#6B5344</span></div>
+          <div class="swatch" style="background:#f4f1ea;color:#1d1d1f;">disc / paper<span>#F4F1EA</span></div>
+          <div class="swatch" style="background:#202020;color:#f4f1ea;">cat<span>#202020</span></div>
+          <div class="swatch" style="background:#0a0a0a;color:#f4f1ea;">void<span>#0A0A0A</span></div>
+          <div class="swatch" style="background:#1d1d1f;color:#f4f1ea;">ink<span>#1D1D1F</span></div>
+          <div class="swatch" style="background:#6e6e73;color:#f4f1ea;">mute<span>#6E6E73</span></div>
         </div>
-        <p class="note">Proof whisper uses mute type on void — never a loud accent colour.</p>
       </div>
     </section>
 
@@ -1301,21 +801,21 @@
           <div class="rule do">
             <h3>Do</h3>
             <ul>
-              <li>Lead with Kip + one outcome claim + one CTA</li>
-              <li>Use Series 04 plates for new posters and posts</li>
-              <li>Keep ≥40% solid type band; type can be the monument</li>
-              <li>Billboard the feed like a poster wall</li>
-              <li>Keep the disc unaltered as the studio seal</li>
+              <li>Keep the disc cream and the cat charcoal — always</li>
+              <li>Derive marks from whiskers, arcs, ticks, ears</li>
+              <li>Show the seal large enough to read as Kip</li>
+              <li>Put type on a solid band (≥40% on Kin posters)</li>
+              <li>Sell life after social is handled</li>
             </ul>
           </div>
           <div class="rule dont">
             <h3>Don’t</h3>
             <ul>
-              <li>Lead with SMS / AI / approve-flow mechanics</li>
-              <li>Wear Polsia orange, Times, terminal, or cult copy</li>
-              <li>Wear Lindy blue PLG chrome or UI-first heroes</li>
-              <li>Let brushwork cut through letterforms</li>
-              <li>Trap art in rounded SaaS cards</li>
+              <li>Draw a second cat into the plate</li>
+              <li>Invert, recolour, or bubble the logo</li>
+              <li>Let abstract art become a different brand</li>
+              <li>Use Polsia orange / Lindy blue as chrome</li>
+              <li>Lead with product mechanics over relief</li>
             </ul>
           </div>
         </div>
@@ -1324,7 +824,7 @@
   </main>
 
   <footer>
-    Charcoal Field v4 specimen ·
+    Charcoal Field · mark kinship ·
     <a href="../../docs/DESIGN_LANGUAGE.md">docs/DESIGN_LANGUAGE.md</a>
     · logo rules in
     <a href="../../docs/DESIGN.md">docs/DESIGN.md</a>
