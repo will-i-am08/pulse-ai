@@ -83,7 +83,7 @@ describe("retrieveBrandContext", () => {
   it("empty sections stay empty-ish (none) and do not invent an ICP", async () => {
     const brand = stubBrand({
       facts: {},
-      brand_voice_profile: {},
+      brand_voice_profile: {} as Brand["brand_voice_profile"],
       icp: {},
       pain_points: {},
       positioning: {},

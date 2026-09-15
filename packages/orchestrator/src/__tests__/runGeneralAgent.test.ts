@@ -171,7 +171,7 @@ describe("processInbound general-agent insert", () => {
       "utf8",
     );
     const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
-    const agentIdx = src.indexOf("generalAgentEligible");
+    const agentIdx = src.indexOf("generalAgentEligible({");
     const greetingIdx = src.indexOf("GREETING_RE.test(message.body)");
     expect(digestIdx).toBeGreaterThan(-1);
     expect(agentIdx).toBeGreaterThan(digestIdx);
