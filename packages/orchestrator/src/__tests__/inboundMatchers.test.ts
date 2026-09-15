@@ -295,6 +295,11 @@ describe("processInbound SQL contracts", () => {
     const guard = src.slice(Math.max(0, wipeIndex - 700), wipeIndex);
     expect(guard).toMatch(/looksLikeMetaDisconnectConfirm/);
   });
+
+  it("discards a pending draft on a bare no before the classifier can approve it", () => {
+    expect(src).toMatch(/pending && message\.body && newMedia\.length === 0 && CANCEL_RE\.test\(message\.body\)/);
+    expect(src).toMatch(/Owner discarded the pending draft/);
+  });
 });
 
 // Finding 10 — "tweak it" must not trigger a full plan rebuild unprompted.
