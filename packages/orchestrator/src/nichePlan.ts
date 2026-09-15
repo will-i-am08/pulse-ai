@@ -271,6 +271,8 @@ export async function researchNichePlan(
       messages: [{ role: "user", content: userContent }],
       maxTokens,
       webSearch,
+      tier: "smart",
+      task: "niche_plan",
     });
   } catch (err) {
     console.error(`researchNichePlan: LLM/search failed for brand ${brand.id}`, err);
@@ -313,6 +315,8 @@ export async function researchNichePlanFallback(
           : `Build the plan for a "${niche}" business.`,
       }],
       maxTokens,
+      tier: "smart",
+      task: "niche_plan",
     });
     const parsed = parsePlan(raw);
     if (!parsed) console.error(`researchNichePlanFallback: parse failed for brand ${brand.id}`);

@@ -207,6 +207,8 @@ export async function classifyInbound(params: {
         },
       ],
       maxTokens: 200,
+      tier: "fast",
+      task: "classify",
     });
     const parsed = classificationSchema.parse(JSON.parse(extractJson(raw)));
     return parsed;

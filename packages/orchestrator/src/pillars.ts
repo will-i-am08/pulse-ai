@@ -81,7 +81,17 @@ export async function classifyPhotoPillar(
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } },
       { type: "text", text: "Which pillar key fits this photo best?" },
     ];
-    const out = (await callLLM({ system, messages: [{ role: "user", content }], maxTokens: 20 })).trim().toLowerCase();
+    const out = (
+      await callLLM({
+        system,
+        messages: [{ role: "user", content }],
+        maxTokens: 20,
+        tier: "fast",
+        task: "pillar_label",
+      })
+    )
+      .trim()
+      .toLowerCase();
     const match = pillars.find((p) => out.includes(p.key)) ?? pillars.find((p) => out.includes(p.name.toLowerCase()));
     return match ?? fallback;
   } catch (err) {

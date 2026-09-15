@@ -13,7 +13,14 @@ export async function adLibraryBrief(brand: Brand, request: string): Promise<str
     'Output ONLY JSON: {"subject":"","summary":"","ad_library_angles":[""],"competitor_hooks":[""],"competitor_ctas":[""],"sources":[""],"visual_exemplars":[{"url":"https://…","label":""}]}',
     "If Ad Library signal is thin, say so honestly — never invent ads.",
   ].join("\n");
-  const raw = await callLLM({ system, messages: [{ role: "user", content: request }], maxTokens: 1200, webSearch: 8 });
+  const raw = await callLLM({
+    system,
+    messages: [{ role: "user", content: request }],
+    maxTokens: 1200,
+    webSearch: 8,
+    tier: "smart",
+    task: "ad_library",
+  });
   try {
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as any;
     const summary = stripMarkdown((parsed.summary ?? "").trim() || "Couldn't find solid Ad Library signal yet.");

@@ -29,6 +29,8 @@ export async function competitorIntel(brand: Brand, request: string): Promise<st
     messages: [{ role: "user", content: request }],
     maxTokens: 1100,
     webSearch: 6,
+    tier: "smart",
+    task: "competitors",
   });
 
   try {
@@ -142,6 +144,8 @@ export async function competitorWeeklyUpdate(
     messages: [{ role: "user", content: `Weekly check on ${watch.name}.` }],
     maxTokens: 1000,
     webSearch: 6,
+    tier: "smart",
+    task: "competitors",
   });
   try {
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as {

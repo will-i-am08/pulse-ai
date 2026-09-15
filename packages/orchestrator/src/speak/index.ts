@@ -5,6 +5,7 @@
 
 import type { Brand } from "@pulse/shared";
 import { callLLM } from "../llm.js";
+import { kipMemoryPromptBlock } from "../kipMemory.js";
 import { personaLines } from "../persona.js";
 import { styleBankPromptBlock } from "./styleBank.js";
 import { loadRecentOutbound, recentOutsPromptBlock } from "./recentOuts.js";
@@ -58,11 +59,18 @@ export interface BuildSpeakSystemOptions {
   constraintSeed?: number;
 }
 
-/** Assemble the Speak system prompt (persona + variety + optional Think). */
+/**
+ * Assemble the Speak system prompt (persona + variety + optional Think).
+ * Kip memory (prefs/decisions) is injected here and also via personaLines —
+ * we de-dupe so Speak does not repeat the same block twice.
+ */
 export function buildSpeakSystem(opts: BuildSpeakSystemOptions): string {
   const loops = openLoopsPromptBlock(readOpenLoops(opts.brand));
+  const persona = personaLines(opts.brand);
+  const memory = kipMemoryPromptBlock(opts.brand.facts);
   const parts = [
-    ...personaLines(opts.brand),
+    ...persona,
+    memory && !persona.includes(memory) ? memory : "",
     styleBankPromptBlock(opts.mode),
     recentOutsPromptBlock(opts.recentOutbound ?? []),
     structuralConstraintPromptBlock(opts.constraintSeed),
@@ -117,6 +125,8 @@ export async function speakSMS(opts: SpeakOptions): Promise<string> {
       maxTokens: opts.maxTokens ?? 500,
       temperature: opts.temperature ?? 0.9,
       webSearch: opts.webSearch,
+      tier: shouldThink ? "smart" : "standard",
+      task: "speak",
     });
     return humanizeChat(text);
   };

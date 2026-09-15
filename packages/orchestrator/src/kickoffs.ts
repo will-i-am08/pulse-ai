@@ -843,6 +843,8 @@ async function researchAngle(
       messages: [{ role: "user", content: hint || (mode === "trend" ? "What's timely for us right now?" : "Any competitor move worth answering?") }],
       maxTokens: 300,
       webSearch: 4,
+      tier: "smart",
+      task: "kickoff_plan",
     });
     const cleaned = stripMarkdown(raw);
     const parsed = JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as {
@@ -933,6 +935,8 @@ async function runTrendOrCompetitorDraft(
           },
         ],
         maxTokens: 280,
+        tier: "smart",
+        task: "kickoff_plan",
       });
       const next = stripMarkdown(rewritten).trim();
       if (next.length > 20) {

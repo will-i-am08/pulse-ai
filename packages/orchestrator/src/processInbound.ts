@@ -1,4 +1,4 @@
-import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination } from "@pulse/shared";
+import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination, getServerEnv } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
 import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
@@ -102,6 +102,7 @@ import {
   looksLikeFormatMenuOutbound,
   looksLikeDraftPreviewOutbound,
 } from "./kickoffs.js";
+import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
   looksLikePhotoBackgroundAsk,
@@ -129,6 +130,7 @@ import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } fro
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
+import { answerWithTools } from "./smartAnswer.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -356,7 +358,15 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
   return text.trim();
 }
 
-async function answerQuestion(brand: Brand, context: string, question: string): Promise<string> {
+async function answerQuestion(
+  brand: Brand,
+  context: string,
+  question: string,
+  sourceMessageId?: string | null,
+): Promise<string> {
+  if (getServerEnv().KIP_TOOL_LOOP) {
+    return answerWithTools(brand, context, question, { sourceMessageId });
+  }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   return speakSMS({
     brand,
@@ -377,6 +387,29 @@ async function answerQuestion(brand: Brand, context: string, question: string): 
   });
 }
 
+/**
+ * When KIP_SMART_PLANNER is on and the message looks multi-step, plan then
+ * optionally enqueue a kickoff. Returns null to fall through to existing paths.
+ */
+async function trySmartPlannerKickoff(
+  brand: Brand,
+  body: string,
+  sourceMessageId?: string | null,
+  context?: string,
+): Promise<{ reply: string } | null> {
+  if (!getServerEnv().KIP_SMART_PLANNER) return null;
+  if (!looksLikeMultiStepAsk(body)) return null;
+  const plan = await planSmartTurn({ brand, message: body, context });
+  if (!plan?.kickoffKind) return null;
+  const kicked = await enqueueKickoff(brand, plan.kickoffKind, {
+    payload: { plan, topicHint: body.slice(0, 280) },
+    reason: "user_request",
+    sourceMessageId: sourceMessageId ?? null,
+    ackSms: plan.speakHint ?? null,
+  });
+  if (!kicked.ackSms) return null;
+  return { reply: kicked.ackSms };
+}
 
 /**
  * Chat back like a switched-on human — for greetings, thanks, and small talk,
@@ -1216,6 +1249,8 @@ export async function processInbound(
   }
 
   if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
+    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+    if (planned) return planned;
     const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
     if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
@@ -1807,7 +1842,7 @@ export async function processInbound(
 
     case "question": {
       const context = await buildConversationContext(brand.id);
-      const answer = await answerQuestion(brand, context, message.body ?? "");
+      const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
       await maybeEnqueueFromKipCommit(brand, message.body, answer, message.id);
       return { reply: answer };
     }
@@ -2017,6 +2052,14 @@ export async function processInbound(
         const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
         if (kicked?.ackSms) return { reply: kicked.ackSms };
       }
+
+      // Ambiguous multi-step instruction — thin planner (flagged) before the
+      // generic fallback. Specific handlers above always win first.
+      if (message.body && newMedia.length === 0) {
+        const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+        if (planned) return planned;
+      }
+
       return {
         reply:
           "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",

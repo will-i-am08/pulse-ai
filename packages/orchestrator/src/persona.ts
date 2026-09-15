@@ -1,5 +1,6 @@
 import type { Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
+import { kipMemoryPromptBlock } from "./kipMemory.js";
 
 // The one self-contained persona, shared by every client-facing prompt so it
 // can't drift. To the business owner, Kip IS their social media manager —
@@ -45,6 +46,8 @@ export function personaLines(brand: Brand): string[] {
   if (ctx) {
     lines.push(`Brand strategy on file (cite when helpful, don't dump it):\n${ctx}`);
   }
+  const memory = kipMemoryPromptBlock(brand.facts);
+  if (memory) lines.push(memory);
   return lines;
 }
 

@@ -59,6 +59,8 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
           "3-5 bullet points, focused on recurring brand-voice preferences, feedback, and outstanding items.",
         messages: [{ role: "user", content: older.map(formatMessage).join("\n") }],
         maxTokens: 300,
+        tier: "fast",
+        task: "summarize",
       });
     } catch {
       summary = `(${older.length} earlier messages — summary unavailable)`;

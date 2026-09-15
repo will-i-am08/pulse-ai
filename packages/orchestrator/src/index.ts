@@ -64,8 +64,20 @@ export {
 export { computeTextStats } from "./voice/textStats.js";
 export type { TextStats } from "./voice/textStats.js";
 
-export { callLLM } from "./llm.js";
-export type { CallLLMOptions } from "./llm.js";
+export { callLLM, callLLMWithTools, resolveModelPlan, stripMarkdown } from "./llm.js";
+export type { CallLLMOptions, CallLLMWithToolsOptions, LlmTier, ModelPlanStep, ModelPlanEnv } from "./llm.js";
+export { answerWithTools } from "./smartAnswer.js";
+export { KIP_AGENT_TOOLS, executeAgentTool, mergeKipMemoryFact, recordKipMemory } from "./agentTools.js";
+export type { AgentToolContext, KipMemoryBucket } from "./agentTools.js";
+export {
+  kipMemoryPromptBlock,
+  readKipPreferences,
+  readKipDecisions,
+  clampMemoryText,
+  durablePrefFromCorrectionNote,
+} from "./kipMemory.js";
+export { planSmartTurn, parseSmartPlan, looksLikeMultiStepAsk } from "./smartPlan.js";
+export type { SmartPlan, SmartPlanStep } from "./smartPlan.js";
 
 export {
   classifyInbound,

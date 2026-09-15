@@ -1,6 +1,7 @@
 import { query, queryOne, brandVoiceProfileSchema } from "@pulse/shared";
 import type { Brand } from "@pulse/shared";
 import { callLLM } from "./llm.js";
+import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 
 async function loadBrand(brandId: string): Promise<Brand> {
   const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
@@ -26,6 +27,8 @@ async function summariseDelta(before: string, after: string): Promise<string> {
       },
     ],
     maxTokens: 100,
+    tier: "standard",
+    task: "apply_correction",
   });
   return text.trim().replace(/^["']|["']$/g, "");
 }
@@ -70,4 +73,14 @@ export async function applyCorrection(
     `update brands set brand_voice_profile = $1::jsonb where id = $2`,
     [JSON.stringify(nextProfile), brandId],
   );
+
+  // Conservative: only fold clearly durable prefs into kip_preferences.
+  const durable = durablePrefFromCorrectionNote(learnedNote);
+  if (durable) {
+    try {
+      await recordKipMemory(brand, durable, "kip_preferences");
+    } catch {
+      // Voice note already saved — memory is optional.
+    }
+  }
 }

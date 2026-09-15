@@ -831,6 +831,10 @@ export interface BusinessFacts {
     energy?: string;
     updated_at?: string;
   };
+  /** Short prefs Kip remembered from owner SMS (tool loop). Keep entries brief. */
+  kip_preferences?: Array<{ text: string; atISO: string }>;
+  /** Short decisions Kip remembered from owner SMS (tool loop). Keep entries brief. */
+  kip_decisions?: Array<{ text: string; atISO: string }>;
 }
 
 /**
