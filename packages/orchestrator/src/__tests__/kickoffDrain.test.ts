@@ -6,7 +6,7 @@ vi.mock("../concurrency.js", async () => {
 });
 
 // Lightweight unit coverage for the drain option types + concurrency constant.
-import { DRAFT_CONCURRENCY, mapWithConcurrency } from "../concurrency.js";
+import { DRAFT_CONCURRENCY, mapWithConcurrency, withTimeout } from "../concurrency.js";
 
 describe("DRAFT_CONCURRENCY / mapWithConcurrency", () => {
   // Held at 2 deliberately: the shared pg pool is max: 3, so a batch at 3 could
@@ -32,5 +32,17 @@ describe("DRAFT_CONCURRENCY / mapWithConcurrency", () => {
     });
     expect(maxLive).toBeLessThanOrEqual(2);
     expect(started.sort()).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("withTimeout", () => {
+  it("resolves when the work finishes first", async () => {
+    await expect(withTimeout(Promise.resolve("ok"), 50, "fast")).resolves.toBe("ok");
+  });
+
+  it("rejects when the work hangs past the deadline", async () => {
+    await expect(
+      withTimeout(new Promise(() => undefined), 20, "draft_posts slot 2"),
+    ).rejects.toThrow(/draft_posts slot 2 timed out after 20ms/);
   });
 });

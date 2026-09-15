@@ -28,7 +28,7 @@ import {
   withPreferredVisuals,
   type VisualMode,
 } from "./visualMode.js";
-import { mapWithConcurrency, DRAFT_CONCURRENCY } from "./concurrency.js";
+import { mapWithConcurrency, DRAFT_CONCURRENCY, withTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 
 
 /**
@@ -830,14 +830,18 @@ async function runFirstBatch(
     try {
       const pillar = pillars[i % pillars.length]!;
       const kind = kinds[i % kinds.length]!;
-      const piece = await draftGeneratedPiece(
-        brand,
-        pillar,
-        "carousel",
-        kind,
-        visuals,
-        String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+      const piece = await withTimeout(
+        draftGeneratedPiece(
+          brand,
+          pillar,
+          "carousel",
+          kind,
+          visuals,
+          String(payload.topicHint ?? ""),
+          { forceFresh: payload.forceFresh === true },
+        ),
+        DRAFT_SLOT_TIMEOUT_MS,
+        `first_batch slot ${i + 1}`,
       );
       if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
       if (!isDraftPiece(piece)) return null;
@@ -949,14 +953,18 @@ async function runDraftPosts(
       // "A post" may still be a carousel when preferCarousel/format says so — not banned.
       const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
       const prefer = forceCarousel ? "carousel" : "filler";
-      const piece = await draftGeneratedPiece(
-        brand,
-        pillar,
-        prefer,
-        i % 2 === 0 ? "tip" : "steps",
-        visuals,
-        String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+      const piece = await withTimeout(
+        draftGeneratedPiece(
+          brand,
+          pillar,
+          prefer,
+          i % 2 === 0 ? "tip" : "steps",
+          visuals,
+          String(payload.topicHint ?? ""),
+          { forceFresh: payload.forceFresh === true },
+        ),
+        DRAFT_SLOT_TIMEOUT_MS,
+        `draft_posts slot ${i + 1}`,
       );
       if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
       if (!isDraftPiece(piece)) return null;
@@ -1192,6 +1200,7 @@ export async function processKickoff(
   // sit outside it, so a pool timeout / dropped connection escaped the whole
   // function: no failKickoff, no SMS, and a claimed row nobody owned until the
   // reaper came round.
+  const stopHeartbeat = setInterval(() => void heartbeatKickoff(kickoffId), 10_000);
   try {
     const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
     if (!brand) {
@@ -1248,6 +1257,8 @@ export async function processKickoff(
     };
     await deliverOnce(failResult);
     return [failResult];
+  } finally {
+    clearInterval(stopHeartbeat);
   }
 }
 

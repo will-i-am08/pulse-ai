@@ -258,7 +258,7 @@ export function confirmationSms(url: string, context?: DestinationLinkContext): 
       ? "for ad clicks"
       : context === "story"
         ? "for this Story"
-        : context === "onboarding"
+      : context === "onboarding" || context === "update"
           ? "as your booking link"
           : "for this post";
   return (
