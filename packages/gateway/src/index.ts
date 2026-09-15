@@ -12,6 +12,8 @@ export {
   splitIntoBubbles,
   shouldSendInstantTextAck,
   shouldSendSlowWorkFiller,
+  shouldSkipInboundBurst,
+  outboundTypingPauseMs,
   looksLikeProgressCheck,
   refersToAttachedMedia,
 } from "./gateway.js";

@@ -77,7 +77,7 @@ Never publishes; never invents spend. Max 4 steps.
 
 Three layers. The model stays general; tools and retrieval narrow. Content engine (captions, kickoffs, composer, UGC) is **not** rewritten — `draft_copy` is a facade over it.
 
-**Hard gates (existing handlers, no LLM router):** onboarding FSM, destination-link confirm, HOLD, parked carousel/variant picks, pending-draft format cmds, high-confidence approval/edit, engagement/CRM verbs, connect/disconnect, ads toggles, **performance digest**, **calendar lookup**. Attached media still uses the existing photo/video/UGC pipeline. Greetings / thanks run **before** the general agent.
+**Hard gates (existing handlers, no LLM router):** onboarding FSM, destination-link confirm, HOLD, parked carousel/variant picks, pending-draft format cmds, high-confidence approval/edit, engagement/CRM verbs, connect/disconnect, ads toggles, **performance digest**, **calendar lookup**. Attached media still uses the existing photo/video/UGC pipeline. Greetings / thanks / affirmations run **before** the general agent and reply locally (`quickSocialReply` / `quickReengageReply`) — no conversation summarize, no Speak. The gateway also skips the 2.8s inbound coalesce sleep for those complete short turns (and calendar / progress pings) so “hi” is DB + Twilio, not a 10s wait.
 
 When the flag is on and there is **no attached media and no pending_approval draft**, `routeInbound` calls `runGeneralAgent` (after those gates):
 
@@ -129,6 +129,7 @@ Pending + question still uses `runGeneralAgent` via `answerQuestion` (and thread
 - [ ] `looksLikeCalendarAsk` is true for “what’s on my calendar this week?” and false for draft/ads compound asks.
 - [ ] `summarizeCalendar` is SMS prose, not JSON.
 - [ ] Slow-work filler is off for calendar / hey; on for draft kickoffs.
+- [ ] “hi” / thanks do not call `summarize` or `speak`; gateway `shouldSkipInboundBurst` is true for those and false for “draft me 3”.
 
 ## Ops notes
 

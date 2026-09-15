@@ -13,6 +13,7 @@ import {
 } from "../processInbound.js";
 import { looksLikeBoostRequest } from "../boost.js";
 import { looksLikeCalendarAsk } from "../agentTools.js";
+import { looksLikeGreeting } from "../classify.js";
 import {
   looksLikePhotoBackgroundAsk,
   photoBackgroundAskCoversBatch,
@@ -326,4 +327,9 @@ table("looksLikeCalendarAsk", looksLikeCalendarAsk, {
     "schedule this for Thursday",
     "hey",
   ],
+});
+
+table("looksLikeGreeting", looksLikeGreeting, {
+  must: ["hi", "Hey!", "hello", "thanks", "thanks so much", "how's it going", "morning"],
+  mustNot: ["hey can you post this", "thanks for the carousel", "draft me 3 posts", "yes"],
 });

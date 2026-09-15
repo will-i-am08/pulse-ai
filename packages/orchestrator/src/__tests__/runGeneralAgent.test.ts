@@ -258,7 +258,7 @@ describe("processInbound general-agent insert", () => {
     );
     const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
     const calendarIdx = src.indexOf("looksLikeCalendarAsk(message.body)");
-    const greetingIdx = src.indexOf("GREETING_RE.test(message.body)");
+    const greetingIdx = src.indexOf("looksLikeGreeting(message.body)");
     const agentIdx = src.indexOf("generalAgentEligible({");
     expect(digestIdx).toBeGreaterThan(-1);
     expect(calendarIdx).toBeGreaterThan(digestIdx);
@@ -267,6 +267,14 @@ describe("processInbound general-agent insert", () => {
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);
+    const converseFn = src.slice(src.indexOf("async function converse"), src.indexOf("async function reengage"));
+    expect(converseFn.indexOf("quickSocialReply")).toBeGreaterThan(-1);
+    expect(converseFn.indexOf("quickSocialReply")).toBeLessThan(converseFn.indexOf("buildConversationContext"));
+    const reFn = src.slice(src.indexOf("async function reengage"), src.indexOf("export type InboundResult"));
+    expect(reFn.indexOf("quickReengageReply")).toBeGreaterThan(-1);
+    expect(reFn.indexOf("quickReengageReply")).toBeLessThan(reFn.indexOf("buildConversationContext"));
+    expect(reFn).toMatch(/summarize:\s*false/);
+    expect(reFn).toMatch(/think:\s*false/);
   });
 
   it("question path threads operatorAlert and does not double-enqueue when the general agent is on", () => {

@@ -5,6 +5,8 @@ import {
   craftHumanAck,
   stripLeadingAck,
   looksLikeAffirmation,
+  looksLikeGreeting,
+  looksLikeCalendarAsk,
   looksLikePhotoBackgroundAsk,
   looksLikeSlowSmsWork,
   buildOnboardingPlanSms,
@@ -55,6 +57,31 @@ const PHOTO_ARRIVAL_POLL_MS = 700;
 
 /** Re-export — single source of truth lives in @pulse/orchestrator. */
 export { refersToAttachedMedia };
+
+/** Fake-typing delay before an outbound bubble. Short first SMS stays snappy. */
+export function outboundTypingPauseMs(partLength: number, partIndex: number): number {
+  if (partIndex === 0 && partLength < 80) {
+    return Math.min(280 + partLength * 12, 600);
+  }
+  return Math.min(700 + partLength * 25, partIndex === 0 ? 2500 : 1200);
+}
+
+/**
+ * Whole-turn hi / thanks / calendar / progress ping — skip the 2.8s coalesce
+ * sleep. Keep the wait for split thoughts, MMS, and "with this photo".
+ */
+export function shouldSkipInboundBurst(opts: { text: string; hasMedia: boolean }): boolean {
+  if (opts.hasMedia) return false;
+  const t = (opts.text ?? "").trim();
+  if (!t) return false;
+  if (refersToAttachedMedia(t)) return false;
+  return (
+    looksLikeGreeting(t) ||
+    looksLikeAffirmation(t) ||
+    looksLikeCalendarAsk(t) ||
+    looksLikeProgressCheck(t)
+  );
+}
 
 /** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */
 export function looksLikeProgressCheck(text: string): boolean {
@@ -382,8 +409,9 @@ export async function sendToBrand(
     }
     if (pace) {
       // Typing pause before each bubble: longer for longer texts (capped),
-      // plus a breath between consecutive bubbles.
-      const typingPause = Math.min(700 + part.length * 25, i === 0 ? 2500 : 1200);
+      // plus a breath between consecutive bubbles. Short first bubbles
+      // ("Hey!") should not wait a full second of fake typing.
+      const typingPause = outboundTypingPauseMs(part.length, i);
       await sleep(typingPause + (i > 0 ? 600 : 0));
     }
     let providerMessageId: string;
@@ -767,7 +795,10 @@ export async function handleInbound(
     // Media participates too: iOS dispatches three photos as three separate
     // MMS, so a media-only burst must become ONE turn over three photos rather
     // than three turns (and three imaging jobs) against the same brand.
-    if (inboundText || newMedia.length > 0) {
+    if (
+      (inboundText || newMedia.length > 0) &&
+      !shouldSkipInboundBurst({ text: inboundText, hasMedia: newMedia.length > 0 })
+    ) {
       // The lookback MUST equal the sleep. When it was longer (BURST_MS + 500)
       // a message landing in the 2800-3300ms seam was both already answered by
       // its own turn AND pulled into the next one, so the orchestrator

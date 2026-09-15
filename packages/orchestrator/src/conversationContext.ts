@@ -74,12 +74,44 @@ async function openLoopsBlock(brandId: string): Promise<string> {
   }
 }
 
-export async function buildConversationContext(brandId: string, limit = DEFAULT_LIMIT): Promise<string> {
+export type BuildConversationContextOpts = {
+  limit?: number;
+  /**
+   * When false, return recent messages + open loops only — skip the count query
+   * and the older-thread summarize LLM (that call is ~5s on long threads).
+   */
+  summarize?: boolean;
+};
+
+export function resolveConversationContextArgs(
+  limitOrOpts: number | BuildConversationContextOpts | undefined = DEFAULT_LIMIT,
+): { limit: number; summarize: boolean } {
+  if (typeof limitOrOpts === "number" || limitOrOpts === undefined) {
+    return { limit: limitOrOpts ?? DEFAULT_LIMIT, summarize: true };
+  }
+  return {
+    limit: limitOrOpts.limit ?? DEFAULT_LIMIT,
+    summarize: limitOrOpts.summarize !== false,
+  };
+}
+
+export async function buildConversationContext(
+  brandId: string,
+  limitOrOpts: number | BuildConversationContextOpts = DEFAULT_LIMIT,
+): Promise<string> {
+  const { limit, summarize } = resolveConversationContextArgs(limitOrOpts);
   const recentRows = await query<Message>(
     `select * from messages where brand_id = $1 order by created_at desc limit $2`,
     [brandId, limit],
   );
   const recent = recentRows.reverse();
+  const recentText = recent.map(formatMessage).join("\n") || "(no conversation history yet)";
+  const loops = await openLoopsBlock(brandId);
+  const loopsPrefix = loops ? `${loops}\n\n` : "";
+
+  if (!summarize) {
+    return `${loopsPrefix}${recentText}`;
+  }
 
   const countRow = await queryOne<{ count: string }>(
     `select count(*) as count from messages where brand_id = $1`,
@@ -87,9 +119,6 @@ export async function buildConversationContext(brandId: string, limit = DEFAULT_
   );
 
   const total = countRow ? Number(countRow.count) : recent.length;
-  const recentText = recent.map(formatMessage).join("\n") || "(no conversation history yet)";
-  const loops = await openLoopsBlock(brandId);
-  const loopsPrefix = loops ? `${loops}\n\n` : "";
 
   const olderCount = total - recent.length;
   if (olderCount <= 0 || total <= SUMMARISE_THRESHOLD) {
