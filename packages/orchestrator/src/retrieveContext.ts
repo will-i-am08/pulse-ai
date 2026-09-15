@@ -6,10 +6,10 @@
 import { brandVoiceProfileSchema, query, queryOne, type Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
+import { buildConversationContext } from "./conversationContext.js";
 import { kipMemoryPromptBlock, readKipDecisions, readKipPreferences } from "./kipMemory.js";
 import { bankedPhotoCount } from "./library.js";
 import { connectionSummary } from "./persona.js";
-import { buildConversationContext } from "./conversationContext.js";
 
 export type BrandContextPack = {
   text: string;
@@ -82,7 +82,7 @@ function recencyMs(at?: string | null): number {
 }
 
 function orNone(text: string): string {
-  const t = text.replace(/\s+/g, " ").trim() ? text.trim() : "";
+  const t = text.trim();
   return t || NONE;
 }
 
@@ -138,7 +138,9 @@ function formatPrefs(brand: Brand): string {
 }
 
 function formatFacts(brand: Brand): string {
-  return orNone(factsForPrompt(brand.facts));
+  const facts = factsForPrompt(brand.facts);
+  if (!facts || facts.startsWith("(no business")) return NONE;
+  return facts;
 }
 
 function formatStrategy(brand: Brand): string {
