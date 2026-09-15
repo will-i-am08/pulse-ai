@@ -187,6 +187,40 @@ A **plate** is a reusable abstract artwork that becomes the full-bleed ground fo
 | Feed | 1:1 | graphite-field, monotype, graphite-dust, torn-veil |
 | OG / banner | 16:9 | horizon-wash, edge-bloom |
 
+
+
+### Series 03 — Margin plates (legibility-first)
+
+After review: busy full-bleed charcoal was covering headlines. Series 03 follows **gallery-poster / quiet-luxury** research — marks live in an upper or edge zone; lower area stays empty so type can sit on a solid band.
+
+| File | Mood | Format | Type zone |
+|---|---|---|---|
+| `plate-margin-arc.png` | Soft arc, upper third | 3:4 | Clear lower band |
+| `plate-margin-corners.png` | Corner ticks only | 3:4 | Clear lower band |
+| `plate-margin-night.png` | Dark void, faint top wash | 3:4 | Dark type band |
+| `plate-margin-dust.png` | Speckle at top | 1:1 | Clear lower band |
+| `plate-margin-mist.png` | Mist upper half | 9:16 | Clear lower band |
+| `plate-margin-wide.png` | Wash on left third | 16:9 | Clear right / lower band |
+
+### Composition law (non-negotiable)
+
+1. **Split the frame** — art zone + solid type band (≥35% of height). Do not set headlines on top of brushwork.
+2. **Object-position top** — plates are authored with empty lower margins; crop from the top.
+3. **No stroke through glyphs** — if a mark would cross a letter, move the type or kill the mark.
+4. **Billboard series** — same template every time; only plate + line change (2026 billboarding pattern).
+5. **Scrim is last resort** — prefer a solid band over frosted overlays.
+
+### Design research we pulled from
+
+| Source pattern | What we took |
+|---|---|
+| Quiet-luxury / retreat branding | Negative space as the premium signal; calm over spectacle |
+| Gallery exhibition posters | Artwork above, title/claim in a clear lower margin |
+| Aesop-adjacent organic campaigns | Sparse organic marks, restrained pigment, texture without chaos |
+| 2026 “billboarding” | Glanceable series; one-second read in a feed |
+| Translucence trend | Acknowledged for depth — but we use solid bands for outcome copy instead of type-on-glass |
+
+
 ### Plate rules
 
 1. **Full-bleed** — the art is the surface, not a card inset.
