@@ -165,6 +165,9 @@ importers:
 
   packages/gateway:
     dependencies:
+      '@pulse/channel-lab':
+        specifier: workspace:*
+        version: link:../channel-lab
       '@pulse/channel-twilio':
         specifier: workspace:*
         version: link:../channel-twilio

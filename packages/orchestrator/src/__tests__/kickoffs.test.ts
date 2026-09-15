@@ -315,6 +315,14 @@ describe("reclaimStaleKickoffs", () => {
     await expect(reclaimStaleKickoffs({ deliver })).resolves.toEqual([]);
     expect(deliver).not.toHaveBeenCalled();
   });
+
+  it("scopes the reclaim UPDATE when brandId is set", async () => {
+    mockedQuery.mockResolvedValueOnce([]);
+    await reclaimStaleKickoffs({ brandId: "lab-brand" });
+    const [sql, params] = mockedQuery.mock.calls[0]!;
+    expect(String(sql)).toMatch(/brand_id = \$2/);
+    expect(params).toEqual(expect.arrayContaining(["lab-brand"]));
+  });
 });
 
 describe("runKickoffDrain", () => {
@@ -341,5 +349,17 @@ describe("runKickoffDrain", () => {
     expect(String(mockedQuery.mock.calls[1]![0])).toMatch(/status = 'queued'/);
     expect(out.some((r) => r.brandId === "b-stale")).toBe(true);
     expect(deliver).toHaveBeenCalled();
+  });
+
+  it("scopes reclaim + queued select when brandId is set", async () => {
+    mockedQuery.mockResolvedValueOnce([]);
+    mockedQuery.mockResolvedValueOnce([]);
+    await runKickoffDrain(2, { brandId: "lab-brand" });
+    const reclaimSql = String(mockedQuery.mock.calls[0]![0]);
+    const queuedSql = String(mockedQuery.mock.calls[1]![0]);
+    expect(reclaimSql).toMatch(/brand_id = \$2/);
+    expect(mockedQuery.mock.calls[0]![1]).toEqual(expect.arrayContaining(["lab-brand"]));
+    expect(queuedSql).toMatch(/brand_id = \$1/);
+    expect(mockedQuery.mock.calls[1]![1]).toEqual(["lab-brand", 2]);
   });
 });

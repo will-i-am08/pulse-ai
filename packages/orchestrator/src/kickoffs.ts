@@ -72,6 +72,11 @@ export type KickoffDrainOpts = {
   deliver?: KickoffDeliver;
   /** Parallel draft slots (default DRAFT_CONCURRENCY). */
   concurrency?: number;
+  /**
+   * When set, only reclaim/claim kickoffs for this brand. Lab drain MUST pass
+   * this so a lab request cannot SMS a real brand (or vice versa).
+   */
+  brandId?: string;
 };
 
 const COMMIT_RE =
@@ -627,21 +632,36 @@ export async function reclaimStaleKickoffs(opts?: {
   now?: Date;
   staleMs?: number;
   deliver?: KickoffDeliver;
+  brandId?: string;
 }): Promise<KickoffDrainResult[]> {
   const staleMs = opts?.staleMs ?? STALE_RUNNING_KICKOFF_MS;
   const cutoff = new Date((opts?.now ?? new Date()).getTime() - staleMs).toISOString();
-  const rows = await query<KipKickoff>(
-    `update kip_kickoffs
-        set status = 'failed',
-            error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
-            completed_at = now(),
-            updated_at = now()
-      where status = 'running'
-        and started_at is not null
-        and greatest(started_at, updated_at) < $1::timestamptz
-      returning *`,
-    [cutoff],
-  );
+  const rows = opts?.brandId
+    ? await query<KipKickoff>(
+        `update kip_kickoffs
+            set status = 'failed',
+                error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
+                completed_at = now(),
+                updated_at = now()
+          where status = 'running'
+            and brand_id = $2
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning *`,
+        [cutoff, opts.brandId],
+      )
+    : await query<KipKickoff>(
+        `update kip_kickoffs
+            set status = 'failed',
+                error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
+                completed_at = now(),
+                updated_at = now()
+          where status = 'running'
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning *`,
+        [cutoff],
+      );
   if (!rows.length) return [];
   console.warn("[kickoffs] reclaimed stale running kickoffs", {
     count: rows.length,
@@ -1237,11 +1257,16 @@ export async function runKickoffDrain(
   opts?: KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
   const out: KickoffDrainResult[] = [];
-  out.push(...(await reclaimStaleKickoffs({ deliver: opts?.deliver })));
-  const rows = await query<KipKickoff>(
-    `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
-    [limit],
-  );
+  out.push(...(await reclaimStaleKickoffs({ deliver: opts?.deliver, brandId: opts?.brandId })));
+  const rows = opts?.brandId
+    ? await query<KipKickoff>(
+        `select * from kip_kickoffs where status = 'queued' and brand_id = $1 order by created_at asc limit $2`,
+        [opts.brandId, limit],
+      )
+    : await query<KipKickoff>(
+        `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
+        [limit],
+      );
   for (const row of rows) {
     // One row must never abort the batch: processKickoff already handles its
     // own failures, but anything that escapes it (claim/terminal-write errors)
