@@ -8,6 +8,8 @@ Kip’s mark is a hand-drawn cat face in charcoal on a **circular off-white disc
 
 The company behind Kip is Pulse Social Media. Pulse does not appear in the product UI. The old Pulse “P” with a heartbeat is retired.
 
+**Marketing language (proposal):** see [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) — *Charcoal Signal* — and the specimen at [`prototype/design-language/index.html`](../prototype/design-language/index.html). Product chrome in this file stays the source of truth until that proposal is locked.
+
 ## Mark
 
 The cat is the logo. Charcoal strokes (`#202020`) on a circular off-white field (`#f4f1ea`). Square PNG, transparent corners, so the disc reads as a circle. Generous padding — no crop into the whiskers or ears. The Canva export is transparent charcoal; the master files composite it onto the disc.

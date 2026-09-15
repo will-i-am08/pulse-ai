@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kip — Charcoal Signal (design language specimen)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --void: #000000;
+      --ink: #1d1d1f;
+      --cat: #202020;
+      --disc: #f4f1ea;
+      --paper: #ffffff;
+      --mute: #6e6e73;
+      --line: #ececec;
+      --volt: #d6ff3f;
+      --volt-ink: #12140a;
+      --display: "Syne", system-ui, sans-serif;
+      --text: "DM Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--void);
+      color: var(--paper);
+      font-family: var(--text);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 14px 22px;
+      background: rgba(0,0,0,0.82);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .top-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      font-size: 17px;
+    }
+    .top-brand img {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: block;
+    }
+    .top nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      font-size: 13px;
+      color: rgba(255,255,255,0.62);
+    }
+    .top nav a { text-decoration: none; }
+    .top nav a:hover { color: #fff; }
+
+    .hero {
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: 96px 24px 72px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: -20% -10% auto;
+      height: 70%;
+      background:
+        radial-gradient(ellipse at 50% 0%, rgba(214,255,63,0.12), transparent 55%),
+        radial-gradient(ellipse at 80% 40%, rgba(244,241,234,0.06), transparent 40%);
+      pointer-events: none;
+    }
+    .hero-mark {
+      width: 88px;
+      height: 88px;
+      border-radius: 50%;
+      margin: 0 auto 28px;
+      display: block;
+      animation: breathe 4.5s ease-in-out infinite;
+    }
+    .hero h1 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(42px, 9vw, 96px);
+      letter-spacing: -0.04em;
+      line-height: 0.94;
+      margin: 0 0 18px;
+      max-width: 14ch;
+      margin-inline: auto;
+      animation: arrive 0.7s ease-out both;
+    }
+    .hero h1 .tick {
+      position: relative;
+      display: inline-block;
+    }
+    .hero h1 .tick::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0.06em;
+      height: 0.12em;
+      background: var(--volt);
+      transform-origin: left;
+      animation: tick 0.85s 0.45s ease-out both;
+    }
+    .hero p {
+      max-width: 38ch;
+      margin: 0 auto 28px;
+      color: rgba(255,255,255,0.62);
+      font-size: 17px;
+      animation: arrive 0.7s 0.12s ease-out both;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--volt);
+      color: var(--volt-ink);
+      font-weight: 600;
+      font-size: 15px;
+      padding: 12px 20px;
+      border-radius: 999px;
+      text-decoration: none;
+      animation: arrive 0.7s 0.2s ease-out both;
+    }
+    .pill .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--volt-ink);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes arrive {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes tick {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-mark, .pill .dot, .hero h1, .hero p, .pill, .hero h1 .tick::after {
+        animation: none !important;
+      }
+      .hero h1 .tick::after { transform: none; }
+    }
+
+    section {
+      padding: 72px 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .kicker {
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--volt);
+      font-weight: 600;
+      margin: 0 0 10px;
+    }
+    .section-title {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(28px, 4vw, 44px);
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      margin: 0 0 12px;
+      max-width: 18ch;
+    }
+    .lede {
+      color: rgba(255,255,255,0.58);
+      max-width: 54ch;
+      margin: 0 0 36px;
+      font-size: 16px;
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 800px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+    .panel {
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 22px;
+      background: #0a0a0a;
+    }
+    .panel h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      font-weight: 600;
+    }
+    .panel ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      color: rgba(255,255,255,0.78);
+      font-size: 14px;
+    }
+    .panel li + li { margin-top: 6px; }
+    .panel.polsia h3 { color: #f97316; }
+    .panel.kip h3 { color: var(--volt); }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .swatch {
+      aspect-ratio: 1 / 1.15;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .swatch span {
+      display: block;
+      opacity: 0.7;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    .type-ramp {
+      display: grid;
+      gap: 28px;
+    }
+    .type-row {
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 22px;
+    }
+    .type-meta {
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 8px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .shout {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(40px, 8vw, 88px);
+      letter-spacing: -0.04em;
+      line-height: 0.92;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .display {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: clamp(32px, 5vw, 56px);
+      letter-spacing: -0.035em;
+      line-height: 1;
+      margin: 0;
+    }
+    .body-sample {
+      font-size: 17px;
+      color: rgba(255,255,255,0.72);
+      max-width: 42ch;
+      margin: 0;
+    }
+
+    .posters {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+    @media (max-width: 860px) {
+      .posters { grid-template-columns: 1fr; }
+    }
+    .poster {
+      position: relative;
+      aspect-ratio: 4 / 5;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .poster img.bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: brightness(0.72);
+    }
+    .poster .wash {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.15) 48%, rgba(0,0,0,0.75) 100%);
+    }
+    .poster .mark {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      z-index: 2;
+    }
+    .poster .copy {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 22px;
+      z-index: 2;
+    }
+    .poster .copy h4 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(28px, 4.2vw, 44px);
+      letter-spacing: -0.04em;
+      line-height: 0.92;
+      text-transform: uppercase;
+      margin: 0 0 10px;
+    }
+    .poster .copy h4 em {
+      font-style: normal;
+      box-shadow: inset 0 -0.12em 0 var(--volt);
+    }
+    .poster .copy p {
+      margin: 0;
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+      max-width: 28ch;
+    }
+    .poster.void {
+      background:
+        radial-gradient(ellipse at 70% 20%, rgba(214,255,63,0.1), transparent 45%),
+        #000;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 22px;
+    }
+    .poster.void .mark { position: static; }
+    .poster.void .copy { position: static; }
+    .poster.void .copy h4 { font-size: clamp(36px, 5.5vw, 58px); }
+    .poster.split {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+    }
+    .poster.split .left {
+      background: #000;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 2px solid var(--volt);
+    }
+    .poster.split .right {
+      position: relative;
+      overflow: hidden;
+    }
+    .poster.split .right img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .poster.disc-field {
+      background: var(--disc);
+      color: var(--ink);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .poster.disc-field .watermark {
+      position: absolute;
+      right: -8%;
+      bottom: -10%;
+      width: 78%;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+    .poster.disc-field .copy h4 {
+      color: var(--ink);
+      font-size: clamp(34px, 5vw, 52px);
+    }
+    .poster.disc-field .copy p { color: rgba(29,29,31,0.62); }
+    .poster.disc-field .volt-tick {
+      width: 36px;
+      height: 6px;
+      background: var(--volt);
+      margin-bottom: 14px;
+    }
+
+    .rules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 700px) {
+      .rules { grid-template-columns: 1fr; }
+    }
+    .rule {
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .rule.do { border-color: rgba(214,255,63,0.35); }
+    .rule.dont { border-color: rgba(255,255,255,0.12); opacity: 0.85; }
+    .rule h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .rule.do h3 { color: var(--volt); }
+    .rule.dont h3 { color: rgba(255,255,255,0.45); }
+    .rule ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      font-size: 14px;
+      color: rgba(255,255,255,0.78);
+    }
+    .rule li + li { margin-top: 6px; }
+
+    .lines {
+      display: grid;
+      gap: 10px;
+    }
+    .line {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(26px, 4vw, 40px);
+      letter-spacing: -0.035em;
+      text-transform: uppercase;
+      line-height: 1;
+      padding: 16px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .line span {
+      background-image: linear-gradient(var(--volt), var(--volt));
+      background-position: 0 100%;
+      background-repeat: no-repeat;
+      background-size: 100% 0.14em;
+      padding-bottom: 0.02em;
+    }
+
+    footer {
+      padding: 40px 24px 64px;
+      color: rgba(255,255,255,0.4);
+      font-size: 13px;
+      text-align: center;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    footer a { color: rgba(255,255,255,0.7); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="top-brand" href="#top">
+      <img src="kip-logo.png" alt="" />
+      Kip
+    </a>
+    <nav>
+      <a href="#research">Research</a>
+      <a href="#colour">Colour</a>
+      <a href="#type">Type</a>
+      <a href="#posters">Posters</a>
+      <a href="#lines">Lines</a>
+      <a href="#rules">Rules</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div>
+        <img class="hero-mark" src="kip-logo.png" alt="Kip" />
+        <h1>Charcoal <span class="tick">Signal</span></h1>
+        <p>
+          A design language for Kip: intimate ink from the cat mark, billboard type from Polsia’s stop-scroll energy, and one volt accent that means “draft ready.”
+        </p>
+        <a class="pill" href="#posters"><span class="dot" aria-hidden="true"></span> See the poster kit</a>
+      </div>
+    </section>
+
+    <section id="research">
+      <div class="wrap">
+        <p class="kicker">Research</p>
+        <h2 class="section-title">Polsia energy, Kip bones</h2>
+        <p class="lede">
+          “Pulsier” reads as <strong style="color:#fff;font-weight:600">Polsia</strong> — black/white manifesto type, Times editorial body, terminal chrome, and orange for “live.” We keep the physics (one claim, hard contrast, one live signal) and invent a Kip-native costume.
+        </p>
+        <div class="compare">
+          <div class="panel polsia">
+            <h3>Polsia</h3>
+            <ul>
+              <li>Times New Roman as institutional voice</li>
+              <li>Terminal header + <code>&gt;</code> prompts</li>
+              <li>Orange (#F97316) = happening now</li>
+              <li>“NEVER HIRE AGAIN” threat copy</li>
+              <li>Newspaper crossed with console</li>
+            </ul>
+          </div>
+          <div class="panel kip">
+            <h3>Kip — Charcoal Signal</h3>
+            <ul>
+              <li>Syne display + calm sans body</li>
+              <li>Text-thread / real shop photo metaphor</li>
+              <li>Volt (#D6FF3F) = draft ready / awake</li>
+              <li>Mate-voice imperatives: “SEND THE PHOTO.”</li>
+              <li>Brush-ink cat × billboard type</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="colour">
+      <div class="wrap">
+        <p class="kicker">Colour</p>
+        <h2 class="section-title">Void, disc, volt</h2>
+        <p class="lede">
+          Core stays sacred. Volt is marketing + live-state only — never on the cat, never washing a whole frame.
+        </p>
+        <div class="swatches">
+          <div class="swatch" style="background:#000;color:#fff;">void<span>#000000</span></div>
+          <div class="swatch" style="background:#1d1d1f;color:#fff;">ink<span>#1D1D1F</span></div>
+          <div class="swatch" style="background:#202020;color:#fff;">cat<span>#202020</span></div>
+          <div class="swatch" style="background:#f4f1ea;color:#1d1d1f;">disc<span>#F4F1EA</span></div>
+          <div class="swatch" style="background:#ffffff;color:#1d1d1f;border-color:#333;">paper<span>#FFFFFF</span></div>
+          <div class="swatch" style="background:#d6ff3f;color:#12140a;">volt<span>#D6FF3F</span></div>
+          <div class="swatch" style="background:#6e6e73;color:#fff;">mute<span>#6E6E73</span></div>
+          <div class="swatch" style="background:#ececec;color:#1d1d1f;">line<span>#ECECEC</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="type">
+      <div class="wrap">
+        <p class="kicker">Typography</p>
+        <h2 class="section-title">Odd enough to remember</h2>
+        <p class="lede">
+          Syne carries posters and landing shouts. DM Sans / SF Pro stays calm underneath. Four words max on a poster.
+        </p>
+        <div class="type-ramp">
+          <div class="type-row">
+            <div class="type-meta">Poster shout · Syne 800 · uppercase</div>
+            <p class="shout">Send the photo.</p>
+          </div>
+          <div class="type-row">
+            <div class="type-meta">Landing display · Syne 700</div>
+            <p class="display">Text a photo. It’s posted.</p>
+          </div>
+          <div class="type-row">
+            <div class="type-meta">Body · DM Sans 400</div>
+            <p class="body-sample">
+              Kip texts like a switched-on mate. Warm, sharp, owns the work, owns being an AI. Design should not fight that voice with agency-speak.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="posters">
+      <div class="wrap">
+        <p class="kicker">Poster kit</p>
+        <h2 class="section-title">Four frames. Hard to miss.</h2>
+        <p class="lede">
+          Brand first, one claim, one image plane. Volt under 5% of the frame.
+        </p>
+        <div class="posters">
+          <article class="poster void" aria-label="Void shout poster">
+            <img class="mark" src="kip-logo.png" alt="" />
+            <div class="copy">
+              <h4>Kip’s <em>on it.</em></h4>
+              <p>Black field. Disc. One line. Volt underline. Done.</p>
+            </div>
+          </article>
+
+          <article class="poster" aria-label="Photo thread poster">
+            <img class="bg" src="thread-photo.jpg" alt="" />
+            <div class="wash"></div>
+            <img class="mark" src="kip-logo.png" alt="" />
+            <div class="copy">
+              <h4>Text it.<br /><em>Posted.</em></h4>
+              <p>Full-bleed shop photo. Type in the wash. Disc in the corner.</p>
+            </div>
+          </article>
+
+          <article class="poster disc-field" aria-label="Disc field poster">
+            <img class="watermark" src="kip-logo.png" alt="" />
+            <div>
+              <div class="volt-tick" aria-hidden="true"></div>
+              <img class="mark" src="kip-logo.png" alt="" style="position:static;width:52px;height:52px;border-radius:50%;" />
+            </div>
+            <div class="copy">
+              <h4>Approve in the thread.</h4>
+              <p>Disc as the whole atmosphere. Charcoal type. Tiny volt tick.</p>
+            </div>
+          </article>
+
+          <article class="poster split" aria-label="Split signal poster">
+            <div class="left">
+              <img class="mark" src="kip-logo.png" alt="" style="position:static;width:48px;height:48px;border-radius:50%;" />
+              <div class="copy" style="position:static;">
+                <h4>Send the <em>photo.</em></h4>
+                <p>Volt seam. Product on one side, proof on the other.</p>
+              </div>
+            </div>
+            <div class="right">
+              <img src="thread-photo.jpg" alt="" />
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="lines">
+      <div class="wrap">
+        <p class="kicker">Voice at billboard scale</p>
+        <h2 class="section-title">Mate voice, poster volume</h2>
+        <p class="lede">Imperative or status. Never “platform.” Never anti-hire manifesto.</p>
+        <div class="lines">
+          <div class="line">Send the <span>photo.</span></div>
+          <div class="line">Kip’s <span>on it.</span></div>
+          <div class="line">Text it. <span>Posted.</span></div>
+          <div class="line">Approve in the <span>thread.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="wrap">
+        <p class="kicker">Guardrails</p>
+        <h2 class="section-title">Do / don’t</h2>
+        <div class="rules">
+          <div class="rule do">
+            <h3>Do</h3>
+            <ul>
+              <li>Lead with the disc — brand survives without the nav</li>
+              <li>One claim per frame, readable across a room</li>
+              <li>Keep volt as a signal (underline, tick, ready chip)</li>
+              <li>Use real shop photography, full-bleed</li>
+              <li>Quiet paper UI in-product; loud void on marketing</li>
+            </ul>
+          </div>
+          <div class="rule dont">
+            <h3>Don’t</h3>
+            <ul>
+              <li>Recolour or invert the cat; no chat bubble on the mark</li>
+              <li>Copy Polsia’s Times / terminal / orange kit</li>
+              <li>Wash posters in purple gradients or cream-serif terracotta</li>
+              <li>Fill the hero with stats, cards, or pill clusters</li>
+              <li>Write threat copy (“never hire again”)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Proposal specimen for <a href="../../docs/DESIGN_LANGUAGE.md">docs/DESIGN_LANGUAGE.md</a> · Logo rules still live in <a href="../../docs/DESIGN.md">docs/DESIGN.md</a>
+  </footer>
+</body>
+</html>
