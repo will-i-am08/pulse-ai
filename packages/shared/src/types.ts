@@ -818,6 +818,12 @@ export interface BusinessFacts {
   plan?: BrandPlanFacts;
   /** Payment UI / future billing markers — never used to block /app access. */
   payment?: BrandPaymentFacts;
+  /** How this brand arrived (QR/SMS funnel, etc.). */
+  acquisition?: {
+    channel: "sms";
+    source?: string;
+    captured_at: string;
+  };
   /** Awaiting owner yes/no (or a corrected URL) for a discovered destination link. */
   pending_destination_link?: PendingDestinationLink | null;
   /**

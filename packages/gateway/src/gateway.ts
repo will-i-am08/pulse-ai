@@ -30,6 +30,7 @@ import { createTwilioChannel } from "@pulse/channel-twilio";
 import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
 import { claimContactCardSent, needsContactCard, releaseContactCardSent } from "./contactCardSent.js";
+import { handleUnknownInbound } from "./smsLead.js";
 
 let channelSingleton: MessageChannel | null = null;
 let channelOverride: MessageChannel | null = null;
@@ -431,8 +432,8 @@ export async function sendToOperator(
 /**
  * Handle a normalised inbound message end-to-end: route to brand, persist,
  * capture media, and hand off to the orchestrator. Never throws —
- * an unknown sender or any internal failure is logged and results in a null
- * response rather than a crash.
+ * an unknown sender gets a signup-link reply (no brand created) and any
+ * internal failure is logged and results in a null response rather than a crash.
  */
 export type HandleInboundOpts = {
   channel?: MessageChannel;
@@ -545,8 +546,20 @@ export async function handleInbound(
     }
     const brand = await resolve(inbound.from);
     if (!brand) {
-      console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
-      return { brandId: null, messageId: null, delivered: null };
+      try {
+        const result = await handleUnknownInbound({
+          from: inbound.from,
+          body: inbound.body ?? "",
+          providerMessageId: inbound.providerMessageId,
+          channel,
+        });
+        const delivered =
+          result.kind === "skipped" || result.kind === "opt_out" ? null : result.replied;
+        return { brandId: null, messageId: null, delivered };
+      } catch (err) {
+        console.error(`handleInbound: unknown-sender reply failed for ${inbound.from}`, err);
+        return { brandId: null, messageId: null, delivered: false };
+      }
     }
 
     // Idempotency: a provider (Twilio/Linq retry) can redeliver the same message.

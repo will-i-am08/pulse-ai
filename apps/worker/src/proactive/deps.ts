@@ -3,7 +3,14 @@
  * can swap them if needed, and so we don't re-export the whole orchestrator
  * barrel from every loop file.
  */
-export { sendToBrand, createLinqChannel, resolveBrandByLinq, captureMedia, startTypingKeeper } from "@pulse/gateway";
+export {
+  sendToBrand,
+  createLinqChannel,
+  resolveBrandByLinq,
+  captureMedia,
+  startTypingKeeper,
+  handleUnknownInbound,
+} from "@pulse/gateway";
 export {
   gapNudgeMessage,
   chooseNextFormat,

@@ -6,6 +6,7 @@ import { PricingPlans } from './components/PricingPlans';
 import { LandingComposer } from './components/LandingComposer';
 import { ThreadDemo } from './components/ThreadDemo';
 import { LandingFaq } from './components/LandingFaq';
+import { HeroTextKip } from './components/HeroTextKip';
 import {
   Underline,
   Ticks,
@@ -80,6 +81,7 @@ export default function LandingPage() {
             <Link className={styles.pill} href="/signup">
               Get started
             </Link>
+            <HeroTextKip className={styles.pillGhost} />
             <Link className={styles.pillGhost} href="/d/new">
               Try with your website
             </Link>

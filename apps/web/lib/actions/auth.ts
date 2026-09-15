@@ -11,6 +11,9 @@ import {
   decrypt,
   generateLoginCode,
   normalizePhone,
+  normalizeSmsLeadSource,
+  mergeSignupAcquisition,
+  markSmsLeadConverted,
   type Executor,
 } from '@pulse/shared';
 // Subpath import — avoid pulling @pulse/gateway's orchestrator re-exports
@@ -250,10 +253,23 @@ export async function verifyLoginCode(formData: FormData): Promise<void> {
   redirect('/app');
 }
 
+function signupErrorPath(
+  code: string,
+  extra: { from?: string; src?: string; phone?: string },
+): string {
+  const params = new URLSearchParams();
+  params.set('error', code);
+  if (extra.from) params.set('from', extra.from);
+  if (extra.src) params.set('src', extra.src);
+  if (extra.phone) params.set('phone', extra.phone);
+  return `/signup?${params.toString()}`;
+}
+
 /** Create an account (phone identity, no password) + their brand, then verify. */
 export async function signupAction(formData: FormData): Promise<void> {
   const name = String(formData.get('name') ?? '').trim();
-  const phone = normalizePhone(String(formData.get('phone') ?? ''));
+  const phoneRaw = String(formData.get('phone') ?? '');
+  const phone = normalizePhone(phoneRaw);
   const emailRaw = String(formData.get('email') ?? '').trim().toLowerCase();
   const email = emailRaw || null;
   const accountType = String(formData.get('account_type') ?? 'business') === 'personal' ? 'personal' : 'business';
@@ -267,9 +283,16 @@ export async function signupAction(formData: FormData): Promise<void> {
       : planBillingRaw === 'month' || planBillingRaw === 'monthly'
         ? 'month'
         : null;
+  const fromSms = String(formData.get('from') ?? '') === 'sms';
+  const src = normalizeSmsLeadSource(String(formData.get('src') ?? ''));
+  const keep = {
+    from: fromSms ? 'sms' : undefined,
+    src: src ?? undefined,
+    phone: phoneRaw.trim() || undefined,
+  };
 
-  if (!name) redirect('/signup?error=missing');
-  if (!phone) redirect('/signup?error=badphone');
+  if (!name) redirect(signupErrorPath('missing', keep));
+  if (!phone) redirect(signupErrorPath('badphone', keep));
 
   const existingUser = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
   if (existingUser) redirect('/login?error=exists');
@@ -282,7 +305,7 @@ export async function signupAction(formData: FormData): Promise<void> {
     'select id, owner_user_id from brands where client_phone = $1',
     [phone],
   );
-  if (phoneTaken?.owner_user_id) redirect('/signup?error=phoneinuse');
+  if (phoneTaken?.owner_user_id) redirect(signupErrorPath('phoneinuse', keep));
 
   // Atomic: the user, their brand (new or claimed), and the first login code all
   // commit together or not at all. If anything throws (e.g. a misconfigured
@@ -307,7 +330,11 @@ export async function signupAction(formData: FormData): Promise<void> {
           selected_at: new Date().toISOString(),
         };
       }
-      const factsJson = JSON.stringify(facts);
+      const factsWithAcquisition = mergeSignupAcquisition(facts, {
+        from: fromSms ? 'sms' : null,
+        src,
+      });
+      const factsJson = JSON.stringify(factsWithAcquisition);
       if (phoneTaken) {
         // Claim the pre-existing unowned brand rather than inserting a duplicate.
         // Fill owner_name only when missing so a prior capture is preserved.
@@ -337,10 +364,11 @@ export async function signupAction(formData: FormData): Promise<void> {
       }
 
       await issueCode(phone!, user.id, brandId, 'signup', tx);
+      await markSmsLeadConverted(phone!, tx);
     });
   } catch (err) {
     console.error('[signup] failed:', err instanceof Error ? err.message : err);
-    redirect('/signup?error=failed');
+    redirect(signupErrorPath('failed', keep));
   }
 
   // The code is committed now — kick immediate delivery so the user doesn't wait
