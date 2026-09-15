@@ -29,6 +29,7 @@ import {
   type VisualMode,
 } from "./visualMode.js";
 import { mapWithConcurrency, DRAFT_CONCURRENCY, withTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
+import { looksLikeMakeReelRequest } from "./aiVideo.js";
 
 
 /**
@@ -245,9 +246,20 @@ export function looksLikeSlowSmsWork(body: string | null | undefined): boolean {
 }
 
 /** Owner is asking Kip to go do content work (not just chat about it). */
+/**
+ * Bare "make a reel" (no posts/carousel in the same ask) is handled by the
+ * inbound reel path: ask for a clip. It must not enqueue photo feed drafts.
+ */
+export function isReelOnlyAsk(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim();
+  if (!t || !looksLikeMakeReelRequest(t)) return false;
+  return !/\b(posts?|carr?ousels?)\b/i.test(t);
+}
+
 export function looksLikeKickoffRequest(body: string | null | undefined): boolean {
   if (!body?.trim()) return false;
   const t = body.trim();
+  if (isReelOnlyAsk(t)) return false;
   if (FIRST_BATCH_RE.test(t)) return true;
   if (NO_PHOTOS_RE.test(t) && (STOCK_OR_GENERATED_RE.test(t) || /\b(just|please|can you|could you)\b/i.test(t))) {
     return true;
@@ -268,6 +280,7 @@ export function inferKickoffFromUserMessage(
 ): { kind: KipKickoffKind; payload: Record<string, unknown>; ackSms: string } | null {
   const t = body.trim();
   if (!t) return null;
+  if (isReelOnlyAsk(t)) return null;
 
   if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) {
     return {
@@ -357,6 +370,9 @@ export function inferKickoffFromKipCommit(
   if (!COMMIT_RE.test(kipReply) || !COMMIT_WORK_RE.test(kipReply)) return null;
   // ...and the request has to come from the client, never from Kip's own reply.
   if (!clientAskedForContentWork(userMessage)) return null;
+  // Asking for a reel without a clip is not a feed-draft job. Kip saying
+  // "I'll draft the caption" after "make a reel" used to enqueue two photo posts.
+  if (isReelOnlyAsk(userMessage)) return null;
   const blob = `${userMessage ?? ""}\n${kipReply}`;
   if (!CONTENT_WORK_RE.test(blob) && !TREND_RE.test(blob) && !COMPETITOR_MOVE_RE.test(blob)) {
     return null;
