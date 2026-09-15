@@ -19,6 +19,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
     ...actual,
     query: vi.fn(async () => []),
     queryOne: vi.fn(async () => null),
+    smsConnectUrl: () => "https://app.example/c/test",
   };
 });
 
@@ -184,6 +185,8 @@ describe("handleAwaitingContact", () => {
     const msg = await handleAwaitingContact(brand, "Done");
     expect(msg.toLowerCase()).toMatch(/one tap/);
     expect(msg).toContain("https://app.example/c/test");
+    expect(msg.match(/One tap/gi)?.length).toBe(1);
+    expect(msg.toLowerCase()).toMatch(/skip/);
     const lastPayload = JSON.stringify(mockedQuery.mock.calls.at(-1)?.[1] ?? []);
     expect(lastPayload).toContain("awaiting_connect");
   });

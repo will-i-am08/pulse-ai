@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseVariantChoice } from "../variants.js";
+import { parseVariantChoice, variantPickSms } from "../variants.js";
 import {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
@@ -30,6 +30,16 @@ describe("parseVariantChoice", () => {
     expect(parseVariantChoice("yes")).toBeNull();
     expect(parseVariantChoice("make it brighter")).toBeNull();
     expect(parseVariantChoice("")).toBeNull();
+  });
+});
+
+describe("variantPickSms", () => {
+  const pack = { smsName: "café-warm" } as Parameters<typeof variantPickSms>[0];
+
+  it("asks for 1 or 2 when two looks landed", () => {
+    expect(variantPickSms(pack, 2)).toMatch(/Two café-warm looks/i);
+    expect(variantPickSms(pack, 2)).toMatch(/Reply 1 or 2/);
+    expect(variantPickSms(pack, 2)).not.toMatch(/1, 2, or 3/);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstNameFromDisplayName, ownerFirstName, personaLines, personaVoiceLines } from "./persona.js";
+import { firstNameFromDisplayName, ownerFirstName, personaLines, personaVoiceLines, connectionSummary } from "./persona.js";
 import type { Brand } from "@pulse/shared";
 
 function brandWithFacts(facts: Record<string, unknown> | null): Brand {
@@ -44,5 +44,14 @@ describe("personaVoiceLines", () => {
     expect(voice).not.toMatch(/upload photos/i);
     expect(full).toMatch(/Creative default/i);
     expect(full).toMatch(/upload photos/i);
+  });
+});
+
+describe("connectionSummary", () => {
+  it("does not claim Instagram or Facebook when tokens are missing", () => {
+    const brand = { name: "Lab Cafe", facts: { lab: true } } as unknown as Brand;
+    const text = connectionSummary(brand);
+    expect(text).toMatch(/aren't connected yet/i);
+    expect(text).not.toMatch(/Publishing:/);
   });
 });
