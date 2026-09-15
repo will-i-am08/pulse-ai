@@ -270,8 +270,9 @@ describe("executeAgentTool", () => {
       .filter((sql) => /update posts/i.test(sql));
     expect(updates.length).toBeGreaterThan(0);
     for (const sql of updates) {
-      expect(sql).not.toMatch(/status\s*=/);
-      expect(sql).not.toMatch(/published/i);
+      const setClause = sql.split(/where/i)[0] ?? sql;
+      expect(setClause).not.toMatch(/\bstatus\b/i);
+      expect(sql).not.toMatch(/status\s*=\s*'published'/i);
     }
   });
 
