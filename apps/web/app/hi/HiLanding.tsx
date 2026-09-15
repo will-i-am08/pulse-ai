@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { appBaseUrl, isMobileUserAgent, publicHiPath, smsLeadPrefillBody } from '@pulse/shared';
+import { appBaseUrl, isMobileUserAgent, publicHiPath, publicQrPath, smsLeadPrefillBody } from '@pulse/shared';
 import { BrandLockup } from '../components/BrandLockup';
 import { kipSmsComposeHref, kipSmsNumberDisplay } from '@/lib/kip-sms';
 import { SmsAutoOpen } from './SmsAutoOpen';
@@ -22,7 +22,7 @@ export async function HiLanding({ source }: { source?: string | null }) {
   } catch {
     // Print copy still works with the path when APP_BASE_URL isn't loaded.
   }
-  const qrSrc = source ? `/hi/qr?src=${encodeURIComponent(source)}` : '/hi/qr';
+  const qrSrc = publicQrPath(source);
   const ua = (await headers()).get('user-agent');
   const mobile = isMobileUserAgent(ua);
   const autoOpen = Boolean(mobile && smsHref);

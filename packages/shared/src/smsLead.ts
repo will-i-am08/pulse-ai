@@ -149,3 +149,58 @@ export function publicHiPath(source?: string | null): string {
   const src = normalizeSmsLeadSource(source);
   return src ? `/hi/${src}` : "/hi";
 }
+
+export function publicQrPath(source?: string | null, opts?: { download?: boolean }): string {
+  const src = normalizeSmsLeadSource(source);
+  const params = new URLSearchParams();
+  if (src) params.set("src", src);
+  if (opts?.download) params.set("download", "1");
+  const q = params.toString();
+  return q ? `/hi/qr?${q}` : "/hi/qr";
+}
+
+/** Default print variants shown on the operator QR page. */
+export const SMS_LEAD_PRINT_CAMPAIGNS: ReadonlyArray<{ source: string | null; label: string }> = [
+  { source: null, label: "Generic" },
+  { source: "flyer", label: "Flyer" },
+  { source: "card", label: "Business card" },
+  { source: "poster", label: "Poster" },
+];
+
+export function smsLeadCampaignLabel(source: string | null): string {
+  if (!source) return "Generic";
+  return source
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+/** Defaults + observed SMS lead slugs + an optional extra (from the operator form). */
+export function collectQrCampaigns(opts?: {
+  observed?: Array<string | null | undefined>;
+  extra?: string | null;
+}): Array<{ source: string | null; label: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ source: string | null; label: string }> = [];
+  const add = (source: string | null) => {
+    const key = source ?? "";
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ source, label: smsLeadCampaignLabel(source) });
+  };
+  for (const campaign of SMS_LEAD_PRINT_CAMPAIGNS) {
+    const key = campaign.source ?? "";
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ source: campaign.source, label: campaign.label });
+  }
+  for (const raw of opts?.observed ?? []) {
+    const src = normalizeSmsLeadSource(raw);
+    if (src) add(src);
+  }
+  const extra = normalizeSmsLeadSource(opts?.extra);
+  if (extra) add(extra);
+  return out;
+}
+

@@ -106,10 +106,22 @@ describe("sms lead helpers", () => {
     expect(repliedWithinCooldown(null, now)).toBe(false);
   });
 
-  it("builds stable /hi paths", async () => {
-    const { publicHiPath } = await load();
+  it("builds stable /hi and QR paths", async () => {
+    const { publicHiPath, publicQrPath } = await load();
     expect(publicHiPath()).toBe("/hi");
     expect(publicHiPath("flyer")).toBe("/hi/flyer");
     expect(publicHiPath("qr")).toBe("/hi");
+    expect(publicQrPath()).toBe("/hi/qr");
+    expect(publicQrPath("flyer")).toBe("/hi/qr?src=flyer");
+    expect(publicQrPath("flyer", { download: true })).toBe("/hi/qr?src=flyer&download=1");
+    expect(publicQrPath(null, { download: true })).toBe("/hi/qr?download=1");
+  });
+
+  it("collects default, observed, and extra QR campaigns without duplicates", async () => {
+    const { collectQrCampaigns } = await load();
+    const campaigns = collectQrCampaigns({ observed: ["flyer", "market"], extra: "Card" });
+    expect(campaigns.map((c) => c.source)).toEqual([null, "flyer", "card", "poster", "market"]);
+    expect(campaigns.find((c) => c.source === "card")?.label).toBe("Business card");
+    expect(campaigns.find((c) => c.source === "market")?.label).toBe("Market");
   });
 });
