@@ -99,6 +99,13 @@ describe("KIP_AGENT_TOOLS", () => {
       "remember_fact",
       "schedule_post",
     ]);
+    for (const t of KIP_AGENT_TOOLS) {
+      expect(t.input_schema).toMatchObject({ type: "object", additionalProperties: false });
+    }
+    const draft = KIP_AGENT_TOOLS.find((t) => t.name === "draft_copy");
+    expect(draft?.input_schema).toMatchObject({ required: ["job"] });
+    const escalate = KIP_AGENT_TOOLS.find((t) => t.name === "escalate_to_human");
+    expect(escalate?.input_schema).toMatchObject({ required: ["reason", "summary"] });
   });
 });
 
