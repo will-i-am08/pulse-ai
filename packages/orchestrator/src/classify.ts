@@ -32,12 +32,20 @@ const APPROVAL_EMOJI_ONLY_RE = /^[\s👍✅👌🙌🔥]+$/u;
 const AFFIRMATION_RE =
   /^\s*(?:awesome|amazing|amazing thanks|fantastic|wonderful|brilliant|excellent|lovely|sweet|sick|dope|fire|rad|cool|legend|beaut(?:y)?|ace|solid|good stuff|nice one|love that|love this|this is (?:great|awesome|perfect)|so good)[.!\s]*$/i;
 
+/** Whole-message hi/thanks/how's-it-going — nothing actionable trailing it. */
+export const GREETING_RE =
+  /^\s*(?:hi+|hey+|hello+|yo+|hiya|heya|howdy|hallo|sup|wassup|g'?day|good\s*(?:morning|afternoon|evening|day)|morning|afternoon|evening|thanks?(?:\s*(?:you|a lot|so much|heaps|mate))?|thank\s*you|cheers|ta|nice\s*one|good\s*stuff|lol|haha+|how(?:'?s| is| are| ya| you)?\s*(?:it|things|you|ya|everything|life)?(?:\s*(?:going|doing|been))?)\b[\s!.?,]*$/i;
+
 export function looksLikeAffirmation(body: string): boolean {
   const t = (body ?? "").trim();
   if (!t) return false;
   if (AFFIRMATION_RE.test(t)) return true;
   // Short vibes that aren't explicit yes/approve (those stay approval when pending).
   return /^(awesome|amazing|fantastic|wonderful|brilliant|sweet|sick|cool|fire|rad|legend|beauty|ace)[.!\s]*$/i.test(t);
+}
+
+export function looksLikeGreeting(body: string | null | undefined): boolean {
+  return GREETING_RE.test((body ?? "").trim());
 }
 
 const QUESTION_WORDS = [

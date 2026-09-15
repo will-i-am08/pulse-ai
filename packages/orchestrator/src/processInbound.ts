@@ -1,6 +1,6 @@
 import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination, getServerEnv } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
-import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
+import { classifyInbound, type InboundClassification, looksLikeAffirmation, looksLikeGreeting } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
@@ -134,6 +134,7 @@ import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
 import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
+import { quickReengageReply, quickSocialReply } from "./socialReply.js";
 import { formatScheduledSlot as formatSlot } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
@@ -356,12 +357,6 @@ const REEL_CMD_RE =
 const REUSE_RE =
   /\b(re-?use|re-?post|repost|old (photo|pic|shot|one|image)|previous (photo|pic|post|one)|use (an?\s+|one\s+of\s+)?(old|previous|existing|earlier)|(from|one i sent) (before|last week|last month|the other (day|week))|from the archive|use something old)\b/i;
 
-// Pure greetings / pleasantries / small talk — the WHOLE message is just this,
-// nothing actionable trailing it (the `$` anchor keeps "hey can you post this"
-// out). These get a warm human reply, never the clarify fallback.
-const GREETING_RE =
-  /^\s*(?:hi+|hey+|hello+|yo+|hiya|heya|howdy|hallo|sup|wassup|g'?day|good\s*(?:morning|afternoon|evening|day)|morning|afternoon|evening|thanks?(?:\s*(?:you|a lot|so much|heaps|mate))?|thank\s*you|cheers|ta|nice\s*one|good\s*stuff|lol|haha+|how(?:'?s| is| are| ya| you)?\s*(?:it|things|you|ya|everything|life)?(?:\s*(?:going|doing|been))?)\b[\s!.?,]*$/i;
-
 /** The most recent autopilot post still sitting in a future slot (for HOLD). */
 async function getScheduledAutoPost(brandId: string): Promise<Post | null> {
   return queryOne<Post>(
@@ -551,8 +546,10 @@ async function trySmartPlannerKickoff(
  * a feature menu and never says "I'm not sure what you want".
  */
 async function converse(brand: Brand, message: string): Promise<string> {
+  const quick = quickSocialReply(brand, message);
+  if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const context = await buildConversationContext(brand.id);
+  const context = await buildConversationContext(brand.id, { summarize: false });
   return speakSMS({
     brand,
     mode: "converse",
@@ -580,8 +577,10 @@ async function converse(brand: Brand, message: string): Promise<string> {
  * Never assumes seamless continuity, never recites a feature menu.
  */
 async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
+  const quick = quickReengageReply(brand, message, phrase, actionable);
+  if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const context = await buildConversationContext(brand.id);
+  const context = await buildConversationContext(brand.id, { summarize: false });
   return speakSMS({
     brand,
     mode: "reengage",
@@ -598,7 +597,7 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
     ownerMessage: message,
     context,
     maxTokens: 500,
-    think: true,
+    think: false,
   });
 }
 
@@ -1300,13 +1299,13 @@ async function routeInbound(
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
   // with no photo — just gets a warm human reply. This runs before the general
   // agent so a friendly hello never pays retrieve + a 4-round tool loop. It fires
-  // even when a draft is pending: a greeting is never an approval, so GREETING_RE
-  // only matches unambiguous pleasantries (never "yes"/"ok"), and the pending
-  // draft is left as-is.
+  // even when a draft is pending: a greeting is never an approval, so
+  // looksLikeGreeting only matches unambiguous pleasantries (never "yes"/"ok"),
+  // and the pending draft is left as-is.
   if (
     message.body &&
     newMedia.length === 0 &&
-    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
+    (looksLikeGreeting(message.body) || looksLikeAffirmation(message.body))
   ) {
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
@@ -2036,7 +2035,7 @@ async function routeInbound(
       if (!pending) {
         // Casual "awesome"/"great" with nothing to approve — chat back, don't
         // announce an empty approval queue they never asked about.
-        if (looksLikeAffirmation(message.body ?? "") || GREETING_RE.test(message.body ?? "")) {
+        if (looksLikeAffirmation(message.body ?? "") || looksLikeGreeting(message.body ?? "")) {
           return { reply: await converse(brand, message.body ?? "") };
         }
         return { reply: "There's nothing pending approval right now." };

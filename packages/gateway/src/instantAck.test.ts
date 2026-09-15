@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   looksLikeProgressCheck,
+  outboundTypingPauseMs,
   shouldSendInstantTextAck,
   shouldSendSlowWorkFiller,
+  shouldSkipInboundBurst,
   splitIntoBubbles,
 } from "./gateway.js";
 
@@ -25,6 +27,37 @@ describe("looksLikeProgressCheck", () => {
   it("leaves real asks alone", () => {
     expect(looksLikeProgressCheck("can you make it shorter")).toBe(false);
     expect(looksLikeProgressCheck("draft me 3 posts")).toBe(false);
+  });
+});
+
+describe("shouldSkipInboundBurst", () => {
+  it("skips the coalesce sleep for complete short turns", () => {
+    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "thanks", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "Awesome", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "what's on my calendar this week?", hasMedia: false })).toBe(
+      true,
+    );
+    expect(shouldSkipInboundBurst({ text: "how's it going", hasMedia: false })).toBe(true);
+  });
+
+  it("keeps the wait for split thoughts, MMS, and photo-referring text", () => {
+    expect(shouldSkipInboundBurst({ text: "draft me 3 posts", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: true })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "use this photo", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "", hasMedia: false })).toBe(false);
+  });
+});
+
+describe("outboundTypingPauseMs", () => {
+  it("keeps a short first bubble under 600ms", () => {
+    expect(outboundTypingPauseMs("Hey!".length, 0)).toBeLessThanOrEqual(600);
+    expect(outboundTypingPauseMs("Hey Bill!".length, 0)).toBeLessThan(500);
+  });
+
+  it("still paces a long first bubble", () => {
+    expect(outboundTypingPauseMs(120, 0)).toBeGreaterThan(600);
+    expect(outboundTypingPauseMs(120, 0)).toBeLessThanOrEqual(2500);
   });
 });
 

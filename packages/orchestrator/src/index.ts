@@ -8,8 +8,14 @@ export { applyCorrection } from "./applyCorrection.js";
 
 export { seedBrandVoice } from "./seedBrandVoice.js";
 
-export { buildConversationContext, loadRecentChatTurns, normalizeChatTurns } from "./conversationContext.js";
-export type { ChatTurn } from "./conversationContext.js";
+export {
+  buildConversationContext,
+  loadRecentChatTurns,
+  normalizeChatTurns,
+  resolveConversationContextArgs,
+} from "./conversationContext.js";
+export type { ChatTurn, BuildConversationContextOpts } from "./conversationContext.js";
+export { quickSocialReply, quickReengageReply } from "./socialReply.js";
 export { speakSMS, buildSpeakSystem, needsThink, humanizeChat, readOpenLoops } from "./speak/index.js";
 export type { SpeakMode, SpeakOptions, ThinkResult } from "./speak/index.js";
 
@@ -104,6 +110,8 @@ export {
   classifyInbound,
   ruleBasedClassify,
   looksLikeAffirmation,
+  looksLikeGreeting,
+  GREETING_RE,
   InboundClassification,
 } from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
