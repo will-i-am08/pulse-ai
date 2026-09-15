@@ -263,6 +263,19 @@
       object-fit: cover;
       display: block;
     }
+    .plate-card.square img { aspect-ratio: 1 / 1; }
+    .plate-card.wide img { aspect-ratio: 16 / 9; }
+    .plate-card.story img { aspect-ratio: 9 / 16; }
+    .series-label {
+      display: inline-block;
+      margin: 28px 0 14px;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(247, 244, 238, 0.4);
+      font-weight: 600;
+    }
+    .series-label:first-of-type { margin-top: 0; }
     .plate-card .meta {
       padding: 14px 14px 16px;
     }
@@ -276,6 +289,74 @@
       margin: 0;
       font-size: 13px;
       color: rgba(247, 244, 238, 0.5);
+    }
+    .plate-card .tag {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(247, 244, 238, 0.35);
+    }
+
+    .formats {
+      display: grid;
+      grid-template-columns: 0.7fr 1.3fr;
+      gap: 18px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .formats { grid-template-columns: 1fr; } }
+    .format-stack {
+      display: grid;
+      gap: 18px;
+    }
+    .story-frame, .og-frame, .feed-frame {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(247, 244, 238, 0.1);
+      background: #111;
+    }
+    .story-frame { aspect-ratio: 9 / 16; max-width: 320px; }
+    .og-frame { aspect-ratio: 16 / 9; }
+    .feed-frame { aspect-ratio: 1 / 1; max-width: 360px; }
+    .story-frame img, .og-frame img, .feed-frame img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .story-frame .seal, .og-frame .seal, .feed-frame .seal {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      z-index: 2;
+    }
+    .story-frame .line, .og-frame .line, .feed-frame .line {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 18px;
+      z-index: 2;
+      font-family: var(--display);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 0.92;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .story-frame .line { font-size: clamp(26px, 4vw, 36px); color: var(--ink); }
+    .og-frame .line { font-size: clamp(28px, 4vw, 48px); color: var(--ink); }
+    .feed-frame .line { font-size: clamp(24px, 3vw, 34px); color: var(--paper); }
+    .format-caption {
+      margin: 10px 0 0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(247, 244, 238, 0.4);
     }
 
     .posters {
@@ -424,8 +505,10 @@
       Kip
     </a>
     <nav>
+      <a href="#outcome">Outcome</a>
       <a href="#research">Research</a>
       <a href="#plates">Plates</a>
+      <a href="#formats">Formats</a>
       <a href="#posters">Posters</a>
       <a href="#feed">Posts</a>
       <a href="#colour">Colour</a>
@@ -439,40 +522,69 @@
         <img class="mark" src="kip-logo.png" alt="Kip" />
         <h1>Charcoal Field</h1>
         <p>
-          Less neon. More print-studio abstract art — ink, graphite, and paper fields that can carry posters, social posts, and campaigns while the cat stays the quiet seal.
+          Quiet abstract art for a loud promise: cheap social media management that is simply done — so it’s off their mind. Plates carry the calm. Lines sell the relief.
         </p>
-        <a class="cta" href="#posters">See poster compositions</a>
+        <a class="cta" href="#outcome">See the outcome language</a>
       </div>
       <div class="hero-art">
-        <img src="plates/plate-charcoal-sweep.png" alt="Abstract charcoal sweep plate" />
-        <div class="caption">Plate 01 · Charcoal sweep</div>
+        <img src="plates/plate-single-stroke.png" alt="Abstract single stroke plate" />
+        <div class="caption">Series 02 · Single stroke · one small act, then done</div>
+      </div>
+    </section>
+
+    <section id="outcome">
+      <div class="wrap">
+        <p class="kicker">Emotion → outcome</p>
+        <h2 class="section-title">Sell the feeling after.</h2>
+        <p class="lede">
+          We’re not selling an AI, an SMS inbox, or a clever cat. We’re selling social that is handled — cheaply — without the customer having to think about it. Every poster should feel like an exhale.
+        </p>
+        <div class="compare">
+          <div class="panel">
+            <h3>Don’t lead with product</h3>
+            <ul>
+              <li>Text Kip a photo</li>
+              <li>AI drafts your captions</li>
+              <li>Approve in the thread</li>
+              <li>SMS social media manager</li>
+            </ul>
+          </div>
+          <div class="panel kip">
+            <h3>Lead with life after Kip</h3>
+            <ul>
+              <li>Social’s handled.</li>
+              <li>You don’t think about it.</li>
+              <li>Posted. You’re free.</li>
+              <li>Off your mind.</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
 
     <section id="research">
       <div class="wrap">
-        <p class="kicker">Research → pivot</p>
-        <h2 class="section-title">Polsia energy, atelier costume</h2>
+        <p class="kicker">Research → costume</p>
+        <h2 class="section-title">Polsia energy, quiet mind</h2>
         <p class="lede">
-          Keep the stop-scroll physics. Drop the neon signal. Kip’s marketing should feel like a small gallery of abstract prints that somehow still text you back.
+          Keep the stop-scroll physics. Drop neon. Use abstract plates so the brand feels like mental quiet — not a tech demo. Then put the outcome in the line.
         </p>
         <div class="compare">
           <div class="panel">
-            <h3>v1 — neon signal</h3>
+            <h3>v1 / v2 — look</h3>
             <ul>
-              <li>Black void + lime volt underline</li>
-              <li>Type does all the stopping</li>
-              <li>Reads closer to tech campaign kits</li>
-              <li>Easy to confuse with other AI brands chasing “electric”</li>
+              <li>Neon volt → abstract ink plates</li>
+              <li>Print-studio costume locked</li>
+              <li>Still risked sounding like product marketing</li>
             </ul>
           </div>
           <div class="panel kip">
-            <h3>v2 — charcoal field</h3>
+            <h3>v3 — feeling</h3>
             <ul>
-              <li>Abstract ink / charcoal plates as the visual volume</li>
-              <li>Disc as studio stamp, not a sticker</li>
-              <li>Pigment accents only inside artwork</li>
-              <li>Extends the cat’s brush into a whole print language</li>
+              <li>Same plates, outcome copy</li>
+              <li>Art = mental quiet</li>
+              <li>Line = relief, not features</li>
+              <li>Cheap + completely done, without thinking</li>
             </ul>
           </div>
         </div>
@@ -482,16 +594,19 @@
     <section id="plates">
       <div class="wrap">
         <p class="kicker">Art system</p>
-        <h2 class="section-title">Five plates. One studio.</h2>
+        <h2 class="section-title">Thirteen plates. One studio.</h2>
         <p class="lede">
-          Reusable abstract fields. Full-bleed on posters. Cropped for feed tiles. Always leave a quiet zone for type. Never draw a second cat into the art.
+          Reusable abstract fields across moods and formats. Full-bleed on posters. Native crops for stories, feed, and OG. Always leave a quiet zone for type. Never draw a second cat into the art.
         </p>
+
+        <p class="series-label">Series 01 · Core moods</p>
         <div class="plates">
           <article class="plate-card">
             <img src="plates/plate-charcoal-sweep.png" alt="" />
             <div class="meta">
               <h3>Charcoal sweep</h3>
               <p>Diagonal dry-brush on paper · launch / quote</p>
+              <span class="tag">3:4 poster</span>
             </div>
           </article>
           <article class="plate-card">
@@ -499,13 +614,15 @@
             <div class="meta">
               <h3>Ink bloom</h3>
               <p>Soft sumi atmosphere · calm stories</p>
+              <span class="tag">3:4 poster</span>
             </div>
           </article>
-          <article class="plate-card">
+          <article class="plate-card square">
             <img src="plates/plate-graphite-field.png" alt="" />
             <div class="meta">
               <h3>Graphite field</h3>
               <p>Dark mass + cream cut · high contrast ads</p>
+              <span class="tag">1:1 feed</span>
             </div>
           </article>
           <article class="plate-card">
@@ -513,15 +630,123 @@
             <div class="meta">
               <h3>Gesture marks</h3>
               <p>Sparse strokes · closest to the cat’s hand</p>
+              <span class="tag">3:4 poster</span>
             </div>
           </article>
-          <article class="plate-card">
+          <article class="plate-card square">
             <img src="plates/plate-monotype.png" alt="" />
             <div class="meta">
               <h3>Monotype</h3>
               <p>Torn cream / charcoal + wash · editorial</p>
+              <span class="tag">1:1 feed</span>
             </div>
           </article>
+        </div>
+
+        <p class="series-label">Series 02 · Expanded moods & formats</p>
+        <div class="plates">
+          <article class="plate-card story">
+            <img src="plates/plate-ash-mist.png" alt="" />
+            <div class="meta">
+              <h3>Ash mist</h3>
+              <p>Foggy charcoal drift · soft story openers</p>
+              <span class="tag">9:16 story</span>
+            </div>
+          </article>
+          <article class="plate-card story">
+            <img src="plates/plate-night-mass.png" alt="" />
+            <div class="meta">
+              <h3>Night mass</h3>
+              <p>Dense charcoal with cream type band · night stories</p>
+              <span class="tag">9:16 story</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-single-stroke.png" alt="" />
+            <div class="meta">
+              <h3>Single stroke</h3>
+              <p>One decisive arc · quiet hero posters</p>
+              <span class="tag">3:4 poster</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-cross-lattice.png" alt="" />
+            <div class="meta">
+              <h3>Cross lattice</h3>
+              <p>Overlapping brush grid · textured campaigns</p>
+              <span class="tag">3:4 poster</span>
+            </div>
+          </article>
+          <article class="plate-card square">
+            <img src="plates/plate-graphite-dust.png" alt="" />
+            <div class="meta">
+              <h3>Graphite dust</h3>
+              <p>Speckled powder field · subtle feed tiles</p>
+              <span class="tag">1:1 feed</span>
+            </div>
+          </article>
+          <article class="plate-card square">
+            <img src="plates/plate-torn-veil.png" alt="" />
+            <div class="meta">
+              <h3>Torn veil</h3>
+              <p>Cream tear into charcoal · carousel covers</p>
+              <span class="tag">1:1 feed</span>
+            </div>
+          </article>
+          <article class="plate-card wide">
+            <img src="plates/plate-horizon-wash.png" alt="" />
+            <div class="meta">
+              <h3>Horizon wash</h3>
+              <p>Horizontal ink bands · OG / website banners</p>
+              <span class="tag">16:9 wide</span>
+            </div>
+          </article>
+          <article class="plate-card wide">
+            <img src="plates/plate-edge-bloom.png" alt="" />
+            <div class="meta">
+              <h3>Edge bloom</h3>
+              <p>Left-edge charcoal dissolving to paper · wide heroes</p>
+              <span class="tag">16:9 wide</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="formats">
+      <div class="wrap">
+        <p class="kicker">Format kit</p>
+        <h2 class="section-title">Story, feed, wide.</h2>
+        <p class="lede">
+          Same quiet studio, native crops. The line still has to feel like relief — not a product tutorial.
+        </p>
+        <div class="formats">
+          <div>
+            <div class="story-frame on-light">
+              <img src="plates/plate-ash-mist.png" alt="" />
+              <img class="seal" src="kip-logo.png" alt="" />
+              <p class="line" style="color:#1d1d1f;">Off your mind.</p>
+            </div>
+            <p class="format-caption">9:16 · Ash mist · weight lifting</p>
+          </div>
+          <div class="format-stack">
+            <div>
+              <div class="og-frame">
+                <img src="plates/plate-horizon-wash.png" alt="" />
+                <img class="seal" src="kip-logo.png" alt="" />
+                <p class="line" style="color:#1d1d1f;">Social’s handled.</p>
+              </div>
+              <p class="format-caption">16:9 · Horizon wash · OG / banner</p>
+            </div>
+            <div>
+              <div class="feed-frame">
+                <img src="plates/plate-torn-veil.png" alt="" />
+                <img class="seal" src="kip-logo.png" alt="" />
+                <p class="line" style="color:#f7f4ee;">Sorted.</p>
+              </div>
+              <p class="format-caption">1:1 · Torn veil · feed</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -529,33 +754,33 @@
     <section id="posters">
       <div class="wrap">
         <p class="kicker">Poster kit</p>
-        <h2 class="section-title">Art first. Line second. Seal last.</h2>
+        <h2 class="section-title">Art for calm. Lines for relief.</h2>
         <p class="lede">
-          Each frame is a full-bleed plate, one mate-voice line, and the disc. No neon bars. No feature cards.
+          Full-bleed plate, one outcome line, disc seal. If it still sounds like a feature, rewrite it.
         </p>
         <div class="posters">
           <article class="poster on-light">
             <img class="field" src="plates/plate-charcoal-sweep.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <h3 class="line">Send the photo.<span class="whisper">Plate as the whole surface. Type in the quiet zone.</span></h3>
+            <h3 class="line">Social’s handled.<span class="whisper">Cheap social media management — completely done.</span></h3>
           </article>
 
           <article class="poster on-dark">
             <img class="field" src="plates/plate-graphite-field.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <h3 class="line">Kip’s on it.<span class="whisper">Dark field. Cream cut. Paper type.</span></h3>
+            <h3 class="line">You don’t think about it.<span class="whisper">The old cost was the mental load.</span></h3>
           </article>
 
           <article class="poster on-light">
             <img class="field" src="plates/plate-gesture-marks.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <h3 class="line">Text it. Posted.<span class="whisper">Sparse marks — the cat’s brush, scaled up.</span></h3>
+            <h3 class="line">Posted. You’re free.<span class="whisper">One small act. Then it’s off you.</span></h3>
           </article>
 
           <article class="poster on-light">
-            <img class="field" src="plates/plate-monotype.png" alt="" />
+            <img class="field" src="plates/plate-single-stroke.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <h3 class="line">Approve in the thread.<span class="whisper">Torn paper energy. Quiet pigment wash only in the art.</span></h3>
+            <h3 class="line">It goes out. You don’t.<span class="whisper">While you’re on the tools. While you sleep.</span></h3>
           </article>
         </div>
       </div>
@@ -564,25 +789,30 @@
     <section id="feed">
       <div class="wrap">
         <p class="kicker">Social posts</p>
-        <h2 class="section-title">Same plates, square crop</h2>
+        <h2 class="section-title">Short shouts. Same relief.</h2>
         <p class="lede">
-          Feed tiles are not a second brand. Crop the plate, keep the seal, shorten the line.
+          Feed tiles stay sparse. Two or three words that name the feeling after — not the product.
         </p>
         <div class="feed">
           <article class="tile on-light">
             <img src="plates/plate-ink-bloom.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <p class="line">Send it.</p>
+            <p class="line">Handled.</p>
           </article>
           <article class="tile on-dark">
             <img src="plates/plate-graphite-field.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <p class="line">On it.</p>
+            <p class="line">Off you.</p>
           </article>
           <article class="tile on-light">
-            <img src="plates/plate-gesture-marks.png" alt="" />
+            <img src="plates/plate-graphite-dust.png" alt="" />
             <img class="seal" src="kip-logo.png" alt="" />
-            <p class="line">Posted.</p>
+            <p class="line">Sorted.</p>
+          </article>
+          <article class="tile on-dark">
+            <img src="plates/plate-torn-veil.png" alt="" />
+            <img class="seal" src="kip-logo.png" alt="" />
+            <p class="line">Free.</p>
           </article>
         </div>
       </div>
@@ -619,21 +849,21 @@
           <div class="rule do">
             <h3>Do</h3>
             <ul>
-              <li>Lead with abstract art — plate is the surface</li>
+              <li>Sell life after Kip — relief, handled, off their mind</li>
+              <li>Lead with abstract art that feels like mental quiet</li>
               <li>Keep the disc unaltered as the studio seal</li>
-              <li>Use 2–4 mate-voice words max</li>
-              <li>Commission plates in one charcoal/paper family</li>
-              <li>Leave quiet zones for type</li>
+              <li>Use 2–4 mate-voice words that name the outcome</li>
+              <li>Keep “cheap + completely done” in the whisper, not a feature grid</li>
             </ul>
           </div>
           <div class="rule dont">
             <h3>Don’t</h3>
             <ul>
+              <li>Lead with how it works (SMS, AI, approve flow)</li>
+              <li>Sound like a platform, suite, or “AI-powered” deck</li>
               <li>Bring back neon volt bars or glow</li>
-              <li>Copy Polsia’s Times / terminal / orange kit</li>
               <li>Redraw cats into the abstract field</li>
               <li>Trap art in rounded SaaS cards</li>
-              <li>Wash campaigns in purple or terracotta clichés</li>
             </ul>
           </div>
         </div>
@@ -642,7 +872,7 @@
   </main>
 
   <footer>
-    v2 specimen for <a href="../../docs/DESIGN_LANGUAGE.md">docs/DESIGN_LANGUAGE.md</a>
+    v3 specimen for <a href="../../docs/DESIGN_LANGUAGE.md">docs/DESIGN_LANGUAGE.md</a>
     · logo rules remain in <a href="../../docs/DESIGN.md">docs/DESIGN.md</a>
   </footer>
 </body>

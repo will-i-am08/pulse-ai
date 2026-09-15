@@ -8,19 +8,75 @@
 
 Research note: the reference called “Pulsier” maps to **[Polsia](https://polsia.com/)** (AI business builder). We keep Polsia’s *physics* — one claim owns the frame, hard contrast, stop-scroll presence — and build a Kip-native system around the cat mark. **v2 pivot:** less neon signal colour, more **abstract art plates** for posters, social posts, and campaign surfaces.
 
+**v3 pivot (this pass):** sell the **outcome and feeling**, not the cool product. Kip is cheap social media management that is simply *done* — without the customer having to think about it. Art and type should make that relief feel true.
+
 Open the interactive specimen: [`prototype/design-language/index.html`](../prototype/design-language/index.html).
+
+---
+
+## 0. Emotion & outcome (start here)
+
+### What we sell
+
+Not “an AI that texts you.” Not “SMS social posting.” Not a clever cat logo.
+
+We sell: **social media completely handled — cheaply — so it’s off their mind.**
+
+| Layer | Meaning |
+|---|---|
+| **Outcome** | Their feeds stay alive. Content goes out. They don’t run a content calendar. |
+| **Emotion** | Relief. Exhale. “It’s sorted.” Lightness where Instagram used to sit on their head. |
+| **Price feeling** | Accessible / no-brainer — not luxury agency theatre, not “enterprise AI platform.” |
+| **Effort feeling** | Near-zero. They don’t have to think. Thinking was the old cost. |
+
+### Feeling words (use)
+
+`handled` · `done` · `off your mind` · `sorted` · `free` · `quiet` · `without thinking` · `taken care of`
+
+### Feeling words (avoid)
+
+`powerful` · `platform` · `suite` · `automate your workflow` · `AI-powered` · `next-gen` · `revolutionary` · feature laundry lists
+
+### Product → outcome translation
+
+| Product truth (don’t lead with) | Outcome line (lead with) |
+|---|---|
+| Text Kip a photo | Social’s handled. |
+| AI drafts captions | You don’t think about it. |
+| Approve in the thread | Posted. You’re free. |
+| SMS social manager | Off your mind. |
+| Cheap vs an agency | Sorted. Without the bill. |
+| Runs while you work | It goes out. You don’t. |
+
+### How the art supports the feeling
+
+Charcoal Field is not decoration for a tech demo. The abstract plates should feel like **mental quiet**:
+
+- Soft mist / bloom / empty paper = the weight lifting
+- Night mass / dark field = it runs while they sleep / while they’re on the tools
+- Single stroke / sparse gesture = one small act, then done
+- Wide empty ground = room to breathe
+
+If a poster looks “cool” but still reads as *product marketing*, rewrite the line until it reads as **life after Kip**.
+
+### Job of every marketing piece
+
+1. Name the relief (or show it)
+2. Imply the outcome is complete
+3. Keep Kip present but quiet (disc seal)
+4. Never make them study how it works before they feel why they want it
 
 ---
 
 ## 1. What changed from v1
 
-| v1 (Charcoal Signal) | v2 (Charcoal Field) |
-|---|---|
-| Neon **volt** lime as the live accent | No neon. Atmosphere comes from **art plates** |
-| Type + black void + underline tick | Type sitting on / in abstract ink fields |
-| Signal colour = brand memory | Brush language of the cat = brand memory |
+| v1 | v2 | v3 |
+|---|---|---|
+| Neon **volt** lime accent | Abstract **art plates** | Same plates, **outcome copy** |
+| Type + black void + underline | Type on ink fields | Lines sell relief, not features |
+| Cool product energy | Print-studio costume | Feeling: social is off their mind |
 
-Polsia still informs scale and sparseness. The costume is now closer to a **print studio / gallery poster** than a terminal dashboard.
+Polsia still informs scale and sparseness. The costume is a **print studio / gallery poster**. The message is life after social is handled.
 
 ---
 
@@ -53,15 +109,15 @@ The cat’s **dry-brush stroke** is the seed of the whole art system. Marketing 
 
 ## 4. Concept: Charcoal Field
 
-**One sentence:** Every poster is an abstract print; the cat is the studio stamp; the line is the text you’d send.
+**One sentence:** Every poster is quiet abstract art; the cat is the studio stamp; the line is the relief they’ll feel when social is no longer their problem.
 
 Three registers:
 
 1. **Mark** — the disc. Sacred, unchanged, small in the corner or as a seal.
-2. **Field** — abstract charcoal / ink / monotype plates. The eye-catcher.
-3. **Line** — short display type laid into the field with huge breathing room.
+2. **Field** — abstract charcoal / ink / monotype plates. Visual calm = mental calm.
+3. **Line** — short display type that names the outcome, not the mechanism.
 
-Product UI stays quiet paper. Marketing, posters, OG images, ads, and social tiles lean Field + Line.
+Product UI stays quiet paper. Marketing leans Field + Line — and the line must pass the outcome test: *does this describe life after Kip, or how Kip works?*
 
 ---
 
@@ -97,28 +153,54 @@ CTAs on marketing can stay **disc-on-void** or **ink-on-paper** — solid, quiet
 
 A **plate** is a reusable abstract artwork that becomes the full-bleed ground for a poster or post. Plates are the brand’s visual volume.
 
-### Series 01 (in specimen)
+### Series 01 — Core moods
 
-| File | Mood | Best for |
+| File | Mood | Format | Best for |
+|---|---|---|---|
+| `plate-charcoal-sweep.png` | Diagonal dry-brush on paper | 3:4 | Quote posters, launch |
+| `plate-ink-bloom.png` | Soft sumi bloom | 3:4 | Calm / brand films / stories |
+| `plate-graphite-field.png` | Dark field + cream cut | 1:1 | High-contrast feed ads |
+| `plate-gesture-marks.png` | Sparse strokes on paper | 3:4 | Closest to the cat’s hand |
+| `plate-monotype.png` | Torn cream / charcoal + wash | 1:1 | Editorial, carousels |
+
+### Series 02 — Expanded moods & formats
+
+| File | Mood | Format | Best for |
+|---|---|---|---|
+| `plate-ash-mist.png` | Foggy charcoal drift | 9:16 | Soft story openers |
+| `plate-night-mass.png` | Dense charcoal + cream type band | 9:16 | Night stories / reels covers |
+| `plate-single-stroke.png` | One decisive arc on paper | 3:4 | Quiet hero posters |
+| `plate-cross-lattice.png` | Overlapping brush grid | 3:4 | Textured campaigns |
+| `plate-graphite-dust.png` | Speckled powder field | 1:1 | Subtle feed tiles |
+| `plate-torn-veil.png` | Cream tear into charcoal | 1:1 | Carousel covers |
+| `plate-horizon-wash.png` | Horizontal ink bands | 16:9 | OG images / site banners |
+| `plate-edge-bloom.png` | Left-edge bloom → empty paper | 16:9 | Wide landing heroes |
+
+**Studio total: 13 plates.**
+
+### Format map
+
+| Crop | Ratio | Prefer |
 |---|---|---|
-| `plate-charcoal-sweep.png` | Diagonal dry-brush on paper | Quote posters, launch |
-| `plate-ink-bloom.png` | Soft sumi bloom | Calm / brand films / stories |
-| `plate-graphite-field.png` | Dark field + cream cut | High-contrast feed ads |
-| `plate-gesture-marks.png` | Sparse strokes on paper | Closest to the cat’s hand |
-| `plate-monotype.png` | Torn cream / charcoal + wash | Editorial, carousels |
+| Poster / portrait | 3:4 | sweep, bloom, gesture, single-stroke, cross-lattice |
+| Story / reel | 9:16 | ash-mist, night-mass (+ bloom cropped) |
+| Feed | 1:1 | graphite-field, monotype, graphite-dust, torn-veil |
+| OG / banner | 16:9 | horizon-wash, edge-bloom |
 
 ### Plate rules
 
 1. **Full-bleed** — the art is the surface, not a card inset.
 2. **No figurative cats** in the plate — the disc carries the character.
 3. **Texture over gloss** — paper tooth, charcoal dust, ink bloom. Avoid plastic gradients.
-4. **Series coherence** — same paper temperature, same charcoal family, so five plates still feel like one studio.
-5. **Leave a quiet zone** — every plate needs a soft area for type (corner or band).
+4. **Series coherence** — same paper temperature, same charcoal family, so thirteen plates still feel like one studio.
+5. **Leave a quiet zone** — every plate needs a soft area for type (corner or band). Story plates keep a quieter lower third; wide plates keep a soft centre or right side.
 6. **Never neon** — if a colour appears, it should look like pigment on paper.
 
 ### How to commission / generate more
 
-Brief: *“Abstract charcoal and ink on warm off-white paper, dry-brush and bloom, gallery print, no text, no logo, no animals, no neon, vertical poster.”* Keep the Kip logo nearby as a **material reference** (stroke weight / irregularity), not as content to redraw.
+Brief: *“Abstract charcoal and ink on warm off-white paper, dry-brush and bloom, gallery print, no text, no logo, no animals, no neon, [target ratio].”* Keep the Kip logo nearby as a **material reference** (stroke weight / irregularity), not as content to redraw.
+
+When adding plates, name them `plate-{mood}.png` and tag the intended crop in the specimen.
 
 ---
 
@@ -137,14 +219,20 @@ Brief: *“Abstract charcoal and ink on warm off-white paper, dry-brush and bloo
 - Sit type in the plate’s quiet zone; don’t fight the densest brush mass.
 - Avoid coloured underlines. Emphasis = scale and placement, or a single word in the disc colour on dark fields.
 
-### Copy shape
+### Copy shape — outcome first
 
-Mate voice, poster volume:
+Mate voice, poster volume, **life after Kip**:
 
-- `SEND THE PHOTO.`
-- `KIP’S ON IT.`
-- `TEXT IT. POSTED.`
-- `APPROVE IN THE THREAD.`
+| Use | Avoid (product mechanics) |
+|---|---|
+| `SOCIAL’S HANDLED.` | `SEND THE PHOTO.` |
+| `OFF YOUR MIND.` | `TEXT KIP.` |
+| `POSTED. YOU’RE FREE.` | `APPROVE IN THE THREAD.` |
+| `YOU DON’T THINK ABOUT IT.` | `AI CAPTIONS.` |
+| `SORTED.` | `SMS SOCIAL MANAGER.` |
+| `IT GOES OUT. YOU DON’T.` | `AUTOMATE YOUR WORKFLOW.` |
+
+Whisper lines under the shout should deepen the feeling (“cheap social, completely done”), not explain the stack.
 
 ---
 
@@ -199,21 +287,23 @@ No bounce, no particle ink, no colour-cycle. Respect `prefers-reduced-motion`.
 
 ## 11. Rollout
 
-1. Lock plate series 01 (in `prototype/design-language/plates/`).
-2. Export poster templates (story 9:16, feed 1:1, portrait 3:4).
-3. Landing hero: swap stock/photo-only hero for one plate + line + disc (keep real shop photo as an alternate mode).
-4. Social kit: 5 posts from the five plates, same type recipe.
+1. ~~Lock plate series 01~~ → **Series 01 + 02 locked** (13 plates in `prototype/design-language/plates/`).
+2. Export templates from the format kit (story 9:16, feed 1:1, portrait 3:4, OG 16:9).
+3. Landing hero: try `edge-bloom` or `single-stroke` + line + disc (keep real shop photo as an alternate mode).
+4. Social kit: mix Series 01/02 — at least one story, three feed tiles, one wide OG.
 5. Promote this doc into [`DESIGN.md`](DESIGN.md) once approved.
 
 ---
 
 ## 12. Decision checklist
 
-1. Is the **art** doing the stopping — or did we fall back to neon/UI chrome?
-2. Does the plate still feel like the same studio as the cat’s brush?
-3. Can you read the line from across the room?
-4. Is the disc present and unaltered?
-5. Would this still look like Kip if we dropped it into a gallery wall of abstract prints?
+1. Does the line sell **life after Kip** — or how Kip works?
+2. Would a busy owner feel **relief** in under a second?
+3. Is the **art** doing the stopping — or did we fall back to neon/UI chrome?
+4. Does the plate still feel like the same studio as the cat’s brush?
+5. Can you read the line from across the room?
+6. Is the disc present and unaltered?
+7. Would this still look like Kip on a gallery wall of abstract prints?
 
 ---
 
