@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Kip</title>
+  <style>
+    :root {
+      --black: #000;
+      --white: #fff;
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --line: #e3e5ea;
+      --soft: #f5f5f7;
+      --band: #e8ecf2;
+      --ok: #1a7f4e;
+      --bad: #b42318;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--white);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.4;
+      -webkit-tap-highlight-color: transparent;
+    }
+    a { color: inherit; }
+    button, input, textarea, select { font-family: inherit; }
+    button { cursor: pointer; }
+    img { max-width: 100%; display: block; }
+
+    /* —— landing (unchanged language) —— */
+    .lp { background: #fff; color: #f5f5f7; overflow-x: hidden; }
+    .hero { min-height: 100svh; min-height: 100dvh; height: 100svh; height: 100dvh; position: relative; overflow: hidden; background: #000; }
+    .nav {
+      position: fixed; inset: 0 0 auto 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 28px;
+      padding-top: max(18px, env(safe-area-inset-top, 0px));
+      background: linear-gradient(180deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.28) 70%, transparent 100%);
+      transition: background .25s ease, box-shadow .25s ease, color .25s ease;
+    }
+    .nav.is-solid {
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 1px 0 rgba(0,0,0,.06);
+    }
+    .brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: #fff; text-decoration: none; font-size: 19px; font-weight: 600; letter-spacing: -0.02em;
+    }
+    .nav.is-solid .brand { color: var(--ink); }
+    .nav-links {
+      display: flex; align-items: center; gap: 8px 22px; flex-wrap: wrap; justify-content: flex-end;
+    }
+    .nav-links a {
+      color: rgba(255,255,255,.84); text-decoration: none; font-size: 15px; font-weight: 500;
+    }
+    .nav-links a:hover { color: #fff; }
+    .nav.is-solid .nav-links a { color: var(--muted); }
+    .nav.is-solid .nav-links a:hover { color: var(--ink); }
+    .nav-links .nav-login { font-weight: 600; }
+    .hero-copy {
+      position: absolute; left: 0; right: 0; top: 0; z-index: 3;
+      text-align: center; padding: clamp(96px, 16vh, 148px) 24px 0; pointer-events: none;
+    }
+    .hero-copy a { pointer-events: auto; }
+    .hero-copy::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; height: 58%;
+      background: linear-gradient(180deg, #000 0%, rgba(0,0,0,.55) 52%, transparent 100%);
+      z-index: -1;
+    }
+    .h1 {
+      font-size: clamp(56px, 9vw, 92px); font-weight: 600; letter-spacing: -0.038em;
+      line-height: 1.02; margin: 0 0 28px; color: #fff;
+    }
+    .pill {
+      display: inline-block; background: #fff; color: #000; font-size: 17px; font-weight: 600;
+      letter-spacing: -0.01em; padding: 12px 22px; border-radius: 980px; text-decoration: none; border: 0;
+    }
+    .pill:hover { background: #f5f5f7; }
+    .trust { margin: 18px 0 0; font-size: 19px; color: rgba(255,255,255,.52); }
+    .hero-product { position: absolute; inset: 0; z-index: 1; }
+    .photo-bleed {
+      width: 100%; height: 100%;
+      background: radial-gradient(circle at 40% 40%, #6e6e73 0%, transparent 40%), linear-gradient(160deg, #3a3a3c, #111);
+    }
+    .ideas {
+      background: var(--band); color: var(--ink);
+      padding: 72px 28px 80px;
+    }
+    .ideas-head { text-align: center; max-width: 28ch; margin: 0 auto 40px; }
+    .ideas-head h2 {
+      font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -0.035em;
+      line-height: 1.08; margin: 0 0 10px;
+    }
+    .ideas-head p { margin: 0; font-size: 20px; color: var(--muted); }
+    .how {
+      list-style: none; margin: 0 auto; padding: 0;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+      max-width: 1080px;
+    }
+    .how > li {
+      background: #fff; border-radius: 28px; overflow: hidden;
+      border: 0;
+      min-height: 420px;
+    }
+    .how > li:has(.with-sketch) { overflow: visible; }
+    .how > li:has(.with-sketch) > a.how-card { border-radius: 28px; overflow: hidden; background: #fff; }
+    .how > li > a {
+      display: flex; flex-direction: column; height: 100%;
+      text-decoration: none; color: inherit;
+    }
+    .hero-copy .h1,
+    .hero-copy .pill,
+    .hero-copy .trust {
+      opacity: 0;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .hero-copy .h1 {
+        animation: hero-in .85s cubic-bezier(.22,1,.36,1) .05s forwards;
+      }
+      .hero-copy .pill {
+        animation: hero-in .85s cubic-bezier(.22,1,.36,1) .18s forwards;
+      }
+      .hero-copy .trust {
+        animation: hero-in .85s cubic-bezier(.22,1,.36,1) .3s forwards;
+      }
+      .hero-product {
+        animation: hero-fade 1.1s ease .15s both;
+      }
+      @keyframes hero-in {
+        from { opacity: 0; transform: translateY(18px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes hero-fade {
+        from { opacity: .55; transform: scale(1.03); }
+        to { opacity: 1; transform: none; }
+      }
+      .reveal {
+        opacity: 0;
+        transform: translateY(28px);
+        transition: opacity .75s cubic-bezier(.22,1,.36,1), transform .75s cubic-bezier(.22,1,.36,1);
+      }
+      .reveal.in { opacity: 1; transform: none; }
+      .reveal-d1 { transition-delay: .08s; }
+      .reveal-d2 { transition-delay: .16s; }
+      .reveal-d3 { transition-delay: .24s; }
+      .how-card { transition: transform .25s ease, box-shadow .25s ease; }
+      a.how-card:hover { transform: translateY(-2px); box-shadow: 0 18px 40px -28px rgba(0,0,0,.4); }
+      .pill, .pill-dark { transition: transform .2s ease, background .2s ease; }
+      .pill:hover, .pill-dark:hover { transform: translateY(-1px); }
+      .trust-card, .plan {
+        transition: transform .25s ease, box-shadow .25s ease;
+      }
+      .trust-card:hover, .plan:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 18px 40px -28px rgba(0,0,0,.35);
+      }
+      .plan.featured:hover {
+        box-shadow: 0 18px 40px -24px rgba(0,0,0,.55);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; }
+      .hero-copy .h1, .hero-copy .pill, .hero-copy .trust { opacity: 1; }
+    }
+    .how-visual {
+      height: 240px; display: flex; align-items: flex-end; justify-content: flex-start;
+      padding: 18px; position: relative;
+    }
+    .how-visual img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    .how-visual .cap {
+      position: relative; background: #e9e9eb; color: #1d1d1f;
+      border-radius: 22px 22px 22px 8px; padding: 14px 16px; margin: 0;
+      font-size: 16px; line-height: 1.35; max-width: 92%;
+    }
+    .how-visual.dark {
+      background: #000; align-items: center; justify-content: center;
+    }
+    .how-yes {
+      display: inline-block; background: #fff; color: #000; font-weight: 600;
+      font-size: 28px; letter-spacing: -0.03em; padding: 12px 28px; border-radius: 980px;
+    }
+    .how-copy { padding: 22px 22px 26px; }
+    .how-n { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; }
+    .how-copy h3 {
+      font-size: 24px; font-weight: 600; letter-spacing: -0.03em;
+      line-height: 1.12; margin: 8px 0 8px;
+    }
+    .how-copy p { margin: 0; font-size: 16px; color: var(--muted); }
+    .close {
+      background: #000; color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 88px 24px 72px;
+    }
+    .close .h1 { color: #fff; }
+    .close .trust { margin: 18px 0 32px; }
+    .close-cta { position: relative; display: inline-block; }
+    .footer {
+      background: #000; color: rgba(255,255,255,.46);
+      padding: 28px 28px 48px; display: flex; flex-wrap: wrap; gap: 14px 24px;
+      justify-content: space-between; align-items: center; font-size: 14px;
+    }
+    .footer a { color: rgba(255,255,255,.46); text-decoration: none; }
+    .footer a:hover { color: #fff; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 20px; }
+
+    .thread { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+    .thread.closeup { position: relative; width: 100%; height: 100%; }
+    .thread.isolated { width: min(420px, 100%); }
+    .msg { display: flex; max-width: 86%; }
+    .msg p { margin: 0; font-size: 21px; line-height: 1.35; }
+    .out { align-self: flex-end; margin-left: auto; }
+    .in { align-self: flex-start; }
+    .thread.closeup .photo-msg { position: absolute; inset: 0; max-width: none; width: 100%; height: 100%; }
+    .thread.closeup .photo { width: 100%; height: 100%; object-fit: cover; }
+    .thread.closeup .in { position: absolute; left: 3vw; bottom: 11vh; z-index: 1; max-width: min(520px, 54vw); }
+    .thread.closeup .yes-msg { position: absolute; right: 3vw; bottom: 4.5vh; z-index: 1; }
+    .thread.isolated .photo { width: 240px; height: 240px; object-fit: cover; border-radius: 28px 28px 8px 28px; }
+    .in p { border-radius: 22px 22px 22px 8px; padding: 14px 18px; }
+    .dark .in p { background: #2c2c2e; color: #f5f5f7; }
+    .light .in p { background: #e9e9eb; color: #1d1d1f; }
+    .yes { font-weight: 600; border-radius: 22px 22px 8px 22px; padding: 10px 20px; margin: 0; }
+    .dark .yes { background: #fff; color: #000; }
+    .light .yes { background: #1d1d1f; color: #fff; }
+
+    /* Lindy-inspired product storytelling, still black/white */
+    .band { background: #fff; color: var(--ink); padding: 88px 28px 96px; }
+    .band-inner { max-width: 1080px; margin: 0 auto; text-align: center; }
+    .band h2 {
+      font-size: clamp(36px, 5vw, 52px); font-weight: 600; letter-spacing: -0.035em;
+      line-height: 1.08; margin: 0 0 12px; text-align: center;
+    }
+    .band > .band-inner > .lead, .band .sub {
+      text-align: center; color: var(--muted); font-size: 20px; max-width: 36ch; margin: 0 auto 40px;
+    }
+    .trust-grid, .plans, .who, .product-frame { text-align: left; }
+    .trust-card, .plan { text-align: left; }
+
+    .product-frame {
+      background: var(--band); border-radius: 28px; padding: 28px 18px 18px;
+      border: 0;
+      display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px;
+      position: relative; overflow: visible;
+    }
+    .pf {
+      background: #fff; border-radius: 20px; padding: 18px 18px 16px; border: 1px solid var(--line);
+    }
+    .pf h4 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+    .rrow { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+    .rrow:last-child { border-bottom: 0; }
+    .file {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+      background: var(--band); border: 0; border-radius: 12px; padding: 14px; color: #333; line-height: 1.5;
+    }
+    .who { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 40px 0 48px; }
+    .who-card {
+      text-align: left; background: transparent; border-radius: 0; padding: 0;
+      display: flex; flex-direction: column; min-width: 0;
+    }
+    .who-art {
+      height: 132px; border-radius: 18px; background: #fff; margin: 0 0 16px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--line); flex-shrink: 0;
+    }
+    .who-art svg {
+      width: 92px; height: 92px; color: #111;
+    }
+    .who-art path, .who-art circle, .who-art line, .who-art polyline, .who-art rect {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .who-art .ink-fill { fill: currentColor; stroke: none; }
+    .who-body { min-width: 0; }
+    .who h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
+    .who p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+    .job-strip {
+      list-style: none; margin: 0 auto 36px; padding: 0;
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 56ch;
+    }
+    .job-strip li {
+      font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+      padding: 8px 12px; border-radius: 980px; background: var(--band); color: var(--ink);
+      border: 0;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .job-strip li svg {
+      width: 14px; height: 14px; flex-shrink: 0;
+    }
+    .job-strip li svg path, .job-strip li svg circle, .job-strip li svg line, .job-strip li svg rect {
+      fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .channels {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+      max-width: 720px; margin: 8px auto 18px;
+    }
+    .channel {
+      background: var(--band); border: 0; border-radius: 20px; padding: 18px 12px 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0;
+    }
+    .channel svg { width: 36px; height: 36px; color: #111; }
+    .channel svg path, .channel svg circle, .channel svg rect, .channel svg line, .channel svg polyline {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .channel svg .ink-fill { fill: currentColor; stroke: none; }
+    .channel svg.brand path {
+      fill: currentColor; stroke: none;
+    }
+    .channel span { font-size: 14px; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
+    .dest {
+      text-align: center; font-size: clamp(22px, 3vw, 28px); font-weight: 600;
+      letter-spacing: -0.03em; margin: 0 0 10px;
+    }
+    .dest.sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .dest-note { text-align: center; color: var(--muted); font-size: 16px; margin: 0 0 48px; }
+    .plate .sub { max-width: 42ch; }
+    .trust-ico {
+      width: 48px; height: 48px; margin: 0 0 14px; color: #111;
+    }
+    .trust-ico path, .trust-ico circle, .trust-ico line, .trust-ico polyline, .trust-ico rect {
+      fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .trust-ico .ink-fill { fill: currentColor; stroke: none; }
+    .trust-card { text-align: left; }
+    .ask { max-width: 640px; margin: 0 auto; text-align: left; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+    .chip-link {
+      font-size: 13px; padding: 6px 12px; border-radius: 980px; background: var(--band);
+      border: 0;
+      text-decoration: none; color: var(--ink);
+    }
+
+    .trust-band { background: var(--band); }
+    .trust-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 8px;
+    }
+    .trust-card {
+      background: #fff; border-radius: 22px; padding: 26px 24px 28px;
+      border: 0;
+    }
+    .trust-card h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.03em; }
+    .trust-card p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+    .trust-foot {
+      text-align: center; color: var(--muted); font-size: 15px; margin: 28px auto 0; max-width: 44ch;
+    }
+
+    .pricing { background: #fff; }
+    .bill-toggle {
+      display: inline-flex; gap: 4px; padding: 4px; border-radius: 980px;
+      background: var(--band); border: 0; margin: 0 auto 36px; position: relative;
+    }
+    .bill-toggle button {
+      border: 0; background: transparent; color: var(--muted); font-size: 15px; font-weight: 600;
+      padding: 10px 18px; border-radius: 980px;
+    }
+    .bill-toggle button.on { background: #000; color: #fff; }
+    .plans {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 860px; margin: 0 auto;
+    }
+    .plan {
+      border: 1px solid var(--line); border-radius: 28px; padding: 28px 26px 30px;
+      background: #fff; display: flex; flex-direction: column; gap: 14px;
+    }
+    .plan.featured { background: #000; color: #fff; border-color: #000; }
+    .plan.featured .opt, .plan.featured .plan-list { color: rgba(255,255,255,.62); }
+    .plan.featured .pill-dark { background: #fff; color: #000; }
+    .plan.featured .pill-dark:hover { background: #f5f5f7; }
+    .plan-name { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .plan.featured .plan-name { color: rgba(255,255,255,.55); }
+    .plan-price { margin: 0; font-size: clamp(40px, 6vw, 52px); font-weight: 600; letter-spacing: -0.04em; line-height: 1; }
+    .plan-price span { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; opacity: .55; }
+    .plan-blurb { margin: 0; font-size: 17px; color: var(--muted); }
+    .plan.featured .plan-blurb { color: rgba(255,255,255,.7); }
+    .plan-list { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 10px; font-size: 16px; }
+    .plan-list li { padding-left: 18px; position: relative; }
+    .plan-list li::before { content: ""; position: absolute; left: 0; top: .55em; width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .35; }
+    .plan .pill-dark { align-self: flex-start; margin-top: auto; text-align: center; }
+    .price-note { text-align: center; color: var(--muted); font-size: 14px; margin: 22px 0 0; }
+
+    .composer {
+      display: flex; gap: 8px; align-items: center;
+      background: #fff; border: 1px solid var(--line); border-radius: 980px; padding: 8px 8px 8px 18px;
+      box-shadow: 0 16px 50px -28px rgba(0,0,0,.35);
+    }
+    .composer input {
+      flex: 1; border: 0; outline: none; font-size: 16px; background: transparent; padding: 10px 0;
+    }
+
+    /* —— sketch accents (black, dotted, sparse) —— */
+    .sketch {
+      position: absolute; pointer-events: none; color: #1d1d1f;
+      opacity: .78; overflow: visible;
+    }
+    .sketch path, .sketch line, .sketch circle, .sketch polyline, .sketch ellipse {
+      fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .sketch.dot { stroke-dasharray: 1.2 5.5; stroke-width: 1.6; }
+    .sketch.dash { stroke-dasharray: 5 4; stroke-width: 1.55; }
+    .sketch.ink { stroke-width: 1.7; stroke-dasharray: none; }
+    .sketch.on-dark { color: rgba(255,255,255,.55); }
+    .with-sketch { position: relative; }
+    .sketch-title {
+      display: block; position: relative; padding-bottom: 14px; text-align: center;
+    }
+    .sketch-title > .sketch {
+      left: 0; right: 0; bottom: 0; margin: 0 auto;
+      width: min(168px, 55%); height: 16px;
+      transform: none;
+    }
+    .ideas-head .sketch-title > .sketch { color: #111; opacity: .7; width: min(140px, 60%); }
+    .band .sketch-title > .sketch { color: #111; opacity: .65; }
+    .plate h2.sketch-title > .sketch { width: min(220px, 58%); }
+    .pricing h2.sketch-title > .sketch { width: min(200px, 58%); }
+    .dest.sketch-title {
+      display: inline-block; max-width: 100%; padding-bottom: 18px; margin-left: auto; margin-right: auto;
+    }
+    .dest.sketch-title > .sketch {
+      width: min(280px, 90%); height: 20px; bottom: 0;
+    }
+    .doodle-arrow-yes {
+      width: 92px; height: 78px; right: -6px; top: -28px; transform: rotate(8deg);
+    }
+    .doodle-save {
+      width: 78px; height: 54px; right: -64px; top: -6px;
+    }
+    .doodle-loop {
+      width: 120px; height: 70px; left: 50%; top: -34px; margin-left: -60px;
+    }
+    .doodle-cta {
+      width: 70px; height: 58px; left: calc(100% + 6px); top: -36px;
+    }
+    .close { position: relative; }
+    .ideas-head, .band h2, .dest { position: relative; }
+    .how { position: relative; }
+    .doodle-how {
+      width: 64px; height: 48px; left: -10px; top: -22px;
+    }
+    .how-card.with-sketch { position: relative; overflow: visible; }
+    @media (prefers-reduced-motion: no-preference) {
+      .sketch.draw {
+        opacity: 0;
+        animation: sketch-in .7s ease forwards;
+      }
+      .ideas .sketch.draw { animation-delay: .05s; }
+      .plate .sketch.draw { animation-delay: .1s; }
+      .pricing .sketch.draw { animation-delay: .12s; }
+      .close .sketch.draw { animation-delay: .08s; }
+    }
+    @keyframes sketch-in {
+      from { opacity: 0; }
+      to { opacity: .78; }
+    }
+    .sketch.on-dark.draw {
+      animation-name: sketch-in-dark;
+    }
+    @keyframes sketch-in-dark {
+      from { opacity: 0; }
+      to { opacity: .55; }
+    }
+
+    .doc { color: var(--ink); font-size: 16px; line-height: 1.55; max-width: 68ch; }
+    .doc .meta { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+    .doc h2 {
+      font-size: 20px; letter-spacing: -0.02em; margin: 32px 0 10px; font-weight: 600;
+    }
+    .doc p { margin: 0 0 14px; color: var(--ink); }
+    .doc ul, .doc ol { margin: 0 0 16px; padding-left: 1.2em; }
+    .doc li { margin: 0 0 8px; }
+    .doc a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    .legal-wrap {
+      background: #fff; min-height: 100svh; color: var(--ink);
+      padding: 28px 24px 72px;
+    }
+    .legal-wrap .page { max-width: 720px; margin: 0 auto; }
+    .legal-wrap .ghost {
+      display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+      color: var(--muted); font-size: 15px; border: 0; background: none; padding: 0; margin-bottom: 18px;
+    }
+    .legal-wrap .ghost .mark-bare { width: 22px; height: 22px; }
+    .legal-wrap .ghost:hover { color: var(--ink); }
+    .legal-wrap .page-h1 { margin-bottom: 8px; }
+
+    /* —— app: teammate workspace —— */
+    .desk {
+      min-height: 100svh; display: grid; grid-template-columns: 232px 1fr;
+      background: var(--soft);
+    }
+    .desk.three { grid-template-columns: 232px 1fr 340px; }
+    .topbar { display: none; }
+    .menu-btn, .scrim { display: none; }
+    .rail {
+      background: #f3f3f5; padding: 18px 12px 24px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .rail-nav { display: flex; flex-direction: column; gap: 4px; }
+    .rail .brand { color: var(--ink); font-size: 17px; padding: 8px 10px 18px; }
+    .rail a, .rail button.navb {
+      display: block; width: 100%; text-align: left; text-decoration: none;
+      padding: 9px 12px; border-radius: 10px; color: var(--muted); font-size: 15px;
+      background: none; border: 0;
+    }
+    .rail a.on, .rail a:hover, .rail button.navb:hover { background: #fff; color: var(--ink); }
+    .rail .spacer { flex: 1; }
+    .stage {
+      margin: 12px 12px 12px 0; background: #fff; border-radius: 22px;
+      display: flex; flex-direction: column; min-height: calc(100svh - 24px); overflow: hidden;
+    }
+    .desk.three .stage { margin-right: 0; }
+    .aside {
+      margin: 12px 12px 12px 12px; background: #fff; border-radius: 22px; padding: 22px 20px;
+      overflow: auto;
+    }
+    .aside h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .chat {
+      flex: 1; overflow: auto; padding: 28px 32px 12px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .bubble { max-width: 78%; }
+    .bubble.kip p { background: #e9e9eb; border-radius: 22px 22px 22px 8px; padding: 12px 16px; margin: 0; }
+    .bubble.you { margin-left: auto; }
+    .bubble.you p { background: #1d1d1f; color: #fff; border-radius: 22px 22px 8px 22px; padding: 12px 16px; margin: 0; }
+    .bubble img { width: 220px; height: 220px; object-fit: cover; border-radius: 22px 22px 8px 22px; }
+    .dock { padding: 12px 20px 20px; }
+    .page {
+      flex: 1; overflow: auto; padding: 36px 40px 64px;
+    }
+    .page-h1 {
+      font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -0.035em;
+      margin: 0 0 8px; line-height: 1.1;
+    }
+    .lead { margin: 0 0 1.6rem; font-size: 18px; color: var(--muted); }
+    .row { padding: 1.6rem 0; border-bottom: 1px solid var(--line); }
+    .row h2, .panel h2 { margin: 0 0 8px; font-size: 19px; }
+    .status { margin: 0; font-size: 21px; font-weight: 600; }
+    .muted, .empty { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+    .setup { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 18px; }
+    .setup-head { display: flex; justify-content: space-between; font-size: 16px; font-weight: 600; }
+    .need, .done { font-size: 13px; font-weight: 500; }
+    .done { color: var(--muted); }
+    .quiet-form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .quiet-form input { flex: 1 1 180px; }
+
+    input[type="text"], input[type="tel"], input[type="email"], input[type="password"],
+    input[type="number"], input[type="url"], input[type="datetime-local"], textarea, select {
+      font-size: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; color: var(--ink);
+    }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+    textarea { width: 100%; min-height: 96px; resize: vertical; }
+    .pill-dark {
+      display: inline-block; background: #000; color: #fff; font-size: 15px; font-weight: 600;
+      padding: 11px 18px; border-radius: 980px; text-decoration: none; border: 0;
+    }
+    .pill-dark:hover { background: #1d1d1f; }
+    .ghost { background: none; border: 0; color: var(--muted); font-size: 15px; padding: 0; }
+    .ghost:hover { color: var(--ink); }
+    .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    .draft { display: grid; grid-template-columns: 140px 1fr; gap: 12px; font-size: 16px; }
+    .when { color: var(--muted); font-size: 14px; }
+    .caption { margin: 0; }
+    .draft-actions { display: flex; gap: 12px; margin-top: 6px; }
+    .text-btn { background: none; border: 0; padding: 0; font-size: 14px; color: var(--muted); }
+    .text-btn:hover { color: var(--ink); }
+    .text-btn.bad { color: var(--bad); }
+    .banner { font-size: 15px; margin: 0 0 1rem; }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .auth {
+      min-height: 100svh; background: #fff; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 48px 20px 80px;
+    }
+    .auth-card { width: 100%; max-width: 420px; display: grid; gap: 14px; }
+    .auth .page-h1 { font-size: 40px; }
+    .auth .pill-dark { width: 100%; text-align: center; }
+    .label { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 500; }
+    .opt { font-weight: 400; color: var(--muted); font-size: 13px; }
+    .alt { text-align: center; color: var(--muted); font-size: 15px; }
+    .alt a { color: var(--ink); }
+    .operator { margin-top: 20px; width: 100%; max-width: 420px; color: var(--muted); font-size: 14px; text-align: center; }
+    .operator summary { cursor: pointer; list-style: none; }
+    .operator summary::-webkit-details-marker { display: none; }
+    .operator-form { display: grid; gap: 10px; text-align: left; margin-top: 12px; }
+    .radios { display: flex; gap: 18px; font-weight: 400; }
+    .week-nav { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .week { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 8px; overflow-x: auto; }
+    .day { min-height: 150px; border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: var(--soft); }
+    .day.today { background: #fff; border-color: #000; }
+    .day-h { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+    .card-post { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px; font-size: 12px; margin-bottom: 8px; }
+    .chip { font-size: 10px; padding: 1px 7px; border-radius: 999px; background: #eef1f5; }
+    .chip.yes { background: #f3f3f4; }
+    .chip.auto { background: #eafaf0; color: #1a7f4e; }
+    .pillar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .choice {
+      display: flex; gap: 12px; align-items: flex-start; padding: 16px;
+      border: 1px solid var(--line); border-radius: 14px; cursor: pointer; margin-bottom: 10px;
+    }
+    .choice.disabled { opacity: .5; cursor: not-allowed; }
+    .oauth { min-height: 100svh; display: grid; place-items: center; background: var(--soft); padding: 24px; }
+    .oauth-card {
+      background: #fff; border-radius: 20px; padding: 36px 28px; max-width: 420px; width: 100%;
+      box-shadow: 0 20px 60px -30px rgba(0,0,0,.3);
+    }
+    .doc p { font-size: 18px; color: var(--muted); }
+    .files { display: grid; grid-template-columns: 180px 1fr; gap: 16px; }
+    .files nav a {
+      display: block; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: var(--muted); font-size: 14px;
+    }
+    .files nav a.on { background: var(--soft); color: var(--ink); }
+    .toggle { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .brand-card {
+      display: block; text-decoration: none; padding: 18px; border: 1px solid var(--line);
+      border-radius: 16px; margin-bottom: 10px;
+    }
+    .brand-card:hover { background: var(--soft); }
+    .toast {
+      position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+      background: #000; color: #fff; padding: 12px 18px; border-radius: 980px;
+      font-size: 15px; z-index: 20; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    .toast.show { opacity: 1; }
+    .proto {
+      position: fixed; right: 16px; bottom: 16px; z-index: 50;
+      background: #1d1d1f; color: #fff; border-radius: 16px; padding: 12px 14px;
+      font-size: 12px; width: 220px;
+    }
+    .proto summary { cursor: pointer; font-weight: 600; list-style: none; }
+    .proto nav { display: grid; gap: 4px; margin-top: 10px; }
+    .proto a, .proto button {
+      color: rgba(255,255,255,.8); text-decoration: none; background: none; border: 0;
+      text-align: left; padding: 4px 0; font-size: 12px;
+    }
+    .proto a:hover, .proto button:hover { color: #fff; }
+    .proto .note { color: rgba(255,255,255,.5); margin: 8px 0 0; }
+    .mark {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: block; object-fit: cover; flex: 0 0 auto;
+    }
+    .mark-bare {
+      width: 40px; height: 40px; border-radius: 0;
+      display: block; object-fit: contain; flex: 0 0 auto;
+    }
+    .rail .mark, .topbar .brand .mark,
+    .rail .mark-bare, .topbar .brand .mark-bare { width: 28px; height: 28px; }
+    .cat-spot {
+      display: flex; justify-content: center; margin: 0 auto 18px;
+    }
+    .cat-spot .mark-bare { width: 52px; height: 52px; }
+    .cat-spot.sm .mark-bare { width: 52px; height: 52px; }
+    .close .cat-spot { margin-bottom: 22px; }
+    .close .cat-spot .mark { width: 48px; height: 48px; margin: 0 auto; }
+    .footer-brand {
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .footer-brand .mark { width: 22px; height: 22px; opacity: .9; }
+    .auth-mark { display: flex; justify-content: center; margin-bottom: 18px; }
+    .auth-mark .mark-bare { width: 56px; height: 56px; }
+
+    @media (max-width: 980px) {
+      .desk, .desk.three {
+        grid-template-columns: 1fr;
+        overflow-x: hidden;
+        width: 100%;
+        max-width: 100vw;
+      }
+      .topbar {
+        display: flex; align-items: center; gap: 10px;
+        position: sticky; top: 0; z-index: 30;
+        padding: 10px 14px;
+        padding-top: max(10px, env(safe-area-inset-top, 0px));
+        background: rgba(255,255,255,.96);
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(12px);
+      }
+      .topbar .brand {
+        display: inline-flex; align-items: center; gap: 8px;
+        color: var(--ink); text-decoration: none; font-size: 17px; font-weight: 600;
+        letter-spacing: -0.02em; flex: 1;
+      }
+      .topbar .brand .mark { width: 28px; height: 28px; }
+      .topbar .brand .mark-bare { width: 28px; height: 28px; }
+      .menu-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 44px; height: 44px; border: 0; border-radius: 12px;
+        background: var(--soft); color: var(--ink); padding: 0; flex: 0 0 auto;
+      }
+      .menu-btn svg { width: 20px; height: 20px; display: block; }
+      .topbar .ghost { flex: 0 0 auto; padding: 8px 4px; }
+      .scrim {
+        display: none; position: fixed; inset: 0; z-index: 40;
+        background: rgba(0,0,0,.4); border: 0; padding: 0; cursor: pointer;
+      }
+      .desk.menu-open .scrim { display: block; }
+      .desk.menu-open { overflow: hidden; }
+      body:has(.desk.menu-open) { overflow: hidden; }
+      .rail {
+        position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+        width: min(300px, 86vw);
+        padding: 18px 14px calc(24px + env(safe-area-inset-bottom, 0px));
+        padding-top: max(18px, env(safe-area-inset-top, 0px));
+        background: #f7f7f8;
+        box-shadow: 16px 0 40px -24px rgba(0,0,0,.35);
+        transform: translateX(-105%);
+        transition: transform .22s ease;
+        overflow-y: auto; -webkit-overflow-scrolling: touch;
+      }
+      .desk.menu-open .rail { transform: translateX(0); }
+      .rail .brand { display: none; }
+      .rail-nav { gap: 2px; }
+      .rail-nav a, .rail .navb {
+        padding: 14px 14px; font-size: 17px; border-radius: 12px;
+      }
+      .rail-nav a.on { background: #fff; color: var(--ink); box-shadow: 0 1px 0 var(--line); }
+      .rail .spacer { min-height: 24px; }
+      .stage {
+        margin: 0; border-radius: 0;
+        min-height: calc(100dvh - 56px);
+        width: 100%; max-width: 100%;
+        overflow-x: hidden;
+      }
+      .desk.three .stage { margin: 0; }
+      .aside {
+        margin: 0; border-radius: 0; padding: 20px 18px 32px;
+        width: 100%; max-width: 100%; overflow-x: hidden;
+      }
+      .page { padding: 24px 18px 48px; overflow-x: hidden; }
+      .chat { padding: 18px 16px 8px; }
+      .dock { padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
+      .files { grid-template-columns: 1fr 1fr; }
+      .doodle-arrow-yes, .doodle-how, .doodle-save, .doodle-cta, .doodle-loop { display: none; }
+      .ideas { padding: 48px 20px 56px; }
+      .how {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        max-width: 560px;
+      }
+      .how > li { min-height: 0; border-radius: 22px; }
+      .how > li > a.how-card {
+        flex-direction: row;
+        align-items: stretch;
+        min-height: 148px;
+      }
+      .how-visual {
+        flex: 0 0 42%;
+        width: 42%;
+        height: auto;
+        min-height: 148px;
+        padding: 14px;
+      }
+      .how-visual .cap {
+        font-size: 13px;
+        padding: 10px 12px;
+        border-radius: 16px 16px 16px 6px;
+        max-width: 100%;
+      }
+      .how-yes { font-size: 22px; padding: 10px 20px; }
+      .how-copy { flex: 1; min-width: 0; padding: 16px 16px 18px; display: flex; flex-direction: column; justify-content: center; }
+      .how-copy h3 { font-size: 18px; margin: 4px 0 6px; }
+      .how-copy p { font-size: 14px; line-height: 1.4; }
+      .band { padding: 56px 20px 64px; }
+      .who { gap: 14px; margin: 28px 0 36px; grid-template-columns: 1fr; }
+      .who-card {
+        flex-direction: row; align-items: flex-start; gap: 14px;
+        padding: 0; border-radius: 0;
+      }
+      .who-art {
+        width: 72px; height: 72px; margin: 0; border-radius: 14px;
+      }
+      .who-art svg { width: 48px; height: 48px; }
+      .who h3 { font-size: 19px; margin-bottom: 4px; }
+      .who p { font-size: 15px; }
+      .job-strip { gap: 6px; margin-bottom: 28px; justify-content: flex-start; }
+      .job-strip li { font-size: 12px; padding: 7px 10px; }
+      .channels {
+        grid-template-columns: 1fr 1fr;
+        max-width: none;
+        gap: 12px;
+        margin: 8px 0 20px;
+      }
+      .channel {
+        flex-direction: row;
+        justify-content: flex-start;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 16px;
+        gap: 12px;
+      }
+      .channel svg { width: 26px; height: 26px; flex-shrink: 0; }
+      .channel span { font-size: 14px; text-align: left; }
+      .product-frame {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 22px;
+      }
+      .pf { padding: 16px; border-radius: 16px; }
+      .rrow { font-size: 14px; gap: 12px; flex-wrap: wrap; }
+      .file { font-size: 12.5px; padding: 12px; }
+      .dest-note { margin-bottom: 28px; }
+      .plans {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        max-width: 420px;
+      }
+      .plan { padding: 22px 20px 24px; border-radius: 22px; gap: 12px; }
+      .plan-price { font-size: clamp(36px, 10vw, 44px); }
+      .plan-blurb { font-size: 16px; }
+      .plan-list { font-size: 15px; gap: 8px; }
+      .plan .pill-dark { width: 100%; text-align: center; }
+      .trust-grid { grid-template-columns: 1fr; gap: 10px; }
+      .trust-card { padding: 20px 18px 22px; }
+      .trust-ico { width: 40px; height: 40px; margin-bottom: 10px; }
+      .files { grid-template-columns: 1fr; }
+      .files nav { display: flex; gap: 6px; overflow-x: auto; max-width: 100%; }
+      .week {
+        display: flex; gap: 8px; overflow-x: auto; max-width: 100%;
+        padding-bottom: 8px; -webkit-overflow-scrolling: touch;
+      }
+      .week .day { flex: 0 0 148px; min-width: 148px; }
+      .bubble { max-width: 92%; }
+      .bubble img { max-width: 100%; height: auto; }
+      .draft { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .nav { padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top, 0px)); }
+      .nav-links { gap: 6px 14px; }
+      .nav-links a { font-size: 14px; }
+      .hero-copy { padding-top: 80px; }
+      .h1 { font-size: clamp(40px, 11vw, 52px); margin-bottom: 18px; }
+      .trust { font-size: 16px; padding: 0 8px; }
+      .pill { font-size: 16px; padding: 12px 20px; }
+      .thread.closeup .in {
+        left: 16px; right: 16px; bottom: 12svh; max-width: none;
+      }
+      .thread.closeup .in p { font-size: 16px; }
+      .thread.closeup .yes-msg { right: 16px; bottom: 4svh; }
+      .ideas { padding: 40px 16px 48px; }
+      .how-visual { min-height: 128px; }
+      .how-copy h3 { font-size: 17px; }
+      .dest { font-size: 20px; line-height: 1.35; }
+      .channels { gap: 10px; }
+      .channel { padding: 12px 14px; }
+      .job-strip { max-width: none; }
+      .who-card { gap: 12px; padding: 0; }
+      .who-art { width: 64px; height: 64px; }
+      .who-art svg { width: 42px; height: 42px; }
+      .ask .composer, .dock .composer {
+        flex-direction: column; align-items: stretch;
+        border-radius: 20px; padding: 10px;
+      }
+      .ask .composer .pill-dark, .dock .composer .pill-dark { width: 100%; text-align: center; }
+      .footer { padding: 24px 16px 40px; flex-direction: column; align-items: flex-start; }
+      .draft { grid-template-columns: 1fr; }
+      .bubble img { width: 180px; height: 180px; }
+      .bubble { max-width: 92%; }
+      .auth { padding: 32px 16px 48px; }
+      .auth .page-h1 { font-size: 32px; }
+      .radios { flex-direction: column; gap: 10px; }
+      .proto {
+        right: 10px; bottom: 10px; width: min(196px, calc(100vw - 20px));
+        max-height: 42vh; overflow: auto;
+      }
+      .toast { bottom: 16px; left: 12px; right: 12px; transform: none; text-align: center; }
+      .close { padding: 64px 20px 56px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="toast" id="toast"></div>
+  <details class="proto">
+    <summary>Prototype jumps</summary>
+    <nav>
+      <a href="#/">Landing</a>
+      <a href="#/signup">Sign up</a>
+      <a href="#/login">Log in</a>
+      <a href="#/home">Thread</a>
+      <a href="#/plan">Calendar</a>
+      <a href="#/routines">Routines</a>
+      <a href="#/memory">Memory</a>
+      <a href="#/connections">Connections</a>
+      <a href="#/operator">Operator</a>
+      <a href="#/brand">Approvals</a>
+      <button type="button" data-state="setup">State: setting up</button>
+      <button type="button" data-state="live">State: connected</button>
+    </nav>
+    <p class="note">Clickable mock. Download this file when you’re happy.</p>
+  </details>
+
+  <script>
+    const PHOTO = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=1800&q=80";
+    const CROISSANT = "https://images.unsplash.com/photo-1555507036-ab1f4038808a?auto=format&fit=crop&w=800&q=80";
+
+    const mark = (cls = "mark") =>
+      `<img class="${cls}" src="kip-mark.png" width="36" height="36" alt="" />`;
+    const cat = (cls = "mark-bare") =>
+      `<img class="${cls}" src="kip-cat.png" width="40" height="40" alt="Kip" />`;
+    const catSpot = (size = "") =>
+      `<div class="cat-spot ${size}" aria-hidden="true">${cat()}</div>`;
+
+    /* Black dotted/sketch accents — sparse, decorative only */
+    const doodles = {
+      underline: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 200 16" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <path d="M10 9c20-5 40 5 60 0s40-5 60 0 40 5 60 0"/>
+        </svg>`,
+      squiggle: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 200 20" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <path d="M8 12c22-8 36 8 56 0s34-10 52 2 36 6 68-4"/>
+        </svg>`,
+      arrowYes: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 92 78" aria-hidden="true">
+          <path d="M12 12c18 6 38 28 48 48"/>
+          <path class="ink" d="M52 52l10 10 2-14" style="stroke-dasharray:none;stroke-width:1.7"/>
+          <path class="ink" d="M52 52l14 2" style="stroke-dasharray:none;stroke-width:1.7"/>
+        </svg>`,
+      loop: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 120 70" aria-hidden="true">
+          <path d="M18 42c8-22 42-28 58-12s6 36-16 40c-18 4-34-10-30-24 3-12 18-16 28-10"/>
+        </svg>`,
+      save: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 78 54" aria-hidden="true">
+          <path d="M8 40c14-4 28-22 42-28"/>
+          <path class="ink" d="M42 8l10 6-12 4" style="stroke-dasharray:none;stroke-width:1.7"/>
+          <circle class="dot" cx="14" cy="44" r="3" style="stroke-dasharray:1 3;stroke-width:1.3"/>
+        </svg>`,
+      cta: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 70 58" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <path d="M52 8c-2 12-10 24-28 34"/>
+          <path style="stroke-dasharray:none;stroke-width:1.7" d="M18 34l8 10 12-6"/>
+        </svg>`,
+      ticks: (cls = "") => `
+        <svg class="sketch dash draw ${cls}" viewBox="0 0 64 48" aria-hidden="true">
+          <path d="M8 28l10 10 20-24"/>
+          <path class="dot" d="M40 34c6-2 12-2 18 2" style="stroke-dasharray:1.2 4;stroke-width:1.4"/>
+        </svg>`,
+    };
+
+    /* Line icons for About / Trust — same ink language as doodles */
+    const icons = {
+      shop: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M18 38l8-18h44l8 18"/><path d="M22 38v34h52V38"/><path d="M38 72V52h20v20"/><circle cx="30" cy="46" r="2.2" class="ink-fill"/><circle cx="66" cy="46" r="2.2" class="ink-fill"/></svg>`,
+      creator: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><rect x="22" y="18" width="52" height="60" rx="8"/><circle cx="48" cy="42" r="12"/><path d="M32 68c4-8 12-12 16-12s12 4 16 12"/><path d="M58 22l8-6 4 8"/><path d="M66 20l4 2"/></svg>`,
+      founder: () => `<svg viewBox="0 0 96 96" aria-hidden="true"><path d="M28 70V40l20-14 20 14v30"/><path d="M40 70V52h16v18"/><path d="M20 70h56"/><path d="M48 26v-6"/><circle cx="48" cy="16" r="3"/></svg>`,
+      caption: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h10M5 17h12"/></svg>`,
+      calendar: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>`,
+      nudge: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v2M12 18v2M6 12H4M20 12h-2"/><circle cx="12" cy="12" r="5"/><path d="M12 9v3l2 2"/></svg>`,
+      recap: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h10M7 12h7M7 16h9"/><path d="M5 5h14v14H5z"/></svg>`,
+      yes: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L19 7"/></svg>`,
+      autopilot: () => `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><path d="M12 8v4l3 2"/></svg>`,
+      ig: () => `<svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/></svg>`,
+      fb: () => `<svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></svg>`,
+      x: () => `<svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>`,
+      threads: () => `<svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 0 1 3.02.142c-.126-.742-.375-1.332-.75-1.757-.513-.586-1.308-.883-2.359-.89h-.029c-.844 0-1.992.232-2.721 1.32L7.734 7.847c.98-1.454 2.568-2.256 4.478-2.256h.044c3.194.02 5.097 1.975 5.287 5.388.108.046.216.094.321.142 1.49.7 2.58 1.761 3.154 3.07.797 1.82.871 4.79-1.548 7.158-1.85 1.81-4.094 2.628-7.277 2.65Zm1.003-11.69c-.242 0-.487.007-.739.021-1.836.103-2.98.946-2.916 2.143.067 1.256 1.452 1.839 2.784 1.767 1.224-.065 2.818-.543 3.086-3.71a10.5 10.5 0 0 0-2.215-.221z"/></svg>`,
+      lock: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="12" y="22" width="24" height="18" rx="3"/><path d="M18 22v-6a6 6 0 0 1 12 0v6"/><circle cx="24" cy="31" r="2" class="ink-fill"/></svg>`,
+      control: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="14"/><circle cx="24" cy="24" r="4"/><path d="M24 10v4M24 34v4M10 24h4M34 24h4"/></svg>`,
+      visible: () => `<svg class="trust-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M6 24s8-12 18-12 18 12 18 12-8 12-18 12S6 24 6 24z"/><circle cx="24" cy="24" r="5"/></svg>`,
+    };
+
+    const state = {
+      billing: "monthly",
+      connected: false,
+      phoneSet: false,
+      x: false,
+      threads: false,
+      name: "Harbour Espresso",
+      phone: "0412 000 000",
+      page: "Harbour Espresso",
+      ig: "harbourespresso",
+      banner: "",
+      file: "memory.md",
+      skills: { draft: true, replies: true, reports: true, ads: false },
+      memory: "Weekly report goes out Mondays, 9am.\\nNever post without a yes.\\nTone is warm, short, no hype.\\nAlmond croissant is the hero pastry.",
+      messages: [
+        { who: "you", photo: true },
+        { who: "kip", text: "Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.\\n\\nReply yes to post." },
+        { who: "you", text: "yes" }
+      ],
+      waiting: [
+        { id: "w1", when: "Thu 11 Sep, 7:30 am", caption: "Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go." }
+      ],
+      upcoming: [
+        { id: "u1", when: "Fri 12 Sep, 8:00 am", caption: "Behind the bar before open. Steam, sunlight, same playlist as last year." },
+        { id: "u2", when: "Sat 13 Sep, 9:00 am", caption: "Almond croissant, still warm. That’s the post." }
+      ]
+    };
+
+    const routes = {};
+    const route = (path, fn) => { routes[path] = fn; };
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+    }
+    function go(path) { location.hash = path.startsWith("#") ? path : "#" + path; }
+
+    function rail(active) {
+      return `
+        <aside class="rail" id="app-menu" aria-label="Menu">
+          <a class="brand" href="#/home">${cat("mark-bare")} <span>Kip</span></a>
+          <nav class="rail-nav">
+            <a href="#/home" class="${active === "home" ? "on" : ""}">Thread</a>
+            <a href="#/plan" class="${active === "plan" ? "on" : ""}">Calendar</a>
+            <a href="#/routines" class="${active === "routines" ? "on" : ""}">Routines</a>
+            <a href="#/memory" class="${active === "memory" ? "on" : ""}">Memory</a>
+            <a href="#/connections" class="${active === "connections" ? "on" : ""}">Connections</a>
+            <a href="#/content-plan" class="${active === "content" ? "on" : ""}">Plan</a>
+            <a href="#/operator">Operator</a>
+          </nav>
+          <div class="spacer"></div>
+          <button class="navb rail-out" data-go="#/">Sign out</button>
+        </aside>`;
+    }
+
+    function topbar() {
+      return `
+        <header class="topbar">
+          <button class="menu-btn" type="button" data-menu="open" aria-label="Open menu" aria-controls="app-menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16"/>
+            </svg>
+          </button>
+          <a class="brand" href="#/home">${cat("mark-bare")} <span>Kip</span></a>
+          <button class="ghost" type="button" data-go="#/">Sign out</button>
+        </header>
+        <button class="scrim" type="button" data-menu="close" aria-label="Close menu"></button>`;
+    }
+
+    function desk(active, main, aside) {
+      return `<div class="desk ${aside ? "three" : ""}">${topbar()}${rail(active)}${main}${aside || ""}</div>`;
+    }
+
+    function thread(tone, size) {
+      const img = size === "closeup"
+        ? `<div class="photo-bleed photo" role="img" aria-label="A coffee and an almond croissant" style="background-image:url('${PHOTO}');background-size:cover;background-position:center"></div>`
+        : `<img class="photo" src="${CROISSANT}" alt="A photo of a coffee and an almond croissant" />`;
+      return `
+        <figure class="thread ${tone} ${size}" aria-label="A text thread: a photo sent, a caption back, the word yes">
+          <div class="msg out photo-msg">${img}</div>
+          <div class="msg in"><p>Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.<br><br>Reply yes to post.</p></div>
+          <div class="msg out yes-msg"><p class="yes">yes</p></div>
+        </figure>`;
+    }
+
+    route("/", () => `
+      <main class="lp">
+        <header class="nav" id="lp-nav">
+          <a class="brand" href="#/" data-scroll="top">${mark()} <span>Kip</span></a>
+          <nav class="nav-links" aria-label="Landing">
+            <a href="#about" data-scroll="about">About</a>
+            <a href="#pricing" data-scroll="pricing">Pricing</a>
+            <a class="nav-login" href="#/login">Login</a>
+          </nav>
+        </header>
+        <section class="hero" id="top" aria-label="Kip">
+          <div class="hero-copy">
+            <h1 class="h1">Text a photo.<br>It’s posted.</h1>
+            <a class="pill" href="#/signup">Get started</a>
+            <p class="trust">Kip can take the lot. Nothing posts without your yes.</p>
+          </div>
+          <div class="hero-product">${thread("dark", "closeup")}</div>
+        </section>
+        <section class="ideas" id="how" aria-label="How Kip works">
+          <div class="ideas-head reveal">
+            ${catSpot()}
+            <h2 class="sketch-title">Three moves.${doodles.underline()}</h2>
+            <p>That’s the loop. Kip can also run the rest.</p>
+          </div>
+          <ol class="how">
+            ${doodles.ticks("doodle-how sketch")}
+            <li class="reveal reveal-d1">
+              <a class="how-card" href="#/signup">
+                <div class="how-visual">
+                  <img src="${CROISSANT}" alt="A photo of an almond croissant" />
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">01</div>
+                  <h3>You send a photo.</h3>
+                  <p>From the floor, in the thread. That’s the brief.</p>
+                </div>
+              </a>
+            </li>
+            <li class="reveal reveal-d2">
+              <a class="how-card" href="#/signup">
+                <div class="how-visual">
+                  <p class="cap">Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go.</p>
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">02</div>
+                  <h3>Kip writes it.</h3>
+                  <p>In your voice. In the same thread you sent the photo.</p>
+                </div>
+              </a>
+            </li>
+            <li class="reveal reveal-d3">
+              <a class="how-card with-sketch" href="#/signup">
+                ${doodles.arrowYes("doodle-arrow-yes sketch")}
+                <div class="how-visual dark">
+                  <span class="how-yes">yes</span>
+                </div>
+                <div class="how-copy">
+                  <div class="how-n">03</div>
+                  <h3>You say yes.</h3>
+                  <p>Instagram, Facebook, X, Threads. Organic, and done.</p>
+                </div>
+              </a>
+            </li>
+          </ol>
+        </section>
+
+        <section class="band plate" id="about">
+          <div class="band-inner">
+            <h2 class="sketch-title reveal">Hand it the whole job.${doodles.underline()}</h2>
+            <p class="sub reveal reveal-d1">Kip will run organic social until you say otherwise. Stay in the thread and tap yes, or put it on autopilot and get your evenings back.</p>
+            <ul class="job-strip reveal reveal-d1" aria-label="What Kip handles">
+              <li>${icons.caption()} Captions</li>
+              <li>${icons.calendar()} The calendar</li>
+              <li>${icons.nudge()} Monday nudge</li>
+              <li>${icons.recap()} Friday recap</li>
+              <li>${icons.yes()} Tap yes</li>
+              <li>${icons.autopilot()} Autopilot</li>
+            </ul>
+            <div class="who">
+              <article class="who-card reveal reveal-d1">
+                <div class="who-art">${icons.shop()}</div>
+                <div class="who-body">
+                  <h3>The shop</h3>
+                  <p>You were busy making the thing. Send a photo from the floor. Or don’t. Kip already knows the week.</p>
+                </div>
+              </article>
+              <article class="who-card reveal reveal-d2">
+                <div class="who-art">${icons.creator()}</div>
+                <div class="who-body">
+                  <h3>The creator</h3>
+                  <p>Same voice, every channel, without becoming a content intern. You make the work. Kip ships it.</p>
+                </div>
+              </article>
+              <article class="who-card reveal reveal-d3">
+                <div class="who-art">${icons.founder()}</div>
+                <div class="who-body">
+                  <h3>The founder</h3>
+                  <p>You should not also be the social media manager. This is that hire, without the awkward stand-up.</p>
+                </div>
+              </article>
+            </div>
+            <p class="dest sr-only">Instagram · Facebook · X · Threads</p>
+            <div class="channels reveal" aria-label="Destinations">
+              <div class="channel">${icons.ig()}<span>Instagram</span></div>
+              <div class="channel">${icons.fb()}<span>Facebook</span></div>
+              <div class="channel">${icons.x()}<span>X</span></div>
+              <div class="channel">${icons.threads()}<span>Threads</span></div>
+            </div>
+            <p class="dest-note reveal reveal-d1">Organic social. That’s the niche. Kip intends to be first in it.</p>
+            <div class="product-frame with-sketch reveal reveal-d2">
+              ${doodles.loop("doodle-loop sketch")}
+              <div class="pf">
+                <h4>On its plate</h4>
+                <div class="rrow"><span>Weekly check-in</span><span class="opt">Mondays · 9:00 am</span></div>
+                <div class="rrow"><span>Friday recap</span><span class="opt">Fridays · 4:00 pm</span></div>
+                <div class="rrow"><span>Quiet reminder</span><span class="opt">If no photo in 10 days</span></div>
+                <div class="rrow"><span>Autopilot</span><span class="opt">Heads-up, then it posts</span></div>
+              </div>
+              <div class="pf">
+                <h4>memory.md</h4>
+                <div class="file">Organic only: Instagram, Facebook, X, Threads.<br>Never post without a yes, unless autopilot is on.<br>Tone is warm, short, no hype.<br>Almond croissant is the hero pastry.</div>
+              </div>
+            </div>
+            <div class="ask reveal" style="margin-top:48px">
+              <form class="composer" data-landchat>
+                <input name="q" placeholder="Tell Kip you’re done doing social yourself…" />
+                <button class="pill-dark" type="submit">Get started</button>
+              </form>
+              <div class="chips">
+                <a class="chip-link" href="#/signup">I’m a café</a>
+                <a class="chip-link" href="#/signup">I’m a creator</a>
+                <a class="chip-link" href="#/signup">I’m a founder</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="band trust-band" id="privacy" aria-label="Privacy and control">
+          <div class="band-inner">
+            <div class="reveal">${catSpot("sm")}</div>
+            <h2 class="reveal reveal-d1">Private, and in your control.</h2>
+            <p class="sub reveal reveal-d1">Your data stays yours. Encrypted by default. Never used to train models.</p>
+            <div class="trust-grid">
+              <article class="trust-card reveal reveal-d1">
+                ${icons.lock()}
+                <h3>Private.</h3>
+                <p>Photos, captions, and brand memory aren’t sold, shared for ads, or used to train anyone’s model, ours or a provider’s.</p>
+              </article>
+              <article class="trust-card reveal reveal-d2">
+                ${icons.control()}
+                <h3>In your control.</h3>
+                <p>You set what Kip can touch. Approvals in the thread. Revoke Meta, X, or Threads anytime. Pause or wipe when you ask.</p>
+              </article>
+              <article class="trust-card reveal reveal-d3">
+                ${icons.visible()}
+                <h3>Visible.</h3>
+                <p>Publishes, approvals, and access leave a trail. Tokens stay encrypted. Your brand doesn’t mingle with anyone else’s.</p>
+              </article>
+            </div>
+            <p class="trust-foot reveal">Encrypted in transit and at rest. Disconnect Meta, X, or Threads anytime. Email will@jmcalder.com to wipe what we hold.</p>
+          </div>
+        </section>
+
+        <section class="band pricing" id="pricing" aria-label="Pricing">
+          <div class="band-inner">
+            <h2 class="sketch-title reveal">Simple plans. Real work.${doodles.underline()}</h2>
+            <p class="sub reveal reveal-d1">Organic social, off your plate. No credit maths.</p>
+            <div class="bill-toggle reveal reveal-d1" role="group" aria-label="Billing period">
+              <button type="button" class="${state.billing === "monthly" ? "on" : ""}" data-bill="monthly">Monthly</button>
+              <button type="button" class="${state.billing === "annual" ? "on" : ""}" data-bill="annual">Annual <span class="opt" style="font-weight:500">−20%</span></button>
+              ${doodles.save("doodle-save sketch")}
+            </div>
+            <div class="plans">
+              <article class="plan reveal reveal-d1">
+                <p class="plan-name">Pro</p>
+                <p class="plan-price" data-price-monthly="79" data-price-annual="63">$${state.billing === "annual" ? "63" : "79"} <span>/mo</span></p>
+                <p class="plan-blurb">One brand. Everyday posting. You stay in the thread.</p>
+                <ul class="plan-list">
+                  <li>Instagram, Facebook, X, Threads</li>
+                  <li>Drafts in your voice</li>
+                  <li>Approvals in the thread</li>
+                  <li>Calendar + content plan</li>
+                  <li>Weekly check-in + Friday recap</li>
+                </ul>
+                <a class="pill-dark" href="#/signup">Start Pro</a>
+              </article>
+              <article class="plan featured reveal reveal-d2">
+                <p class="plan-name">Max</p>
+                <p class="plan-price" data-price-monthly="149" data-price-annual="119">$${state.billing === "annual" ? "119" : "149"} <span>/mo</span></p>
+                <p class="plan-blurb">Hand Kip the lot. Autopilot when you want evenings back.</p>
+                <ul class="plan-list">
+                  <li>Everything in Pro</li>
+                  <li>Autopilot with a heads-up</li>
+                  <li>Editable memory files</li>
+                  <li>Routines you write in a sentence</li>
+                  <li>Priority setup with Pulse</li>
+                </ul>
+                <a class="pill-dark" href="#/signup">Start Max</a>
+              </article>
+            </div>
+            <p class="price-note reveal">Prices in AUD. Cancel anytime. Annual billed up front${state.billing === "annual" ? " · shown as monthly equivalent" : ""}.</p>
+          </div>
+        </section>
+
+        <section class="close reveal" id="get-started">
+          <div class="cat-spot" aria-hidden="true">${mark()}</div>
+          <h2 class="h1">Text a photo.<br>It’s posted.</h2>
+          <p class="trust">Or don’t. Kip will.</p>
+          <div class="close-cta with-sketch">
+            ${doodles.cta("doodle-cta sketch on-dark")}
+            <a class="pill" href="#/signup">Get started</a>
+          </div>
+        </section>
+        <footer class="footer">
+          <span class="footer-brand">${mark()} <span>© 2026 Pulse Social Media</span></span>
+          <span class="footer-links">
+            <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>
+            <a href="#/privacy">Privacy</a>
+            <a href="#/terms">Terms</a>
+            <a href="#/deletion">Data deletion</a>
+          </span>
+        </footer>
+      </main>`);
+
+    route("/login", () => `
+      <main class="auth">
+        <form class="auth-card" data-login>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
+          <h1 class="page-h1">Log in</h1>
+          <p class="lead" style="margin:0">Enter your mobile number and Kip will text you a code.</p>
+          <label class="label">Mobile number
+            <input name="phone" type="tel" required placeholder="04xx xxx xxx" value="0412 000 000" />
+          </label>
+          <button class="pill-dark" type="submit">Send me a code</button>
+          <p class="alt">New here? <a href="#/signup">Create an account</a></p>
+        </form>
+        <details class="operator">
+          <summary>Operator login</summary>
+          <form class="operator-form" data-operator>
+            <label class="label">Operator password
+              <input type="password" name="password" value="operator" />
+            </label>
+            <button class="pill-dark" type="submit">Sign in as operator</button>
+            <span class="opt">Break-glass access. Any password works in this mock.</span>
+          </form>
+        </details>
+      </main>`);
+
+    route("/signup", () => `
+      <main class="auth">
+        <form class="auth-card" data-signup>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
+          <h1 class="page-h1">Meet Kip</h1>
+          <p class="lead" style="margin:0">Kip will message you. No password. Organic social, off your plate.</p>
+          <label class="label">Your name or business name<input name="name" required value="Harbour Espresso" /></label>
+          <label class="label">Mobile number
+            <input name="phone" type="tel" required placeholder="04xx xxx xxx" value="0412 000 000" />
+            <span class="opt">This is how you log in.</span>
+          </label>
+          <label class="label">Email <span class="opt">(optional)</span><input name="email" type="email" /></label>
+          <fieldset style="border:1px solid var(--line);border-radius:12px;padding:12px">
+            <legend class="opt">I’m a…</legend>
+            <div class="radios" style="flex-wrap:wrap">
+              <label><input type="radio" name="account_type" value="shop" checked /> Shop</label>
+              <label><input type="radio" name="account_type" value="creator" /> Creator</label>
+              <label><input type="radio" name="account_type" value="founder" /> Founder</label>
+            </div>
+          </fieldset>
+          <label class="label">Website or Instagram <span class="opt">(optional)</span><input name="website" placeholder="https://…" /></label>
+          <button class="pill-dark" type="submit">Create account</button>
+          <p class="alt">Already have an account? <a href="#/login">Log in</a></p>
+        </form>
+      </main>`);
+
+    route("/verify", () => `
+      <main class="auth">
+        <form class="auth-card" data-verify>
+          <div class="auth-mark" aria-hidden="true">${cat()}</div>
+          <h1 class="page-h1">Enter your code</h1>
+          <p class="lead" style="margin:0">Kip just messaged a 6-digit code to ${state.phone}. Any 6 digits work here.</p>
+          <label class="label">Code<input name="code" inputmode="numeric" maxlength="6" required value="123456" /></label>
+          <button class="pill-dark" type="submit">Verify and continue</button>
+        </form>
+      </main>`);
+
+    function needsRail() {
+      return `
+        <aside class="aside">
+          <h2>Needs a yes</h2>
+          ${state.waiting.length ? state.waiting.map(p => `
+            <p class="caption">${p.caption}</p>
+            <p class="opt">${p.when}</p>
+            <div class="draft-actions">
+              <button class="text-btn" data-approve="${p.id}">Approve</button>
+              <button class="text-btn bad" data-remove="${p.id}">Remove</button>
+            </div>`).join("") : `<p class="empty">Nothing waiting. Reply yes in the thread.</p>`}
+          <h2 style="margin-top:28px">Upcoming</h2>
+          ${state.upcoming.map(p => `<div class="rrow"><span>${p.when}</span></div>`).join("") || `<p class="empty">Nothing scheduled.</p>`}
+          ${!state.connected ? `<p style="margin-top:24px"><a class="pill-dark" href="#/oauth-fb">Connect Facebook</a></p>` : `<p class="empty" style="margin-top:24px">${state.page} · @${state.ig}</p>`}
+        </aside>`;
+    }
+
+    route("/home", () => desk("home", `
+      <section class="stage">
+        <div class="chat">
+          ${state.messages.map(m => {
+            if (m.photo) return `<div class="bubble you"><img src="${CROISSANT}" alt="Photo you sent" /></div>`;
+            return `<div class="bubble ${m.who === "kip" ? "kip" : "you"}"><p>${m.text.replace(/\\n/g, "<br>")}</p></div>`;
+          }).join("")}
+        </div>
+        <div class="dock">
+          <form class="composer" data-chat>
+            <input name="q" placeholder="Tell Kip what to post, or drop a photo…" required />
+            <button class="pill-dark" type="submit">Send</button>
+          </form>
+        </div>
+      </section>`, needsRail()));
+
+    route("/oauth-fb", () => `
+      <main class="oauth"><div class="oauth-card">
+        <h1 class="page-h1" style="font-size:28px">Continue with Facebook</h1>
+        <p class="lead">Fake Meta screen. Kip would like to manage your Pages and linked Instagram.</p>
+        <p style="display:flex;gap:10px"><a class="pill-dark" href="#/connect">Continue</a><a class="ghost" href="#/home">Cancel</a></p>
+      </div></main>`);
+
+    route("/connect", () => desk("connections", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Choose the account</h1>
+        <p class="lead">Pick the Facebook Page and linked Instagram Kip will post to.</p>
+        <form data-choose>
+          <label class="choice"><input type="radio" name="page" value="Harbour Espresso" checked /> <span><strong>Harbour Espresso</strong><br><span class="opt">Instagram: @harbourespresso</span></span></label>
+          <label class="choice"><input type="radio" name="page" value="Harbour Events" /> <span><strong>Harbour Events</strong><br><span class="opt">Instagram: @harbourevents</span></span></label>
+          <label class="choice disabled"><input type="radio" disabled /> <span><strong>Old pop-up page</strong><br><span class="opt">No Instagram linked</span></span></label>
+          <button class="pill-dark" type="submit">Connect this account</button>
+        </form>
+      </div></section>`));
+
+    route("/oauth-x", () => `
+      <main class="oauth"><div class="oauth-card">
+        <h1 class="page-h1" style="font-size:28px">Authorize Kip on X</h1>
+        <p class="lead">Fake X screen.</p>
+        <p style="display:flex;gap:10px"><button class="pill-dark" data-connect="x" type="button">Authorize app</button><a class="ghost" href="#/connections">Cancel</a></p>
+      </div></main>`);
+
+    route("/oauth-threads", () => `
+      <main class="oauth"><div class="oauth-card">
+        <h1 class="page-h1" style="font-size:28px">Authorize Kip on Threads</h1>
+        <p class="lead">Fake Threads screen.</p>
+        <p style="display:flex;gap:10px"><button class="pill-dark" data-connect="threads" type="button">Authorize app</button><a class="ghost" href="#/connections">Cancel</a></p>
+      </div></main>`);
+
+    route("/connections", () => desk("connections", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Connections</h1>
+        <p class="lead">Kip asks before it alters anything. Connect the places it may post.</p>
+        ${state.banner ? `<p class="banner ${state.banner.ok ? "ok" : "bad"}">${state.banner.text}</p>` : ""}
+        <article class="row">
+          <div class="setup-head"><span>Instagram & Facebook</span><span class="${state.connected ? "done" : "need"}">${state.connected ? "Connected" : "Needs you"}</span></div>
+          <p class="empty">${state.connected ? state.page + " · @" + state.ig : "Sign in with Facebook and choose the Page."}</p>
+          <p><a class="pill-dark" href="#/oauth-fb">${state.connected ? "Reconnect" : "Connect with Facebook"}</a></p>
+        </article>
+        <article class="row">
+          <div class="setup-head"><span>Phone</span><span class="${state.phoneSet ? "done" : "need"}">${state.phoneSet ? "Done" : "Needs you"}</span></div>
+          <form class="quiet-form" data-phone>
+            <input name="phone" required placeholder="04xx xxx xxx" value="${state.phoneSet ? state.phone : ""}" />
+            <button class="pill-dark" type="submit">${state.phoneSet ? "Update" : "Save number"}</button>
+          </form>
+        </article>
+        <article class="row">
+          <div class="setup-head"><span>X (optional)</span><span class="${state.x ? "done" : "need"}">${state.x ? "Connected" : "Off"}</span></div>
+          <p><a class="pill-dark" href="#/oauth-x">${state.x ? "Reconnect" : "Connect X"}</a></p>
+        </article>
+        <article class="row">
+          <div class="setup-head"><span>Threads (optional)</span><span class="${state.threads ? "done" : "need"}">${state.threads ? "Connected" : "Off"}</span></div>
+          <p><a class="pill-dark" href="#/oauth-threads">${state.threads ? "Reconnect" : "Connect Threads"}</a></p>
+        </article>
+      </div></section>`));
+
+    route("/plan", () => {
+      const days = ["Mon 8", "Tue 9", "Wed 10", "Thu 11", "Fri 12", "Sat 13", "Sun 14"].map((d, i) => {
+        const posts = [];
+        if (i === 3 && state.waiting[0]) posts.push({ ...state.waiting[0], chip: "Needs a yes", cls: "yes" });
+        if (i === 4 && state.upcoming[0]) posts.push({ ...state.upcoming[0], chip: "Autopilot", cls: "auto" });
+        if (i === 5 && state.upcoming[1]) posts.push({ ...state.upcoming[1], chip: "Autopilot", cls: "auto" });
+        return { label: d, today: i === 2, posts };
+      });
+      return desk("plan", `
+        <section class="stage"><div class="page">
+          <h1 class="page-h1">Calendar</h1>
+          <div class="week-nav">
+            <button class="ghost" type="button" data-toast="Previous week (mock)">← Prev</button>
+            <span class="opt">Week of 8 Sep</span>
+            <button class="ghost" type="button" data-toast="Next week (mock)">Next →</button>
+          </div>
+          <div class="week">
+            ${days.map(d => `
+              <div class="day ${d.today ? "today" : ""}">
+                <div class="day-h">${d.label}</div>
+                ${d.posts.map(p => `
+                  <div class="card-post">
+                    <div style="display:flex;justify-content:space-between;gap:6px"><strong>${(p.when.split(", ")[1] || "")}</strong><span class="chip ${p.cls}">${p.chip}</span></div>
+                    <div>${p.caption.slice(0, 64)}…</div>
+                    <button class="text-btn bad" data-remove="${p.id}">Remove</button>
+                  </div>`).join("") || `<span class="opt">—</span>`}
+              </div>`).join("")}
+          </div>
+          <div class="row" style="border:0">
+            <h2>Cadence</h2>
+            <p class="empty" style="margin-top:0">Autopilot still sends a heads-up before each post.</p>
+            ${[["#6366f1","Behind the scenes",2],["#ec4899","Product",2],["#10b981","Social proof",1]].map(([c,n,w]) => `
+              <form class="pillar" data-pillar>
+                <span class="dot" style="background:${c}"></span>
+                <strong style="flex:1">${n}</strong>
+                <label class="opt"><input type="number" value="${w}" min="0" max="14" style="width:64px" /> / week</label>
+                <label class="opt"><input type="checkbox" ${n==="Product"?"checked":""} /> Autopilot</label>
+                <button class="text-btn" type="submit">Save</button>
+              </form>`).join("")}
+          </div>
+        </div></section>`);
+    });
+
+    route("/routines", () => desk("routines", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Routines</h1>
+        <p class="lead">Whatever you do on repeat, hand it to Kip. A sentence is all it takes.</p>
+        <div class="rrow"><span>Weekly check-in</span><span class="opt">Mondays · 9:00 am</span></div>
+        <div class="rrow"><span>Friday recap</span><span class="opt">Fridays · 4:00 pm</span></div>
+        <div class="rrow"><span>Quiet reminder</span><span class="opt">If no photo in 10 days</span></div>
+        <form data-routine class="quiet-form" style="margin-top:22px">
+          <input name="r" placeholder="e.g. Nudge me every Thursday for a reel" required />
+          <button class="pill-dark" type="submit">Add routine</button>
+        </form>
+        <h2 style="margin-top:36px">Skills</h2>
+        <p class="empty" style="margin:0 0 8px">Kip picks the right one on its own. Flip any off.</p>
+        ${[["draft","Draft captions"],["replies","Reply to comments"],["reports","Weekly reports"],["ads","Paid ads"]].map(([k,n]) => `
+          <label class="toggle"><span>${n}</span>
+            <input type="checkbox" data-skill="${k}" ${state.skills[k] ? "checked" : ""} />
+          </label>`).join("")}
+      </div></section>`));
+
+    route("/memory", () => {
+      const files = {
+        "memory.md": state.memory,
+        "voice.md": "tone: warm, playful, concise\\ndos: talk like a local, name the pastry\\ndonts: no corporate, no hashtag dumps\\nemoji: sparingly",
+        "brand.md": state.name + "\\nInstagram @" + state.ig + "\\nPhone " + state.phone
+      };
+      const body = files[state.file] || files["memory.md"];
+      return desk("memory", `
+        <section class="stage"><div class="page">
+          <h1 class="page-h1">Memory</h1>
+          <p class="lead">Everything Kip knows, in plain files. Change it like a doc.</p>
+          <div class="files">
+            <nav>
+              ${["memory.md","voice.md","brand.md"].map(f => `<a href="#/memory" data-file="${f}" class="${state.file===f?"on":""}">${f}</a>`).join("")}
+            </nav>
+            <form data-memory>
+              <textarea name="body" style="min-height:280px;font-family:ui-monospace,Menlo,monospace;font-size:14px">${body.replace(/\\n/g, "\n")}</textarea>
+              <p style="margin-top:12px"><button class="pill-dark" type="submit">Save file</button></p>
+            </form>
+          </div>
+        </div></section>`);
+    });
+
+    route("/content-plan", () => desk("content", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Your content plan</h1>
+        <p class="lead">Quiet local café. Three to five posts a week. Warm, short, no hype.</p>
+        <p class="ok">Active. Reply yes in the thread to accept a new plan.</p>
+        ${[["Behind the scenes","2/wk · photo","Open, close, staff, the machine."],["Product","2/wk · photo","Coffee, pastry, the thing on the counter."],["Social proof","1/wk · photo","Regulars, reviews, a full room."]].map(([n,m,d]) => `<article class="row"><h2>${n}</h2><p class="muted" style="margin:0">${m}</p><p class="empty">${d}</p></article>`).join("")}
+      </div></section>`));
+
+    route("/operator", () => desk("home", `
+      <section class="stage"><div class="page">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <h1 class="page-h1">All brands</h1>
+          <a class="pill-dark" href="#/new-brand">Add brand</a>
+        </div>
+        <p class="lead">Every teammate Kip is running.</p>
+        <a class="brand-card" href="#/brand"><strong>Harbour Espresso</strong><p class="empty">@harbourespresso · setup done · active</p></a>
+        <a class="brand-card" href="#/brand"><strong>Northside Dental</strong><p class="empty">@northsidedental · setup in progress · active</p></a>
+        <a class="brand-card" href="#/brand"><strong>Willow & Co</strong><p class="empty">Not connected · paused</p></a>
+      </div></section>`));
+
+    route("/brand", () => desk("home", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Harbour Espresso</h1>
+        <p class="lead">Client approves · <a href="#/memory">Memory</a> · <a href="#/history">History</a></p>
+        <h2>Pending approvals</h2>
+        ${state.waiting.length ? state.waiting.map(p => `
+          <article class="row">
+            <img src="${CROISSANT}" alt="" style="width:140px;height:140px;object-fit:cover;border-radius:16px" />
+            <form data-edit="${p.id}" style="display:grid;gap:10px;margin-top:14px">
+              <label class="label">Caption<textarea name="caption">${p.caption}</textarea></label>
+              <p style="display:flex;gap:10px">
+                <button class="pill-dark" type="submit">Save and approve</button>
+                <button class="ghost" type="button" data-remove="${p.id}">Reject</button>
+              </p>
+            </form>
+          </article>`).join("") : `<p class="empty">Nothing waiting.</p>`}
+      </div></section>`));
+
+    route("/history", () => desk("home", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">History</h1>
+        <ul class="list">
+          <li class="draft"><span class="when">Mon 8 Sep</span><p class="caption">Rain. Flat whites. That’s the morning.</p></li>
+          <li class="draft"><span class="when">Sat 6 Sep</span><p class="caption">Almond croissant, still warm.</p></li>
+        </ul>
+      </div></section>`));
+
+    route("/new-brand", () => desk("home", `
+      <section class="stage"><div class="page">
+        <h1 class="page-h1">Add a brand</h1>
+        <form data-newbrand style="display:grid;gap:14px;max-width:480px">
+          <label class="label">Name<input name="name" required /></label>
+          <label class="label">Client phone<input name="phone" required placeholder="+614xxxxxxxx" /></label>
+          <button class="pill-dark" type="submit">Create brand</button>
+        </form>
+      </div></section>`));
+
+    function legal(title, body) {
+      return `<main class="legal-wrap"><div class="page">
+        <a class="ghost" href="#/">${cat("mark-bare")} <span style="margin-left:8px">Kip</span></a>
+        <h1 class="page-h1">${title}</h1>${body}
+      </div></main>`;
+    }
+
+    route("/privacy", () => legal("Privacy Policy", `
+      <div class="doc">
+        <p class="meta">Effective 10 September 2026 · Pulse Social Media (“Pulse”, “we”, “us”) · Product: Kip</p>
+
+        <p>Kip is an SMS-first organic social agent. You text photos and instructions; Kip drafts captions, schedules posts, and publishes to the destinations you connect — after you approve in the thread, unless you turn on autopilot. This policy explains what we collect, why, who helps us process it, and how you can access or delete it.</p>
+
+        <h2>Who this covers</h2>
+        <p>Brand owners and operators who create a Kip account, connect social destinations, text the service number, or use the web dashboard. If you are in Australia, the Australian Privacy Principles apply. If you are in the EEA/UK, we process personal data as described below; contact us for a DPA if you need one for your organisation.</p>
+
+        <h2>What we collect</h2>
+        <ul>
+          <li><strong>Account &amp; contact:</strong> name, mobile number, and any email you give us. SMS one-time codes sign you in.</li>
+          <li><strong>Brand profile:</strong> brand name, handle notes, tone preferences, and editable memory files (for example <code>memory.md</code>) you or an operator save.</li>
+          <li><strong>Messages &amp; media:</strong> SMS/MMS text, photos, and videos you send so Kip can draft and publish; our replies in the same thread.</li>
+          <li><strong>Drafts, plans &amp; calendar:</strong> captions, scheduled times, content plans, routines, and approval / reject history.</li>
+          <li><strong>Platform connections:</strong> OAuth tokens and account identifiers for Instagram, Facebook Pages, X, and Threads you connect, stored encrypted and used only to publish or read metrics you request.</li>
+          <li><strong>Engagement data:</strong> likes, comments, reach and similar metrics from platform APIs for check-ins and recaps.</li>
+          <li><strong>Billing:</strong> plan (Pro / Max), billing period, and payment status via our payment processor — we do not store full card numbers.</li>
+          <li><strong>Operator access:</strong> when Pulse staff or a named operator helps set up your brand, their actions on your workspace may be logged (who approved, edited, or connected accounts).</li>
+          <li><strong>Technical logs:</strong> basic server logs (IP, timestamps, error codes) needed to run and secure the service.</li>
+        </ul>
+
+        <h2>How we use it</h2>
+        <ul>
+          <li>Draft captions and replies in your voice from the media and memory you provide.</li>
+          <li>Send and receive SMS/MMS on the Kip number.</li>
+          <li>Publish approved (or autopilot-authorised) organic posts to connected destinations.</li>
+          <li>Run routines you configure (weekly check-in, Friday recap, quiet reminders).</li>
+          <li>Show calendar, plan, connections, and memory in the dashboard.</li>
+          <li>Bill your plan, prevent abuse, and keep an audit trail of approvals and publishes.</li>
+        </ul>
+        <p>We do <strong>not</strong> sell your personal data or content. We do <strong>not</strong> use your photos, captions, or memory files to train our own models, and we contract with AI providers on terms that restrict training on your content where those options exist.</p>
+
+        <h2>Legal bases (where GDPR applies)</h2>
+        <p>Contract (providing Kip), legitimate interests (security, product improvement that does not require training on your content, fraud prevention), and consent where required (optional marketing messages — separate from transactional SMS).</p>
+
+        <h2>Processors &amp; destinations</h2>
+        <p>We use subprocessors only to deliver Kip:</p>
+        <ul>
+          <li><strong>Twilio</strong> — SMS/MMS delivery and inbound media.</li>
+          <li><strong>Meta Platforms</strong> — Instagram, Facebook, and Threads OAuth and publishing via Graph APIs.</li>
+          <li><strong>X Corp.</strong> — X OAuth and publishing.</li>
+          <li><strong>Anthropic</strong> (and similar LLM providers we may add) — drafting captions and summaries from the media and notes you supply.</li>
+          <li><strong>Neon</strong> — Postgres database and encrypted media storage.</li>
+          <li><strong>Vercel / Railway</strong> (or equivalent host) — application hosting.</li>
+          <li><strong>Payment processor</strong> (e.g. Stripe) — subscriptions for Pro / Max.</li>
+        </ul>
+        <p>Each processes data only as needed for its function. Platform posts you approve also become subject to that platform’s terms and audience.</p>
+
+        <h2>Retention &amp; security</h2>
+        <p>We keep account, message, media, draft, and approval data while your account is active and for a reasonable period after (or until you request deletion) so we can support reporting and disputes. OAuth tokens are encrypted at rest (AES-256-GCM) and decrypted only server-side at use. Traffic uses TLS. Access to operator tools is limited to authorised Pulse staff. Brands are isolated from each other in the product data model.</p>
+
+        <h2>Your choices</h2>
+        <ul>
+          <li>Approve or reject every post in the thread (default), or enable autopilot yourself.</li>
+          <li>Disconnect Instagram, Facebook, X, or Threads anytime in Connections or via the platform’s business integrations settings.</li>
+          <li>Edit or clear memory files.</li>
+          <li>Request access, correction, export, or deletion — see <a href="#/deletion">Data deletion</a> or email <a href="mailto:will@jmcalder.com">will@jmcalder.com</a>.</li>
+          <li>Text STOP to pause SMS (transactional notices required by law may still apply).</li>
+        </ul>
+
+        <h2>Children</h2>
+        <p>Kip is for businesses and creators 18+. We do not knowingly collect data from children.</p>
+
+        <h2>Changes</h2>
+        <p>We will update this page when practices change and revise the effective date. Material changes may also be noted in-product or by email/SMS.</p>
+
+        <h2>Contact</h2>
+        <p>Pulse Social Media<br>Email: <a href="mailto:will@jmcalder.com">will@jmcalder.com</a></p>
+      </div>`));
+
+    route("/terms", () => legal("Terms of Service", `
+      <div class="doc">
+        <p class="meta">Effective 10 September 2026 · Pulse Social Media · Product: Kip</p>
+
+        <p>These Terms govern your use of Kip — the SMS and web product that drafts and publishes organic social content for your brand. By creating an account, texting Kip, or paying for a plan, you agree to them. If you use Kip for a company, you confirm you can bind that company.</p>
+
+        <h2>1. The service</h2>
+        <p>Kip helps you run organic posting to destinations you connect (Instagram, Facebook, X, Threads). Typical flow: you send a photo or instruction by SMS/MMS or in the web thread; Kip drafts a caption; you reply <strong>yes</strong> (or approve in the dashboard) before anything with outside impact posts — unless you explicitly enable autopilot. Kip may also run routines you set (check-ins, recaps, reminders) and keep brand memory you can edit.</p>
+        <p>Kip is an organic social tool. It is not a paid-ads manager, CRM, or guarantee of reach, virality, or platform ranking.</p>
+
+        <h2>2. Accounts &amp; access</h2>
+        <ul>
+          <li>You must provide an accurate mobile number and keep access to it. Login codes are sent by SMS.</li>
+          <li>You are responsible for activity on your account and for anyone you invite (including operators you authorise).</li>
+          <li>Pulse may provide break-glass operator access to help with setup or support; that access is logged and limited to delivering the service.</li>
+        </ul>
+
+        <h2>3. Approvals, autopilot &amp; platforms</h2>
+        <ul>
+          <li><strong>Default:</strong> no publish with outside impact without a named yes from you or an authorised approver.</li>
+          <li><strong>Autopilot:</strong> if you turn it on, Kip may publish after a heads-up according to the rules you set. You can turn it off anytime.</li>
+          <li>You must have rights to the media and captions you supply, and authority to post to connected accounts.</li>
+          <li>You remain responsible for complying with Meta, X, Threads, and any other platform terms, community guidelines, and advertising/disclosure rules. Platforms may reject, rate-limit, or remove content; Kip is not liable for platform decisions.</li>
+          <li>Disconnecting a destination stops future Kip publishes to it; it does not remove posts already live on that network.</li>
+        </ul>
+
+        <h2>4. AI drafting</h2>
+        <p>Captions and suggestions are generated with third-party AI models from the inputs you provide. Output can be wrong, off-brand, or unsuitable. You (or your approver) are responsible for reviewing drafts before publish. Do not rely on Kip for legal, medical, or financial advice.</p>
+
+        <h2>5. Plans, billing &amp; cancellation</h2>
+        <ul>
+          <li>Paid plans currently described as <strong>Pro</strong> and <strong>Max</strong>, billed monthly or annually (annual shown as a monthly equivalent with discount). Prices are in AUD unless stated otherwise and may include GST where required.</li>
+          <li>Features and limits on each plan are as shown at checkout / on the Plan screen. We may change prices or packaging with notice for renewals.</li>
+          <li>Cancel anytime; access continues through the paid period already billed unless we say otherwise. Annual plans are billed up front.</li>
+          <li>Failed payments may pause publishing or SMS until resolved.</li>
+        </ul>
+
+        <h2>6. Acceptable use</h2>
+        <p>You will not use Kip to: spam; harass; infringe IP; post unlawful, hateful, or deceptive content; attempt to bypass platform or Kip safety limits; probe or disrupt our systems; or submit others’ personal data without a lawful basis. We may suspend accounts that break these rules or create legal or security risk.</p>
+
+        <h2>7. Content ownership</h2>
+        <p>You keep ownership of your media, captions, and memory files. You grant Pulse a limited licence to host, process, transmit, and publish that content solely to operate Kip for you. We may use de-identified, aggregated usage patterns to improve reliability (not to train generative models on your creative content).</p>
+
+        <h2>8. Confidentiality &amp; privacy</h2>
+        <p>How we handle personal data is described in the <a href="#/privacy">Privacy Policy</a>. Deletion steps are in <a href="#/deletion">Data deletion</a>.</p>
+
+        <h2>9. Availability &amp; changes</h2>
+        <p>We aim for reliable uptime but do not guarantee uninterrupted SMS delivery or platform API availability. We may modify features; we will not materially reduce core paid functionality without notice except for legal or security reasons.</p>
+
+        <h2>10. Disclaimers &amp; liability</h2>
+        <p>Kip is provided “as is” to the extent permitted by law. Nothing in these Terms excludes non-waivable Australian Consumer Law rights. To the maximum extent permitted, Pulse’s total liability for claims relating to Kip in any 12-month period is limited to the fees you paid us for Kip in that period. We are not liable for lost profits, lost posts, platform bans, or indirect damages.</p>
+
+        <h2>11. Indemnity</h2>
+        <p>You will indemnify Pulse against claims arising from your content, your connected accounts, or your misuse of Kip, except to the extent caused by our wilful misconduct.</p>
+
+        <h2>12. Governing law</h2>
+        <p>These Terms are governed by the laws of Victoria, Australia. Courts there have exclusive jurisdiction, without limiting any non-waivable consumer rights where you live.</p>
+
+        <h2>13. Contact</h2>
+        <p>Pulse Social Media<br><a href="mailto:will@jmcalder.com">will@jmcalder.com</a></p>
+      </div>`));
+
+    route("/deletion", () => legal("Data deletion", `
+      <div class="doc">
+        <p class="meta">How to delete your data from Kip · Pulse Social Media</p>
+
+        <p>You can stop Kip’s access to your social accounts and delete the data we hold. Use both steps if you want a full exit.</p>
+
+        <h2>1. Disconnect platforms</h2>
+        <p><strong>In Kip:</strong> open Connections and disconnect Instagram, Facebook, X, or Threads. Tokens are revoked on our side when disconnect completes.</p>
+        <p><strong>On Meta:</strong> Facebook → Settings &amp; privacy → Settings → Business Integrations → find <strong>Pulse AI</strong> → Remove. That immediately revokes Meta access even if you skip the in-app button.</p>
+        <p><strong>On X:</strong> revoke the Pulse / Kip app under X connected apps settings.</p>
+        <p>Disconnect stops future publishing. It does not by itself wipe history stored with us — request that below.</p>
+
+        <h2>2. Request deletion</h2>
+        <p>Email <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> from the address or number on your account with the subject <strong>“Delete my data”</strong>. We permanently delete (or irreversibly anonymise) the data we hold within <strong>30 days</strong> and confirm when done.</p>
+
+        <h2>What we delete</h2>
+        <ul>
+          <li>Account and brand profile (name, phone, email).</li>
+          <li>OAuth tokens and connected-account identifiers.</li>
+          <li>Photos, videos, captions, drafts, schedules, routines, and content plans.</li>
+          <li>SMS/MMS history and approval / edit audit trail.</li>
+          <li>Memory files and operator notes tied to your brand.</li>
+          <li>Billing profile links held by us (your payment provider may retain records they need for tax/fraud).</li>
+        </ul>
+
+        <h2>What we cannot delete</h2>
+        <ul>
+          <li>Posts already live on Instagram, Facebook, X, or Threads — remove those on each platform.</li>
+          <li>Copies held briefly by SMS or AI subprocessors under their own retention, subject to our deletion instructions.</li>
+          <li>Minimal records we must keep by law (for example invoice metadata).</li>
+        </ul>
+
+        <h2>Export before you go</h2>
+        <p>Ask for an export of memory files and recent message history in the same deletion email if you want a copy first.</p>
+
+        <h2>Contact</h2>
+        <p>Pulse Social Media<br><a href="mailto:will@jmcalder.com">will@jmcalder.com</a></p>
+      </div>`));
+
+    let landingScrollHandler = null;
+    const LANDING_SECTIONS = new Set(["about", "pricing", "how", "privacy", "top", "get-started"]);
+
+    function initLanding() {
+      if (landingScrollHandler) {
+        window.removeEventListener("scroll", landingScrollHandler);
+        landingScrollHandler = null;
+      }
+      const nav = document.getElementById("lp-nav");
+      const hero = document.querySelector(".hero");
+      if (nav && hero) {
+        const syncNav = () => {
+          nav.classList.toggle("is-solid", window.scrollY > Math.max(40, hero.offsetHeight * 0.55));
+        };
+        syncNav();
+        landingScrollHandler = syncNav;
+        window.addEventListener("scroll", landingScrollHandler, { passive: true });
+      }
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const nodes = document.querySelectorAll(".reveal");
+      if (!nodes.length) return;
+      if (reduce || !("IntersectionObserver" in window)) {
+        nodes.forEach((el) => el.classList.add("in"));
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("in");
+          io.unobserve(entry.target);
+        });
+      }, { threshold: 0.14, rootMargin: "0px 0px -6% 0px" });
+      nodes.forEach((el) => io.observe(el));
+    }
+
+    function scrollLanding(id) {
+      if (id === "top") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      const el = document.getElementById(id);
+      if (!el) return;
+      const nav = document.getElementById("lp-nav");
+      const offset = nav ? nav.offsetHeight + 8 : 0;
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+
+    function render() {
+      const raw = location.hash.replace(/^#/, "") || "/";
+      if (LANDING_SECTIONS.has(raw)) {
+        document.getElementById("app").innerHTML = routes["/"]();
+        requestAnimationFrame(() => {
+          initLanding();
+          scrollLanding(raw);
+        });
+        return;
+      }
+      document.getElementById("app").innerHTML = (routes[raw] || routes["/"])();
+      if (raw === "/" || raw === "") requestAnimationFrame(() => initLanding());
+    }
+
+    document.addEventListener("click", (e) => {
+      const scroll = e.target.closest("[data-scroll]");
+      if (scroll) {
+        e.preventDefault();
+        const id = scroll.getAttribute("data-scroll");
+        const raw = location.hash.replace(/^#/, "") || "/";
+        const onHome = raw === "/" || LANDING_SECTIONS.has(raw);
+        if (!onHome) {
+          history.replaceState(null, "", "#/");
+          document.getElementById("app").innerHTML = routes["/"]();
+          requestAnimationFrame(() => {
+            initLanding();
+            scrollLanding(id);
+          });
+        } else {
+          history.replaceState(null, "", "#/");
+          scrollLanding(id);
+        }
+        return;
+      }
+      const bill = e.target.closest("[data-bill]");
+      if (bill) {
+        e.preventDefault();
+        state.billing = bill.dataset.bill;
+        const y = window.scrollY;
+        render();
+        requestAnimationFrame(() => window.scrollTo(0, y));
+        return;
+      }
+      const menu = e.target.closest("[data-menu]");
+      if (menu) {
+        e.preventDefault();
+        const deskEl = document.querySelector(".desk");
+        if (!deskEl) return;
+        if (menu.dataset.menu === "open") deskEl.classList.add("menu-open");
+        else deskEl.classList.remove("menu-open");
+        return;
+      }
+      const navLink = e.target.closest(".rail-nav a, .rail-out");
+      if (navLink) {
+        const deskEl = document.querySelector(".desk");
+        if (deskEl) deskEl.classList.remove("menu-open");
+      }
+      const a = e.target.closest("[data-go]");
+      if (a) { e.preventDefault(); go(a.getAttribute("data-go")); }
+      const st = e.target.closest("[data-state]");
+      if (st) {
+        const live = st.dataset.state === "live";
+        state.connected = live; state.phoneSet = live;
+        if (!live) { state.x = false; state.threads = false; state.banner = ""; }
+        else state.banner = { ok: true, text: "Instagram & Facebook connected." };
+        toast(live ? "Previewing a connected account" : "Previewing setup");
+        render();
+      }
+      const ap = e.target.closest("[data-approve]");
+      if (ap) {
+        const post = state.waiting.find(p => p.id === ap.dataset.approve);
+        state.waiting = state.waiting.filter(p => p.id !== ap.dataset.approve);
+        if (post) { state.upcoming.unshift(post); state.messages.push({ who: "you", text: "yes" }); }
+        toast("Approved. It can post.");
+        render();
+      }
+      const rm = e.target.closest("[data-remove]");
+      if (rm) {
+        state.waiting = state.waiting.filter(p => p.id !== rm.dataset.remove);
+        state.upcoming = state.upcoming.filter(p => p.id !== rm.dataset.remove);
+        toast("Removed.");
+        render();
+      }
+      const tw = e.target.closest("[data-toast]");
+      if (tw) { e.preventDefault(); toast(tw.dataset.toast); }
+      const cx = e.target.closest("[data-connect]");
+      if (cx) {
+        if (cx.dataset.connect === "x") { state.x = true; state.banner = { ok: true, text: "X connected." }; }
+        else { state.threads = true; state.banner = { ok: true, text: "Threads connected." }; }
+        go("/connections");
+      }
+      const f = e.target.closest("[data-file]");
+      if (f) { e.preventDefault(); state.file = f.dataset.file; render(); }
+    });
+
+    document.addEventListener("change", (e) => {
+      const sk = e.target.closest("[data-skill]");
+      if (sk) { state.skills[sk.dataset.skill] = sk.checked; toast(sk.checked ? "Skill on" : "Skill off"); }
+    });
+
+    document.addEventListener("submit", (e) => {
+      if (e.target.matches("[data-landchat]")) { e.preventDefault(); go("/signup"); }
+      if (e.target.matches("[data-login]")) { e.preventDefault(); state.phone = e.target.phone.value; go("/verify"); }
+      if (e.target.matches("[data-signup]")) { e.preventDefault(); state.name = e.target.name.value; state.phone = e.target.phone.value; go("/verify"); }
+      if (e.target.matches("[data-verify]")) { e.preventDefault(); go("/home"); }
+      if (e.target.matches("[data-operator]")) { e.preventDefault(); go("/operator"); }
+      if (e.target.matches("[data-phone]")) { e.preventDefault(); state.phone = e.target.phone.value; state.phoneSet = true; toast("Phone saved"); render(); }
+      if (e.target.matches("[data-choose]")) { e.preventDefault(); state.connected = true; state.page = e.target.page.value; state.banner = { ok: true, text: "Instagram & Facebook connected." }; go("/home"); }
+      if (e.target.matches("[data-pillar]")) { e.preventDefault(); toast("Cadence saved"); }
+      if (e.target.matches("[data-newbrand]")) { e.preventDefault(); toast("Brand created"); go("/operator"); }
+      if (e.target.matches("[data-routine]")) { e.preventDefault(); toast("Routine added"); e.target.reset(); }
+      if (e.target.matches("[data-memory]")) { e.preventDefault(); if (state.file === "memory.md") state.memory = e.target.body.value; toast("File saved"); }
+      if (e.target.matches("[data-chat]")) {
+        e.preventDefault();
+        const q = e.target.q.value.trim();
+        if (!q) return;
+        state.messages.push({ who: "you", text: q });
+        state.messages.push({ who: "kip", text: "Got it. I’ll draft from that. Nothing posts without your yes." });
+        e.target.reset();
+        render();
+      }
+      if (e.target.matches("[data-edit]")) {
+        e.preventDefault();
+        const id = e.target.dataset.edit;
+        const post = state.waiting.find(p => p.id === id);
+        if (post) { post.caption = e.target.caption.value; state.upcoming.unshift(post); }
+        state.waiting = state.waiting.filter(p => p.id !== id);
+        toast("Saved and approved");
+        go("/brand");
+      }
+    });
+
+    window.addEventListener("hashchange", render);
+    render();
+  </script>
+</body>
+</html>

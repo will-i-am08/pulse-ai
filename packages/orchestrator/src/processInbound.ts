@@ -16,7 +16,7 @@ import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
 import { generateFillerPost, recentlyPingedPillar } from "./fillers.js";
-import { pickFreshPhoto, pickReusablePhoto, pickFreshPhotos, draftPostFromPhoto } from "./library.js";
+import { pickFreshPhoto, pickReusablePhoto, pickFreshPhotos, pickRecentClientPhoto, draftPostFromPhoto } from "./library.js";
 import {
   carouselDecision,
   getPendingCarouselChoice,
@@ -96,6 +96,11 @@ import {
   enqueueKickoffFromUserMessage,
   maybeEnqueueFromKipCommit,
   enqueueKickoff,
+  refersToAttachedMedia,
+  looksLikeUseThisBrief,
+  looksLikeFormatMenuReply,
+  looksLikeFormatMenuOutbound,
+  looksLikeDraftPreviewOutbound,
 } from "./kickoffs.js";
 import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
@@ -310,6 +315,18 @@ async function getLatestPendingPost(brandId: string): Promise<Post | null> {
      limit 1`,
     [brandId],
   );
+}
+
+/** Latest outbound SMS body Kip sent this brand (for approve-clarify gating). */
+async function latestOutboundBody(brandId: string): Promise<string | null> {
+  const row = await queryOne<{ body: string | null }>(
+    `select body from messages
+      where brand_id = $1 and direction = 'outbound' and body is not null and length(trim(body)) > 0
+      order by created_at desc
+      limit 1`,
+    [brandId],
+  );
+  return row?.body?.trim() || null;
 }
 
 async function updateMessageType(messageId: string, type: NonNullable<Message["type"]>): Promise<void> {
@@ -538,7 +555,7 @@ export async function processInbound(
     const ensured = await ensureDestinationLink(brand, "post");
     if (ensured.askSms) return { reply: ensured.askSms };
     return {
-      reply: `Using ${ensured.url} as your booking link. Send a photo (or say "draft a post") and I'll add the platform-safe CTA.`,
+      reply: `Using ${ensured.url} as your booking link. Send a photo (or ask me to make a post) and I'll add the platform-safe CTA.`,
     };
   }
 
@@ -1128,9 +1145,26 @@ export async function processInbound(
     }
     // Mid-conversation: with a draft awaiting the client, an unclear message is
     // most likely a fuzzy edit or approval — ask to clarify rather than
-    // guess-and-act (BUILD_CONTRACTS). With a drafted engagement reply and no
-    // pending post, prefer clarifying send/edit for that reply.
+    // guess-and-act (BUILD_CONTRACTS). BUT: if the last outbound was the format
+    // menu ("Tell me what to make…") or wasn't a draft preview at all, stale
+    // pending_approval rows must not trap a format reply / creative ask into
+    // "Reply yes to approve" with no draft shown.
     if (pending) {
+      const lastOut = await latestOutboundBody(brand.id);
+      const awaitingDraftDecision =
+        looksLikeDraftPreviewOutbound(lastOut) && !looksLikeFormatMenuOutbound(lastOut);
+      if (!awaitingDraftDecision) {
+        const body = message.body ?? "";
+        if (
+          looksLikeFormatMenuReply(body) ||
+          looksLikeUseThisBrief(body) ||
+          looksLikeKickoffRequest(body)
+        ) {
+          const kicked = await enqueueKickoffFromUserMessage(brand, body, message.id);
+          if (kicked?.ackSms) return { reply: kicked.ackSms };
+        }
+        return { reply: await converse(brand, body) };
+      }
       return {
         reply:
           'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
@@ -1175,6 +1209,45 @@ export async function processInbound(
   // → self-kickoff. Allow even when a prior draft is still pending approval — a new
   // creative ask should not stall behind an old "yes/no" (and must not fall through
   // to the single-filler path that asks for uploads or ships a lone feed card).
+  // "…with this photo" / "use this" but MMS media never arrived on this message.
+  // Prefer a client photo banked in the last 15 minutes (sibling MMS / late attach);
+  // otherwise ask to resend when they clearly meant an attach, else fall through to kickoff.
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    (refersToAttachedMedia(message.body) || looksLikeUseThisBrief(message.body))
+  ) {
+    const recent = await pickRecentClientPhoto(brand.id, 15);
+    if (recent) {
+      const pillars = await ensurePillars(brand.id);
+      const pillar =
+        (await classifyPhotoPillar(brand, pillars, recent.id)) ??
+        (await recentlyPingedPillar(brand.id)) ??
+        pillars[0];
+      if (pillar) {
+        const fromLib = await draftPostFromPhoto(brand, recent, pillar, {
+          hint: message.body,
+        });
+        if (fromLib) {
+          const when = fromLib.post.scheduled_at
+            ? formatSlot(new Date(fromLib.post.scheduled_at))
+            : "soon";
+          return {
+            reply: `Got your photo — drafted this for ${pillar.name}:\n\n"${fromLib.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+            postId: fromLib.post.id,
+            mediaUrl: fromLib.mediaUrl ?? undefined,
+          };
+        }
+      }
+    }
+    if (refersToAttachedMedia(message.body)) {
+      return {
+        reply:
+          "I didn't get the photo on that text — send the image again (caption in the same message is fine) and I'll draft it straight away.",
+      };
+    }
+  }
+
   if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
     const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
     if (planned) return planned;
@@ -1363,8 +1436,13 @@ export async function processInbound(
       }
 
       // C6: caption + photo grade in parallel (independent LLM/vision steps).
+      const captionHint = (message.body ?? "").trim();
       const [captionResult, editedId] = await Promise.all([
-        draftCaption(brand.id, originalIds),
+        draftCaption(
+          brand.id,
+          originalIds,
+          captionHint ? { hint: captionHint } : undefined,
+        ),
         firstPhoto
           ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)
           : Promise.resolve(null),
@@ -1963,6 +2041,17 @@ export async function processInbound(
         const configReply = await configurePillarsFromMessage(brand, pillars, message.body);
         if (configReply) return { reply: configReply };
       }
+      // Creative / format-menu replies that slipped past kickoff detection —
+      // enqueue instead of the dead-end "Tell me what to make" menu.
+      if (
+        message.body &&
+        (looksLikeFormatMenuReply(message.body) ||
+          looksLikeUseThisBrief(message.body) ||
+          looksLikeKickoffRequest(message.body))
+      ) {
+        const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
+        if (kicked?.ackSms) return { reply: kicked.ackSms };
+      }
 
       // Ambiguous multi-step instruction — thin planner (flagged) before the
       // generic fallback. Specific handlers above always win first.
@@ -1973,8 +2062,7 @@ export async function processInbound(
 
       return {
         reply:
-          "Got it, noted. Say \"draft a post\" or \"make a carousel\" and I'll generate the visuals — " +
-          "or tell me specifically what you'd like changed.",
+          "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
       };
     }
   }

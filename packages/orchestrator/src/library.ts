@@ -48,6 +48,24 @@ export async function pickFreshPhotos(brandId: string, n: number): Promise<Media
 }
 
 /**
+ * Most recent client-uploaded photo banked in the last `withinMinutes` minutes.
+ * Used when the owner says "use this" but the webhook missed the MMS attachment.
+ */
+export async function pickRecentClientPhoto(
+  brandId: string,
+  withinMinutes = 15,
+): Promise<MediaAsset | null> {
+  return queryOne<MediaAsset>(
+    `select m.* from media_assets m
+      where m.brand_id = $1 and m.kind = 'photo' and m.source = 'client'
+        and m.created_at > now() - ($2::text || ' minutes')::interval
+      order by m.created_at desc
+      limit 1`,
+    [brandId, String(Math.max(1, withinMinutes))],
+  );
+}
+
+/**
  * A previously-posted photo to reuse ON THE CLIENT'S REQUEST — least-recently-used
  * first. Falls back to any not-in-flight photo if none have been posted yet. null
  * only when the client has never sent a photo.
@@ -103,8 +121,13 @@ export async function draftPostFromPhoto(
   brand: Brand,
   photo: MediaAsset,
   pillar: Pillar,
+  opts?: { hint?: string },
 ): Promise<{ post: Post; mediaUrl: string | null } | null> {
-  const { caption } = await draftCaption(brand.id, [photo.id]);
+  const { caption } = await draftCaption(
+    brand.id,
+    [photo.id],
+    opts?.hint?.trim() ? { hint: opts.hint.trim() } : undefined,
+  );
 
   // Style from the original, falling back to the original if editing is unavailable.
   let finalId = photo.id;

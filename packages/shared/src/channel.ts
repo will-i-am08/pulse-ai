@@ -56,4 +56,10 @@ export interface MessageChannel {
    * so callers never depend on the short-lived URL after receipt.
    */
   fetchMedia(media: InboundMedia): Promise<{ bytes: Uint8Array; contentType: string }>;
+
+  /**
+   * Optional recovery: when the webhook body omitted media (NumMedia=0 / truncated
+   * form), list media for this provider message id via the provider REST API.
+   */
+  listMessageMedia?(providerMessageId: string): Promise<InboundMedia[]>;
 }

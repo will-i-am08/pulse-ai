@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { callLLM } from "./llm.js";
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
+import { looksLikeKickoffRequest } from "./kickoffs.js";
 
 // Six-way inbound classification per BUILD_CONTRACTS.md. Note: "edit" is an
 // orchestrator-internal category — the `messages.type` DB column (see
@@ -131,11 +132,14 @@ export function ruleBasedClassify(
     return { classification: "edit", confidence: 0.9 };
   }
 
-  // "Can you make me a carousel…?" reads as a question grammatically but is an
-  // instruction to draft — don't siphon it into Q&A / clarify loops.
+  // Creative asks ("Post a good morning post…", "make me a carousel…") are
+  // instructions to draft — don't siphon them into Q&A / clarify loops.
+  if (looksLikeKickoffRequest(text)) {
+    return { classification: "instruction", confidence: 0.9 };
+  }
   if (
     /\b(can|could|would|will)\s+you\b/i.test(text) &&
-    /\b(make|draft|create|write|generate|put together|pull together)\b/i.test(text) &&
+    /\b(make|draft|create|write|generate|put together|pull together|post|publish)\b/i.test(text) &&
     /\b(post|posts|carr?ousel|carr?ousels|reel|story|stories|content|batch)\b/i.test(text)
   ) {
     return { classification: "instruction", confidence: 0.9 };

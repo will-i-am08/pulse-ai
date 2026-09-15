@@ -12,6 +12,9 @@ import { logger } from "../lib/logger.js";
  * Drain Linq pending_inbound rows (webhook only enqueues). Overlap-safe via
  * atomic status claim. Required when MESSAGE_CHANNEL=linq so inbound isn't
  * stranded after Discord removal.
+ *
+ * Claim with `processing` (not `done`) so a failed capture / missing brand
+ * cannot mark a photo row done forever without landing media_assets.
  */
 export async function runLinqInboundLoop(): Promise<void> {
   const rows = await query<{
@@ -29,7 +32,7 @@ export async function runLinqInboundLoop(): Promise<void> {
   const linq = createLinqChannel();
   for (const row of rows) {
     const claimed = await query<{ id: string }>(
-      "update pending_inbound set status = 'done' where id = $1 and status = 'new' returning id",
+      "update pending_inbound set status = 'processing' where id = $1 and status = 'new' returning id",
       [row.id],
     );
     if (claimed.length === 0) continue;
@@ -38,15 +41,33 @@ export async function runLinqInboundLoop(): Promise<void> {
     const keeper = startTypingKeeper(linq, row.from_handle);
     try {
       const brand = await resolveBrandByLinq(row.from_handle);
-      if (!brand) continue;
+      if (!brand) {
+        logger.warn(`linq inbound: unknown sender ${row.from_handle}, failing ${row.id}`);
+        await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+        continue;
+      }
       const media = Array.isArray(row.media) ? row.media : [];
       const newMedia = await captureMedia(brand.id, linq, media);
+      if (media.length > 0 && newMedia.length === 0) {
+        logger.error(`linq inbound: media capture failed for ${row.id}`);
+        await linq
+          .send({
+            to: brand.client_phone,
+            body: "Got your text but I couldn't download the photo — mind sending the image one more time?",
+          })
+          .catch(() => {});
+        await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+        continue;
+      }
       const message = await queryOne<Message>(
         `insert into messages (brand_id, direction, channel, body, media_ids, provider_message_sid)
          values ($1, 'inbound', 'linq', $2, $3::uuid[], $4) returning *`,
         [brand.id, row.body ?? null, newMedia.map((m) => m.id), row.provider_message_id ?? null],
       );
-      if (!message) continue;
+      if (!message) {
+        await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+        continue;
+      }
       if (newMedia.some((m) => m.kind === "photo")) {
         await linq
           .send({
@@ -63,6 +84,7 @@ export async function runLinqInboundLoop(): Promise<void> {
           mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : undefined,
         });
       }
+      await query("update pending_inbound set status = 'done' where id = $1", [row.id]);
     } catch (err) {
       logger.error(`linq inbound processing failed for ${row.id}`, {
         error: err instanceof Error ? err.message : String(err),
