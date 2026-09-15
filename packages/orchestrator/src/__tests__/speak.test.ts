@@ -55,6 +55,11 @@ describe("structural constraints", () => {
     expect(pickStructuralConstraint(STRUCTURAL_CONSTRAINTS.length)).toBe(STRUCTURAL_CONSTRAINTS[0]);
     expect(structuralConstraintPromptBlock(2)).toContain(STRUCTURAL_CONSTRAINTS[2]!);
   });
+
+  it("does not cap commas or force a 20-word recap", () => {
+    expect(STRUCTURAL_CONSTRAINTS.join("\n")).not.toMatch(/under 20 words/i);
+    expect(STRUCTURAL_CONSTRAINTS.join("\n")).not.toMatch(/at most one comma/i);
+  });
 });
 
 describe("similarity gate", () => {
@@ -104,6 +109,17 @@ describe("needsThink", () => {
     expect(
       needsThink({ mode: "answer", message: "what?", classification: "question", confidence: 0.4 }),
     ).toBe(true);
+  });
+
+  it("does not think on a confident factual question", () => {
+    expect(
+      needsThink({
+        mode: "answer",
+        message: "what's on my calendar this week?",
+        classification: "question",
+        confidence: 0.9,
+      }),
+    ).toBe(false);
   });
 });
 

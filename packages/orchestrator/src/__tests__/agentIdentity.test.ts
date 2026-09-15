@@ -84,4 +84,14 @@ describe("agentIdentity", () => {
     const prompt = agentIdentity(stubBrand(), "   ");
     expect(prompt).not.toContain(RETRIEVED_PACK_HEADING);
   });
+
+  it("uses voice craft without photo/font/strategy dumps", () => {
+    const prompt = agentIdentity(stubBrand({ facts: { owner_name: "Sam", kip_preferences: [] } }));
+    expect(prompt).toMatch(/weekday rundown|rundown of days/i);
+    expect(prompt).not.toMatch(/Creative default/i);
+    expect(prompt).not.toMatch(/Never ask them to send or upload/i);
+    expect(prompt).not.toMatch(/\bType: pull fonts/i);
+    expect(prompt).not.toMatch(/Brand strategy on file/i);
+    expect(prompt).not.toMatch(/no lists, ever/i);
+  });
 });

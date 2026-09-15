@@ -230,6 +230,15 @@ function draftPostsPayloadFromText(t: string): Record<string, unknown> {
   };
 }
 
+/**
+ * True when inbound SMS is known-slow content work (draft / images / first batch).
+ * Used by the gateway to send a filler only for those jobs — never calendar,
+ * questions, or small talk.
+ */
+export function looksLikeSlowSmsWork(body: string | null | undefined): boolean {
+  return looksLikeKickoffRequest(body);
+}
+
 /** Owner is asking Kip to go do content work (not just chat about it). */
 export function looksLikeKickoffRequest(body: string | null | undefined): boolean {
   if (!body?.trim()) return false;

@@ -21,7 +21,7 @@ import {
 import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
-import { enqueueKickoff } from "./kickoffs.js";
+import { enqueueKickoff, looksLikeKickoffRequest } from "./kickoffs.js";
 import {
   clampMemoryText,
   recordKipMemory,
@@ -31,6 +31,8 @@ import { connectionSummary } from "./persona.js";
 import { scheduleSlot } from "./scheduler.js";
 import { buildPerformanceAnalysis } from "./performanceDigest.js";
 import { draftCaption } from "./draftCaption.js";
+import { humanizeChat } from "./speak/humanizeChat.js";
+import { formatScheduledSlot, formatWeekday, joinEnglish, localYmd } from "./smsTime.js";
 import { draftPostFromPhoto, pickFreshPhoto } from "./library.js";
 import { draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
@@ -264,7 +266,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "check_calendar",
-    "Summarize upcoming committed posts over the next N days (pending_approval / approved / scheduled with a scheduled_at). Notes days with nothing scheduled. Read-only — does not schedule or publish.",
+    "Read-only SMS rundown of upcoming committed posts over the next N days (pending_approval / approved / scheduled with a scheduled_at). Does not schedule or publish.",
     checkCalendarInputSchema,
   ),
   toolDef(
@@ -313,7 +315,35 @@ export function buildBrandProfilePayload(brand: Brand): Record<string, unknown> 
 
 type CalendarRow = { id: string; status: PostStatus; scheduled_at: string; caption: string | null };
 
-/** Summarize committed upcoming posts and note empty days (read-only). */
+function calendarStatusLabel(status: PostStatus): string {
+  if (status === "pending_approval") return "awaiting approval";
+  return status.replace(/_/g, " ");
+}
+
+/**
+ * Conservative: owner is only asking what is already on the calendar.
+ * Kickoff / draft / ads compound asks fall through to the agent.
+ */
+export function looksLikeCalendarAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t)) return false;
+  if (/\b(promote|boost)\b/i.test(t)) return false;
+  if (/\b(and|also)\b/i.test(t) && /\b(draft|carousel|reel|make me|write me|first batch)\b/i.test(t)) {
+    return false;
+  }
+  return (
+    /\b(what(?:'?s|s| is)|anything)\b[\s\S]{0,48}\b(on (?:my |the )?(?:calendar|schedule)|coming up|scheduled)\b/i.test(
+      t,
+    ) ||
+    /\b(?:check|show|see) (?:me )?(?:my |the )?(?:calendar|schedule)\b/i.test(t) ||
+    /\bthis week'?s (?:posts?|calendar|schedule)\b/i.test(t) ||
+    /\b(?:my |the )?(?:content )?calendar\b/i.test(t) ||
+    /\bscheduled (?:this|for the) (?:week|weekend)\b/i.test(t)
+  );
+}
+
+/** Summarize committed upcoming posts as SMS prose (read-only). */
 export function summarizeCalendar(
   rows: CalendarRow[],
   days: number,
@@ -325,10 +355,12 @@ export function summarizeCalendar(
   end.setDate(end.getDate() + days);
 
   const byDay = new Map<string, CalendarRow[]>();
+  const dayDates: Date[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
-    byDay.set(d.toISOString().slice(0, 10), []);
+    dayDates.push(d);
+    byDay.set(localYmd(d), []);
   }
 
   const posts = rows
@@ -339,34 +371,61 @@ export function summarizeCalendar(
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 
   for (const p of posts) {
-    const key = new Date(p.scheduled_at).toISOString().slice(0, 10);
+    const key = localYmd(new Date(p.scheduled_at));
     const list = byDay.get(key);
     if (list) list.push(p);
   }
 
-  const gaps: string[] = [];
-  for (const [day, list] of byDay) {
-    if (!list.length) gaps.push(day);
+  const horizon = days <= 7 ? "this week" : `the next ${days} days`;
+  if (posts.length === 0) {
+    return `Nothing on the calendar ${horizon} yet.`;
   }
 
-  return JSON.stringify({
-    days,
-    from: start.toISOString(),
-    to: end.toISOString(),
-    posts: posts.map((p) => ({
-      id: p.id,
-      status: p.status,
-      scheduled_at: p.scheduled_at,
-      caption: captionExcerpt(p.caption, 80),
-    })),
-    emptyDays: gaps,
-    note:
-      posts.length === 0
-        ? "Nothing committed with a scheduled_at in this window."
-        : gaps.length
-          ? `${gaps.length} day(s) with nothing scheduled.`
-          : "Every day in the window has at least one committed post.",
+  const bits = posts.map((p) => {
+    const when = formatScheduledSlot(new Date(p.scheduled_at));
+    const cap = captionExcerpt(p.caption, 60);
+    return `${when}, ${cap} (${calendarStatusLabel(p.status)})`;
   });
+  let out = days <= 7 ? `This week: ${bits.join(". ")}.` : `Coming up: ${bits.join(". ")}.`;
+
+  const emptyWeekdays = dayDates
+    .filter((d) => (byDay.get(localYmd(d)) ?? []).length === 0)
+    .map((d) => formatWeekday(d));
+  if (emptyWeekdays.length === 0) {
+    return out;
+  }
+  if (emptyWeekdays.length <= 3) {
+    const verb = emptyWeekdays.length === 1 ? "is" : "are";
+    out += ` ${joinEnglish(emptyWeekdays)} ${verb} open.`;
+  } else {
+    out += " Some days are still open.";
+  }
+  return out;
+}
+
+/** SQL + SMS rundown for the calendar fast path and check_calendar tool. */
+export async function loadCalendarSms(
+  brand: Brand,
+  days = 7,
+  now = new Date(),
+): Promise<string> {
+  const windowDays = Math.min(14, Math.max(7, Math.floor(days)));
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + windowDays);
+  const start = new Date(now);
+  const rows = await query<CalendarRow>(
+    `select id, status, scheduled_at, caption
+       from posts
+      where brand_id = $1
+        and status = any($2::text[])
+        and scheduled_at is not null
+        and scheduled_at >= $3
+        and scheduled_at < $4
+      order by scheduled_at asc`,
+    [brand.id, CALENDAR_STATUSES, start.toISOString(), end.toISOString()],
+  );
+  return humanizeChat(summarizeCalendar(rows, windowDays, now));
 }
 
 function asRecord(input: unknown): Record<string, unknown> {
@@ -536,21 +595,7 @@ async function toolCheckCalendar(ctx: AgentToolContext, input: unknown): Promise
     typeof raw === "number" && Number.isFinite(raw)
       ? Math.min(14, Math.max(7, Math.floor(raw)))
       : 10;
-  const now = new Date();
-  const end = new Date(now);
-  end.setDate(end.getDate() + days);
-  const rows = await query<CalendarRow>(
-    `select id, status, scheduled_at, caption
-       from posts
-      where brand_id = $1
-        and status = any($2::text[])
-        and scheduled_at is not null
-        and scheduled_at >= $3
-        and scheduled_at < $4
-      order by scheduled_at asc`,
-    [ctx.brand.id, CALENDAR_STATUSES, now.toISOString(), end.toISOString()],
-  );
-  return summarizeCalendar(rows, days, now);
+  return loadCalendarSms(ctx.brand, days);
 }
 
 async function toolRememberFact(ctx: AgentToolContext, input: unknown): Promise<string> {

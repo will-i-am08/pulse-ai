@@ -15,18 +15,12 @@ vi.mock("../library.js", () => ({
   bankedPhotoCount: vi.fn(async () => 0),
 }));
 
-vi.mock("../conversationContext.js", () => ({
-  buildConversationContext: vi.fn(async () => ""),
-}));
-
 import { bankedPhotoCount } from "../library.js";
-import { buildConversationContext } from "../conversationContext.js";
 import { rankByKeywordOverlap, retrieveBrandContext } from "../retrieveContext.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
 const mockedQueryOne = queryOne as unknown as ReturnType<typeof vi.fn>;
 const mockedBanked = bankedPhotoCount as unknown as ReturnType<typeof vi.fn>;
-const mockedConversation = buildConversationContext as unknown as ReturnType<typeof vi.fn>;
 
 function stubBrand(over: Partial<Brand> = {}): Brand {
   return {
@@ -56,11 +50,9 @@ describe("retrieveBrandContext", () => {
     mockedQuery.mockReset();
     mockedQueryOne.mockReset();
     mockedBanked.mockReset();
-    mockedConversation.mockReset();
     mockedQuery.mockResolvedValue([]);
     mockedQueryOne.mockResolvedValue(null);
     mockedBanked.mockResolvedValue(0);
-    mockedConversation.mockResolvedValue("");
   });
 
   it("includes banned words and kip prefs from stub brand even if DB is empty", async () => {
@@ -77,7 +69,23 @@ describe("retrieveBrandContext", () => {
     expect(pack.text).toMatch(/## Engine/);
     expect(pack.text).toMatch(/4 photos?/i);
     expect(pack.text).toMatch(/library/i);
+    expect(pack.text).toMatch(/Upcoming:/);
     expect(mockedBanked).toHaveBeenCalledWith("brand-1");
+  });
+
+  it("includes open loops and does not dump conversation history", async () => {
+    const pack = await retrieveBrandContext(
+      stubBrand({
+        facts: {
+          owner_name: "Sam",
+          open_loops: { waiting_on: ["logo colours"], promised: ["first batch"], prefs: [], energy: "steady" },
+        },
+      }),
+      "hello",
+    );
+    expect(pack.text).toMatch(/## Open loops/);
+    expect(pack.text).toMatch(/logo colours/);
+    expect(pack.text).not.toMatch(/## Conversation/);
   });
 
   it("empty sections stay empty-ish (none) and do not invent an ICP", async () => {
@@ -98,8 +106,10 @@ describe("retrieveBrandContext", () => {
   });
 
   it("caps pack chars at 4000", async () => {
-    mockedConversation.mockResolvedValue("x".repeat(12_000));
-    const pack = await retrieveBrandContext(stubBrand(), "latte special");
+    const pack = await retrieveBrandContext(
+      stubBrand({ facts: { policies: "x".repeat(12_000) } }),
+      "latte special",
+    );
     expect(pack.chars).toBeLessThanOrEqual(4000);
     expect(pack.text.length).toBeLessThanOrEqual(4000);
     expect(pack.chars).toBe(pack.text.length);

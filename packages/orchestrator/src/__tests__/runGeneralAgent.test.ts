@@ -20,6 +20,25 @@ vi.mock("../retrieveContext.js", () => ({
   })),
 }));
 
+vi.mock("../conversationContext.js", () => ({
+  loadRecentChatTurns: vi.fn(async () => []),
+}));
+
+vi.mock("../speak/openLoops.js", () => ({
+  scheduleOpenLoopsUpdate: vi.fn(),
+}));
+
+vi.mock("../kipMemory.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../kipMemory.js")>();
+  return {
+    ...actual,
+    recordKipMemory: vi.fn(async (brand: Brand, text: string, bucket: string) => {
+      brand.facts = actual.mergeKipMemoryFact(brand.facts, bucket as "kip_preferences", text);
+      return brand.facts;
+    }),
+  };
+});
+
 vi.mock("../kickoffs.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../kickoffs.js")>();
   return {
@@ -30,12 +49,18 @@ vi.mock("../kickoffs.js", async (importOriginal) => {
 
 import { callLLMWithTools } from "../llm.js";
 import { retrieveBrandContext } from "../retrieveContext.js";
+import { loadRecentChatTurns } from "../conversationContext.js";
 import { maybeEnqueueFromKipCommit } from "../kickoffs.js";
+import { recordKipMemory } from "../kipMemory.js";
+import { scheduleOpenLoopsUpdate } from "../speak/openLoops.js";
 import { generalAgentEligible, runGeneralAgent } from "../runGeneralAgent.js";
 
 const mockedTools = callLLMWithTools as unknown as ReturnType<typeof vi.fn>;
 const mockedRetrieve = retrieveBrandContext as unknown as ReturnType<typeof vi.fn>;
 const mockedCommit = maybeEnqueueFromKipCommit as unknown as ReturnType<typeof vi.fn>;
+const mockedHistory = loadRecentChatTurns as unknown as ReturnType<typeof vi.fn>;
+const mockedLoops = scheduleOpenLoopsUpdate as unknown as ReturnType<typeof vi.fn>;
+const mockedRemember = recordKipMemory as unknown as ReturnType<typeof vi.fn>;
 
 function stubBrand(): Brand {
   return {
@@ -51,6 +76,9 @@ describe("runGeneralAgent", () => {
     mockedTools.mockReset();
     mockedRetrieve.mockReset();
     mockedCommit.mockReset();
+    mockedHistory.mockReset();
+    mockedLoops.mockReset();
+    mockedRemember.mockClear();
     mockedTools.mockResolvedValue("Here's the draft from tools.");
     mockedRetrieve.mockResolvedValue({
       text: "ICP: busy cafe owners. Offer: weekday lunch special.",
@@ -58,6 +86,7 @@ describe("runGeneralAgent", () => {
       chars: 52,
     });
     mockedCommit.mockResolvedValue(null);
+    mockedHistory.mockResolvedValue([]);
   });
 
   it("retrieves context then calls callLLMWithTools with general_agent / 4 rounds / draft_copy", async () => {
@@ -159,6 +188,48 @@ describe("runGeneralAgent", () => {
     expect(content).toMatch(/media-a/);
     expect(content).toMatch(/media-b/);
   });
+
+  it("prepends recent chat turns before the current user message", async () => {
+    mockedHistory.mockResolvedValueOnce([
+      { role: "user", content: "I prefer carousels" },
+      { role: "assistant", content: "Noted." },
+    ]);
+    await runGeneralAgent({
+      brand: stubBrand(),
+      ownerMessage: "what should we post?",
+      sourceMessageId: "msg-now",
+    });
+    expect(mockedHistory).toHaveBeenCalledWith("brand-1", { excludeMessageId: "msg-now" });
+    const messages = mockedTools.mock.calls[0]![0].messages as Array<{ role: string; content: string }>;
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toEqual({ role: "user", content: "I prefer carousels" });
+    expect(messages[1]).toEqual({ role: "assistant", content: "Noted." });
+    expect(messages[2]?.content).toMatch(/what should we post/);
+  });
+
+  it("updates open loops after a reply and cheap-saves a durable pref", async () => {
+    const brand = stubBrand();
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage: "I prefer shorter captions",
+      sourceMessageId: "msg-pref",
+    });
+    expect(mockedLoops).toHaveBeenCalledWith(brand, "I prefer shorter captions", out.reply);
+    expect(mockedRemember).toHaveBeenCalled();
+    expect(String(mockedRemember.mock.calls[0]![1])).toMatch(/prefer shorter/i);
+  });
+
+  it("does not cheap-save a pref when remember_fact already ran", async () => {
+    mockedTools.mockImplementationOnce(async (arg: { toolExecutor: (name: string, input: unknown) => Promise<string> }) => {
+      await arg.toolExecutor("remember_fact", { text: "prefer carousels", bucket: "kip_preferences" });
+      return "Got it.";
+    });
+    await runGeneralAgent({
+      brand: stubBrand(),
+      ownerMessage: "I prefer carousels",
+    });
+    expect(mockedRemember).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("generalAgentEligible", () => {
@@ -180,17 +251,19 @@ describe("generalAgentEligible", () => {
 });
 
 describe("processInbound general-agent insert", () => {
-  it("sits after the connect/ads/digest block and before GREETING_RE", () => {
+  it("sits after digest and calendar, after greetings", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
     );
     const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
-    const agentIdx = src.indexOf("generalAgentEligible({");
+    const calendarIdx = src.indexOf("looksLikeCalendarAsk(message.body)");
     const greetingIdx = src.indexOf("GREETING_RE.test(message.body)");
+    const agentIdx = src.indexOf("generalAgentEligible({");
     expect(digestIdx).toBeGreaterThan(-1);
-    expect(agentIdx).toBeGreaterThan(digestIdx);
-    expect(greetingIdx).toBeGreaterThan(agentIdx);
+    expect(calendarIdx).toBeGreaterThan(digestIdx);
+    expect(greetingIdx).toBeGreaterThan(calendarIdx);
+    expect(agentIdx).toBeGreaterThan(greetingIdx);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);

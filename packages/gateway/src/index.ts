@@ -11,6 +11,7 @@ export {
   startTypingKeeper,
   splitIntoBubbles,
   shouldSendInstantTextAck,
+  shouldSendSlowWorkFiller,
   looksLikeProgressCheck,
   refersToAttachedMedia,
 } from "./gateway.js";

@@ -11,13 +11,17 @@ vi.mock("@pulse/shared", async (importOriginal) => {
   };
 });
 
-vi.mock("../kickoffs.js", () => ({
-  enqueueKickoff: vi.fn(async () => ({
-    kickoff: { id: "kick-1" },
-    alreadyQueued: false,
-    ackSms: "On it — drafting.",
-  })),
-}));
+vi.mock("../kickoffs.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../kickoffs.js")>();
+  return {
+    ...actual,
+    enqueueKickoff: vi.fn(async () => ({
+      kickoff: { id: "kick-1" },
+      alreadyQueued: false,
+      ackSms: "On it — drafting.",
+    })),
+  };
+});
 
 vi.mock("../draftCaption.js", () => ({
   draftCaption: vi.fn(async () => ({ caption: "Hello latte", proposedTime: null })),
@@ -67,6 +71,7 @@ import {
   executeAgentTool,
   isValidKickoffKind,
   mergeKipMemoryFact,
+  looksLikeCalendarAsk,
   summarizeCalendar,
 } from "../agentTools.js";
 
@@ -131,24 +136,34 @@ describe("helpers", () => {
     expect(again.kip_preferences).toHaveLength(1);
   });
 
-  it("summarizeCalendar notes empty days", () => {
+  it("summarizeCalendar speaks weekday prose, not JSON", () => {
     const now = new Date("2026-09-14T10:00:00.000Z");
-    const out = JSON.parse(
-      summarizeCalendar(
-        [
-          {
-            id: "p1",
-            status: "scheduled",
-            scheduled_at: "2026-09-14T11:00:00.000Z",
-            caption: "Latte art",
-          },
-        ],
-        7,
-        now,
-      ),
+    const out = summarizeCalendar(
+      [
+        {
+          id: "p1",
+          status: "scheduled",
+          scheduled_at: "2026-09-14T11:00:00.000Z",
+          caption: "Latte art",
+        },
+      ],
+      7,
+      now,
     );
-    expect(out.posts).toHaveLength(1);
-    expect(out.emptyDays.length).toBe(6);
+    expect(() => JSON.parse(out)).toThrow();
+    expect(out.toLowerCase()).toMatch(/latte art/);
+    expect(out).toMatch(/scheduled/i);
+    expect(out).not.toMatch(/emptyDays/);
+    expect(out).not.toMatch(/2026-09-15T/);
+  });
+
+  it("looksLikeCalendarAsk matches lookups and ignores drafts/ads", () => {
+    expect(looksLikeCalendarAsk("what's on my calendar this week?")).toBe(true);
+    expect(looksLikeCalendarAsk("check my calendar")).toBe(true);
+    expect(looksLikeCalendarAsk("this week's posts")).toBe(true);
+    expect(looksLikeCalendarAsk("make me a carousel this week")).toBe(false);
+    expect(looksLikeCalendarAsk("can you promote our new winter menu this week")).toBe(false);
+    expect(looksLikeCalendarAsk("what's on my calendar and make a carousel")).toBe(false);
   });
 });
 

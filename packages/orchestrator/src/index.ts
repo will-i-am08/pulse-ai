@@ -8,7 +8,8 @@ export { applyCorrection } from "./applyCorrection.js";
 
 export { seedBrandVoice } from "./seedBrandVoice.js";
 
-export { buildConversationContext } from "./conversationContext.js";
+export { buildConversationContext, loadRecentChatTurns, normalizeChatTurns } from "./conversationContext.js";
+export type { ChatTurn } from "./conversationContext.js";
 export { speakSMS, buildSpeakSystem, needsThink, humanizeChat, readOpenLoops } from "./speak/index.js";
 export type { SpeakMode, SpeakOptions, ThinkResult } from "./speak/index.js";
 
@@ -53,7 +54,14 @@ export type { ConnectNudgeCandidate } from "./connectNudge.js";
 
 export type { LabChatSummary } from "./onboarding.js";
 
-export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";
+export {
+  ownerFirstName,
+  firstNameFromDisplayName,
+  personaLines,
+  personaVoiceLines,
+  connectionSummary,
+} from "./persona.js";
+export { formatScheduledSlot, formatWeekday, localYmd, joinEnglish } from "./smsTime.js";
 
 export {
   runVoiceAnalysis,
@@ -72,7 +80,15 @@ export type { RunGeneralAgentOpts, RunGeneralAgentResult } from "./runGeneralAge
 export { retrieveBrandContext, rankByKeywordOverlap } from "./retrieveContext.js";
 export type { BrandContextPack } from "./retrieveContext.js";
 export { agentIdentity, listsToolMenu } from "./agentIdentity.js";
-export { KIP_AGENT_TOOLS, executeAgentTool, mergeKipMemoryFact, recordKipMemory } from "./agentTools.js";
+export {
+  KIP_AGENT_TOOLS,
+  executeAgentTool,
+  mergeKipMemoryFact,
+  recordKipMemory,
+  looksLikeCalendarAsk,
+  loadCalendarSms,
+  summarizeCalendar,
+} from "./agentTools.js";
 export type { AgentToolContext, KipMemoryBucket } from "./agentTools.js";
 export {
   kipMemoryPromptBlock,
@@ -499,6 +515,7 @@ export {
 
 export {
   looksLikeKickoffRequest,
+  looksLikeSlowSmsWork,
   looksLikeUseThisBrief,
   looksLikeFormatMenuReply,
   looksLikeFormatMenuOutbound,

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   looksLikeProgressCheck,
   shouldSendInstantTextAck,
+  shouldSendSlowWorkFiller,
   splitIntoBubbles,
 } from "./gateway.js";
 
@@ -35,6 +36,26 @@ describe("shouldSendInstantTextAck", () => {
     expect(shouldSendInstantTextAck({ onboarding_state: { status: "none" } }, "hey")).toBe(false);
     expect(
       shouldSendInstantTextAck({ onboarding_state: { status: "in_progress" } }, "sounds good"),
+    ).toBe(false);
+  });
+});
+
+describe("shouldSendSlowWorkFiller", () => {
+  const base = { photoAckSent: false, textAckSent: false, hasTyping: false };
+  it("fires only for known-slow draft jobs on SMS", () => {
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "draft me 3 posts" })).toBe(true);
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "make me a carousel" })).toBe(true);
+  });
+  it("never fires for calendar, greetings, or when typing exists", () => {
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "what's on my calendar this week?" })).toBe(
+      false,
+    );
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "hey" })).toBe(false);
+    expect(
+      shouldSendSlowWorkFiller({ ...base, hasTyping: true, inboundText: "draft me 3 posts" }),
+    ).toBe(false);
+    expect(
+      shouldSendSlowWorkFiller({ ...base, photoAckSent: true, inboundText: "draft me 3 posts" }),
     ).toBe(false);
   });
 });

@@ -7,12 +7,16 @@
  */
 
 import type { Brand } from "@pulse/shared";
+import type Anthropic from "@anthropic-ai/sdk";
 import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
+import { loadRecentChatTurns } from "./conversationContext.js";
 import { maybeEnqueueFromKipCommit } from "./kickoffs.js";
+import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
 import { humanizeChat } from "./speak/humanizeChat.js";
+import { scheduleOpenLoopsUpdate } from "./speak/openLoops.js";
 
 export type RunGeneralAgentOpts = {
   brand: Brand;
@@ -49,33 +53,59 @@ function ownerUserContent(ownerMessage: string, mediaIds?: string[]): string {
   return `${ownerMessage}\n\nAttached media ids: ${ids.join(", ")}`;
 }
 
+function appendCurrentUser(
+  history: Anthropic.MessageParam[],
+  current: string,
+): Anthropic.MessageParam[] {
+  const last = history[history.length - 1];
+  if (last && last.role === "user" && typeof last.content === "string") {
+    return [...history.slice(0, -1), { role: "user", content: `${last.content}\n${current}` }];
+  }
+  return [...history, { role: "user", content: current }];
+}
+
 export async function runGeneralAgent(
   opts: RunGeneralAgentOpts,
 ): Promise<RunGeneralAgentResult> {
   const { brand, ownerMessage, sourceMessageId, mediaIds } = opts;
-  const pack = await retrieveBrandContext(brand, ownerMessage);
+  const [pack, history] = await Promise.all([
+    retrieveBrandContext(brand, ownerMessage),
+    loadRecentChatTurns(brand.id, { excludeMessageId: sourceMessageId }).catch(() => []),
+  ]);
   const system = agentIdentity(brand, pack.text);
   const operatorAlerts: string[] = [];
+  let remembered = false;
+
+  const historyMessages: Anthropic.MessageParam[] = history.map((t) => ({
+    role: t.role,
+    content: t.content,
+  }));
+  const messages = appendCurrentUser(
+    historyMessages,
+    ownerUserContent(ownerMessage, mediaIds),
+  );
 
   let reply: string | undefined;
   try {
     const raw = await callLLMWithTools({
       system,
-      messages: [{ role: "user", content: ownerUserContent(ownerMessage, mediaIds) }],
+      messages,
       maxTokens: 700,
       temperature: 0.7,
       tier: "smart",
       task: "general_agent",
       tools: KIP_AGENT_TOOLS,
       maxRounds: 4,
-      toolExecutor: (name, input) =>
-        executeAgentTool(name, input, {
+      toolExecutor: async (name, input) => {
+        if (name === "remember_fact") remembered = true;
+        return executeAgentTool(name, input, {
           brand,
           sourceMessageId,
           mediaIds,
           retrievedPack: pack.text,
           operatorAlerts,
-        }),
+        });
+      },
     });
     reply = humanizeChat(stripMarkdown(raw));
   } catch {
@@ -84,6 +114,12 @@ export async function runGeneralAgent(
 
   if (reply) {
     await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
+    scheduleOpenLoopsUpdate(brand, ownerMessage, reply);
+  }
+
+  const durable = durablePrefFromCorrectionNote(ownerMessage);
+  if (durable && !remembered) {
+    await recordKipMemory(brand, durable, "kip_preferences").catch(() => {});
   }
 
   return { reply, operatorAlert: operatorAlerts[0] };

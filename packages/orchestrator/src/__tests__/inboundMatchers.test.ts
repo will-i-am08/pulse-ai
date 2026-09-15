@@ -12,6 +12,7 @@ import {
   SCRATCH_OR_TWEAK_ASK_RE,
 } from "../processInbound.js";
 import { looksLikeBoostRequest } from "../boost.js";
+import { looksLikeCalendarAsk } from "../agentTools.js";
 import {
   looksLikePhotoBackgroundAsk,
   photoBackgroundAskCoversBatch,
@@ -305,5 +306,24 @@ table("SCRATCH_OR_TWEAK_ASK_RE (Kip's last reply)", (s) => SCRATCH_OR_TWEAK_ASK_
     "Tell me what to change and I'll tweak it.",
     "Here's your post. Reply yes to approve, or tell me a tweak.",
     "I'll keep your posts spread across the week.",
+  ],
+});
+
+table("looksLikeCalendarAsk", looksLikeCalendarAsk, {
+  must: [
+    "what's on my calendar this week?",
+    "Whats on my calendar",
+    "check my calendar",
+    "show me the schedule",
+    "this week's posts",
+    "what's coming up this week",
+  ],
+  mustNot: [
+    "make me a carousel this week",
+    "draft me 3 posts",
+    "can you promote our new winter menu this week",
+    "what's on my calendar and make a carousel",
+    "schedule this for Thursday",
+    "hey",
   ],
 });

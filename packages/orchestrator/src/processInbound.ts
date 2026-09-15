@@ -133,6 +133,8 @@ import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
+import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
+import { formatScheduledSlot as formatSlot } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -359,16 +361,6 @@ const REUSE_RE =
 // out). These get a warm human reply, never the clarify fallback.
 const GREETING_RE =
   /^\s*(?:hi+|hey+|hello+|yo+|hiya|heya|howdy|hallo|sup|wassup|g'?day|good\s*(?:morning|afternoon|evening|day)|morning|afternoon|evening|thanks?(?:\s*(?:you|a lot|so much|heaps|mate))?|thank\s*you|cheers|ta|nice\s*one|good\s*stuff|lol|haha+|how(?:'?s| is| are| ya| you)?\s*(?:it|things|you|ya|everything|life)?(?:\s*(?:going|doing|been))?)\b[\s!.?,]*$/i;
-
-/** Format a scheduled slot like "Tue 7:00pm" in the process/brand timezone. */
-function formatSlot(d: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
-}
 
 /** The most recent autopilot post still sitting in a future slot (for HOLD). */
 async function getScheduledAutoPost(brandId: string): Promise<Post | null> {
@@ -1296,13 +1288,41 @@ async function routeInbound(
         return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
       }
     }
+    if (looksLikeCalendarAsk(message.body)) {
+      try { return { reply: await loadCalendarSms(brand) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't check the calendar just now (${detail}). Try again in a bit.` };
+      }
+    }
+  }
+
+  // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
+  // with no photo — just gets a warm human reply. This runs before the general
+  // agent so a friendly hello never pays retrieve + a 4-round tool loop. It fires
+  // even when a draft is pending: a greeting is never an approval, so GREETING_RE
+  // only matches unambiguous pleasantries (never "yes"/"ok"), and the pending
+  // draft is left as-is.
+  if (
+    message.body &&
+    newMedia.length === 0 &&
+    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
+  ) {
+    if (gap.bucket !== "seamless") {
+      return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
+    }
+    {
+      const chat = await converse(brand, message.body);
+      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
+      return { reply: chat };
+    }
   }
 
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads/digest). Does not intercept attached media or a
-  // pending_approval draft — those keep the existing router. Pending + question
-  // still reaches runGeneralAgent via answerQuestion.
+  // connect/disconnect, ads/digest/calendar) and greetings. Does not intercept
+  // attached media or a pending_approval draft — those keep the existing router.
+  // Pending + question still reaches runGeneralAgent via answerQuestion.
   if (
     generalAgentEligible({
       flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
@@ -1317,26 +1337,6 @@ async function routeInbound(
       mediaIds: [],
     });
     return { reply: out.reply, operatorAlert: out.operatorAlert };
-  }
-
-  // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
-  // with no photo — just gets a warm human reply. This runs before classification
-  // so a friendly hello never trips the clarify fallback. It fires even when a
-  // draft is pending: a greeting is never an approval, so GREETING_RE only matches
-  // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
-  if (
-    message.body &&
-    newMedia.length === 0 &&
-    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
-  ) {
-    if (gap.bucket !== "seamless") {
-      return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
-    }
-    {
-      const chat = await converse(brand, message.body);
-      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
-      return { reply: chat };
-    }
   }
 
   const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
