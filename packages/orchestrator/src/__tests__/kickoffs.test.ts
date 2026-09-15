@@ -39,6 +39,17 @@ describe("looksLikeKickoffRequest", () => {
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
   });
 
+  it("does not treat a bare reel ask as a photo-feed kickoff", () => {
+    expect(looksLikeKickoffRequest("make a reel")).toBe(false);
+    expect(inferKickoffFromUserMessage("make a reel")).toBeNull();
+    expect(
+      inferKickoffFromKipCommit(
+        "make a reel",
+        "I've got you down for a reel, but I need the video clip first. Send me the video and I'll draft the caption.",
+      ),
+    ).toBeNull();
+  });
+
   it("treats carousel/photo asks without client media as kickoffs (generate/stock)", () => {
     expect(
       looksLikeKickoffRequest(
