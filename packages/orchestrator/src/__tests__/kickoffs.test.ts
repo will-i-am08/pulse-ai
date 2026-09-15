@@ -13,6 +13,10 @@ import { query } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
   refersToAttachedMedia,
+  looksLikeUseThisBrief,
+  looksLikeFormatMenuReply,
+  looksLikeFormatMenuOutbound,
+  looksLikeDraftPreviewOutbound,
   inferKickoffFromUserMessage,
   inferKickoffFromKipCommit,
   deliverUnstreamed,
@@ -68,7 +72,57 @@ describe("looksLikeKickoffRequest", () => {
 
   it("detects when the owner refers to an attached photo", () => {
     expect(refersToAttachedMedia("Post a good morning post with this photo")).toBe(true);
+    expect(refersToAttachedMedia("Use this and do something inspirational")).toBe(true);
+    expect(refersToAttachedMedia("Use this a do something inspirational")).toBe(true);
+    expect(refersToAttachedMedia("use this")).toBe(true);
+    expect(refersToAttachedMedia("use these")).toBe(true);
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
+  });
+
+  it("treats use-this / inspirational briefs and bare format-menu replies as kickoffs", () => {
+    const samples = [
+      "Use this and do something inspirational",
+      "Use this a do something inspirational",
+      "do something inspirational",
+      "something inspirational",
+      "A post",
+      "a post",
+      "A carousel",
+      "carousel",
+    ];
+    for (const s of samples) {
+      expect(looksLikeKickoffRequest(s), s).toBe(true);
+      expect(inferKickoffFromUserMessage(s)?.kind, s).toBe("draft_posts");
+    }
+    expect(looksLikeUseThisBrief("Use this a do something inspirational")).toBe(true);
+    expect(looksLikeFormatMenuReply("A post")).toBe(true);
+    expect(looksLikeFormatMenuReply("carousel")).toBe(true);
+    expect(looksLikeFormatMenuReply("make me a post about hiring")).toBe(false);
+  });
+});
+
+describe("format-menu outbound gating", () => {
+  it("recognises the Tell me what to make menu vs a draft preview", () => {
+    expect(
+      looksLikeFormatMenuOutbound(
+        "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeDraftPreviewOutbound(
+        'Draft ready — photo post for Tips:\n\n"Hello"\n\nProposed for Tue 7:00pm. Reply "yes" to approve, or tell me a change.',
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeDraftPreviewOutbound(
+        "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
+      ),
+    ).toBe(false);
+    expect(
+      looksLikeDraftPreviewOutbound(
+        'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
+      ),
+    ).toBe(false);
   });
 });
 
@@ -140,6 +194,31 @@ describe("inferKickoffFromUserMessage", () => {
     // "AI coding tools" must not flip visuals to generated
     expect(r?.payload.visuals).toBe("photo");
     expect(String(r?.ackSms ?? "")).toMatch(/that post from your brief/i);
+  });
+
+  it("maps bare 'A post' format reply to a single feed draft", () => {
+    const r = inferKickoffFromUserMessage("A post");
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.preferCarousel).toBe(false);
+    expect(r?.payload.format).toBeUndefined();
+    expect(r?.payload.topicHint).toBe("A post");
+  });
+
+  it("maps bare carousel format reply to a single carousel", () => {
+    const r = inferKickoffFromUserMessage("A carousel");
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.preferCarousel).toBe(true);
+    expect(r?.payload.format).toBe("carousel");
+  });
+
+  it("maps use-this inspirational briefs to draft_posts with the brief as topicHint", () => {
+    const brief = "Use this a do something inspirational";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
+    expect(Number(r?.payload.count)).toBeGreaterThanOrEqual(1);
   });
 });
 

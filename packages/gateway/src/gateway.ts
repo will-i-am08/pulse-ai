@@ -9,6 +9,7 @@ import {
   buildOnboardingPlanSms,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
+  refersToAttachedMedia,
 } from "@pulse/orchestrator";
 import {
   getServerEnv,
@@ -50,15 +51,8 @@ const INBOUND_BURST_MS = 2800;
 const PHOTO_ARRIVAL_WAIT_MS = 4500;
 const PHOTO_ARRIVAL_POLL_MS = 700;
 
-/** Owner clearly meant an attached image/video ("with this photo"). */
-export function refersToAttachedMedia(body: string | null | undefined): boolean {
-  const t = (body ?? "").trim();
-  if (!t) return false;
-  return (
-    /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b/i.test(t) ||
-    /\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b/i.test(t)
-  );
-}
+/** Re-export — single source of truth lives in @pulse/orchestrator. */
+export { refersToAttachedMedia };
 
 /** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */
 export function looksLikeProgressCheck(text: string): boolean {
@@ -614,15 +608,9 @@ export async function handleInbound(
           undefined,
           { pace: false, channel },
         ).catch(() => {});
-      } else {
-        await sendToBrand(
-          brand.id,
-          "I didn't get the photo on that text — SMS sometimes drops pictures. Send the image again (on its own is fine) and I'll draft it straight away.",
-          undefined,
-          { pace: false, channel },
-        ).catch(() => {});
-        return { brandId: brand.id, messageId: message.id };
       }
+      // No sibling — fall through to processInbound, which tries a recent banked
+      // client photo then asks to resend if nothing is on file.
     }
 
     if (mediaDownloadFailed) {
