@@ -496,21 +496,20 @@ async function answerQuestion(
   context: string,
   question: string,
   sourceMessageId?: string | null,
-): Promise<string> {
+): Promise<{ reply: string; operatorAlert?: string }> {
   if (getServerEnv().KIP_GENERAL_AGENT) {
-    const out = await runGeneralAgent({
+    return runGeneralAgent({
       brand,
       ownerMessage: question,
       sourceMessageId,
       mediaIds: [],
     });
-    return out.reply;
   }
   if (getServerEnv().KIP_TOOL_LOOP) {
-    return answerWithTools(brand, context, question, { sourceMessageId });
+    return { reply: await answerWithTools(brand, context, question, { sourceMessageId }) };
   }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  return speakSMS({
+  const reply = await speakSMS({
     brand,
     mode: "answer",
     modeLines: [
@@ -527,6 +526,7 @@ async function answerQuestion(
     webSearch: 4,
     classification: "question",
   });
+  return { reply };
 }
 
 /**
@@ -2078,11 +2078,13 @@ async function routeInbound(
 
     case "question": {
       const context = await buildConversationContext(brand.id);
-      const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
-      // Gated variant: Kip must not queue drafts off its own small talk — the
-      // CLIENT's words have to carry the request.
-      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, answer, message.id);
-      return { reply: answer };
+      const out = await answerQuestion(brand, context, message.body ?? "", message.id);
+      // runGeneralAgent already runs maybeEnqueueFromKipCommit. The speak/tool-loop
+      // paths still need the client-gated safety net.
+      if (!getServerEnv().KIP_GENERAL_AGENT) {
+        await maybeEnqueueFromKipCommitIfAsked(brand, message.body, out.reply, message.id);
+      }
+      return { reply: out.reply, operatorAlert: out.operatorAlert };
     }
 
     case "instruction":

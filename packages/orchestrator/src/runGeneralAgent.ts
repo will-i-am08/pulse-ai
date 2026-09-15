@@ -75,9 +75,6 @@ export async function runGeneralAgent(
           mediaIds,
           retrievedPack: pack.text,
           operatorAlerts,
-          notifyOperator: async (body) => {
-            operatorAlerts.push(body);
-          },
         }),
     });
     reply = humanizeChat(stripMarkdown(raw));

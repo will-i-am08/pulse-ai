@@ -9,6 +9,7 @@ Feature flags (all off by default — existing behaviour stays until you flip th
 | **`KIP_SMART_ROUTING`** (`true` / `1`) | `callLLM` / `callLLMWithTools` route by tier (fast / standard / smart). |
 | **`SMART_MODEL`** | Optional override for smart-tier primary (defaults to `FALLBACK_MODEL`). |
 | **`KIP_TOOL_LOOP`** (`true` / `1`) | Question turns use a bounded Anthropic **client tool loop** instead of plain `speakSMS` + web_search. |
+| **`KIP_GENERAL_AGENT`** (`true` / `1`) | After hard gates, inbound SMS with no attached media and no pending draft uses retrieve + identity + the general tool loop (`runGeneralAgent`). Off by default. |
 | **`KIP_SMART_PLANNER`** (`true` / `1`) | Multi-step owner asks get a short `SmartPlan` before kickoff enqueue (`planSmartTurn` / `parseSmartPlan`). |
 
 ## Phases
@@ -72,6 +73,32 @@ When `KIP_SMART_PLANNER=true` and `looksLikeMultiStepAsk(message)`:
 
 Never publishes; never invents spend. Max 4 steps.
 
+### Phase 5 — General agent (shipped behind `KIP_GENERAL_AGENT`)
+
+Three layers. The model stays general; tools and retrieval narrow. Content engine (captions, kickoffs, composer, UGC) is **not** rewritten — `draft_copy` is a facade over it.
+
+**Hard gates (existing handlers, no LLM router):** onboarding FSM, destination-link confirm, HOLD, parked carousel/variant picks, pending-draft format cmds, high-confidence approval/edit, engagement/CRM verbs, connect/disconnect, ads toggles. Attached media still uses the existing photo/video/UGC pipeline.
+
+When the flag is on and there is **no attached media and no pending_approval draft**, `routeInbound` calls `runGeneralAgent`:
+
+1. `retrieveBrandContext` — structured pack (voice, prefs, facts, engine status, ranked tone examples / campaigns, conversation). Logs `{ event: "retrieve", brandId, sections, chars }`. No vector DB.
+2. `agentIdentity` — role, who it serves, what good looks like, judgment, escalation triggers. Not a task menu.
+3. `callLLMWithTools` (`task: general_agent`, tier `smart`, max 4 rounds) with:
+
+| Tool | Behaviour |
+|------|-----------|
+| `schedule_post` | `scheduleSlot` on a pending/approved/scheduled post. Never sets `published`. |
+| `pull_analytics` | `buildPerformanceAnalysis` (read-only). |
+| `draft_copy` | Engine facade: `caption`, `post`, `first_batch`, `carousel`, `story`, `trend`, `competitor`, `from_library`, `ugc`, `reel`. Queues drafts / kickoffs only. |
+| `check_calendar` | Upcoming committed posts (7–14 days). Read-only. |
+| `escalate_to_human` | Structured log + `operatorAlert` → `sendToOperator`. Owner SMS stays in character. |
+| `remember_fact` | Short pref/decision on `brand.facts`. |
+
+4. `humanizeChat` + `stripMarkdown`
+5. `maybeEnqueueFromKipCommit` safety net if the model promised work without a successful `draft_copy`
+
+Pending + question still uses `runGeneralAgent` via `answerQuestion` (and threads `operatorAlert`). Flag off → today's classify/switch router. `KIP_TOOL_LOOP` question path is unchanged when the general-agent flag is off.
+
 ## Acceptance (Phase 0–4)
 
 - [ ] `resolveModelPlan` unit tests green (routing off / on × fast / standard / smart).
@@ -85,10 +112,22 @@ Never publishes; never invents spend. Max 4 steps.
 - [ ] `parseSmartPlan` / `looksLikeMultiStepAsk` tests (no live LLM).
 - [ ] With `KIP_SMART_PLANNER` off, kickoffs unchanged.
 
+## Acceptance (Phase 5)
+
+- [ ] Exposed tools are `schedule_post`, `pull_analytics`, `draft_copy`, `check_calendar`, `escalate_to_human`, `remember_fact`.
+- [ ] Unknown `draft_copy.job` fails closed with `allowedJobs`.
+- [ ] `schedule_post` never writes `status = published`.
+- [ ] `retrieveBrandContext` includes banned words / prefs / engine status; keyword overlap ranks matching captions; empty sections stay `(none)`.
+- [ ] `agentIdentity` has role + draft_copy-before-SMS judgment + escalation triggers; no tool menu.
+- [ ] Flag off → existing inbound path. Flag on after gates → `runGeneralAgent` (no media, no pending).
+- [ ] `maybeEnqueueFromKipCommit` still runs after a general-agent reply.
+- [ ] Pending+question threads `operatorAlert` to the gateway; does not double-enqueue.
+
 ## Ops notes
 
 - Flip `KIP_SMART_ROUTING=true` in staging first; watch `llm_call` volume and model mix.
 - Flip `KIP_TOOL_LOOP=true` after routing looks healthy — watch `smart_answer` latency and tool error rates.
 - Flip `KIP_SMART_PLANNER=true` after tool loop looks healthy — watch `smart_plan` volume and kickoff mix.
+- Flip `KIP_GENERAL_AGENT=true` in staging after tools/retrieval look healthy — watch `general_agent` / `retrieve` logs, tool error rates, and kickoff volume. Leave it off in production until that is quiet.
 - Pin `SMART_MODEL` only if you want smart tier on a different Sonnet/Opus id than `FALLBACK_MODEL`.
 - Cost control: leave classify / summarise / open-loops on **fast**; don’t promote them to smart without a reason.

@@ -133,6 +133,21 @@ describe("runGeneralAgent", () => {
     expect(mockedCommit).toHaveBeenCalledWith(brand, "draft a post", out.reply, "msg-err");
   });
 
+  it("surfaces operatorAlert from escalate_to_human without putting it in the owner reply", async () => {
+    mockedTools.mockImplementationOnce(async (arg: { toolExecutor: (name: string, input: unknown) => Promise<string> }) => {
+      await arg.toolExecutor("escalate_to_human", { reason: "blocked", summary: "need a human" });
+      return "I'll look into this and come back to you.";
+    });
+    const out = await runGeneralAgent({
+      brand: stubBrand(),
+      ownerMessage: "this is a legal question",
+    });
+    expect(out.operatorAlert).toMatch(/Sunrise Cafe/);
+    expect(out.operatorAlert).toMatch(/blocked/);
+    expect(out.reply.toLowerCase()).not.toMatch(/operator|agency/);
+    expect(out.reply).not.toBe(out.operatorAlert);
+  });
+
   it("notes attached media ids on the user message", async () => {
     await runGeneralAgent({
       brand: stubBrand(),
@@ -178,5 +193,17 @@ describe("processInbound general-agent insert", () => {
     expect(greetingIdx).toBeGreaterThan(agentIdx);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
+    expect(src).toMatch(/operatorAlert: out\.operatorAlert/);
+  });
+
+  it("question path threads operatorAlert and does not double-enqueue when the general agent is on", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
+      "utf8",
+    );
+    const q = src.slice(src.indexOf('case "question"'), src.indexOf('case "instruction"'));
+    expect(q).toMatch(/operatorAlert: out\.operatorAlert/);
+    expect(q).toMatch(/KIP_GENERAL_AGENT/);
+    expect(q).toMatch(/maybeEnqueueFromKipCommitIfAsked/);
   });
 });
