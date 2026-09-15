@@ -151,6 +151,16 @@ async function issueCode(
   return flushLoginCodes(phone);
 }
 
+function isNextRedirect(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'digest' in err &&
+    typeof (err as { digest?: unknown }).digest === 'string' &&
+    String((err as { digest: string }).digest).startsWith('NEXT_REDIRECT')
+  );
+}
+
 function verifyRedirect(phone: string, opts?: { new?: boolean; delivered?: boolean }): never {
   const params = new URLSearchParams({ phone });
   if (opts?.new) params.set('new', '1');
@@ -277,24 +287,24 @@ export async function signupAction(formData: FormData): Promise<void> {
   if (!name) redirect('/signup?error=missing');
   if (!phone) redirect('/signup?error=badphone');
 
-  const existingUser = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
-  if (existingUser) redirect('/login?error=exists');
-
-  // client_phone is unique — a prior brand (often seeded before phone-auth)
-  // would make a fresh insert fail after the user row already exists. If that
-  // brand has no phone-auth owner yet, we claim it; if it's already owned, the
-  // phone genuinely belongs to another account.
-  const phoneTaken = await queryOne<{ id: string; owner_user_id: string | null }>(
-    'select id, owner_user_id from brands where client_phone = $1',
-    [phone],
-  );
-  if (phoneTaken?.owner_user_id) redirect('/signup?error=phoneinuse');
-
-  // Atomic: the user, their brand (new or claimed), and the first login code all
-  // commit together or not at all. If anything throws (e.g. a misconfigured
-  // encryption key, or a race on the unique phone index), the whole thing rolls
-  // back — no orphaned user/brand rows left behind to block a genuine retry.
   try {
+    const existingUser = await queryOne<{ id: string }>('select id from users where phone = $1', [phone]);
+    if (existingUser) redirect('/login?error=exists');
+
+    // client_phone is unique — a prior brand (often seeded before phone-auth)
+    // would make a fresh insert fail after the user row already exists. If that
+    // brand has no phone-auth owner yet, we claim it; if it's already owned, the
+    // phone genuinely belongs to another account.
+    const phoneTaken = await queryOne<{ id: string; owner_user_id: string | null }>(
+      'select id, owner_user_id from brands where client_phone = $1',
+      [phone],
+    );
+    if (phoneTaken?.owner_user_id) redirect('/signup?error=phoneinuse');
+
+    // Atomic: the user, their brand (new or claimed), and the first login code all
+    // commit together or not at all. If anything throws (e.g. a misconfigured
+    // encryption key, or a race on the unique phone index), the whole thing rolls
+    // back — no orphaned user/brand rows left behind to block a genuine retry.
     await withTransaction(async (tx) => {
       const user = await tx.queryOne<{ id: string }>(
         'insert into users (phone, email, name) values ($1, $2, $3) returning id',
@@ -345,8 +355,11 @@ export async function signupAction(formData: FormData): Promise<void> {
       await issueCode(phone!, user.id, brandId, 'signup', tx);
     });
   } catch (err) {
+    if (isNextRedirect(err)) throw err;
     console.error('[signup] failed:', err instanceof Error ? err.message : err);
-    redirect('/signup?error=failed');
+    const missingDb =
+      err instanceof Error && err.message.includes('DATABASE_URL is required');
+    redirect(missingDb ? '/signup?error=unavailable' : '/signup?error=failed');
   }
 
   // The code is committed now — kick immediate delivery so the user doesn't wait

@@ -49,7 +49,18 @@ Leave Production empty for now. Preview refuses `sk_live_` keys unless `STRIPE_A
 
 You do **not** need `STRIPE_PRICE_*`. Checkout loads Prices by lookup key (`kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year`).
 
-Redeploy the Preview deployment after saving (Deployments → ⋯ → Redeploy), or push an empty commit.
+Redeploy the Preview deployment after saving (Deployments → ⋯ → Redeploy).
+
+### 3b. Enable DATABASE_URL on Preview (this is what caused the white screen)
+
+Neon often injects `DATABASE_URL` for **Production only**. Preview then throws `DATABASE_URL is required for the database pool` on signup (digest `849919544`).
+
+1. [Environment Variables](https://vercel.com/william08s-projects/pulse-ai/settings/environment-variables)
+2. Open `DATABASE_URL` → enable **Preview** (and Development). Use the same Production connection string for this smoke test.
+3. Also enable Preview for `AUTH_SECRET`, `TOKEN_ENCRYPTION_KEY`, `APP_BASE_URL`, and the Twilio vars (OTP SMS).
+4. Redeploy Preview.
+
+Stripe keys alone are not enough — signup talks to Postgres before Checkout.
 
 ### 4. Customer Portal (test account)
 
@@ -98,3 +109,7 @@ Keep `PLAN_ENFORCEMENT` unset/false.
 - Preview env vars missing, or still on an old deploy.
 - `STRIPE_SECRET_KEY` is `sk_live_` on Preview (blocked).
 - You copied keys from **Kip Ai** Test mode instead of the **Kip ai test** account (lookup keys will 404).
+
+## If signup is a white screen / “Application error”
+
+Preview is missing `DATABASE_URL`. Enable it for Preview (same value as Production) and redeploy. See §3b.
