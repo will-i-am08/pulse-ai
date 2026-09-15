@@ -27,3 +27,5 @@ export { createInteraction, claimInteraction, handleInteraction, maybeAutoPushLe
 export type { EngagementResult } from "@pulse/orchestrator";
 export { withBackoff } from "./backoff.js";
 export type { BackoffOptions } from "./backoff.js";
+export { handleUnknownInbound } from "./smsLead.js";
+export type { UnknownInboundResult } from "./smsLead.js";

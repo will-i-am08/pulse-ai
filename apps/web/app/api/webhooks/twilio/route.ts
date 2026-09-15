@@ -43,8 +43,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const inbound = channel.parseInbound(params);
     // Fire the full inbound pipeline (persist, capture media, hand off to the
-    // orchestrator). handleInbound never throws for an unknown sender — it
-    // logs and returns brandId:null — but we still guard the call in case of
+    // orchestrator). handleInbound never throws — unknown senders get a
+    // signup-link reply and return brandId:null — but we still guard the call in case of
     // an unexpected downstream failure, since Twilio must get a fast, cheap
     // response regardless.
     // `defer` hands follow-up work (the onboarding plan SMS) to Next's after()

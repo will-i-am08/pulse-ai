@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { signupAction } from '@/lib/actions/auth';
 import { BrandLockup } from '../components/BrandLockup';
 import { PendingSubmitButton } from '../components/PendingSubmitButton';
+import { normalizePhone, normalizeSmsLeadSource, toLocalPhoneInput } from '@pulse/shared';
 import styles from '../auth.module.css';
 
 export const metadata = { title: 'Sign up | Kip' };
@@ -17,9 +18,16 @@ const ERRORS: Record<string, string> = {
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; plan?: string; billing?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    plan?: string;
+    billing?: string;
+    from?: string;
+    src?: string;
+    phone?: string;
+  }>;
 }) {
-  const { error, plan, billing } = await searchParams;
+  const { error, plan, billing, from, src, phone: phoneParam } = await searchParams;
   const msg = error ? (ERRORS[error] ?? 'Something went wrong. Please try again.') : null;
   const planTier = plan === 'pro' || plan === 'max' ? plan : null;
   const planBilling =
@@ -28,6 +36,10 @@ export default async function SignupPage({
       : billing === 'monthly' || billing === 'month'
         ? 'monthly'
         : null;
+  const fromSms = from === 'sms';
+  const campaign = normalizeSmsLeadSource(src);
+  const normalisedPhone = phoneParam ? normalizePhone(phoneParam) : null;
+  const phonePrefill = normalisedPhone ? (toLocalPhoneInput(normalisedPhone) ?? normalisedPhone) : '';
 
   return (
     <main className={styles.wrap}>
@@ -35,11 +47,15 @@ export default async function SignupPage({
       <form className={styles.card} action={signupAction}>
         <h1 className={styles.h1}>Create your account</h1>
         <p className={styles.sub}>
-          Sign up, choose a plan, then Kip texts you to get set up. No password to remember.
+          {fromSms
+            ? 'You’re a text away. Finish this form, choose a plan, and Kip keeps going in Messages.'
+            : 'Sign up, choose a plan, then Kip texts you to get set up. No password to remember.'}
         </p>
         {msg && <p className={styles.error}>{msg}</p>}
         {planTier && <input type="hidden" name="plan" value={planTier} />}
         {planBilling && <input type="hidden" name="billing" value={planBilling} />}
+        {fromSms && <input type="hidden" name="from" value="sms" />}
+        {campaign && <input type="hidden" name="src" value={campaign} />}
 
         <label className={styles.label}>
           Your name or business name
@@ -55,6 +71,7 @@ export default async function SignupPage({
             autoComplete="tel"
             inputMode="tel"
             placeholder="04xx xxx xxx"
+            defaultValue={phonePrefill}
           />
           <span className={styles.hint}>This is how you log in — Kip texts you a code, no password needed.</span>
         </label>
