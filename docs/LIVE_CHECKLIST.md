@@ -38,6 +38,10 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | Wave 3 | Direct Post |
 | `TIKTOK_AUDIT_PASSED` | Wave 3 live | Set `true` only after Content Posting audit |
 | `X_CLIENT_ID` / `THREADS_APP_ID` (+ secrets) | optional | Destinations behind `platformConfigured()` |
+| `STRIPE_SECRET_KEY` | to take payment | Live `sk_live_…` on Production; `sk_test_…` on Preview |
+| `STRIPE_WEBHOOK_SECRET` | to take payment | Signing secret for `POST /api/webhooks/billing` |
+| `STRIPE_PRICE_PRO_MONTH` / `_YEAR` / `STRIPE_PRICE_MAX_MONTH` / `_YEAR` | to take payment | AUD GST-inclusive Prices: $79 / $756 / $149 / $1,428 |
+| `PLAN_ENFORCEMENT` | no | Leave false until Pro vs Max feature locks ship |
 
 ---
 
@@ -140,7 +144,32 @@ if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<toke
 
 ---
 
+## Stripe (live charges)
+
+- [ ] AU Stripe account in live mode, KYC + payouts
+- [ ] Four AUD Prices (GST-inclusive): Pro $79/mo, Max $149/mo, Pro $756/yr, Max $1,428/yr
+- [ ] Production webhook `https://<APP_BASE_URL>/api/webhooks/billing` (checkout.session.completed, customer.subscription.*, invoice.paid, invoice.payment_failed)
+- [ ] Customer Portal: switch among those Prices; **cancel at period end**
+- [ ] Invoice settings: legal name + ABN; customer emails (receipts + failed payments) on
+- [ ] Do **not** enable Stripe Tax exclusive GST on top of list prices
+- [ ] `PLAN_ENFORCEMENT` remains false
+- [ ] One live $79 charge: webhook → `facts.payment.status=active` → **one** onboarding SMS → receipt email → portal cancel-at-period-end
+
+### First-week refund playbook (manual)
+
+Advertised: email will@jmcalder.com within 7 days of the first charge.
+
+1. Open `/app/operator/users/<id>` → Billing.
+2. Refund the latest paid invoice (full or that week’s amount). Tick **Keep access** if they should stay on (complimentary) or **Cancel subscription** if they are leaving.
+3. Confirm the Stripe credit note/refund in the Dashboard.
+4. If SMS already started and they are leaving, pause the brand from operator tools as usual.
+
+Operator can also apply % discounts, change Pro/Max remotely, or mark an account complimentary without a refund.
+
+---
+
 ## Still requiring external human approval (cannot be coded)
+
 
 | Gate | Why code cannot finish it |
 | --- | --- |

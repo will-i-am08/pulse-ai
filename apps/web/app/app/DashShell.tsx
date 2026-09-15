@@ -19,6 +19,7 @@ const USER_NAV: NavItem[] = [
   { href: '/app/memory', label: 'Memory', match: (p) => p.startsWith('/app/memory') },
   { href: '/app/connections', label: 'Connections', match: (p) => p.startsWith('/app/connections') },
   { href: '/app/content-plan', label: 'Plan', match: (p) => p.startsWith('/app/content-plan') },
+  { href: '/app/billing', label: 'Billing', match: (p) => p.startsWith('/app/billing') },
 ];
 
 const ADMIN_NAV: NavItem[] = [

@@ -170,24 +170,27 @@ Current `PricingPlans` bullets are directionally right. Prefer concrete ceilings
 
 ---
 
-## 7. Wiring status (pre-Stripe)
+## 7. Wiring status (Stripe Checkout)
 
-**Enforcement is off.** Pro/Max are marketing + preference storage only.
+**Plan feature enforcement is still off.** Pro vs Max ceilings in `plan.ts` do not lock product behaviour. New signups must complete Stripe Checkout (or be marked complimentary) before SMS onboarding.
 
 | Piece | Status |
 |-------|--------|
-| Landing prices + bullets | Live (AUD $79 / $149) |
-| `facts.plan` / `plan_preference` | Stored on payment UI submit |
-| `packages/shared/src/plan.ts` | Catalog + `entitlementsFor()` — always open until Stripe |
-| Per-plan UGC / AI / feature locks | **Not applied** |
+| Landing prices + bullets | Live (AUD $79 / $149, GST-inclusive) |
+| Hosted Checkout + Customer Portal | `/payment`, `/app/billing` |
+| Webhook | `POST /api/webhooks/billing` (Stripe signature) |
+| `facts.plan` / `plan_preference` / `facts.payment` | Synced from Stripe Prices + operator actions |
+| Operator billing | Complimentary, discount, refund, remote plan change on `/app/operator/users/[id]` |
+| Per-plan UGC / AI / feature locks | **Not applied** (`PLAN_ENFORCEMENT` stays false) |
 | Ops caps (`AI_WEEKLY_*`, `AI_VIDEO_COST_CAP_*`) | Global safety rails only — same for every brand |
 
-When Stripe ships:
+To collect live payments:
 
-1. Set `PLAN_ENFORCEMENT=true` **and** `STRIPE_SECRET_KEY` (both required).
-2. Map Stripe Prices → `facts.plan.tier`.
-3. Then optionally apply intended ceilings in `plan.ts` (Pro ~$6 UGC/mo, Max ~$20, etc.).
-4. Default `autopilot` / `ads` from entitlements on signup — not before.
-5. Keep Kling primary; Seedance as fallback / explicit premium regen.
+1. Live Stripe account (AU KYC, bank payouts) + four AUD Prices ($79 / $149 / $756 / $1,428).
+2. Vercel Production: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, four `STRIPE_PRICE_*` IDs. Preview keeps test keys.
+3. Webhook endpoint `https://<APP_BASE_URL>/api/webhooks/billing`.
+4. Customer Portal: allow switching among those four Prices; **cancel at period end**.
+5. Invoices: business name + ABN. Do **not** add exclusive GST on top of list prices.
+6. Keep `PLAN_ENFORCEMENT` unset/false until Pro ceilings are actually applied in code.
 
-Until then: do **not** branch product behavior on Pro vs Max.
+Until enforcement is on: do **not** branch product behaviour on Pro vs Max (Pro payers currently get the full envelope).

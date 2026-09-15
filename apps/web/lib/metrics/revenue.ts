@@ -1,6 +1,6 @@
 import 'server-only';
 import { query } from '@pulse/shared';
-import type { BrandPlanFacts, BusinessFacts } from '@pulse/shared';
+import { countsTowardMrr, type BrandPlanFacts, type BusinessFacts } from '@pulse/shared';
 import { fillSeries, type MetricsRange, type RevenueProvider, type SeriesPoint } from './types';
 
 /** Monthly AUD MRR from a plan choice (landing-page list prices). */
@@ -12,8 +12,7 @@ export function planMrrAud(plan: BrandPlanFacts | undefined | null): number {
 }
 
 function isPaid(facts: BusinessFacts | null | undefined): boolean {
-  const status = facts?.payment?.status;
-  return status === 'submitted' || status === 'active';
+  return countsTowardMrr(facts);
 }
 
 function effectivePlan(facts: BusinessFacts | null | undefined): BrandPlanFacts | null {
