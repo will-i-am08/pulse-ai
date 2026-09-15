@@ -1312,6 +1312,19 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     await query(`delete from messages where brand_id = $1`, [brandId]);
   }
 
+  // A queued draft_posts kickoff from the archived chat would drain into the
+  // new interview (lab messages schedule kickoff drain). Fail those jobs.
+  await query(
+    `update kip_kickoffs
+        set status = 'failed',
+            error = left(concat_ws('; ', nullif(error, ''), 'lab chat restart'), 500),
+            completed_at = now(),
+            updated_at = now()
+      where brand_id = $1
+        and status in ('queued', 'running')`,
+    [brandId],
+  );
+
   const greeting = await restartOnboarding(brandId);
   return { greeting, archivedChatId };
 }
@@ -1344,6 +1357,7 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   await query(`delete from approval_log where brand_id = $1`, [brandId]);
   await query(`delete from posts where brand_id = $1`, [brandId]);
   await query(`delete from messages where brand_id = $1`, [brandId]);
+  await query(`delete from kip_kickoffs where brand_id = $1`, [brandId]);
   await query(
     `delete from media_blobs where media_id in (select id from media_assets where brand_id = $1)`,
     [brandId],
