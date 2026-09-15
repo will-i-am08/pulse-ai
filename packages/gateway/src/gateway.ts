@@ -804,7 +804,7 @@ export async function handleInbound(
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
-      const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId } = await processInbound({
+      const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId, operatorAlert } = await processInbound({
         brand,
         message: messageForProcess,
         newMedia: mediaForProcess,
@@ -821,6 +821,11 @@ export async function handleInbound(
         } else if (attach?.length) {
           await deliver(brand.id, "", attach);
         }
+      }
+      if (typeof operatorAlert === "string" && operatorAlert.trim()) {
+        await sendToOperator(operatorAlert).catch((err) => {
+          console.error(`handleInbound: operatorAlert failed for brand ${brand.id}`, err);
+        });
       }
       // Onboarding just completed: the ack is already with the owner. Now do
       // the slow compile and deliver the rundown as a second message.

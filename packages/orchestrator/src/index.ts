@@ -1,5 +1,5 @@
 export { processInbound } from "./processInbound.js";
-export type { InboundContext } from "./processInbound.js";
+export type { InboundContext, InboundResult } from "./processInbound.js";
 
 export { draftCaption } from "./draftCaption.js";
 export type { DraftCaptionResult } from "./draftCaption.js";
@@ -67,6 +67,11 @@ export type { TextStats } from "./voice/textStats.js";
 export { callLLM, callLLMWithTools, resolveModelPlan, stripMarkdown } from "./llm.js";
 export type { CallLLMOptions, CallLLMWithToolsOptions, LlmTier, ModelPlanStep, ModelPlanEnv } from "./llm.js";
 export { answerWithTools } from "./smartAnswer.js";
+export { runGeneralAgent, generalAgentEligible } from "./runGeneralAgent.js";
+export type { RunGeneralAgentOpts, RunGeneralAgentResult } from "./runGeneralAgent.js";
+export { retrieveBrandContext, rankByKeywordOverlap } from "./retrieveContext.js";
+export type { BrandContextPack } from "./retrieveContext.js";
+export { agentIdentity, listsToolMenu } from "./agentIdentity.js";
 export { KIP_AGENT_TOOLS, executeAgentTool, mergeKipMemoryFact, recordKipMemory } from "./agentTools.js";
 export type { AgentToolContext, KipMemoryBucket } from "./agentTools.js";
 export {

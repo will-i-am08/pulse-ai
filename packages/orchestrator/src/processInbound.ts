@@ -132,6 +132,7 @@ import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
+import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -496,6 +497,15 @@ async function answerQuestion(
   question: string,
   sourceMessageId?: string | null,
 ): Promise<string> {
+  if (getServerEnv().KIP_GENERAL_AGENT) {
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage: question,
+      sourceMessageId,
+      mediaIds: [],
+    });
+    return out.reply;
+  }
   if (getServerEnv().KIP_TOOL_LOOP) {
     return answerWithTools(brand, context, question, { sourceMessageId });
   }
@@ -600,13 +610,15 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
   });
 }
 
-type InboundResult = {
+export type InboundResult = {
   reply: string;
   postId?: string;
   mediaUrl?: string;
   /** All carousel slide previews — an SMS may attach several. */
   mediaUrls?: string[];
   finishOnboardingBrandId?: string;
+  /** Operator-only escalate body. Never included in owner SMS. */
+  operatorAlert?: string;
 };
 
 /**
@@ -1284,6 +1296,27 @@ async function routeInbound(
         return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
       }
     }
+  }
+
+  // General agent (flagged, off by default): after hard gates (onboarding, dest
+  // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
+  // connect/disconnect, ads/digest). Does not intercept attached media or a
+  // pending_approval draft — those keep the existing router. Pending + question
+  // still reaches runGeneralAgent via answerQuestion.
+  if (
+    generalAgentEligible({
+      flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
+      hasMedia: newMedia.length > 0,
+      hasPending: pending != null,
+    })
+  ) {
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage: message.body ?? "",
+      sourceMessageId: message.id,
+      mediaIds: [],
+    });
+    return { reply: out.reply, operatorAlert: out.operatorAlert };
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
