@@ -16,7 +16,12 @@ export async function HiLanding({ source }: { source?: string | null }) {
   const smsHref = kipSmsComposeHref(source);
   const numberDisplay = kipSmsNumberDisplay();
   const prefill = smsLeadPrefillBody(source);
-  const pageUrl = `${appBaseUrl()}${publicHiPath(source)}`;
+  let pageUrl = publicHiPath(source);
+  try {
+    pageUrl = `${appBaseUrl()}${publicHiPath(source)}`;
+  } catch {
+    // Print copy still works with the path when APP_BASE_URL isn't loaded.
+  }
   const qrSrc = source ? `/hi/qr?src=${encodeURIComponent(source)}` : '/hi/qr';
   const ua = (await headers()).get('user-agent');
   const mobile = isMobileUserAgent(ua);
