@@ -10,7 +10,7 @@ import {
   type BrandPlanFacts,
 } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
-import { requireStripePriceCatalog } from '@/lib/billing/catalog';
+import { loadStripePriceCatalog } from '@/lib/billing/catalog';
 import { stripeConfigured, getStripe } from '@/lib/stripe';
 
 export type PlanTier = 'pro' | 'max';
@@ -62,7 +62,7 @@ export async function createCheckoutSessionAction(formData: FormData): Promise<v
 
   let catalog;
   try {
-    catalog = requireStripePriceCatalog();
+    catalog = await loadStripePriceCatalog();
   } catch {
     redirect('/payment?error=unavailable');
   }

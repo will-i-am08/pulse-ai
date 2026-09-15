@@ -40,7 +40,7 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 | `X_CLIENT_ID` / `THREADS_APP_ID` (+ secrets) | optional | Destinations behind `platformConfigured()` |
 | `STRIPE_SECRET_KEY` | to take payment | Live `sk_live_…` on Production; `sk_test_…` on Preview |
 | `STRIPE_WEBHOOK_SECRET` | to take payment | Signing secret for `POST /api/webhooks/billing` |
-| `STRIPE_PRICE_PRO_MONTH` / `_YEAR` / `STRIPE_PRICE_MAX_MONTH` / `_YEAR` | to take payment | AUD GST-inclusive Prices: $79 / $756 / $149 / $1,428 |
+| `STRIPE_PRICE_*` | optional | Pin specific Price IDs. Default: lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year` |
 | `PLAN_ENFORCEMENT` | no | Leave false until Pro vs Max feature locks ship |
 
 ---
@@ -147,7 +147,7 @@ if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<toke
 ## Stripe (live charges)
 
 - [ ] AU Stripe account in live mode, KYC + payouts
-- [ ] Four AUD Prices (GST-inclusive): Pro $79/mo, Max $149/mo, Pro $756/yr, Max $1,428/yr
+- [ ] Four AUD Prices (GST-inclusive) with lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year`
 - [ ] Production webhook `https://<APP_BASE_URL>/api/webhooks/billing` (checkout.session.completed, customer.subscription.*, invoice.paid, invoice.payment_failed)
 - [ ] Customer Portal: switch among those Prices; **cancel at period end**
 - [ ] Invoice settings: legal name + ABN; customer emails (receipts + failed payments) on

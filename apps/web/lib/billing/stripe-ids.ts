@@ -7,6 +7,12 @@ export function stripeObjectId(
   return typeof value === 'string' ? value : value.id;
 }
 
+export function subscriptionPrice(sub: Stripe.Subscription): Stripe.Price | null {
+  const price = sub.items.data[0]?.price;
+  if (!price || typeof price === 'string') return null;
+  return price;
+}
+
 export function subscriptionPriceId(sub: Stripe.Subscription): string | null {
   const price = sub.items.data[0]?.price;
   if (!price) return null;

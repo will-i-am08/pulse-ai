@@ -21,6 +21,20 @@ export type StripePriceCatalog = {
   max_year: string;
 };
 
+/** Stable Stripe Price lookup keys (test + live accounts share these strings). */
+export const STRIPE_LOOKUP_KEYS = {
+  pro_month: "kip_pro_month",
+  pro_year: "kip_pro_year",
+  max_month: "kip_max_month",
+  max_year: "kip_max_year",
+} as const;
+
+export type StripePriceHint = {
+  id?: string | null;
+  lookup_key?: string | null;
+  metadata?: Record<string, string> | null;
+};
+
 export type AccessOpts = { isAdmin?: boolean };
 
 const PRICE_KEYS = ["pro_month", "pro_year", "max_month", "max_year"] as const;
@@ -52,6 +66,33 @@ export function stripePriceIdForPlan(
   return catalog[`${plan.tier}_${interval}`];
 }
 
+export function planFromLookupKey(
+  lookupKey: string | null | undefined,
+  selectedAt = new Date().toISOString(),
+): BrandPlanFacts | null {
+  const key = (lookupKey ?? "").trim();
+  if (!key) return null;
+  for (const slot of PRICE_KEYS) {
+    if (key === STRIPE_LOOKUP_KEYS[slot]) {
+      const [tier, interval] = slot.split("_") as [PlanTier, PlanInterval];
+      return { tier, interval, selected_at: selectedAt };
+    }
+  }
+  return null;
+}
+
+export function planFromPriceMetadata(
+  metadata: Record<string, string> | null | undefined,
+  selectedAt = new Date().toISOString(),
+): BrandPlanFacts | null {
+  const tier = metadata?.tier;
+  const interval = metadata?.interval;
+  if ((tier === "pro" || tier === "max") && (interval === "month" || interval === "year")) {
+    return { tier, interval, selected_at: selectedAt };
+  }
+  return null;
+}
+
 export function planFromStripePriceId(
   priceId: string,
   catalog: StripePriceCatalog,
@@ -76,6 +117,26 @@ export function planFromStripePriceId(
   }
   if (!tier || !interval) return null;
   return { tier, interval, selected_at: selectedAt };
+}
+
+/** Resolve Pro/Max × month/year from a Price id, lookup_key, or metadata. */
+export function planFromStripePrice(
+  price: StripePriceHint | string | null | undefined,
+  catalog?: StripePriceCatalog | null,
+  selectedAt = new Date().toISOString(),
+): BrandPlanFacts | null {
+  if (!price) return null;
+  if (typeof price === "string") {
+    return catalog ? planFromStripePriceId(price, catalog, selectedAt) : null;
+  }
+  if (price.id && catalog) {
+    const fromId = planFromStripePriceId(price.id, catalog, selectedAt);
+    if (fromId) return fromId;
+  }
+  return (
+    planFromLookupKey(price.lookup_key, selectedAt) ??
+    planFromPriceMetadata(price.metadata, selectedAt)
+  );
 }
 
 export function stripeSubscriptionToPaymentStatus(status: string): BrandPaymentStatus {
@@ -162,10 +223,12 @@ export type SubscriptionFactsInput = {
   customerId?: string | null;
   subscriptionId?: string | null;
   priceId?: string | null;
+  lookupKey?: string | null;
+  priceMetadata?: Record<string, string> | null;
   /** Unix seconds. */
   currentPeriodEnd?: number | null;
   cancelAtPeriodEnd?: boolean | null;
-  catalog: StripePriceCatalog;
+  catalog?: StripePriceCatalog | null;
 };
 
 export function mergeSubscriptionIntoFacts(
@@ -173,7 +236,14 @@ export function mergeSubscriptionIntoFacts(
   input: SubscriptionFactsInput,
 ): BusinessFacts {
   const paymentStatus = stripeSubscriptionToPaymentStatus(input.status);
-  const plan = input.priceId ? planFromStripePriceId(input.priceId, input.catalog) : null;
+  const plan = planFromStripePrice(
+    {
+      id: input.priceId,
+      lookup_key: input.lookupKey,
+      metadata: input.priceMetadata,
+    },
+    input.catalog,
+  );
   const prev: BrandPaymentFacts = { ...(facts.payment ?? {}) };
   const paidNow = paymentStatus === "active" || paymentStatus === "past_due";
   const nextPayment: BrandPaymentFacts = {

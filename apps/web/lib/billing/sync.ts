@@ -11,13 +11,14 @@ import {
 import { kickOffOnboardingAfterPayment } from '@pulse/orchestrator';
 import { sendToBrand } from '@pulse/gateway';
 import type Stripe from 'stripe';
-import { requireStripePriceCatalog } from './catalog';
+import { loadStripePriceCatalogOrNull } from './catalog';
 import {
   checkoutCustomerId,
   checkoutSubscriptionId,
   invoiceSubscriptionId,
   stripeObjectId,
   subscriptionPeriodEnd,
+  subscriptionPrice,
   subscriptionPriceId,
 } from './stripe-ids';
 import { getStripe } from '@/lib/stripe';
@@ -42,13 +43,16 @@ export async function retrieveStripeSubscription(subscriptionId: string): Promis
 export function factsFromSubscription(
   facts: BusinessFacts,
   sub: Stripe.Subscription,
-  catalog: StripePriceCatalog,
+  catalog?: StripePriceCatalog | null,
 ): BusinessFacts {
+  const price = subscriptionPrice(sub);
   return mergeSubscriptionIntoFacts(facts, {
     status: sub.status,
     customerId: stripeObjectId(sub.customer),
     subscriptionId: sub.id,
     priceId: subscriptionPriceId(sub),
+    lookupKey: price?.lookup_key,
+    priceMetadata: price?.metadata ?? null,
     currentPeriodEnd: subscriptionPeriodEnd(sub),
     cancelAtPeriodEnd: sub.cancel_at_period_end,
     catalog,
@@ -58,11 +62,12 @@ export function factsFromSubscription(
 export async function applySubscriptionToBrand(
   brandId: string,
   sub: Stripe.Subscription,
-  catalog: StripePriceCatalog = requireStripePriceCatalog(),
+  catalog?: StripePriceCatalog | null,
 ): Promise<Brand> {
+  const resolved = catalog === undefined ? await loadStripePriceCatalogOrNull() : catalog;
   const brand = await loadBrand(brandId);
   if (!brand) throw new Error(`applySubscriptionToBrand: brand ${brandId} not found`);
-  const facts = factsFromSubscription(brand.facts ?? {}, sub, catalog);
+  const facts = factsFromSubscription(brand.facts ?? {}, sub, resolved);
   await persistBrandFacts(brandId, facts);
   return { ...brand, facts };
 }
@@ -94,7 +99,7 @@ export async function applyCheckoutSessionToBrand(
     return null;
   }
 
-  const catalog = requireStripePriceCatalog();
+  const catalog = await loadStripePriceCatalogOrNull();
   let subId = checkoutSubscriptionId(session);
   if (!subId && session.mode === 'subscription') {
     const full = await getStripe().checkout.sessions.retrieve(session.id, {

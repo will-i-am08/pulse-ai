@@ -13,7 +13,7 @@ import {
   type User,
 } from '@pulse/shared';
 import { currentUser } from '@/lib/auth/current-user';
-import { requireStripePriceCatalog } from '@/lib/billing/catalog';
+import { loadStripePriceCatalog } from '@/lib/billing/catalog';
 import {
   factsFromSubscription,
   kickOffIfPending,
@@ -207,7 +207,7 @@ export async function operatorChangePlanAction(formData: FormData): Promise<void
     const subId = facts.payment?.stripe_subscription_id;
 
     if (subId && stripeConfigured()) {
-      const catalog = requireStripePriceCatalog();
+      const catalog = await loadStripePriceCatalog();
       const priceId = stripePriceIdForPlan(plan, catalog);
       const stripe = getStripe();
       const sub = await retrieveStripeSubscription(subId);

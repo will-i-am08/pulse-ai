@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { stripePriceCatalogFromEnv } from '@pulse/shared';
 import { getStripe, stripeConfigured } from '@/lib/stripe';
 import {
   applyCheckoutSessionToBrand,
@@ -21,9 +20,6 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   if (!stripeConfigured() || !process.env.STRIPE_WEBHOOK_SECRET?.trim()) {
     return NextResponse.json({ ok: false, error: 'stripe not configured' }, { status: 503 });
-  }
-  if (!stripePriceCatalogFromEnv()) {
-    return NextResponse.json({ ok: false, error: 'price ids not configured' }, { status: 503 });
   }
 
   const raw = await request.text();

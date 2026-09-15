@@ -186,8 +186,8 @@ Current `PricingPlans` bullets are directionally right. Prefer concrete ceilings
 
 To collect live payments:
 
-1. Live Stripe account (AU KYC, bank payouts) + four AUD Prices ($79 / $149 / $756 / $1,428).
-2. Vercel Production: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, four `STRIPE_PRICE_*` IDs. Preview keeps test keys.
+1. Live Stripe account (AU KYC, bank payouts) + four AUD Prices ($79 / $149 / $756 / $1,428) with lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year`.
+2. Vercel Production: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Preview keeps test keys. Optional `STRIPE_PRICE_*` pins; otherwise Checkout loads Prices by lookup key.
 3. Webhook endpoint `https://<APP_BASE_URL>/api/webhooks/billing`.
 4. Customer Portal: allow switching among those four Prices; **cancel at period end**.
 5. Invoices: business name + ABN. Do **not** add exclusive GST on top of list prices.

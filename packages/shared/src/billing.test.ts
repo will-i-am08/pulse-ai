@@ -5,6 +5,8 @@ import {
   countsTowardMrr,
   hasPaidAccess,
   mergeSubscriptionIntoFacts,
+  planFromLookupKey,
+  planFromStripePrice,
   planFromStripePriceId,
   shouldKickOffOnboarding,
   stripePriceIdForPlan,
@@ -30,6 +32,16 @@ describe("stripe price mapping", () => {
 
   it("returns null for unknown price ids", () => {
     expect(planFromStripePriceId("price_other", catalog)).toBeNull();
+  });
+
+  it("maps lookup keys and price metadata without env catalog ids", () => {
+    expect(planFromLookupKey("kip_max_year")?.tier).toBe("max");
+    expect(planFromLookupKey("kip_max_year")?.interval).toBe("year");
+    expect(planFromStripePrice({ lookup_key: "kip_pro_month" })?.tier).toBe("pro");
+    expect(
+      planFromStripePrice({ metadata: { tier: "max", interval: "month" } })?.interval,
+    ).toBe("month");
+    expect(planFromStripePrice({ id: "price_unknown" })).toBeNull();
   });
 });
 
@@ -137,6 +149,22 @@ describe("mergeSubscriptionIntoFacts", () => {
       catalog,
     });
     expect(second.payment?.submitted_at).toBe(submitted);
+  });
+
+  it("maps plan from lookup key when catalog ids are absent", () => {
+    const next = mergeSubscriptionIntoFacts(
+      {},
+      {
+        status: "active",
+        customerId: "cus_1",
+        subscriptionId: "sub_1",
+        priceId: "price_live_unknown",
+        lookupKey: "kip_pro_month",
+      },
+    );
+    expect(next.plan?.tier).toBe("pro");
+    expect(next.plan?.interval).toBe("month");
+    expect(next.payment?.status).toBe("active");
   });
 
   it("maps deleted subscription to canceled without dropping customer id", () => {
