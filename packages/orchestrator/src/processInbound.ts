@@ -132,6 +132,7 @@ import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
+import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -495,12 +496,20 @@ async function answerQuestion(
   context: string,
   question: string,
   sourceMessageId?: string | null,
-): Promise<string> {
+): Promise<{ reply: string; operatorAlert?: string }> {
+  if (getServerEnv().KIP_GENERAL_AGENT) {
+    return runGeneralAgent({
+      brand,
+      ownerMessage: question,
+      sourceMessageId,
+      mediaIds: [],
+    });
+  }
   if (getServerEnv().KIP_TOOL_LOOP) {
-    return answerWithTools(brand, context, question, { sourceMessageId });
+    return { reply: await answerWithTools(brand, context, question, { sourceMessageId }) };
   }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  return speakSMS({
+  const reply = await speakSMS({
     brand,
     mode: "answer",
     modeLines: [
@@ -517,6 +526,7 @@ async function answerQuestion(
     webSearch: 4,
     classification: "question",
   });
+  return { reply };
 }
 
 /**
@@ -600,13 +610,15 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
   });
 }
 
-type InboundResult = {
+export type InboundResult = {
   reply: string;
   postId?: string;
   mediaUrl?: string;
   /** All carousel slide previews — an SMS may attach several. */
   mediaUrls?: string[];
   finishOnboardingBrandId?: string;
+  /** Operator-only escalate body. Never included in owner SMS. */
+  operatorAlert?: string;
 };
 
 /**
@@ -1284,6 +1296,27 @@ async function routeInbound(
         return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
       }
     }
+  }
+
+  // General agent (flagged, off by default): after hard gates (onboarding, dest
+  // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
+  // connect/disconnect, ads/digest). Does not intercept attached media or a
+  // pending_approval draft — those keep the existing router. Pending + question
+  // still reaches runGeneralAgent via answerQuestion.
+  if (
+    generalAgentEligible({
+      flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
+      hasMedia: newMedia.length > 0,
+      hasPending: pending != null,
+    })
+  ) {
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage: message.body ?? "",
+      sourceMessageId: message.id,
+      mediaIds: [],
+    });
+    return { reply: out.reply, operatorAlert: out.operatorAlert };
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
@@ -2045,11 +2078,13 @@ async function routeInbound(
 
     case "question": {
       const context = await buildConversationContext(brand.id);
-      const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
-      // Gated variant: Kip must not queue drafts off its own small talk — the
-      // CLIENT's words have to carry the request.
-      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, answer, message.id);
-      return { reply: answer };
+      const out = await answerQuestion(brand, context, message.body ?? "", message.id);
+      // runGeneralAgent already runs maybeEnqueueFromKipCommit. The speak/tool-loop
+      // paths still need the client-gated safety net.
+      if (!getServerEnv().KIP_GENERAL_AGENT) {
+        await maybeEnqueueFromKipCommitIfAsked(brand, message.body, out.reply, message.id);
+      }
+      return { reply: out.reply, operatorAlert: out.operatorAlert };
     }
 
     case "instruction":

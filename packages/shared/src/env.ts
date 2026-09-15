@@ -29,6 +29,14 @@ const serverEnvSchema = z.object({
     .optional()
     .transform((v) => v === "true" || v === "1"),
   /**
+   * When "true"/"1", owner SMS with no attached media and no pending draft
+   * uses the general-agent tool loop. Off by default.
+   */
+  KIP_GENERAL_AGENT: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  /**
    * When "true"/"1", multi-step owner asks get a short SmartPlan before
    * kickoff enqueue (thin planner). Off by default.
    */
