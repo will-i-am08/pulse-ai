@@ -4,216 +4,219 @@
   <img src="../apps/web/public/brand/kip-logo.png" alt="Kip" width="160" />
 </p>
 
-**Working name:** *Charcoal Signal*
+**Working name:** *Charcoal Field*
 
-Research note: the reference called “Pulsier” maps to **[Polsia](https://polsia.com/)** (AI business builder). This proposal takes Polsia’s *energy* — manifesto type, hard stop-scroll contrast, one live accent — and builds a Kip-native system around the cat mark, SMS product, and mate voice. It does **not** copy Polsia’s Times/terminal/orange recipe.
+Research note: the reference called “Pulsier” maps to **[Polsia](https://polsia.com/)** (AI business builder). We keep Polsia’s *physics* — one claim owns the frame, hard contrast, stop-scroll presence — and build a Kip-native system around the cat mark. **v2 pivot:** less neon signal colour, more **abstract art plates** for posters, social posts, and campaign surfaces.
 
 Open the interactive specimen: [`prototype/design-language/index.html`](../prototype/design-language/index.html).
 
 ---
 
-## 1. What Polsia does well (steal the physics, not the costume)
+## 1. What changed from v1
 
-| Polsia move | Why it works | Kip translation |
-|---|---|---|
-| Manifesto headlines (“NEVER HIRE AGAIN”) | One claim owns the frame | Short SMS-native lines: “SEND THE PHOTO.” / “KIP’S ON IT.” |
-| Black ↔ white only + one accent | Instant grammar; orange = live | Charcoal ↔ paper/disc + one **volt** accent = “draft ready / Kip awake” |
-| Editorial authority at billboard scale | Feels premium, not SaaS-template | Oversized display type on black or full-bleed shop photo |
-| Terminal as metaphor | Product *is* autonomous ops | Kip’s metaphor is the **text thread**, not a console — keep iMessage/real photo, never `>` prompts |
-| Posters that are mostly type | Hard to miss in a feed | Marketing surfaces = type + disc + photo. No cards, no badge clusters |
+| v1 (Charcoal Signal) | v2 (Charcoal Field) |
+|---|---|
+| Neon **volt** lime as the live accent | No neon. Atmosphere comes from **art plates** |
+| Type + black void + underline tick | Type sitting on / in abstract ink fields |
+| Signal colour = brand memory | Brush language of the cat = brand memory |
 
-**Explicitly do not copy from Polsia:** Times New Roman body, orange `#F97316`, terminal headers, green log text, newspaper underlines, “NEVER HIRE AGAIN” tone. Kip stays warm and human; Polsia stays austere and machine.
+Polsia still informs scale and sparseness. The costume is now closer to a **print studio / gallery poster** than a terminal dashboard.
 
 ---
 
-## 2. Kip’s existing anchors (keep)
+## 2. What Polsia does well (still steal the physics)
+
+| Polsia move | Kip translation |
+|---|---|
+| One claim owns the frame | 2–4 word mate-voice lines |
+| Hard to miss in a feed | Full-bleed abstract plate + sparse type |
+| Premium through restraint | Paper, charcoal, quiet pigment — not SaaS gradients |
+| Posters that feel like statements | Art first, copy second, disc as the quiet brand seal |
+
+**Do not copy:** Times body, orange live state, terminal chrome, green logs, anti-hire threat copy.
+
+---
+
+## 3. Kip anchors (keep)
 
 From [`docs/DESIGN.md`](DESIGN.md):
 
 - Mark: hand-drawn charcoal cat on circular disc `#f4f1ea`
 - Do not invert, recolour, add a bubble, or tech-ify the cat
-- Wordmark: **Kip** (not KIP / Kip AI), weight 600, tight tracking
-- Product chrome stays near-black / paper; client brands bring their own colour
+- Wordmark: **Kip**, weight 600, tight tracking
+- Product chrome stays near-black / paper
 - Voice: switched-on mate — warm, sharp, owns being AI
 
-The new language **amplifies** the mark for marketing. It does not replace the quiet product UI overnight.
+The cat’s **dry-brush stroke** is the seed of the whole art system. Marketing extends that material into large abstract fields; it does not invent a second brand.
 
 ---
 
-## 3. Concept: Charcoal Signal
+## 4. Concept: Charcoal Field
 
-**One sentence:** The cat is intimate ink; the marketing is a billboard that texts you back.
+**One sentence:** Every poster is an abstract print; the cat is the studio stamp; the line is the text you’d send.
 
 Three registers:
 
-1. **Ink** — the cat’s brush strokes. Organic, quiet, human.
-2. **Billboard** — oversized type on black or photography. Unmissable.
-3. **Signal** — a single electric accent that means Kip is working / a draft is waiting.
+1. **Mark** — the disc. Sacred, unchanged, small in the corner or as a seal.
+2. **Field** — abstract charcoal / ink / monotype plates. The eye-catcher.
+3. **Line** — short display type laid into the field with huge breathing room.
 
-Product UI stays mostly Ink + paper. Marketing, posters, OG images, ads, and the landing hero lean Billboard + Signal.
+Product UI stays quiet paper. Marketing, posters, OG images, ads, and social tiles lean Field + Line.
 
 ---
 
-## 4. Colour
+## 5. Colour (pigment, not neon)
 
-### Core (unchanged)
+### Core
 
 | Token | Hex | Role |
 |---|---|---|
-| `void` | `#000000` | Marketing field, landing hero, posters |
-| `ink` | `#1d1d1f` | Body on light |
+| `void` | `#0a0a0a` | Dark fields, dark plates |
+| `ink` | `#1d1d1f` | Type on light plates |
 | `cat` | `#202020` | Logo strokes only |
-| `disc` | `#f4f1ea` | Logo circle — sacred; do not recolour |
-| `paper` | `#ffffff` / `#f6f7f9` | App chrome |
-| `mute` | `#6e6e73` | Secondary |
-| `line` | `#ececec` | Hairlines in app |
+| `disc` | `#f4f1ea` | Logo circle — do not recolour |
+| `paper` | `#f7f4ee` | Light plate ground / soft chrome |
+| `mute` | `#6e6e73` | Secondary type |
+| `line` | `#e6e2da` | Soft rules |
 
-### Signal (new — marketing + live states only)
+### Pigment (quiet accents inside art only)
 
 | Token | Hex | Role |
 |---|---|---|
-| `volt` | `#D6FF3F` | Live / ready / CTA underline / poster tick |
-| `volt-ink` | `#12140A` | Text on volt fills |
+| `graphite` | `#2c2c2e` | Heavy charcoal mass |
+| `wash` | `#5c6570` | Dusty blue-grey ink stain |
+| `smoulder` | `#6b5344` | Warm oxidized brown in monotype edges — use sparingly inside plates, never as a UI theme |
 
-**Why volt, not orange/purple/blue:** Polsia already owns warm orange-as-live. Purple is AI-default. Facebook blue is banned from Kip chrome. Lime/volt on black is poster-native, hard to miss, and still feels premium when used as a *signal* (underline, corner tick, “DRAFT READY” chip) rather than a wash.
+No lime. No purple glow. No brand orange. Accents live **inside** the artwork as pigment, not as UI chrome or CTA fills.
 
-**Rule:** Volt never recolours the cat or the disc. Max ~5% of any marketing frame.
-
-### Surfaces
-
-- Marketing default: `void` + white type + `disc` mark + optional `volt` tick
-- Alternate: full-bleed real shop photography (already `thread-photo.jpg` energy) with black gradient for type
-- App: keep paper chrome; volt only for “Kip is drafting / sent / live” indicators
+CTAs on marketing can stay **disc-on-void** or **ink-on-paper** — solid, quiet, premium.
 
 ---
 
-## 5. Typography
+## 6. Art plates (the system)
 
-Product UI can keep SF Pro. Marketing needs a voice you can spot across a room.
+A **plate** is a reusable abstract artwork that becomes the full-bleed ground for a poster or post. Plates are the brand’s visual volume.
+
+### Series 01 (in specimen)
+
+| File | Mood | Best for |
+|---|---|---|
+| `plate-charcoal-sweep.png` | Diagonal dry-brush on paper | Quote posters, launch |
+| `plate-ink-bloom.png` | Soft sumi bloom | Calm / brand films / stories |
+| `plate-graphite-field.png` | Dark field + cream cut | High-contrast feed ads |
+| `plate-gesture-marks.png` | Sparse strokes on paper | Closest to the cat’s hand |
+| `plate-monotype.png` | Torn cream / charcoal + wash | Editorial, carousels |
+
+### Plate rules
+
+1. **Full-bleed** — the art is the surface, not a card inset.
+2. **No figurative cats** in the plate — the disc carries the character.
+3. **Texture over gloss** — paper tooth, charcoal dust, ink bloom. Avoid plastic gradients.
+4. **Series coherence** — same paper temperature, same charcoal family, so five plates still feel like one studio.
+5. **Leave a quiet zone** — every plate needs a soft area for type (corner or band).
+6. **Never neon** — if a colour appears, it should look like pigment on paper.
+
+### How to commission / generate more
+
+Brief: *“Abstract charcoal and ink on warm off-white paper, dry-brush and bloom, gallery print, no text, no logo, no animals, no neon, vertical poster.”* Keep the Kip logo nearby as a **material reference** (stroke weight / irregularity), not as content to redraw.
+
+---
+
+## 7. Typography
 
 | Role | Direction | Notes |
 |---|---|---|
-| **Display** | `Syne` (700–800) or similar quirky grotesque | Slightly odd proportions = memorable; not Times, not Inter |
-| **Poster shout** | Same family, ALL CAPS, 4 words max | Tight leading (~0.9–1.0), slight negative tracking |
-| **Supporting** | `DM Sans` or SF Pro | Calm; lets display do the personality |
-| **Mono (rare)** | `IBM Plex Mono` | Only for timestamps / message meta — *not* a terminal skin |
+| **Display** | `Syne` 700–800 | Slightly odd grotesque — memorable without shouting neon |
+| **Poster line** | Same, 2–4 words | On light plates: ink. On dark plates: paper/disc |
+| **Supporting** | `DM Sans` / SF Pro | Calm under the art |
+| **Wordmark** | System / SF Pro 600 | Unchanged |
 
-### Type recipes
+### Type on art
 
-```
-Poster H1:  Syne 800 · clamp(64px, 12vw, 140px) · tracking -0.04em · leading 0.92
-Landing H1: Syne 700 · clamp(48px, 8vw, 96px)  · tracking -0.035em
-Body:       DM Sans / SF Pro 400–500 · 15–17px · leading 1.4
-Wordmark:   SF Pro / system 600 · -0.02em (unchanged)
-```
+- Prefer **large, few words** over paragraphs.
+- Sit type in the plate’s quiet zone; don’t fight the densest brush mass.
+- Avoid coloured underlines. Emphasis = scale and placement, or a single word in the disc colour on dark fields.
 
-### Copy shape for posters (Kip voice, Polsia scale)
+### Copy shape
 
-- 2–4 words. Period optional.
-- Imperative or status, never agency-speak.
-- Examples: `SEND THE PHOTO.` · `KIP’S ON IT.` · `TEXT IT. POSTED.` · `APPROVE IN THE THREAD.`
+Mate voice, poster volume:
 
-Avoid Polsia-style threat copy (“never hire again”). Kip is a mate who takes the work, not a replacement army.
+- `SEND THE PHOTO.`
+- `KIP’S ON IT.`
+- `TEXT IT. POSTED.`
+- `APPROVE IN THE THREAD.`
 
 ---
 
-## 6. Layout & poster grammar
+## 8. Poster & post grammar
 
-### Hero / poster budget (marketing)
+### Frame budget
 
-First viewport / poster frame contains **only**:
+1. Full-bleed plate
+2. Disc (brand seal)
+3. One line (optional second whisper line)
+4. Optional tiny meta (url / @kip) — never a stats strip
 
-1. Kip disc (brand-first — must survive without the nav)
-2. One shout line
-3. One short support sentence *or* one CTA
-4. One dominant image plane (full-bleed photo **or** pure void)
+### Compositions
 
-No stats strips, schedule chips, feature cards, or floating badges on the hero.
-
-### Composition modes
-
-| Mode | Field | Type | Mark | Accent |
-|---|---|---|---|---|
-| **Void shout** | Black | White Syne caps | Disc bottom-left or top-left | Volt underline under last word |
-| **Photo thread** | Full-bleed shop photo + top black wash | White | Disc in corner | Optional volt on CTA |
-| **Disc field** | Large disc colour wash | Charcoal type | Giant mark as watermark (low opacity) | Volt corner tick |
-| **Split signal** | Black left / photo right | White left | Disc over the seam | Volt hairline on the seam |
+| Mode | Plate | Type | Mark |
+|---|---|---|---|
+| **Paper shout** | Light plate (sweep / gesture) | Oversized ink caps | Disc top-left |
+| **Night field** | Dark plate (graphite) | Oversized paper caps | Disc top-left |
+| **Bloom calm** | Ink bloom | Smaller centered line | Disc bottom |
+| **Monotype split** | Torn cream/charcoal | Type in the cream half | Disc on the seam |
+| **Feed tile** | Any plate, 1:1 crop | 2–3 words | Disc corner |
 
 ### Don’t
 
-- Don’t put the cat on volt or invert it white
-- Don’t add chat-bubble chrome *to the logo* (product UI may still show a real thread)
-- Don’t use rounded marketing cards as the hero idea
-- Don’t stack pill clusters or icon rows
+- Don’t put neon bars, glow, or gradient meshes over plates
+- Don’t recolour or invert the cat
+- Don’t trap the art in a rounded marketing card
+- Don’t stack feature pills on the poster
+- Don’t redraw the cat into the abstract field
 
 ---
 
-## 7. Motion
+## 9. Motion
 
-Ship 2–3 intentional motions (marketing + landing):
+1. **Settle** — plate fades/eases in slightly (like a print laid down).
+2. **Arrive** — type rises 8–12px after the plate.
+3. **Seal** — disc appears last, small scale-in.
 
-1. **Arrive** — headline rises ~8–12px and fades in (like a text landing). 400–600ms, ease-out.
-2. **Tick** — volt underline draws left→right under the shout line once.
-3. **Breathe** — disc scale 1.0 → 1.02 → 1.0 on a slow loop *only* when Kip is “awake” / drafting; respect `prefers-reduced-motion`.
-
-No bounce. No glow stacks. No particle fields.
+No bounce, no particle ink, no colour-cycle. Respect `prefers-reduced-motion`.
 
 ---
 
-## 8. Photography
-
-Keep the current rule: real shop photos a client would actually post. Full-bleed. Grain and imperfect light beat AI gloss.
-
-Lockup: photography carries atmosphere; type carries the claim; the disc carries the brand. Never sticker the photo with promo chips.
-
----
-
-## 9. Product vs marketing split
+## 10. Product vs marketing
 
 | Surface | Language |
 |---|---|
-| `/app`, auth, legal, operator chrome | Current quiet system (paper, SF Pro, hairlines) |
-| `/` landing hero, OG, ads, posters, pitch | Charcoal Signal (void, Syne, volt, manifesto lines) |
-| In-thread / SMS | Voice rules in `persona.ts` — design must not fight them |
-
-Volt can later enter the app as a single “draft ready” / “Kip typing” indicator without painting the whole console green-yellow.
+| App, auth, legal, operator | Current quiet system |
+| Landing hero, OG, ads, posters, social | Charcoal Field plates + Syne lines |
+| SMS / thread | Voice rules — design must not fight them |
 
 ---
 
-## 10. Competitive contrast
+## 11. Rollout
 
-| Brand | Feel | Kip difference |
-|---|---|---|
-| Polsia | Newspaper + terminal + orange live | Kip = ink cat + SMS mate + volt signal |
-| Blaze / typical AI marketing | Soft SaaS gradients, feature grids | Kip = one claim, one photo, one mark |
-| Apple-like quiet SaaS (current Kip) | Premium but easy to scroll past | Keep quiet in-app; turn volume up on marketing only |
-
----
-
-## 11. Rollout suggestion
-
-1. **Adopt tokens** — add `--volt`, display font link, poster type scale (no product UI paint yet).
-2. **Poster kit** — 4 templates (void shout / photo thread / disc field / split signal) for ads + OG.
-3. **Landing pass** — swap hero display face + one volt CTA treatment; keep photo thread composition.
-4. **App hint** — optional volt “draft ready” dot in the operator console.
-5. **Update** [`docs/DESIGN.md`](DESIGN.md) once the direction is locked (this file is the proposal).
+1. Lock plate series 01 (in `prototype/design-language/plates/`).
+2. Export poster templates (story 9:16, feed 1:1, portrait 3:4).
+3. Landing hero: swap stock/photo-only hero for one plate + line + disc (keep real shop photo as an alternate mode).
+4. Social kit: 5 posts from the five plates, same type recipe.
+5. Promote this doc into [`DESIGN.md`](DESIGN.md) once approved.
 
 ---
 
 ## 12. Decision checklist
 
-When reviewing a new Kip marketing piece, ask:
-
-1. If I cover the nav, is the **disc** still the brand?
-2. Can I read the claim from across the room?
-3. Is volt under 5% of the frame?
-4. Would this still look like Kip if Polsia’s orange/serif were swapped in? (If yes, redesign — too close.)
-5. Does the copy sound like a text from a mate, not a manifesto against hiring?
+1. Is the **art** doing the stopping — or did we fall back to neon/UI chrome?
+2. Does the plate still feel like the same studio as the cat’s brush?
+3. Can you read the line from across the room?
+4. Is the disc present and unaltered?
+5. Would this still look like Kip if we dropped it into a gallery wall of abstract prints?
 
 ---
 
 ## Specimen
-
-Interactive posters, type ramp, and colour chips:
 
 → [`prototype/design-language/index.html`](../prototype/design-language/index.html)

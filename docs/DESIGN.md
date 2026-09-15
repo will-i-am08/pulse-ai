@@ -8,7 +8,7 @@ Kip’s mark is a hand-drawn cat face in charcoal on a **circular off-white disc
 
 The company behind Kip is Pulse Social Media. Pulse does not appear in the product UI. The old Pulse “P” with a heartbeat is retired.
 
-**Marketing language (proposal):** see [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) — *Charcoal Signal* — and the specimen at [`prototype/design-language/index.html`](../prototype/design-language/index.html). Product chrome in this file stays the source of truth until that proposal is locked.
+**Marketing language (proposal):** see [`DESIGN_LANGUAGE.md`](DESIGN_LANGUAGE.md) — *Charcoal Field* (abstract ink plates for posters/posts; no neon) — and the specimen at [`prototype/design-language/index.html`](../prototype/design-language/index.html). Product chrome in this file stays the source of truth until that proposal is locked.
 
 ## Mark
 
