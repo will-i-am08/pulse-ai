@@ -55,6 +55,7 @@ export async function generateFillerPost(
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
     "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
+    "If that proof bank is empty, use a concrete in-world moment from what you already know (the room, the product, the neighbourhood, today's weather on the street). Never ask the owner for more details. Never refuse. Output JSON only — no questions, no preamble.",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: caption + card must name at least TWO specific options and state a concrete difference (e.g. Cursor vs Claude Code). Category-level tips without named tools FAIL."
@@ -245,7 +246,10 @@ export async function draftFillerFields(
   let lastRaw = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await callLLM({
-      system,
+      system:
+        attempt === 0
+          ? system
+          : `${system}\nRETRY: previous reply was not valid JSON. Output ONLY the JSON object. Do not ask questions.`,
       messages: [{ role: "user", content: `Write today's ${pillarName} post.` }],
       maxTokens,
     });
