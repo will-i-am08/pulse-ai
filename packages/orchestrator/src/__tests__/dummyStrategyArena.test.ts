@@ -49,6 +49,8 @@ import {
 } from "../adCampaigns.js";
 import { adsEnabled, spendCaps, formatCents, isAdsConnected } from "../adsFeatures.js";
 import { writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mockedCallLLM = callLLM as unknown as ReturnType<typeof vi.fn>;
 
@@ -471,13 +473,17 @@ describe("dummy arena — organic + paid winning strategy", () => {
       sms_preview: sms,
     };
 
-    mkdirSync("/opt/cursor/artifacts", { recursive: true });
+    // Diagnostic artefacts only — write somewhere that exists on every machine
+    // and in CI. A hard-coded absolute path (was /opt/cursor/artifacts) EACCESes
+    // and fails the whole test.
+    const artifactDir = join(tmpdir(), "kip-arena-artifacts");
+    mkdirSync(artifactDir, { recursive: true });
     writeFileSync(
-      "/opt/cursor/artifacts/dummy-strategy-arena-report.json",
+      join(artifactDir, "dummy-strategy-arena-report.json"),
       JSON.stringify(report, null, 2),
     );
     writeFileSync(
-      "/opt/cursor/artifacts/dummy-strategy-arena-report.md",
+      join(artifactDir, "dummy-strategy-arena-report.md"),
       [
         `# Dummy arena — ${brand.name}`,
         "",

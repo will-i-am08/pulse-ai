@@ -1,7 +1,7 @@
 'use server';
 import 'server-only';
 import { redirect } from 'next/navigation';
-import type { Approver, BrandStatus } from '@pulse/shared';
+import { normalizePhone, type Approver, type BrandStatus } from '@pulse/shared';
 import { seedBrandVoice } from '@pulse/orchestrator/seedBrandVoice';
 import { insertBrand } from '@/lib/data/brands';
 
@@ -22,7 +22,7 @@ function lines(value: FormDataEntryValue | null): string[] {
  */
 export async function createBrandAction(formData: FormData): Promise<void> {
   const name = String(formData.get('name') ?? '').trim();
-  const clientPhone = String(formData.get('client_phone') ?? '').trim();
+  const clientPhoneRaw = String(formData.get('client_phone') ?? '').trim();
 
   const approverRaw = String(formData.get('approver') ?? 'operator');
   const approver = (APPROVERS as string[]).includes(approverRaw) ? (approverRaw as Approver) : 'operator';
@@ -30,8 +30,20 @@ export async function createBrandAction(formData: FormData): Promise<void> {
   const statusRaw = String(formData.get('status') ?? 'active');
   const status = (STATUSES as string[]).includes(statusRaw) ? (statusRaw as BrandStatus) : 'active';
 
-  if (!name || !clientPhone) {
+  if (!name || !clientPhoneRaw) {
     throw new Error('createBrandAction: name and client_phone are required');
+  }
+
+  // Store E.164 only. `resolveBrandByPhone` does an exact match against Twilio's
+  // strict E.164 `From`, so a brand saved as "0412 345 678" or "+61 412 345 678"
+  // never resolves — inbound is silently dropped as an unknown sender and
+  // outbound fails. Signup already normalises (auth.ts); operator creation must too.
+  const clientPhone = normalizePhone(clientPhoneRaw);
+  if (!clientPhone) {
+    throw new Error(
+      `createBrandAction: client_phone "${clientPhoneRaw}" is not a valid phone number — ` +
+        'use E.164 (+61412345678) or an Australian number (0412 345 678).',
+    );
   }
 
   const brand = await insertBrand({ name, client_phone: clientPhone, approver, status });

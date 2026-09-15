@@ -9,8 +9,11 @@ vi.mock("../concurrency.js", async () => {
 import { DRAFT_CONCURRENCY, mapWithConcurrency } from "../concurrency.js";
 
 describe("DRAFT_CONCURRENCY / mapWithConcurrency", () => {
-  it("defaults draft concurrency to 3", () => {
-    expect(DRAFT_CONCURRENCY).toBe(3);
+  // Held at 2 deliberately: the shared pg pool is max: 3, so a batch at 3 could
+  // own every connection while the per-minute crons wait 30s and then throw.
+  it("keeps draft concurrency under the pg pool max", () => {
+    expect(DRAFT_CONCURRENCY).toBe(2);
+    expect(DRAFT_CONCURRENCY).toBeLessThan(3);
   });
 
   it("runs work in parallel up to the limit", async () => {

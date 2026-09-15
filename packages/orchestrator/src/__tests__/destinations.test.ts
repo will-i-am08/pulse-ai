@@ -261,11 +261,17 @@ describe("acceptance: X only / Threads only / both / edit / IG+FB", () => {
 });
 
 describe("approval fan-out", () => {
+  /** The claiming update returns the row when this caller wins it. */
+  function winsTheClaim() {
+    mockedQuery.mockResolvedValueOnce([{ id: "post-1" }]);
+  }
+
   it("sets approved (not published) and clones only the extra picked channel", async () => {
     const post = fakePost({
       destinations: ["x", "threads"],
       captions: buildPlatformCaptions(longSource),
     });
+    winsTheClaim();
     const { slices, dests } = await approveSelectedDestinations({
       post,
       brand: fakeBrand(),
@@ -289,6 +295,7 @@ describe("approval fan-out", () => {
   });
 
   it("X-only approval never inserts a Threads sibling", async () => {
+    winsTheClaim();
     await approveSelectedDestinations({
       post: fakePost({ destinations: ["x"], captions: buildPlatformCaptions(longSource) }),
       brand: fakeBrand(),
@@ -296,6 +303,46 @@ describe("approval fan-out", () => {
       postNow: false,
     });
     expect(mockedQueryOne).not.toHaveBeenCalled();
+  });
+
+  // Finding 3: a second "yes" (or dashboard-approve racing SMS-approve) used to
+  // re-run the whole fan-out and duplicate every extra destination.
+  it("claims the row with a pending_approval predicate", async () => {
+    winsTheClaim();
+    await approveSelectedDestinations({
+      post: fakePost({ destinations: ["x", "threads"], captions: buildPlatformCaptions(longSource) }),
+      brand: fakeBrand(),
+      actor: "operator",
+      postNow: false,
+    });
+    const updateSql = String(mockedQuery.mock.calls[0]![0]);
+    expect(updateSql).toMatch(/status\s*=\s*'pending_approval'/);
+    expect(updateSql).toMatch(/returning id/);
+  });
+
+  it("bails without approval_log or siblings when the claim is lost", async () => {
+    // query() resolves to [] by default — i.e. zero rows updated.
+    const res = await approveSelectedDestinations({
+      post: fakePost({ destinations: ["x", "threads"], captions: buildPlatformCaptions(longSource) }),
+      brand: fakeBrand(),
+      actor: "operator",
+      postNow: false,
+    });
+    expect(res.claimed).toBe(false);
+    expect(mockedQueryOne).not.toHaveBeenCalled();
+    // Only the claim attempt ran — no approval_log insert.
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports claimed when it wins", async () => {
+    winsTheClaim();
+    const res = await approveSelectedDestinations({
+      post: fakePost({ destinations: ["x"], captions: buildPlatformCaptions(longSource) }),
+      brand: fakeBrand(),
+      actor: "operator",
+      postNow: false,
+    });
+    expect(res.claimed).toBe(true);
   });
 });
 

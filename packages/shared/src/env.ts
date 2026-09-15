@@ -134,7 +134,14 @@ const serverEnvSchema = z.object({
   /** Set to "true" only after TikTok Content Posting API audit clears. */
   TIKTOK_AUDIT_PASSED: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().min(1),
-  APP_BASE_URL: z.string().url().default("http://localhost:3000"),
+  // Public base URL of this deployment. Deliberately has NO production default:
+  // the worker builds publicly-fetchable media URLs from it (publicMediaUrl ->
+  // fal.ai / Replicate) and the Twilio webhook signs against it, so a silent
+  // "http://localhost:3000" fallback breaks both while the process looks healthy
+  // (and burns paid model submissions on URLs the provider can never fetch).
+  // Outside production we still fall back to localhost so dev/tests don't need it
+  // — see getServerEnv() below.
+  APP_BASE_URL: z.string().url(),
   TZ: z.string().default("Australia/Sydney"),
 });
 
@@ -142,16 +149,41 @@ export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 let cached: ServerEnv | null = null;
 
+/** Fallback base URL for local dev and tests only — never used in production. */
+const DEV_APP_BASE_URL = "http://localhost:3000";
+
+/** Log the resolved base once per process (worker/web boot), not once per parse. */
+let loggedAppBaseUrl = false;
+
 /** Validate and return the server environment. Throws with a clear message if misconfigured. */
 export function getServerEnv(): ServerEnv {
   if (cached) return cached;
-  const parsed = serverEnvSchema.safeParse(process.env);
+  const source: Record<string, string | undefined> = { ...process.env };
+  // Local dev and tests may omit APP_BASE_URL; production must not (a localhost
+  // base there silently breaks worker media URLs and Twilio signature checks).
+  if (!source.APP_BASE_URL && source.NODE_ENV !== "production") {
+    source.APP_BASE_URL = DEV_APP_BASE_URL;
+  }
+  const parsed = serverEnvSchema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Invalid server environment:\n${issues}`);
   }
   cached = parsed.data;
+  if (!loggedAppBaseUrl && source.NODE_ENV !== "test") {
+    loggedAppBaseUrl = true;
+    console.log(`env: APP_BASE_URL resolved to ${cached.APP_BASE_URL}`);
+  }
   return cached;
+}
+
+/**
+ * APP_BASE_URL with any trailing slash stripped. Use this for every URL we
+ * build or sign — a stray trailing slash in the env var otherwise produces
+ * `https://host//api/...`, which does not match what providers signed against.
+ */
+export function appBaseUrl(): string {
+  return getServerEnv().APP_BASE_URL.replace(/\/$/, "");
 }
 
 /** Clear the cached env parse — for tests that mutate process.env between cases. */

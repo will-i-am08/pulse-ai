@@ -183,6 +183,9 @@ describe("Phase H destinations", () => {
     });
     const slices = slicesForApproval(post);
     expect(slices.map((s) => s.platform)).toEqual(["linkedin", "tiktok"]);
+    // The status claim ("… and status = 'pending_approval' returning id") must
+    // report a won row before any fan-out happens.
+    mockedQuery.mockResolvedValueOnce([{ id: "post-1" }]);
     const { dests } = await approveSelectedDestinations({
       post,
       brand: fakeBrand(),

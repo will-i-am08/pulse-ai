@@ -18,6 +18,7 @@ export {
   generateTypedCarousel,
   runAiVideoJobDrain,
   runKickoffDrain,
+  reclaimStaleKickoffs,
   runAutonomyPass,
   maybeEnqueueCompetitorDraft,
   isDaytime,

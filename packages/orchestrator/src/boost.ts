@@ -27,9 +27,19 @@ function parseDays(body: string): number {
   return 3;
 }
 
+/**
+ * A PAID boost ask — it must point at an existing post ("boost this", "promote
+ * that post"). A bare \b(boost|promote)\b hijacked ordinary organic requests
+ * ("can you promote our new winter menu this week") into the ad-account OAuth
+ * handoff and drafted nothing at all.
+ */
+const BOOST_OBJECT_RE =
+  /\b(boost|promote)\s+(this|that|it|them|these|those)\b|\b(boost|promote)\s+(?:my\s+|our\s+|the\s+)?(?:top\s+|best\s+|winning\s+|latest\s+|last\s+|recent\s+|new\s+)*(post|posts|one|reel|reels|story|video)\b|\b(boost|promote)\s+post[_\s-]?id\b/i;
+
 export function looksLikeBoostRequest(body: string): boolean {
-  return /\b(boost|promote)\b/i.test(body) || /\bput money behind\b/i.test(body)
-    || /\bturn\s+(this|that)\s+into\s+(an?\s+)?(ad|boost)\b/i.test(body);
+  return BOOST_OBJECT_RE.test(body) || /\bput money behind\b/i.test(body)
+    || /\bturn\s+(this|that)\s+into\s+(an?\s+)?(ad|boost|paid campaign)\b/i.test(body)
+    || /\bcampaign\s+(this|that|the winner)\b/i.test(body);
 }
 
 export async function getProposedBoost(brandId: string): Promise<AdCampaign | null> {

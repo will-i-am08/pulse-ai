@@ -211,6 +211,12 @@ export async function classifyInbound(params: {
       task: "classify",
     });
     const parsed = classificationSchema.parse(JSON.parse(extractJson(raw)));
+    // "media" is only ever valid when media actually arrived (the rule pass owns
+    // that case). An LLM "media" with nothing attached inserted a post with empty
+    // media_ids that could never publish — treat it as unclassified instead.
+    if (parsed.classification === "media" && !params.hasMedia) {
+      return { ...parsed, classification: "other" };
+    }
     return parsed;
   } catch {
     // Malformed LLM output or LLM failure — never guess-and-act.

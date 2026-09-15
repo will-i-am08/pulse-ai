@@ -106,6 +106,7 @@ import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
   looksLikePhotoBackgroundAsk,
+  photoBackgroundAskCoversBatch,
   inferVisualModeFromText,
   visualsPayloadValue,
 } from "./visualMode.js";
@@ -135,7 +136,6 @@ import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
   looksLikeMakeMore,
-  looksLikeAnalystBoost,
   getPerfPending,
   applyMakeMoreOfThese,
   handoffBoostOrCampaign,
@@ -201,9 +201,16 @@ import { parseLookChangeRequest } from "./lookPacks/index.js";
 const URL_RE = /\bhttps?:\/\/\S+|\b[a-z0-9-]+\.(?:com|com\.au|co|net|org|io|app|shop|store)\b\S*/i;
 const REPURPOSE_RE = /\b(repurpose|turn (my|this|the) (site|website|page|blog|menu)|make posts? (from|out of)|posts? from (my|this))\b/i;
 
-/** I1 — approve / send drafted engagement replies (beyond thin A6). */
-const SEND_DRAFT_RE =
-  /^\s*(send|post it|send it|send that|approve that reply|approve the reply|approve it|approve that)\b/i;
+/**
+ * I1 — approve / send drafted engagement replies (beyond thin A6).
+ *
+ * This publishes a public comment on the client's real IG/FB post, so the
+ * message must be the verb and NOTHING else. The old `^(send|…)\b` swallowed
+ * "send me some post ideas", "send over the schedule", "send that link again"
+ * and "post it tomorrow instead".
+ */
+export const SEND_DRAFT_RE =
+  /^\s*(send|send it|send that|post it|approve (that|the|it)( reply)?)\s*[.!]?\s*$/i;
 /** "send this instead: …" — replace draft body and post. */
 const SEND_INSTEAD_RE = /^\s*send this instead\s*[:\-–]?\s*(.+)$/is;
 /** Owner claims the escalated lead. */
@@ -220,7 +227,14 @@ const CRM_SETTINGS_RE =
 // Gap-fill draft-one detection — see draftAsk.ts
 
 const CAMPAIGN_RE = /\bcampaign\b|\blaunch\b|\b\d+\s*(?:day|week)s?\s+(?:push|sale|promo|campaign)\b|\brun a\b/i;
-const CANCEL_RE = /^\s*(no|nah|cancel|scrap|forget it|don'?t)\b/i;
+
+/**
+ * A standalone negation that kills a proposed boost / ad campaign / budget edit.
+ * Anchored at BOTH ends: the old `^(no|nah|cancel|…)\b` silently cancelled on
+ * "no worries, thanks", "no photos this week, use stock" and "nope all good".
+ */
+export const CANCEL_RE =
+  /^\s*(?:no|nope|nah|cancel(?:\s+(?:it|that))?|scrap(?:\s+(?:it|that))?|forget it|not now|leave it|don'?t(?:\s+(?:do\s+)?(?:it|that|bother))?)(?:[,\s]+(?:thanks?|thank you|cancel(?:\s+(?:it|that))?|scrap(?:\s+(?:it|that))?|don'?t|forget it|not now|leave it))?\s*[.!]?\s*$/i;
 
 
 // SMS deep-link connect / disconnect intents.
@@ -234,8 +248,88 @@ const CONNECT_TIKTOK_RE =
   /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_STATUS_RE =
   /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b/i;
+/**
+ * Wiping the Meta tokens needs a full OAuth re-auth to undo, so this must be an
+ * unmistakable "disconnect my accounts". `remove` is ordinary edit vocabulary
+ * (it is in classify.ts's EDIT_SIGNALS), and with it in the verb set "remove the
+ * fb post" and "remove my account" destroyed the connection. The verb is now
+ * disconnect/unlink only, any content noun nearby disqualifies the match, and
+ * the wipe itself is two-step (see DISCONNECT_CONFIRM_RE).
+ */
 const DISCONNECT_META_RE =
-  /\b(disconnect|unlink|remove)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|accounts?)\b/i;
+  /\b(disconnect|unlink)\b.{0,40}\b(insta(?:gram)?|facebook|fb|meta|accounts?)\b/i;
+/** Content nouns: "disconnect the fb post" is about a post, not the account. */
+const DISCONNECT_CONTENT_GUARD_RE =
+  /\b(posts?|photos?|pics?|captions?|tags?|comments?|stor(?:y|ies)|reels?|drafts?|links?)\b/i;
+/** Step two — an explicit word, never a bare "yes" that could mean anything. */
+const DISCONNECT_CONFIRM_RE =
+  /^\s*(?:yes[,\s]+)?(?:disconnect|unlink)(?:\s+(?:it|them|both|instagram|facebook|fb|meta|my accounts?))?\s*[.!]?\s*$/i;
+
+export function looksLikeMetaDisconnect(body: string | null | undefined): boolean {
+  const t = body ?? "";
+  return DISCONNECT_META_RE.test(t) && !DISCONNECT_CONTENT_GUARD_RE.test(t);
+}
+export function looksLikeMetaDisconnectConfirm(body: string | null | undefined): boolean {
+  return DISCONNECT_CONFIRM_RE.test(body ?? "");
+}
+
+/** How long a staged disconnect stays confirmable. */
+const DISCONNECT_CONFIRM_WINDOW_MS = 15 * 60 * 1000;
+
+function pendingMetaDisconnect(brand: Brand): boolean {
+  const raw = (brand.facts as Record<string, unknown> | null | undefined)?.pending_meta_disconnect;
+  const at = (raw as { requested_at?: string } | null | undefined)?.requested_at;
+  if (!at) return false;
+  const ts = Date.parse(at);
+  return Number.isFinite(ts) && Date.now() - ts < DISCONNECT_CONFIRM_WINDOW_MS;
+}
+
+async function stagePendingMetaDisconnect(brand: Brand): Promise<void> {
+  const value = { requested_at: new Date().toISOString() };
+  await query(
+    `update brands set facts = jsonb_set(coalesce(facts, '{}'::jsonb), '{pending_meta_disconnect}', $1::jsonb, true), updated_at = now() where id = $2`,
+    [JSON.stringify(value), brand.id],
+  );
+  brand.facts = { ...(brand.facts ?? {}), pending_meta_disconnect: value } as Brand["facts"];
+}
+
+async function clearPendingMetaDisconnect(brand: Brand): Promise<void> {
+  await query(
+    `update brands set facts = coalesce(facts, '{}'::jsonb) - 'pending_meta_disconnect', updated_at = now() where id = $1`,
+    [brand.id],
+  );
+  const next = { ...(brand.facts ?? {}) } as Record<string, unknown>;
+  delete next.pending_meta_disconnect;
+  brand.facts = next as Brand["facts"];
+}
+
+/**
+ * Did the CLIENT actually ask for content work?
+ *
+ * `inferKickoffFromKipCommit` (kickoffs.ts) fires whenever Kip's own reply
+ * contains a commitment ("I'll…", "on it") AND either message mentions bare
+ * "post"/"posts"/"content"/"draft" — so "how often should I post?" answered with
+ * "…I'll keep your posts spread across the week…" queued a draft_posts kickoff
+ * and texted over two drafts nobody asked for. Kip's small talk is not a brief:
+ * the client's own words have to carry the request.
+ */
+const USER_ASKED_FOR_CONTENT_WORK_RE =
+  /\b(draft|drafts|drafting|write|writing|make me|create|generate|put together|pull together|knock (?:up|out)|batch|carr?ousels?|reels?|stor(?:y|ies)|post ideas?|content ideas?|(?:some|more|a few|another|\d+)\s+posts?|a post)\b|\b(?:no|don'?t have|dont have|haven'?t got|without|zero)\b.{0,48}\b(?:photos?|pics?|images?|shots?)\b/i;
+
+export function userAskedForContentWork(body: string | null | undefined): boolean {
+  return USER_ASKED_FOR_CONTENT_WORK_RE.test(body ?? "");
+}
+
+/** maybeEnqueueFromKipCommit, but only when the client actually asked. */
+async function maybeEnqueueFromKipCommitIfAsked(
+  brand: Brand,
+  userMessage: string | null | undefined,
+  kipReply: string | null | undefined,
+  sourceMessageId?: string | null,
+): Promise<void> {
+  if (!userAskedForContentWork(userMessage)) return;
+  await maybeEnqueueFromKipCommit(brand, userMessage, kipReply, sourceMessageId);
+}
 
 // Competitor-intel intent: "what's X doing on ads/socials", "check out the
 // competition", "spy on [name]", "ad library". Routed to a web-search rundown.
@@ -287,7 +381,16 @@ async function getScheduledAutoPost(brandId: string): Promise<Post | null> {
   );
 }
 
-const HOLD_RE = /^\s*(hold|stop|wait|pause|cancel|don'?t post)\b/i;
+/**
+ * The hold-window kill switch. It must be a BARE hold and nothing else: the old
+ * `^(hold|stop|wait|pause|cancel|don't post)\b` fired first for "pause the
+ * campaign", "cancel the campaign", "stop the ads", "hold on, what was that
+ * price again?" and "wait, can you make it shorter" — pulling an unrelated
+ * autopilot post back to pending_approval while the real request was never
+ * reached and the ads kept spending.
+ */
+export const HOLD_RE =
+  /^\s*(?:hold(?:\s+(?:on|it|that|this|up|the post|fire))?|stop(?:\s+(?:it|that|this|the post))?|wait|pause(?:\s+(?:it|that|this|the post))?|cancel(?:\s+(?:it|that|this|the post))?|don'?t post(?:\s+(?:it|that|this))?)\s*[.!]?\s*$/i;
 
 export type InboundContext = {
   brand: Brand;
@@ -307,17 +410,28 @@ function toDbMessageType(c: InboundClassification): NonNullable<Message["type"]>
   return c;
 }
 
+/**
+ * The draft a bare "yes" / "make that one shorter" refers to: the one most
+ * recently PUT IN FRONT OF THE CLIENT, not the one most recently created.
+ * runFirstBatch drafts N posts concurrently and texts each separately, so
+ * created_at order does not match SMS delivery order — ordering by created_at
+ * approved whichever row happened to land last. See migration
+ * 0050_posts_last_offered_at.sql; the column falls back to created_at.
+ */
 async function getLatestPendingPost(brandId: string): Promise<Post | null> {
   return queryOne<Post>(
     `select * from posts
      where brand_id = $1 and status = 'pending_approval'
-     order by created_at desc
+     order by coalesce(last_offered_at, created_at) desc, created_at desc
      limit 1`,
     [brandId],
   );
 }
 
-/** Latest outbound SMS body Kip sent this brand (for approve-clarify gating). */
+/**
+ * Latest outbound SMS body Kip sent this brand — used both for approve-clarify
+ * gating and as "the question a short confirm answers" (plan-rebuild gating).
+ */
 async function latestOutboundBody(brandId: string): Promise<string | null> {
   const row = await queryOne<{ body: string | null }>(
     `select body from messages
@@ -327,6 +441,24 @@ async function latestOutboundBody(brandId: string): Promise<string | null> {
     [brandId],
   );
   return row?.body?.trim() || null;
+}
+
+/**
+ * Kip asking "rebuild from scratch, or just tweak what's there?" — an either/or,
+ * in either order. A reply that merely says "I'll tweak it" is not the question,
+ * which is the whole point: "tweak it" must not rebuild a plan unprompted.
+ */
+export const SCRATCH_OR_TWEAK_ASK_RE =
+  /\b(from scratch|start over|start again|ground up|rebuild)\b[\s\S]{0,80}\b(tweak|adjust|keep|change|edit)\b|\b(tweak|adjust|keep|change|edit)\b[\s\S]{0,80}\b(from scratch|start over|start again|ground up|rebuild)\b/i;
+
+/**
+ * Stamp the draft we just texted as the one now in front of the client, so the
+ * next "yes" resolves to it. Best-effort: never fail an outbound over it.
+ */
+async function markPostOffered(postId: string): Promise<void> {
+  await query(`update posts set last_offered_at = now() where id = $1`, [postId]).catch(() => {
+    /* non-blocking */
+  });
 }
 
 async function updateMessageType(messageId: string, type: NonNullable<Message["type"]>): Promise<void> {
@@ -468,21 +600,32 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
   });
 }
 
+type InboundResult = {
+  reply: string;
+  postId?: string;
+  mediaUrl?: string;
+  /** All carousel slide previews — an SMS may attach several. */
+  mediaUrls?: string[];
+  finishOnboardingBrandId?: string;
+};
 
 /**
  * Decide + act on an inbound message. Frozen signature per
  * BUILD_CONTRACTS.md — called by @pulse/gateway's handleInbound after the
  * inbound message + media are persisted.
+ *
+ * Any reply that carries a postId is putting that draft in front of the client,
+ * so it becomes the draft a following "yes" / "make it shorter" refers to.
  */
-export async function processInbound(
+export async function processInbound(ctx: InboundContext): Promise<InboundResult> {
+  const result = await routeInbound(ctx);
+  if (result.postId) await markPostOffered(result.postId);
+  return result;
+}
+
+async function routeInbound(
   ctx: InboundContext,
-): Promise<{
-  reply: string;
-  postId?: string;
-  mediaUrl?: string;
-  mediaUrls?: string[];
-  finishOnboardingBrandId?: string;
-}> {
+): Promise<InboundResult> {
   // Backfill owner_name from signup so persona/interview never re-ask who they are.
   let brand = await ensureOwnerNameFromUser(ctx.brand);
   const { message, newMedia } = ctx;
@@ -519,6 +662,10 @@ export async function processInbound(
     };
   }
 
+  // The draft currently in front of the client, if any. Read early: several
+  // branches below must stand down while one is awaiting approval.
+  const pending = await getLatestPendingPost(brand.id);
+
   // Destination-link confirmation takes priority while a discovered URL is pending.
   // ("Is this the right booking link?" → yes / no / corrected URL)
   if (message.body && newMedia.length === 0 && getPendingDestinationLink(brand)) {
@@ -527,7 +674,9 @@ export async function processInbound(
   }
 
   // Owner asks to find / set / use a booking link (or put a link on a post).
-  if (message.body && newMedia.length === 0 && looksLikeDestinationLinkIntent(message.body)) {
+  // Gated on `!pending`: with a draft awaiting approval, "add a link in the
+  // caption" is an edit to that draft, not a booking-link setup flow.
+  if (message.body && newMedia.length === 0 && !pending && looksLikeDestinationLinkIntent(message.body)) {
     const explicit = extractUrlFromMessage(message.body);
     if (explicit && /\b(set|update|change|use)\b/i.test(message.body)) {
       // Still confirm before saving — never silently overwrite booking_link.
@@ -560,8 +709,17 @@ export async function processInbound(
   }
 
   // Hold-window kill switch: "HOLD" / "stop" pulls a scheduled autopilot post
-  // back into a normal draft the client can approve or discard.
-  if (message.body && HOLD_RE.test(message.body) && newMedia.length === 0) {
+  // back into a normal draft the client can approve or discard. Campaign/ads
+  // control verbs and questions are explicitly NOT holds — they own their
+  // branches further down and must reach them.
+  if (
+    message.body &&
+    HOLD_RE.test(message.body) &&
+    !message.body.includes("?") &&
+    !looksLikeCampaignControl(message.body) &&
+    !looksLikeAdCampaignControl(message.body) &&
+    newMedia.length === 0
+  ) {
     const auto = await getScheduledAutoPost(brand.id);
     if (auto) {
       await query(`update posts set status = 'pending_approval', is_auto = false where id = $1`, [auto.id]);
@@ -576,8 +734,6 @@ export async function processInbound(
       };
     }
   }
-
-  const pending = await getLatestPendingPost(brand.id);
 
   // Channel pick on a pending draft — "X only", "Threads only", "X and Threads",
   // "Instagram and Facebook". Not an approval; nothing publishes until "yes".
@@ -800,7 +956,12 @@ export async function processInbound(
     if (looksLikeMakeMore(message.body)) {
       return { reply: await applyMakeMoreOfThese(brand) };
     }
-    if (looksLikeBoostRequest(message.body) || looksLikeAnalystBoost(message.body)) {
+    // Paid handoff only when the ask points at an existing post ("boost this").
+    // `looksLikeAnalystBoost` still matches a bare "boost <anything>", which is
+    // how organic asks like "can you promote our new winter menu this week" got
+    // an ad-account OAuth link and no draft at all — so it is deliberately not
+    // consulted here (looksLikeBoostRequest now covers its campaign phrasings).
+    if (looksLikeBoostRequest(message.body)) {
       const wantsCampaign = /\bcampaign\b/i.test(message.body) && !/\bboost\b/i.test(message.body);
       return {
         reply: await handoffBoostOrCampaign(brand, {
@@ -1039,22 +1200,39 @@ export async function processInbound(
     if (CONNECT_STATUS_RE.test(message.body)) {
       return { reply: metaConnectStatusMessage(brand) };
     }
-    if (DISCONNECT_META_RE.test(message.body)) {
+    // Step two of the disconnect: only a staged request, confirmed in words,
+    // wipes the tokens. Recovery from here is a full OAuth re-auth.
+    if (pendingMetaDisconnect(brand)) {
+      if (looksLikeMetaDisconnectConfirm(message.body)) {
+        await clearPendingMetaDisconnect(brand);
+        await query(
+          `update brands set
+             ig_user_id = null, ig_username = null,
+             fb_page_id = null, fb_page_name = null,
+             platform_tokens_encrypted = null,
+             platform_user_token_encrypted = null,
+             meta_connected_at = null
+           where id = $1`,
+          [brand.id],
+        );
+        return {
+          reply: 'Disconnected Instagram + Facebook. Say "connect Instagram" when you want a fresh link.',
+        };
+      }
+      if (CANCEL_RE.test(message.body)) {
+        await clearPendingMetaDisconnect(brand);
+        return { reply: "Left your accounts connected. Nothing changed." };
+      }
+    }
+    if (looksLikeMetaDisconnect(message.body)) {
       if (!isMetaConnected(brand)) {
         return { reply: "Nothing to disconnect — Instagram/Facebook aren't linked yet. Want a connect link?" };
       }
-      await query(
-        `update brands set
-           ig_user_id = null, ig_username = null,
-           fb_page_id = null, fb_page_name = null,
-           platform_tokens_encrypted = null,
-           platform_user_token_encrypted = null,
-           meta_connected_at = null
-         where id = $1`,
-        [brand.id],
-      );
+      await stagePendingMetaDisconnect(brand);
       return {
-        reply: 'Disconnected Instagram + Facebook. Say "connect Instagram" when you want a fresh link.',
+        reply:
+          "Just so we're clear: disconnecting wipes your Instagram and Facebook tokens, and reconnecting means going through the whole login again.\n\n" +
+          'Reply "disconnect" to confirm, or "no" to leave it as is.',
       };
     }
     const adsToggle = looksLikeAdsToggle(message.body);
@@ -1123,7 +1301,7 @@ export async function processInbound(
     }
     {
       const chat = await converse(brand, message.body);
-      await maybeEnqueueFromKipCommit(brand, message.body, chat, message.id);
+      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
       return { reply: chat };
     }
   }
@@ -1255,14 +1433,19 @@ export async function processInbound(
     if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
 
-  if (
-    message.body &&
-    newMedia.length === 0 &&
-    !pending &&
-    (looksLikeContentPlanRequest(message.body) || looksLikePlanRebuildConfirm(message.body))
-  ) {
-    // Explicit propose/rebuild / scratch-confirm always builds a fresh proposal.
-    return { reply: await proposeContentPlanFromSms(brand, message.body) };
+  if (message.body && newMedia.length === 0 && !pending) {
+    // An explicit "rebuild my content plan" always builds a fresh proposal. The
+    // short confirms ("from scratch", "tweak it") only mean that when Kip just
+    // ASKED the scratch-vs-tweak question — otherwise "tweak it" triggered a
+    // full plan rebuild out of nowhere.
+    const planAsk = looksLikeContentPlanRequest(message.body);
+    const planConfirm =
+      !planAsk &&
+      looksLikePlanRebuildConfirm(message.body) &&
+      SCRATCH_OR_TWEAK_ASK_RE.test((await latestOutboundBody(brand.id)) ?? "");
+    if (planAsk || planConfirm) {
+      return { reply: await proposeContentPlanFromSms(brand, message.body) };
+    }
   }
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.
@@ -1614,12 +1797,22 @@ export async function processInbound(
           `select id from posts where brand_id = $1 and status = 'pending_approval'`,
           [brand.id],
         );
-        const n = Math.min(5, Math.max(pendingRows.length || 4, 2));
-        if (pendingRows.length) {
+        // Scope the rejection. Only an ask that plainly covers the batch ("them",
+        // "all of them", "these") clears every pending draft; a tweak aimed at one
+        // photo redoes just that draft. A client with 4 drafts pending who asked to
+        // fix one background used to lose all four and wait ~4 minutes.
+        const wholeBatch = photoBackgroundAskCoversBatch(message.body) || !pending;
+        const targetIds = wholeBatch
+          ? pendingRows.map((r) => r.id)
+          : pendingRows.filter((r) => r.id === pending.id).map((r) => r.id);
+        const n = wholeBatch
+          ? Math.min(5, Math.max(pendingRows.length || 4, 2))
+          : Math.max(1, targetIds.length);
+        if (targetIds.length) {
           await query(
             `update posts set status = 'rejected', updated_at = now()
-              where brand_id = $1 and status = 'pending_approval'`,
-            [brand.id],
+              where brand_id = $1 and status = 'pending_approval' and id = any($2::uuid[])`,
+            [brand.id, targetIds],
           );
         }
         const visuals = visualsPayloadValue(inferVisualModeFromText(message.body), message.body);
@@ -1636,6 +1829,11 @@ export async function processInbound(
           };
         }
         const etaMin = Math.max(2, Math.ceil(n / 3) * 2);
+        if (!wholeBatch) {
+          return {
+            reply: `Yeah sure — I'll redo that one with a photo background. Give me about ${etaMin} minutes and I'll text it over. Your other drafts are untouched.`,
+          };
+        }
         return {
           reply: pendingRows.length
             ? `Yeah sure — I'll redo all ${n} with photo backgrounds. Give me about ${etaMin} minutes and I'll text them over.`
@@ -1817,12 +2015,17 @@ export async function processInbound(
       // posts are due immediately so they show on the fake feed after yes.
       const body = message.body ?? "";
       const postNow = /\b(now|immediately|right now|asap|straight away)\b/i.test(body) && !/\b(not|later|don'?t|dont)\b/i.test(body);
-      const { dests } = await approveSelectedDestinations({
+      const { dests, claimed } = await approveSelectedDestinations({
         post: pending,
         brand,
         actor: brand.approver,
         postNow,
       });
+      // Another turn (a second "yes", or the dashboard) already approved this
+      // one. Say so and stop — re-running the fan-out duplicates live posts.
+      if (!claimed) {
+        return { reply: "That one's already approved and queued — nothing doubled up.", postId: pending.id };
+      }
 
       // Design-memory hook: cover (+ mid slide for long carousels) on owner approve.
       void recordApprovedCreativeMemory({
@@ -1843,7 +2046,9 @@ export async function processInbound(
     case "question": {
       const context = await buildConversationContext(brand.id);
       const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
-      await maybeEnqueueFromKipCommit(brand, message.body, answer, message.id);
+      // Gated variant: Kip must not queue drafts off its own small talk — the
+      // CLIENT's words have to carry the request.
+      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, answer, message.id);
       return { reply: answer };
     }
 

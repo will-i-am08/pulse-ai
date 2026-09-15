@@ -79,14 +79,9 @@ export function routeAiVideo(prefer: "primary" | "secondary" = "primary"): AiVid
       reason: "Runway-class secondary model",
     };
   }
-  if (prefer === "secondary" && primary) {
-    return {
-      provider,
-      model: primary,
-      tier: "primary",
-      reason: "Only primary model configured",
-    };
-  }
+  // Deliberately NOT falling back to `primary` here: the caller asks for a
+  // secondary only after the primary failed, so returning it retries the same
+  // failing model and bills for it twice.
   return null;
 }
 
@@ -98,7 +93,7 @@ async function monthSpendCents(brandId: string): Promise<number> {
   const row = await queryOne<{ n: number }>(
     `select coalesce(sum(cost_cents), 0)::int as n from ai_video_jobs
       where brand_id = $1
-        and status in ('queued','running','ready')
+        and status in ('queued','running','ready','failed')
         and created_at >= date_trunc('month', now())`,
     [brandId],
   );
@@ -296,21 +291,29 @@ async function generateVideoBuffer(route: AiVideoRoute, prompt: string): Promise
  */
 export async function processAiVideoJob(
   jobId: string,
-): Promise<{ brandId: string; sms: string; mediaUrl?: string } | null> {
-  const job = await queryOne<AiVideoJob>(`select * from ai_video_jobs where id = $1`, [jobId]);
-  if (!job || job.status !== "queued") return null;
-  // UGC multi-scene jobs are handled by processUgcJob (routed stills/motion models).
-  if (job.kind === "ugc") return null;
-
-  await query(
-    `update ai_video_jobs set status = 'running', updated_at = now() where id = $1`,
+): Promise<{ brandId: string; sms: string; mediaUrl?: string; videoUrl?: string } | null> {
+  const peek = await queryOne<AiVideoJob>(
+    `select id, kind, status from ai_video_jobs where id = $1`,
     [jobId],
   );
+  if (!peek || peek.status !== "queued") return null;
+  // UGC multi-scene jobs are handled by processUgcJob (routed stills/motion models).
+  if (peek.kind === "ugc") return null;
+
+  // Atomic claim — without the status predicate two workers both "win" and both pay.
+  const job = await queryOne<AiVideoJob>(
+    `update ai_video_jobs set status = 'running', updated_at = now()
+      where id = $1 and status = 'queued'
+      returning *`,
+    [jobId],
+  );
+  if (!job) return null;
 
   const brand = await queryOne<Brand>(`select * from brands where id = $1`, [job.brand_id]);
   if (!brand) {
     await query(
-      `update ai_video_jobs set status = 'failed', error = 'brand missing', updated_at = now(), completed_at = now() where id = $1`,
+      `update ai_video_jobs set status = 'failed', error = 'brand missing', updated_at = now(), completed_at = now()
+        where id = $1 and status = 'running'`,
       [jobId],
     );
     return null;
@@ -346,7 +349,8 @@ export async function processAiVideoJob(
 
   if (!videoBuf || !route) {
     await query(
-      `update ai_video_jobs set status = 'failed', error = $2, updated_at = now(), completed_at = now() where id = $1`,
+      `update ai_video_jobs set status = 'failed', error = $2, updated_at = now(), completed_at = now()
+        where id = $1 and status = 'running'`,
       [jobId, lastErr ?? "no output"],
     );
     return {
@@ -409,7 +413,7 @@ export async function processAiVideoJob(
     `update ai_video_jobs
         set status = 'ready', result_media_id = $2, post_id = $3, model = $4, provider = $5,
             cost_cents = coalesce(cost_cents, $6), updated_at = now(), completed_at = now()
-      where id = $1`,
+      where id = $1 and status = 'running'`,
     [jobId, mediaId, post?.id ?? null, route.model, route.provider, estCostCents()],
   );
 
@@ -447,22 +451,26 @@ export async function processAiVideoJob(
       })
     : "soon";
 
+  // MMS keeps the cover JPEG (carrier size limits); the mp4 goes in the body so
+  // the client can actually watch what they are approving.
+  const videoUrl = publicMediaUrl(mediaId);
   return {
     brandId: brand.id,
-    sms: `Your AI Reel is ready (AIGC) 🎬\n\n"${aigcCaption}"\n\nProposed for ${when}. Reply "yes" to approve as an organic Reel — or say if you want it as paid creative input.`,
-    mediaUrl: coverId ? publicMediaUrl(coverId) : publicMediaUrl(mediaId),
+    sms: `Your AI Reel is ready (AIGC) 🎬\n\nWatch it: ${videoUrl}\n\n"${aigcCaption}"\n\nProposed for ${when}. Reply "yes" to approve as an organic Reel — or say if you want it as paid creative input.`,
+    mediaUrl: coverId ? publicMediaUrl(coverId) : videoUrl,
+    videoUrl,
   };
 }
 
 /** Drain up to `limit` queued AI video jobs (worker loop). */
 export async function runAiVideoJobDrain(limit = 2): Promise<
-  Array<{ brandId: string; sms: string; mediaUrl?: string }>
+  Array<{ brandId: string; sms: string; mediaUrl?: string; videoUrl?: string }>
 > {
   const rows = await query<AiVideoJob>(
     `select * from ai_video_jobs where status = 'queued' order by created_at asc limit $1`,
     [limit],
   );
-  const out: Array<{ brandId: string; sms: string; mediaUrl?: string }> = [];
+  const out: Array<{ brandId: string; sms: string; mediaUrl?: string; videoUrl?: string }> = [];
   for (const row of rows) {
     try {
       const res =
@@ -481,13 +489,66 @@ export async function runAiVideoJobDrain(limit = 2): Promise<
       }
     } catch (err) {
       console.error(`runAiVideoJobDrain: job ${row.id}`, err);
+      // Status-guarded: a job that already wrote itself 'ready' must not be
+      // stomped back to 'failed' by a late error on the way out.
       await query(
-        `update ai_video_jobs set status = 'failed', error = $2, updated_at = now(), completed_at = now() where id = $1`,
+        `update ai_video_jobs set status = 'failed', error = $2, updated_at = now(), completed_at = now()
+          where id = $1 and status in ('queued','running')`,
         [row.id, err instanceof Error ? err.message : String(err)],
       ).catch(() => {});
     }
   }
   return out;
+}
+
+/**
+ * Minutes a job may sit in 'running' before it is presumed dead.
+ * Deliberately generous — a 3-scene UGC job legitimately runs for tens of
+ * minutes (3 stills x up to 3 models, then 3 Kling renders, then ffmpeg).
+ * Far longer than the kickoff queue's 12 min, which is a different workload.
+ */
+export function staleAiVideoMinutes(): number {
+  const raw = process.env.AI_VIDEO_STALE_MINUTES;
+  const n = raw != null && raw !== "" ? Number(raw) : 45;
+  return Number.isFinite(n) && n > 0 ? n : 45;
+}
+
+/**
+ * Fail jobs stuck in 'running'. Without this a hung provider read leaves the row
+ * 'running' forever: no failure SMS, no retry, and it permanently consumes
+ * monthly cap headroom (which counts 'running').
+ *
+ * The terminal write is status-guarded (`and status = 'running'`) and re-checks
+ * updated_at, so a job that is genuinely still working — and wrote itself
+ * 'ready' in the meantime — cannot be resurrected or stomped by the reaper.
+ */
+export async function reapStaleAiVideoJobs(
+  limit = 5,
+): Promise<Array<{ brandId: string; sms: string }>> {
+  const minutes = staleAiVideoMinutes();
+  const rows = await query<AiVideoJob & { kind?: string }>(
+    `update ai_video_jobs
+        set status = 'failed',
+            error = 'stale: no provider result within ' || $1::text || ' minutes',
+            updated_at = now(), completed_at = now()
+      where id in (
+        select id from ai_video_jobs
+         where status = 'running'
+           and updated_at < now() - ($1::text || ' minutes')::interval
+         order by updated_at asc
+         limit $2
+      )
+        and status = 'running'
+      returning *`,
+    [String(minutes), limit],
+  );
+  return rows.map((row) => ({
+    brandId: row.brand_id,
+    sms:
+      row.kind === "ugc"
+        ? "That UGC video stalled at the provider and I've stopped it there so it doesn't keep costing you. Want me to try again?"
+        : "That AI video stalled at the provider and I've stopped it there so it doesn't keep costing you. Want me to try again?",
+  }));
 }
 
 /** Test helper */

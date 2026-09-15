@@ -14,27 +14,49 @@ import { runConnectNudgeLoop } from "./proactive/connectNudge.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
 import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
-import { runKickoffLoop } from "./proactive/kickoffLoop.js";
+import { runKickoffLoop, runKickoffReaperLoop } from "./proactive/kickoffLoop.js";
 import { runAutonomyLoop } from "./proactive/autonomyLoop.js";
 import { runRetentionPurgeLoop } from "./proactive/retention.js";
 import { runAdsSyncLoop } from "./proactive/adsSync.js";
 import { runCreativeRefreshLoop } from "./proactive/creativeRefresh.js";
+
+/**
+ * Ceiling on a single tick. The `running` flag only clears when the promise
+ * SETTLES, and callLLM sets no timeout/AbortSignal — so one hung socket wedged
+ * a loop for the lifetime of the process ("previous tick still running,
+ * skipping" every 30s, forever). Generous on purpose: this does not cancel the
+ * hung work, it only lets the next tick start, so a slow-but-healthy tick that
+ * trips it will overlap with its successor.
+ */
+const TICK_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** Reject (without cancelling) once a tick has clearly hung. */
+function withTickTimeout(name: string, ms: number, p: Promise<void>): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${name}: tick exceeded ${ms}ms — abandoning so the loop can run again`)),
+      ms,
+    );
+    p.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
 
 /** Overlap-safe interval runner — skips if the previous tick is still in flight. */
 function guardedInterval(
   name: string,
   ms: number,
   fn: () => Promise<void>,
-  opts?: { runSoonMs?: number },
+  opts?: { runSoonMs?: number; timeoutMs?: number },
 ): ReturnType<typeof setInterval> {
   let running = false;
+  const timeoutMs = opts?.timeoutMs ?? TICK_TIMEOUT_MS;
   const tick = () => {
     if (running) {
       logger.warn(`${name}: previous tick still running, skipping`);
       return;
     }
     running = true;
-    fn()
+    withTickTimeout(name, timeoutMs, fn())
       .catch((err) =>
         logger.error(`${name} crashed`, {
           error: err instanceof Error ? err.stack ?? err.message : String(err),
@@ -183,6 +205,14 @@ async function main(): Promise<void> {
   const kickoffTimer = guardedInterval("kip-kickoffs", 30_000, runKickoffLoop, {
     runSoonMs: 15_000,
   });
+  // Reaping runs on its OWN interval. It used to live only inside the drain, so
+  // a wedged drain loop meant nothing ever reclaimed — and the partial unique
+  // index on (brand_id, kind) where status in ('queued','running') then told
+  // the client "Already on that" forever, with nothing ever arriving.
+  const kickoffReaperTimer = guardedInterval("kip-kickoff-reaper", 60_000, runKickoffReaperLoop, {
+    runSoonMs: 10_000,
+    timeoutMs: 60_000,
+  });
   // Proactive trend scouting (daytime) — queues kickoffs the drain loop delivers.
   const autonomyTimer = guardedInterval("kip-autonomy", 6 * 60 * 60 * 1000, runAutonomyLoop, {
     runSoonMs: 120_000,
@@ -229,6 +259,7 @@ async function main(): Promise<void> {
     clearInterval(linqTimer);
     clearInterval(aiVideoTimer);
     clearInterval(kickoffTimer);
+    clearInterval(kickoffReaperTimer);
     clearInterval(autonomyTimer);
     clearInterval(adsSyncTimer);
     clearInterval(creativeRefreshTimer);

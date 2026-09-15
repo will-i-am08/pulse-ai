@@ -27,5 +27,14 @@ export async function mapWithConcurrency<T, R>(
 /** Default concurrency for slide / photo-batch renders. */
 export const SLIDE_RENDER_CONCURRENCY = 3;
 
-/** Default concurrency for parallel first-batch / draft-posts generation. */
-export const DRAFT_CONCURRENCY = 3;
+/**
+ * Default concurrency for parallel first-batch / draft-posts generation.
+ *
+ * Held at 2, NOT 3: the shared pg pool is `max: 3` (packages/shared/src/db.ts)
+ * with a 30s connectionTimeoutMillis, and the per-minute publish/trigger/
+ * engagement/voice crons plus the 3s linq-inbound and 30s niche-plan loops are
+ * competing for the same three connections. At 3 a single draft batch could own
+ * the entire pool; losers blocked 30s and then threw. Raising the pool max is
+ * the better fix — this is the safe half of it.
+ */
+export const DRAFT_CONCURRENCY = 2;
