@@ -1,6 +1,7 @@
 import type { Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { kipMemoryPromptBlock } from "./kipMemory.js";
+import { metaConnectStatusMessage } from "./smsConnect.js";
 
 // The one self-contained persona, shared by every client-facing prompt so it
 // can't drift. To the business owner, Kip IS their social media manager —
@@ -68,19 +69,6 @@ export function personaLines(brand: Brand): string[] {
  * offering to set up what isn't.
  */
 export function connectionSummary(brand: Brand): string {
-  const connected: string[] = [];
-  const missing: string[] = [];
-
-  if (brand.ig_username) connected.push(`Instagram (@${brand.ig_username})`);
-  else if (brand.ig_user_id) connected.push("Instagram");
-  else missing.push("Instagram");
-
-  if (brand.fb_page_name) connected.push(`Facebook (${brand.fb_page_name})`);
-  else if (brand.fb_page_id) connected.push("Facebook");
-  else missing.push("Facebook");
-
-  const parts = [connected.length ? `Connected and live: ${connected.join(", ")}.` : "Nothing is connected yet."];
-  if (missing.length) parts.push(`Not set up yet (offer to connect if it's relevant): ${missing.join(", ")}.`);
-  parts.push("X and Threads can be connected when configured; otherwise they post to the fake feed only.");
-  return parts.join(" ");
+  // Same truth as the SMS status line — tokens, not GRAPH_MODE=mock or a guess.
+  return metaConnectStatusMessage(brand);
 }

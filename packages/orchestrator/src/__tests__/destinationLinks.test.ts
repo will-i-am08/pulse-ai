@@ -254,6 +254,7 @@ describe("intent helpers", () => {
   it("detects destination link intents", () => {
     expect(looksLikeDestinationLinkIntent("put a link in this")).toBe(true);
     expect(looksLikeDestinationLinkIntent("create a post with our booking link")).toBe(true);
+    expect(looksLikeDestinationLinkIntent("our booking link is https://calendly.com/lab-cafe")).toBe(true);
     expect(looksLikeDestinationLinkIntent("what's for lunch")).toBe(false);
   });
 

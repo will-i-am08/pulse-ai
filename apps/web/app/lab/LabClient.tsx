@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { compressLabFiles } from "./compressLabMedia";
 import styles from "./lab.module.css";
 
 type Note = {
@@ -119,9 +120,15 @@ export function LabClient() {
       const form = new FormData();
       form.set("brandId", thread.brand.id);
       form.set("body", text);
-      for (const file of files) form.append("media", file);
+      const compressed = await compressLabFiles(files);
+      for (const file of compressed) form.append("media", file);
       const res = await fetch("/api/lab/message", { method: "POST", body: form });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error("Photo is too large to send. Try a smaller image.");
+        }
+        throw new Error(await res.text());
+      }
       setText("");
       setFiles([]);
       if (fileRef.current) fileRef.current.value = "";

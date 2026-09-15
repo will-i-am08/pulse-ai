@@ -251,7 +251,12 @@ const CONNECT_LINKEDIN_RE =
 const CONNECT_TIKTOK_RE =
   /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_STATUS_RE =
-  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b/i;
+  /\b(what(?:'?s| is)|am i|are we)\b.{0,40}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b|\b(?:what|which)\s+platforms?\b.{0,40}\b(?:am i|are we|are you)\b.{0,20}\b(?:posting|posted|on|connected)\b|\b(?:what|where)\s+(?:am i|are we)\s+posting\b|\bwhat platforms am i (?:on|using)\b/i;
+
+/** "what platforms am I posting to?" — answer from tokens, never the LLM. */
+export function looksLikeConnectStatus(body: string | null | undefined): boolean {
+  return Boolean(body && CONNECT_STATUS_RE.test(body));
+}
 /**
  * Wiping the Meta tokens needs a full OAuth re-auth to undo, so this must be an
  * unmistakable "disconnect my accounts". `remove` is ordinary edit vocabulary
@@ -681,7 +686,9 @@ async function routeInbound(
   // caption" is an edit to that draft, not a booking-link setup flow.
   if (message.body && newMedia.length === 0 && !pending && looksLikeDestinationLinkIntent(message.body)) {
     const explicit = extractUrlFromMessage(message.body);
-    if (explicit && /\b(set|update|change|use)\b/i.test(message.body)) {
+    if (explicit) {
+      // A URL in a booking-link text is the link they want on file — "our
+      // booking link is https://calendly.com/…" must not crawl a missing website.
       // Still confirm before saving — never silently overwrite booking_link.
       await query(
         `update brands set facts = jsonb_set(coalesce(facts, '{}'::jsonb), '{pending_destination_link}', $1::jsonb, true), updated_at = now() where id = $2`,
@@ -1200,7 +1207,7 @@ async function routeInbound(
 
   // SMS deep-link connects / disconnect / status (no pending draft required).
   if (message.body && newMedia.length === 0 && !pending) {
-    if (CONNECT_STATUS_RE.test(message.body)) {
+    if (looksLikeConnectStatus(message.body)) {
       return { reply: metaConnectStatusMessage(brand) };
     }
     // Step two of the disconnect: only a staged request, confirmed in words,

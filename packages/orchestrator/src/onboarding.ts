@@ -4,6 +4,7 @@ import {
   brandVoiceProfileSchema,
   emptyBrandVoiceProfile,
   sanitizeChatText,
+  smsConnectUrl,
   type AccountType,
   type Brand,
   type OnboardingState,
@@ -13,7 +14,7 @@ import {
 import { callLLM } from "./llm.js";
 import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
 import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
-import { connectLinkMessage, isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
+import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
@@ -465,9 +466,12 @@ function connectLinkIsFresh(answers: Record<string, string>): boolean {
 async function mintConnectLink(
   brand: Brand,
   prev: OnboardingState,
-): Promise<{ link: string; answers: Record<string, string> }> {
+): Promise<{ url: string; sms: string; answers: Record<string, string> }> {
   const answers: Record<string, string> = { ...(prev.answers ?? {}) };
-  const link = connectLinkMessage(brand, "meta");
+  const url = smsConnectUrl(brand.id, "meta");
+  const sms =
+    `One tap to connect Instagram + Facebook — I'll take it from there:\n${url}\n\n` +
+    `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`;
   answers.connect_link_sent_at = new Date().toISOString();
   await saveState(brand.id, {
     ...prev,
@@ -477,7 +481,7 @@ async function mintConnectLink(
     transcript: prev.transcript ?? [],
     answers,
   });
-  return { link, answers };
+  return { url, sms, answers };
 }
 
 /** Welcome copy: contact card first — one-tap connect comes after they reply Done. */
@@ -517,16 +521,13 @@ export async function sendConnectLinkAfterContact(brandId: string): Promise<stri
     return beginOnboardingInterview(brand.id);
   }
 
-  const { link } = await mintConnectLink(brand, {
+  const { sms } = await mintConnectLink(brand, {
     ...prev,
     status: "awaiting_connect",
     type,
     answers,
   });
-  return (
-    `One tap to connect Instagram + Facebook — I'll take it from there:\n${link}\n\n` +
-    `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`
-  );
+  return sms;
 }
 
 /** Handle inbound while waiting for the owner to save Kip's contact card. */
@@ -702,13 +703,13 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
             `Open the link I sent, choose the account, and tap Connect this account.`,
         );
       }
-      const { link } = await mintConnectLink(brand, prev);
+      const { url } = await mintConnectLink(brand, prev);
       return acknowledgeThenContinue(
         brand,
         text,
         `Oh — it looks like you didn't finish connecting properly. ` +
           `You signed into Meta, but still need to pick which Facebook Page + Instagram Kip should use. ` +
-          `Here's a fresh link — choose the account and tap Connect this account:\n\n${link}`,
+          `Here's a fresh link — choose the account and tap Connect this account:\n\n${url}`,
       );
     }
     // Never started / never completed — say that plainly (don't imply they "almost" finished).
@@ -731,13 +732,13 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
           `Or reply skip to keep going without them.`,
       );
     }
-    const { link } = await mintConnectLink(brand, { ...prev, answers });
+    const { url } = await mintConnectLink(brand, { ...prev, answers });
     return acknowledgeThenContinue(
       brand,
       text,
       `I still don't see Instagram + Facebook connected. ` +
         `Tap this link and finish all the way through (sign in → pick Page + Instagram → Connect this account), ` +
-        `or reply skip to continue without them:\n\n${link}`,
+        `or reply skip to continue without them:\n\n${url}`,
     );
   }
 
@@ -750,13 +751,8 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
         `or reply skip if you don't have them yet.`,
     );
   }
-  const { link } = await mintConnectLink(brand, prev);
-  return acknowledgeThenContinue(
-    brand,
-    text,
-    `All good — tap the link to connect Instagram + Facebook first (so I can learn from what you already post), ` +
-      `or reply skip if you don't have them yet.\n\n${link}`,
-  );
+  const { sms } = await mintConnectLink(brand, prev);
+  return acknowledgeThenContinue(brand, text, sms);
 }
 
 /**

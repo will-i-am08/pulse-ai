@@ -8,6 +8,7 @@ import {
   HOLD_RE,
   looksLikeMetaDisconnect,
   looksLikeMetaDisconnectConfirm,
+  looksLikeConnectStatus,
   userAskedForContentWork,
   SCRATCH_OR_TWEAK_ASK_RE,
 } from "../processInbound.js";
@@ -332,4 +333,22 @@ table("looksLikeCalendarAsk", looksLikeCalendarAsk, {
 table("looksLikeGreeting", looksLikeGreeting, {
   must: ["hi", "Hey!", "hello", "thanks", "thanks so much", "how's it going", "morning"],
   mustNot: ["hey can you post this", "thanks for the carousel", "draft me 3 posts", "yes"],
+});
+
+table("looksLikeConnectStatus", looksLikeConnectStatus, {
+  must: [
+    "what platforms am I posting to?",
+    "which platforms am I posting to",
+    "where am I posting",
+    "am I connected",
+    "what's connected",
+    "connection status",
+    "is instagram connected",
+  ],
+  mustNot: [
+    "connect instagram",
+    "draft me 3 posts",
+    "what platforms should I try next year",
+    "boost this",
+  ],
 });
