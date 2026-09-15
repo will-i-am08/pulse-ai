@@ -1321,6 +1321,16 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     [brandId],
   );
 
+  // Pending drafts belong to the archived chat. Leave them live and a "no"
+  // (or a mistaken LLM "approval") in the new interview can publish them.
+  await query(
+    `update posts
+        set status = 'rejected', updated_at = now()
+      where brand_id = $1
+        and status in ('pending_approval', 'draft')`,
+    [brandId],
+  );
+
   const greeting = await restartOnboarding(brandId);
   return { greeting, archivedChatId };
 }

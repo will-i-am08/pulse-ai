@@ -885,6 +885,22 @@ async function routeInbound(
     }
   }
 
+  // A bare "no" / "scrap it" with a pending draft is discard. CANCEL_RE used to
+  // run only when !pending (boost/ads cancel), so "no" fell through to the
+  // classifier — which sometimes labelled it approval and published the draft.
+  if (pending && message.body && newMedia.length === 0 && CANCEL_RE.test(message.body)) {
+    await query(
+      `update posts set status = 'rejected', updated_at = now() where id = $1 and brand_id = $2`,
+      [pending.id, brand.id],
+    );
+    await query(
+      `insert into approval_log (post_id, brand_id, action, actor, note)
+       values ($1, $2, 'rejected', $3, $4)`,
+      [pending.id, brand.id, brand.approver, "Owner discarded the pending draft"],
+    ).catch(() => {});
+    return { reply: 'Scrapped that one. Send a photo or tell me what to make next.', postId: pending.id };
+  }
+
   // Strategy brief accept / revise / cancel (before plan — strategy feeds the plan).
   if (message.body && newMedia.length === 0 && !pending) {
     const strategyBrief = await getProposedStrategyBrief(brand.id);
