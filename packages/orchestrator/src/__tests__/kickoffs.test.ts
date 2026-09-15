@@ -12,6 +12,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
 import { query } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
+  looksLikeSlowSmsWork,
   refersToAttachedMedia,
   looksLikeUseThisBrief,
   looksLikeFormatMenuReply,
@@ -51,6 +52,13 @@ describe("looksLikeKickoffRequest", () => {
   it("ignores plain chat", () => {
     expect(looksLikeKickoffRequest("thanks!")).toBe(false);
     expect(looksLikeKickoffRequest("what do you think of carousels?")).toBe(false);
+  });
+
+  it("looksLikeSlowSmsWork matches kickoffs only", () => {
+    expect(looksLikeSlowSmsWork("draft me 3 posts")).toBe(true);
+    expect(looksLikeSlowSmsWork("make me a carousel")).toBe(true);
+    expect(looksLikeSlowSmsWork("what's on my calendar this week?")).toBe(false);
+    expect(looksLikeSlowSmsWork("hey")).toBe(false);
   });
 
 

@@ -7,10 +7,61 @@ const DEFAULT_LIMIT = 15;
 // instead of ever growing the context window unbounded.
 const SUMMARISE_THRESHOLD = 30;
 
+/** One SMS turn for the general-agent chat history (not a system-pack blob). */
+export type ChatTurn = { role: "user" | "assistant"; content: string };
+
+const AGENT_HISTORY_MESSAGES = 12;
+
 function formatMessage(m: Message): string {
   const who = m.direction === "inbound" ? "Client" : "Kip";
   const media = m.media_ids?.length ? ` [${m.media_ids.length} media attached]` : "";
   return `${who}: ${m.body ?? "(no text)"}${media}`;
+}
+
+export function normalizeChatTurns(turns: ChatTurn[]): ChatTurn[] {
+  const out: ChatTurn[] = [];
+  for (const t of turns) {
+    const content = t.content.replace(/\s+/g, " ").trim();
+    if (!content) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === t.role) {
+      last.content = `${last.content}\n${content}`;
+    } else {
+      out.push({ role: t.role, content });
+    }
+  }
+  while (out.length && out[0]!.role !== "user") out.shift();
+  return out;
+}
+
+/**
+ * Last ~6 SMS turns as user/assistant messages. Excludes `excludeMessageId`
+ * (the current inbound) so the caller can append it as the final user turn.
+ * No summarize LLM.
+ */
+export async function loadRecentChatTurns(
+  brandId: string,
+  opts?: { excludeMessageId?: string | null; limit?: number },
+): Promise<ChatTurn[]> {
+  const limit = Math.max(1, Math.min(24, opts?.limit ?? AGENT_HISTORY_MESSAGES));
+  const rows = await query<Pick<Message, "id" | "direction" | "body">>(
+    `select id, direction, body
+       from messages
+      where brand_id = $1
+      order by created_at desc, id desc
+      limit $2`,
+    [brandId, limit + (opts?.excludeMessageId ? 1 : 0)],
+  );
+  const exclude = opts?.excludeMessageId ?? "";
+  const chronological = rows
+    .filter((m) => m.id !== exclude && (m.body ?? "").trim())
+    .reverse();
+  return normalizeChatTurns(
+    chronological.map((m) => ({
+      role: m.direction === "inbound" ? "user" : "assistant",
+      content: (m.body ?? "").trim(),
+    })),
+  );
 }
 
 async function openLoopsBlock(brandId: string): Promise<string> {

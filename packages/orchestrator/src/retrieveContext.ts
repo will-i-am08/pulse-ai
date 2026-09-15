@@ -6,10 +6,11 @@
 import { brandVoiceProfileSchema, query, queryOne, type Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
-import { buildConversationContext } from "./conversationContext.js";
 import { kipMemoryPromptBlock, readKipDecisions, readKipPreferences } from "./kipMemory.js";
 import { bankedPhotoCount } from "./library.js";
 import { connectionSummary } from "./persona.js";
+import { formatScheduledSlot } from "./smsTime.js";
+import { openLoopsPromptBlock, readOpenLoops } from "./speak/openLoops.js";
 
 export type BrandContextPack = {
   text: string;
@@ -20,27 +21,27 @@ export type BrandContextPack = {
 const MAX_PACK_CHARS = 4000;
 const NONE = "(none)";
 const SECTION_ORDER = [
-  "voice",
   "prefs",
   "facts",
   "strategy",
   "engine",
+  "openLoops",
+  "voice",
   "tone",
   "campaigns",
-  "conversation",
 ] as const;
 
 type SectionName = (typeof SECTION_ORDER)[number];
 
 const SECTION_HEADING: Record<SectionName, string> = {
-  voice: "Voice",
   prefs: "Preferences",
   facts: "Business facts",
   strategy: "Strategy",
   engine: "Engine",
+  openLoops: "Open loops",
+  voice: "Voice",
   tone: "Tone examples",
   campaigns: "Past campaigns",
-  conversation: "Conversation",
 };
 
 /** Tokenize query/candidate text: lowercase, split on non-letters, drop words shorter than 3. */
@@ -194,8 +195,10 @@ type PublishedPostRow = {
   created_at?: string | null;
 };
 
+type UpcomingRow = { scheduled_at: string; caption: string | null; status: string };
+
 async function formatEngine(brand: Brand): Promise<string> {
-  const [photoCount, pending, kickoffs] = await Promise.all([
+  const [photoCount, pending, kickoffs, upcoming] = await Promise.all([
     bankedPhotoCount(brand.id).catch(() => 0),
     safeQueryOne<PendingDraftRow>(
       `select id, status, caption
@@ -209,6 +212,17 @@ async function formatEngine(brand: Brand): Promise<string> {
       `select kind from kip_kickoffs
         where brand_id = $1 and status in ('queued','running')`,
       [brand.id],
+    ),
+    safeQuery<UpcomingRow>(
+      `select scheduled_at, caption, status
+         from posts
+        where brand_id = $1
+          and status = any($2::text[])
+          and scheduled_at is not null
+          and scheduled_at >= now()
+        order by scheduled_at asc
+        limit 4`,
+      [brand.id, ["pending_approval", "approved", "scheduled"]],
     ),
   ]);
 
@@ -236,8 +250,22 @@ async function formatEngine(brand: Brand): Promise<string> {
   const kinds = kickoffs.map((k) => String(k.kind ?? "").trim()).filter(Boolean);
   lines.push(kinds.length ? `In-flight kickoffs: ${kinds.join(", ")}` : `In-flight kickoffs: ${NONE}`);
 
+  if (upcoming.length) {
+    const bits = upcoming.map((p) => {
+      const when = formatScheduledSlot(new Date(p.scheduled_at));
+      return `${when} ${excerpt(p.caption, 40)} (${p.status})`;
+    });
+    lines.push(`Upcoming: ${bits.join("; ")}`);
+  } else {
+    lines.push(`Upcoming: ${NONE}`);
+  }
+
   lines.push(`Connected: ${connectionSummary(brand)}`);
   return lines.join("\n");
+}
+
+function formatOpenLoops(brand: Brand): string {
+  return orNone(openLoopsPromptBlock(readOpenLoops(brand)));
 }
 
 function matchingLines(
@@ -351,10 +379,6 @@ async function formatPastCampaigns(brandId: string, queryText: string): Promise<
   return top.map((p) => `- ${p.text}`).join("\n");
 }
 
-function formatConversation(raw: string): string {
-  return orNone(raw.replace(/\u0000/g, ""));
-}
-
 function renderSections(bodies: Record<SectionName, string>): { text: string; sections: string[] } {
   const blocks = SECTION_ORDER.map((name) => `## ${SECTION_HEADING[name]}\n${bodies[name]}`);
   return { text: blocks.join("\n\n"), sections: [...SECTION_ORDER] };
@@ -364,7 +388,7 @@ function capPack(bodies: Record<SectionName, string>): { text: string; sections:
   let assembled = renderSections(bodies);
   if (assembled.text.length <= MAX_PACK_CHARS) return assembled;
 
-  const shrinkables: SectionName[] = ["conversation", "tone", "campaigns", "strategy", "facts"];
+  const shrinkables: SectionName[] = ["tone", "campaigns", "strategy", "facts", "voice"];
   for (const name of shrinkables) {
     if (assembled.text.length <= MAX_PACK_CHARS) break;
     const others = renderSections({ ...bodies, [name]: NONE });
@@ -386,26 +410,26 @@ function capPack(bodies: Record<SectionName, string>): { text: string; sections:
 }
 
 /**
- * Assemble a capped brand-context pack: always-include identity + query-selected slices.
+ * Assemble a capped brand-context pack: always-include working set + query-selected slices.
  * Empty sections get a short "(none)" line — never invent facts (no fake ICP, offers, etc.).
+ * Does not call the conversation summarize LLM — recent SMS is chat history on the agent path.
  */
 export async function retrieveBrandContext(brand: Brand, queryText: string): Promise<BrandContextPack> {
-  const [engine, tone, campaigns, conversationRaw] = await Promise.all([
+  const [engine, tone, campaigns] = await Promise.all([
     formatEngine(brand),
     formatToneExamples(brand.id, queryText),
     formatPastCampaigns(brand.id, queryText),
-    buildConversationContext(brand.id).catch(() => ""),
   ]);
 
   const bodies: Record<SectionName, string> = {
-    voice: formatVoice(brand),
     prefs: formatPrefs(brand),
     facts: formatFacts(brand),
     strategy: formatStrategy(brand),
     engine,
+    openLoops: formatOpenLoops(brand),
+    voice: formatVoice(brand),
     tone,
     campaigns,
-    conversation: formatConversation(conversationRaw),
   };
 
   const packed = capPack(bodies);

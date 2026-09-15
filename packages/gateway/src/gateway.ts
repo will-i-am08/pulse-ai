@@ -6,6 +6,7 @@ import {
   stripLeadingAck,
   looksLikeAffirmation,
   looksLikePhotoBackgroundAsk,
+  looksLikeSlowSmsWork,
   buildOnboardingPlanSms,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
@@ -71,6 +72,24 @@ export function looksLikeProgressCheck(text: string): boolean {
   );
 }
 
+/**
+ * Filler SMS ("Still on this — one sec…") only when we already know the job is
+ * slow content work, there is no photo/text ack, and the channel has no typing
+ * indicator. Never for calendar / questions / small talk.
+ */
+export function shouldSendSlowWorkFiller(opts: {
+  photoAckSent: boolean;
+  textAckSent: boolean;
+  hasTyping: boolean;
+  inboundText: string;
+}): boolean {
+  return (
+    !opts.photoAckSent &&
+    !opts.textAckSent &&
+    !opts.hasTyping &&
+    looksLikeSlowSmsWork(opts.inboundText)
+  );
+}
 /**
  * Instant plain-text acks ("Makes sense, Bill." / "Got you, Bill.") are OFF.
  * They read as robotic one-liners before the real reply. Photo acks still fire
@@ -806,12 +825,18 @@ export async function handleInbound(
     }
 
     // Slow-work safety net for channels WITHOUT a native typing indicator
-    // (plain SMS): if we're still thinking after a few seconds, say so.
-    // Skipped when we already sent an instant ack, and when native typing
-    // covers liveness.
+    // (plain SMS): only for known-slow draft/image/first-batch jobs.
     let slowTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      if (!photoAckSent && !textAckSent && typeof channel.sendTyping !== "function") {
+      const slowWorkText = (messageForProcess.body ?? inboundText ?? "").trim();
+      if (
+        shouldSendSlowWorkFiller({
+          photoAckSent,
+          textAckSent,
+          hasTyping: typeof channel.sendTyping === "function",
+          inboundText: slowWorkText,
+        })
+      ) {
         slowTimer = setTimeout(() => {
           sendToBrand(brand.id, "Still on this — one sec…", undefined, { pace: false, channel }).catch(() => {});
         }, 4500);

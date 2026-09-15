@@ -6,11 +6,9 @@
 export const STRUCTURAL_CONSTRAINTS = [
   "Do not start with Hi, Hey, Hello, or the owner's name.",
   "Start mid-thought — no greeting opener.",
-  "Keep it under 20 words.",
   "Ask at most one question; prefer a statement if a question isn't needed.",
   "Do not end with a question mark unless you truly need an answer.",
   "Lead with the useful bit, not a softener like Sure/Of course/Absolutely.",
-  "Use at most one comma. Prefer short sentences.",
   "No exclamation marks this turn.",
   "Sound like a follow-up text, not a fresh cold open.",
   "Skip any 'just checking in' / 'quick nudge' framing.",

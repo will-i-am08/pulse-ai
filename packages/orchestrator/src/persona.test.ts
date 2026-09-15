@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
+import { firstNameFromDisplayName, ownerFirstName, personaLines, personaVoiceLines } from "./persona.js";
 import type { Brand } from "@pulse/shared";
 
 function brandWithFacts(facts: Record<string, unknown> | null): Brand {
@@ -31,5 +31,18 @@ describe("ownerFirstName", () => {
   it("returns null when missing", () => {
     expect(ownerFirstName(brandWithFacts({}))).toBeNull();
     expect(ownerFirstName(brandWithFacts(null))).toBeNull();
+  });
+});
+
+describe("personaVoiceLines", () => {
+  it("allows a weekday rundown and leaves photo/font rules to personaLines", () => {
+    const brand = { name: "Sunrise Cafe", facts: { owner_name: "Sam" } } as unknown as Brand;
+    const voice = personaVoiceLines(brand).join("\n");
+    const full = personaLines(brand).join("\n");
+    expect(voice).toMatch(/rundown of days/i);
+    expect(voice).not.toMatch(/Creative default/i);
+    expect(voice).not.toMatch(/upload photos/i);
+    expect(full).toMatch(/Creative default/i);
+    expect(full).toMatch(/upload photos/i);
   });
 });
