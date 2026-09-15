@@ -30,6 +30,7 @@ import {
   type MessageChannel,
 } from "@pulse/shared";
 import { createTwilioChannel } from "@pulse/channel-twilio";
+import { createLabChannel } from "@pulse/channel-lab";
 import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
 import { claimContactCardSent, needsContactCard, releaseContactCardSent } from "./contactCardSent.js";
@@ -369,7 +370,10 @@ export async function sendToBrand(
     console.error(`sendToBrand: brand ${brandId} not found`);
     return false;
   }
-  const channel = opts?.channel ?? activeChannel();
+  const labBrand = brand.facts?.lab === true;
+  // Lab Cafe is a fake number — never hand it to Twilio/Linq. LabChannel
+  // still logs outbound rows so /lab can poll them.
+  const channel = opts?.channel ?? (labBrand ? createLabChannel() : activeChannel());
   // Twilio, Linq, and lab all address the owner by phone (E.164).
   const to = brand.client_phone;
   if (!to) {

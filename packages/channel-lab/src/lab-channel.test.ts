@@ -5,12 +5,20 @@ describe("LabChannel", () => {
   it("stores and fetches media once", async () => {
     const channel = createLabChannel();
     const bytes = new Uint8Array([1, 2, 3, 4]);
-    const url = storeLabMedia(bytes, "image/png");
+    const url = channel.storeMedia(bytes, "image/png");
     expect(url.startsWith("lab://media/")).toBe(true);
     const fetched = await channel.fetchMedia({ url, contentType: "image/png" });
     expect(Array.from(fetched.bytes)).toEqual([1, 2, 3, 4]);
     expect(fetched.contentType).toBe("image/png");
     expect(labMediaStore.has(url)).toBe(false);
+  });
+
+  it("fetchMedia still finds storeLabMedia writes from a new channel", async () => {
+    const bytes = new Uint8Array([9, 8, 7]);
+    const url = storeLabMedia(bytes, "image/jpeg");
+    const channel = createLabChannel();
+    const fetched = await channel.fetchMedia({ url, contentType: "image/jpeg" });
+    expect(Array.from(fetched.bytes)).toEqual([9, 8, 7]);
   });
 
   it("send returns a lab provider id", async () => {
