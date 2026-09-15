@@ -25,6 +25,7 @@ import {
   extractUrlFromMessage,
   platformForbidsCaptionUrl,
   storyLinkCta,
+  confirmationSms,
 } from "../destinationLinks.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
@@ -262,5 +263,10 @@ describe("intent helpers", () => {
     expect(extractUrlFromMessage("use https://x.example/y thanks")).toMatch(/x\.example\/y/);
     expect(looksLikeLinkConfirmYes("yes")).toBe(true);
     expect(looksLikeLinkConfirmYes("yep that works")).toBe(true);
+  });
+
+  it("asks to confirm an update as a booking link, not a post CTA", () => {
+    expect(confirmationSms("https://calendly.com/lab-cafe", "update")).toMatch(/as your booking link/);
+    expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/for this post/);
   });
 });

@@ -38,3 +38,28 @@ export const SLIDE_RENDER_CONCURRENCY = 3;
  * the better fix — this is the safe half of it.
  */
 export const DRAFT_CONCURRENCY = 2;
+
+/**
+ * Lab inbound drain runs in `after()` on the same Vercel function (max 300s).
+ * A hung image/LLM slot used to pin the whole batch until the runtime kill,
+ * leaving kip_kickoffs `running` with only the first draft offered.
+ */
+export const DRAFT_SLOT_TIMEOUT_MS = 75_000;
+
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}

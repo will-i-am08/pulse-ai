@@ -260,7 +260,7 @@ export {
   routeFeedPhoto,
 } from "./modelRouter.js";
 export type { ImageJob, ImageEngine, RouteDecision, CreativeQuality } from "./modelRouter.js";
-export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY } from "./concurrency.js";
+export { mapWithConcurrency, withTimeout, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 export {
   createInteraction,
   claimInteraction,
