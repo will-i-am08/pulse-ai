@@ -320,16 +320,12 @@ export async function captureMedia(
         onRetry: (err, attempt) => console.warn(`captureMedia: fetchMedia retry ${attempt} for ${item.url}`, err),
       });
 
-      // Bytes FIRST, row second. storage_path is the row's own id, which is
-      // also the putMedia key — so inserting the row before the blob exists
-      // leaves a permanently-404ing orphan when putMedia fails (broken
-      // dashboard thumbnails, Meta publishes that can't fetch image_url).
-      // An orphan blob with no row is harmless by comparison.
+      // media_blobs.media_id references media_assets(id), so the asset row
+      // must exist before putMedia. Every other writer (fillers, imaging,
+      // formats) already does this; bytes-first 23503s and the inbound photo
+      // is dropped. If the blob write fails, delete the asset so we don't
+      // leave a 404 thumbnail.
       const mediaId = randomUUID();
-      await withBackoff(() => putMedia(mediaId, bytes, contentType), {
-        onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
-      });
-
       const row = await queryOne<MediaAsset>(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
          values ($1, $2, $3, $4, $5, $6)
@@ -339,6 +335,14 @@ export async function captureMedia(
       if (!row) {
         console.error(`captureMedia: failed to insert media_assets row for ${mediaId}`);
         continue;
+      }
+      try {
+        await withBackoff(() => putMedia(mediaId, bytes, contentType), {
+          onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
+        });
+      } catch (err) {
+        await query(`delete from media_assets where id = $1`, [mediaId]).catch(() => undefined);
+        throw err;
       }
 
       captured.push(row);
