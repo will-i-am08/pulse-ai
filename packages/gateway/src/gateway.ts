@@ -709,7 +709,7 @@ export async function handleInbound(
       if (!priorInBurst) {
         await sendToBrand(
           brand.id,
-          "Got it — styling your photo and writing the caption now, one sec ✨",
+          "Got it, writing a caption for this now.",
           undefined,
           { pace: false, channel },
         ).catch(() => {});
@@ -755,7 +755,7 @@ export async function handleInbound(
         photoAckSent = true;
         await sendToBrand(
           brand.id,
-          "Got it — styling your photo and writing the caption now, one sec ✨",
+          "Got it, writing a caption for this now.",
           undefined,
           { pace: false, channel },
         ).catch(() => {});
@@ -920,13 +920,21 @@ export async function handleInbound(
           // alive (Next's after()); a bare detached promise here was frozen on
           // webhook return and the plan SMS never went out.
           defer(async () => {
+            const followUpStarted = new Date();
             try {
               const sms = await buildOnboardingPlanSms(brandId);
               if (sms) {
                 await deliver(brandId, sms, undefined, { pace: false });
                 return;
               }
-              // Research overran — nudge with another concrete ETA, worker will retry.
+              // Don't interrupt if they already moved on (hi, draft me 3, a photo).
+              const movedOn = await queryOne<{ id: string }>(
+                `select id from messages
+                  where brand_id = $1 and direction = 'inbound' and created_at > $2
+                  limit 1`,
+                [brandId, followUpStarted.toISOString()],
+              );
+              if (movedOn) return;
               await deliver(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
                 pace: false,
               });

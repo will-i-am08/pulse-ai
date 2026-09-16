@@ -134,6 +134,11 @@ describe("format-menu outbound gating", () => {
     ).toBe(true);
     expect(
       looksLikeDraftPreviewOutbound(
+        "Draft ready for Tue 7:00pm:\n\nHello from the counter.\n\nReply yes to send it, or tell me a change.",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeDraftPreviewOutbound(
         "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
       ),
     ).toBe(false);

@@ -40,6 +40,7 @@ describe("variantPickSms", () => {
     expect(variantPickSms(pack, 2)).toMatch(/Two café-warm looks/i);
     expect(variantPickSms(pack, 2)).toMatch(/Reply 1 or 2/);
     expect(variantPickSms(pack, 2)).not.toMatch(/1, 2, or 3/);
+    expect(variantPickSms(pack, 2)).not.toMatch(/✨/);
   });
 });
 

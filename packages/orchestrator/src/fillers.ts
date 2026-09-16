@@ -55,7 +55,7 @@ export async function generateFillerPost(
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
     "Require a concrete angle from a real detail (client win, number in proof bank, mistake, or this-week moment) — not a generic tip.",
-    "If that proof bank is empty, use a concrete in-world moment from what you already know (the room, the product, the neighbourhood, today's weather on the street). Never ask the owner for more details. Never refuse. Output JSON only — no questions, no preamble.",
+    "If that proof bank is empty, use a concrete in-world moment from what you already know (the room, the product, the neighbourhood). Never invent a regular, a testimonial, or a made-up order. Never ask the owner for more details. Never refuse. Output JSON only — no questions, no preamble.",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: caption + card must name at least TWO specific options and state a concrete difference (e.g. Cursor vs Claude Code). Category-level tips without named tools FAIL."
@@ -67,6 +67,7 @@ export async function generateFillerPost(
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
+    "No scarcity, book-now, filling-up-fast, or SALE energy unless the owner brief explicitly asks for a promo.",
     wantPhoto
       ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<4-12 word overlay headline>"}'
       : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',

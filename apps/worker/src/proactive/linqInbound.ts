@@ -79,7 +79,7 @@ export async function runLinqInboundLoop(): Promise<void> {
         await linq
           .send({
             to: brand.client_phone,
-            body: "Got it, styling your photo and writing your caption, one sec ✨",
+            body: "Got it, writing a caption for this now.",
           })
           .catch(() => {});
       }

@@ -175,7 +175,7 @@ export async function queueAiVideoJob(
   return {
     ok: true,
     job,
-    sms: `On it — generating an AI video (AIGC) ${costEstimateSmsLine("video")}. I'll text you when it's ready for approval 🎬`,
+    sms: `On it — generating an AI video (AIGC) ${costEstimateSmsLine("video")}. I'll text you when it's ready for approval.`,
   };
 }
 
@@ -456,7 +456,7 @@ export async function processAiVideoJob(
   const videoUrl = publicMediaUrl(mediaId);
   return {
     brandId: brand.id,
-    sms: `Your AI Reel is ready (AIGC) 🎬\n\nWatch it: ${videoUrl}\n\n"${aigcCaption}"\n\nProposed for ${when}. Reply "yes" to approve as an organic Reel — or say if you want it as paid creative input.`,
+    sms: `Your AI Reel is ready (AIGC).\n\nWatch it: ${videoUrl}\n\n${aigcCaption}\n\nProposed for ${when}. Reply yes to send it as an organic Reel, or say if you want it as paid creative input.`,
     mediaUrl: coverId ? publicMediaUrl(coverId) : videoUrl,
     videoUrl,
   };

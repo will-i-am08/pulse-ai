@@ -44,6 +44,8 @@ describe("agentIdentity", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/must tool-call|draft_copy before/i);
     expect(prompt).toMatch(/draft_copy/);
+    expect(prompt).toMatch(/reel with no clip/i);
+    expect(prompt).not.toMatch(/✨/);
   });
 
   it("covers escalation triggers without naming an operator in owner SMS", () => {

@@ -213,7 +213,7 @@ export function parseVariantChoice(body: string | null | undefined): VariantChoi
 export function variantPickSms(pack: LookPack, n: number): string {
   const count = n === 1 ? "One" : n === 2 ? "Two" : "Three";
   const picks = n <= 1 ? "Reply 1 to pick it" : n === 2 ? "Reply 1 or 2 to pick one" : "Reply 1, 2, or 3 to pick one";
-  return `${count} ${pack.smsName} looks from your photo ✨\n\n${picks} (or "original" / "skip").`;
+  return `${count} ${pack.smsName} looks from your photo.\n\n${picks} (or original / skip).`;
 }
 
 export function variantMediaUrls(mediaIds: string[]): string[] {

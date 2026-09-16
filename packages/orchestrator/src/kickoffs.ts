@@ -171,7 +171,7 @@ export function looksLikeDraftPreviewOutbound(body: string | null | undefined): 
   // Low-confidence clarify reuses "Reply yes to approve" without ever showing a draft.
   if (/Not quite sure what you'?d like/i.test(body)) return false;
   return (
-    /Reply\s+["']yes["']\s+to\s+approve/i.test(body) ||
+    /Reply\s+["']?yes["']?\s+to\s+(approve|send it)/i.test(body) ||
     /\bDraft ready\b/i.test(body) ||
     /\bProposed for\b/i.test(body) ||
     /\bWant me to post it\b/i.test(body) ||
@@ -207,6 +207,10 @@ function clipCaption(caption: string | null | undefined, max = 140): string {
   if (!t) return "(no caption)";
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+function draftOfferSms(caption: string, when: string, prefix: string, slideNote = ""): string {
+  return `${prefix}${slideNote} for ${when}:\n\n${clipCaption(caption, 180)}\n\nReply yes to send it, or tell me a change.`;
 }
 
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
@@ -874,8 +878,8 @@ async function runFirstBatch(
         brandId: brand.id,
         sms:
           n === 1
-            ? `First batch, ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
-            : `Batch ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+            ? draftOfferSms(piece.post.caption, when, `First batch, ${n}/${count}`, slideNote)
+            : draftOfferSms(piece.post.caption, when, `Batch ${n}/${count}`, slideNote),
         mediaUrl: piece.mediaUrl,
         mediaUrls: piece.mediaUrls,
       };
@@ -994,7 +998,7 @@ async function runDraftPosts(
           : "";
       const result: KickoffDrainResult = {
         brandId: brand.id,
-        sms: `Draft ready — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+        sms: draftOfferSms(piece.post.caption, when, "Draft ready", slideNote),
         mediaUrl: piece.mediaUrl,
         mediaUrls: piece.mediaUrls,
       };
@@ -1189,7 +1193,7 @@ async function runTrendOrCompetitorDraft(
   return [
     {
       brandId: brand.id,
-      sms: `${lead}\n\nI've drafted a response for you:\n\n"${clipCaption(caption)}"\n\nProposed for ${when}. Want me to post it? Reply "yes" to approve, or tell me a change.`,
+      sms: `${lead}\n\nI've drafted a response:\n\n${clipCaption(caption, 180)}\n\nProposed for ${when}. Reply yes to send it, or tell me a change.`,
       mediaUrl: drafted.mediaUrl,
     },
   ];

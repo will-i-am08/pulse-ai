@@ -381,12 +381,17 @@ export function summarizeCalendar(
     return `Nothing on the calendar ${horizon} yet.`;
   }
 
-  const bits = posts.map((p) => {
+  const shown = posts.slice(0, 4);
+  const extra = posts.length - shown.length;
+  const bits = shown.map((p) => {
     const when = formatScheduledSlot(new Date(p.scheduled_at));
-    const cap = captionExcerpt(p.caption, 60);
+    const cap = captionExcerpt(p.caption, 42);
     return `${when}, ${cap} (${calendarStatusLabel(p.status)})`;
   });
   let out = days <= 7 ? `This week: ${bits.join(". ")}.` : `Coming up: ${bits.join(". ")}.`;
+  if (extra > 0) {
+    out += ` Plus ${extra} more.`;
+  }
 
   const emptyWeekdays = dayDates
     .filter((d) => (byDay.get(localYmd(d)) ?? []).length === 0)

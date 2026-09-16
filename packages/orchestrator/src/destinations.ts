@@ -230,10 +230,10 @@ export function destinationAck(
   const noun = dests.length === 1 ? "it" : "them";
   if (mockish) {
     lines.push(
-      `Reply "yes" to post ${noun}. ${names} will land on the fake feed and will not go live.`,
+      `Reply yes to post ${noun}. ${names} will land on the fake feed and will not go live.`,
     );
   } else {
-    lines.push(`Reply "yes" to approve, or tell me a change.`);
+    lines.push(`Reply yes to send it, or tell me a change.`);
   }
   return lines.join("\n").trim();
 }
