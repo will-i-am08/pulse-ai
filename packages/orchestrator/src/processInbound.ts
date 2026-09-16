@@ -351,7 +351,11 @@ const WATCH_ADD_RE = /\b(keep (?:an eye|tabs) on|start watching|watch|monitor|tr
 const STORY_CMD_RE =
   /\b(?:(?:make|turn|put)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?stor(?:y|ies)|as\s+(?:a\s+)?stor(?:y|ies)|on\s+(?:my\s+)?stor(?:y|ies)|stor(?:y|ies)\s+this)\b|^\s*stor(?:y|ies)\s*[!.?]*$/i;
 const CAROUSEL_CMD_RE =
-  /\b(?:(?:make|turn)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
+  /\b(?:(?:make|turn|bundle)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|into\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
+
+export function looksLikeCarouselCommand(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && CAROUSEL_CMD_RE.test(body));
+}
 const SEPARATE_CMD_RE = /\b(separate|separately|individually|split (?:them|up)|different posts?)\b/i;
 const REEL_CMD_RE =
   /\b(?:(?:make|turn|put)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?reels?|as\s+(?:a\s+)?reels?|reels?\s+this)\b|^\s*reels?\s*[!.?]*$/i;
@@ -682,9 +686,14 @@ async function routeInbound(
   }
 
   // Owner asks to find / set / use a booking link (or put a link on a post).
-  // Gated on `!pending`: with a draft awaiting approval, "add a link in the
-  // caption" is an edit to that draft, not a booking-link setup flow.
-  if (message.body && newMedia.length === 0 && !pending && looksLikeDestinationLinkIntent(message.body)) {
+  // "Add a link in the caption" while a draft is pending is an edit. "Our
+  // booking link is …" is storing a fact and must not rewrite that draft.
+  if (message.body && newMedia.length === 0 && looksLikeDestinationLinkIntent(message.body)) {
+    const storeOnFile =
+      /\b(our|my|the)\s+booking\s+link\s+is\b/i.test(message.body) ||
+      /\b(update|change|set)\s+(our|my|the)\s+booking\s+link\b/i.test(message.body) ||
+      /\bwhat('s| is)\s+(our|my|the)\s+booking\s+link\b/i.test(message.body);
+    if (!pending || storeOnFile) {
     const explicit = extractUrlFromMessage(message.body);
     if (explicit) {
       // A URL in a booking-link text is the link they want on file — "our
@@ -716,6 +725,7 @@ async function routeInbound(
     return {
       reply: `Using ${ensured.url} as your booking link. Send a photo (or ask me to make a post) and I'll add the platform-safe CTA.`,
     };
+    }
   }
 
   // Hold-window kill switch: "HOLD" / "stop" pulls a scheduled autopilot post
@@ -1035,7 +1045,7 @@ async function routeInbound(
     newMedia.length === 0 &&
     pending &&
     (STORY_CMD_RE.test(message.body) ||
-      CAROUSEL_CMD_RE.test(message.body) ||
+      looksLikeCarouselCommand(message.body) ||
       REEL_CMD_RE.test(message.body) ||
       looksLikeMakeReelRequest(message.body))
   ) {
@@ -1506,7 +1516,7 @@ async function routeInbound(
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.
   // Runs before the classifier switch since it can read as a question or an instruction.
-  if (message.body && newMedia.length === 0 && !pending && COMPETITOR_RE.test(message.body)) {
+  if (message.body && newMedia.length === 0 && COMPETITOR_RE.test(message.body)) {
     // "Keep an eye on X" also registers a weekly watch, then gives the first rundown.
     if (WATCH_ADD_RE.test(message.body)) {
       const name = extractCompetitorName(message.body);
@@ -1515,10 +1525,10 @@ async function routeInbound(
         const rundown = await competitorIntel(brand, message.body);
         const tail =
           status === "added"
-            ? `\n\n📌 Watching ${name} now. I'll flag what changes each week.`
+            ? `\n\nWatching ${name} now. I'll flag what changes each week.`
             : status === "exists"
-              ? `\n\n📌 Already keeping an eye on ${name}. Here's the latest.`
-              : `\n\n📌 (I watch up to 3 competitors and you're at the cap. Tell me who to drop if you'd like ${name} in.)`;
+              ? `\n\nAlready keeping an eye on ${name}. Here's the latest.`
+              : `\n\nI watch up to 3 competitors and you're at the cap. Tell me who to drop if you'd like ${name} in.`;
         return { reply: `${rundown}${tail}` };
       }
     }
@@ -1531,7 +1541,7 @@ async function routeInbound(
       const videos = newMedia.filter((m) => m.kind === "video");
       const body = message.body ?? "";
       const cmdStory = STORY_CMD_RE.test(body);
-      const cmdCarousel = CAROUSEL_CMD_RE.test(body);
+      const cmdCarousel = looksLikeCarouselCommand(body);
       const cmdSeparate = SEPARATE_CMD_RE.test(body);
       const cmdReel = REEL_CMD_RE.test(body) || looksLikeMakeReelRequest(body);
 

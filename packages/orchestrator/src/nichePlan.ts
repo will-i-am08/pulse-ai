@@ -163,7 +163,7 @@ export async function proposeContentPlanFromSms(
     /* non-blocking */
   }
 
-  return `${planTextSummary(plan)}\n\nReply "yes" / "accept" to apply pillars, cadence, and format bias — or tell me what to change. Nothing goes live until you accept.`;
+  return `${planTextSummary(plan)}\n\nReply yes to use this plan, or tell me what to tweak. Nothing goes live until you accept.`;
 }
 
 /**
@@ -486,7 +486,7 @@ export async function buildOnboardingPlanSms(brandId: string): Promise<string | 
   }
 
   await markPlanProposed(row.id, plan);
-  return `${planTextSummary(plan)}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`;
+  return `${planTextSummary(plan)}\n\nReply yes to use this plan, or tell me what to tweak.`;
 }
 
 /** Fresh concrete ETA when research overruns the original promise. */
