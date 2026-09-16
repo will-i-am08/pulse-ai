@@ -14,6 +14,8 @@ export {
   normalizeChatTurns,
   resolveConversationContextArgs,
   ownerInboundAfter,
+  ownerMovedOnSinceWrapAck,
+  WRAP_ACK_PREFIX,
 } from "./conversationContext.js";
 export type { ChatTurn, BuildConversationContextOpts } from "./conversationContext.js";
 export { quickSocialReply, quickReengageReply } from "./socialReply.js";
@@ -69,6 +71,7 @@ export {
   personaLines,
   personaVoiceLines,
   connectionSummary,
+  NEVER_INVENT_PROOF,
 } from "./persona.js";
 export { formatScheduledSlot, formatWeekday, localYmd, joinEnglish } from "./smsTime.js";
 

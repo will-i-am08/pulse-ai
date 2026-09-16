@@ -35,7 +35,7 @@ describe("looksLikeUnsureReply", () => {
 });
 
 describe("lab chat restart", () => {
-  it("clears the previous owner name and voice profile before the new greeting", () => {
+  it("clears the previous owner name, kip memory, and voice before the new greeting", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
       "utf8",
@@ -44,11 +44,42 @@ describe("lab chat restart", () => {
     expect(fn).toMatch(/delete facts\.owner_name/);
     expect(fn).toMatch(/delete facts\.look_pack/);
     expect(fn).toMatch(/delete facts\.differentiators/);
+    expect(fn).toMatch(/delete facts\.kip_preferences/);
+    expect(fn).toMatch(/delete facts\.kip_decisions/);
+    expect(fn).toMatch(/delete facts\.open_loops/);
+    expect(fn).toMatch(/delete from design_memory/);
+    expect(fn).toMatch(/delete from strategy_notes/);
+    expect(fn).toMatch(/delete from pillars/);
     expect(fn).toMatch(/visual = '\{\}'::jsonb/);
     expect(fn).toMatch(/emptyBrandVoiceProfile/);
     expect(fn).toMatch(/'pending_approval', 'draft', 'approved', 'scheduled'/);
     expect(fn).toMatch(/content_plans/);
+    expect(fn).toMatch(/'pending', 'proposed', 'accepted'/);
     expect(fn.indexOf("delete facts.owner_name")).toBeLessThan(fn.indexOf("restartOnboarding"));
+  });
+
+  it("tells the interviewer this is a brand-new chat with no prior memory", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/Brand-new conversation/);
+    expect(src).toMatch(/zero memory of any previous lab chat/);
+    expect(src).not.toMatch(/The account name on file is a placeholder/);
+    expect(src).toMatch(/alreadyAskedStaffing/);
+    expect(src).toMatch(/alreadyAskedNeverDos/);
+    expect(src).toMatch(/unsureCount >= 2 \|\| turns >= 4/);
+    expect(src).toMatch(/Never-do and admired accounts are nice-to-haves/);
+  });
+});
+
+describe("wrap hold", () => {
+  it("does not pile a plan tease on a draft ask during wrap", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/finishing your voice first, then I'll draft that/);
   });
 });
 

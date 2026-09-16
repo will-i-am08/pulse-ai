@@ -16,6 +16,7 @@ import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
 import { brandTalkingIdentity, firstNameFromDisplayName, ownerFirstName } from "./persona.js";
 import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
+import { ensurePillars } from "./pillars.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -123,7 +124,7 @@ function interviewerSystem(
   return [
     `${brandTalkingIdentity(brand)} Getting set up for a ${kind}. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
     brand.facts?.lab
-      ? "LAB CHAT: The account name on file is a placeholder. Never say that name, Lab Cafe, café, or coffee to the owner. Never call it a placeholder out loud. Your FIRST question is simply what they actually do."
+      ? "LAB CHAT: Brand-new conversation. You have zero memory of any previous lab chat. Never refer to what was in here before, never compare this business to a previous one, never say that's different from what was in here. Never mention Lab Cafe, café, or coffee unless they said it. Never call anything a placeholder to the owner. Your FIRST question is simply what they actually do."
       : "",
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     priorContent
@@ -136,6 +137,8 @@ function interviewerSystem(
     "You already introduced yourself earlier in this chat. Never re-introduce: no \"kip here\", no \"hey i'm kip\", no \"your new social media manager\". Jump straight into the setup beat.",
     "Make sure you learn their niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "Ask about admired accounts AT MOST ONCE. If they say they're not sure, don't know, can't think of any, or dodge the question, accept that and move on — never re-ask for account examples.",
+    "Ask van vs crew / solo vs team AT MOST ONCE. If they already told you how they're set up, do not re-ask.",
+    "Ask a never-do / what they don't want said AT MOST ONCE. Skip it entirely once you hold niche, audience, and tone.",
     "HOW YOU TALK (absolute rules):",
     "- Sound like their social media manager texting from your phone, not a survey. Natural reactions first, then one clear next beat.",
     "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
@@ -154,8 +157,8 @@ function interviewerSystem(
     "- After 2 unsure answers (idk / not sure / can't think), do NOT dig further — send that brief immediately.",
     "- If they confirm the brief (yes / yeah / sounds good / done), wrap up immediately. Do not ask another discovery question.",
     type === "personal"
-      ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like (or they've confirmed your brief). Then wrap up. Do not ask about customers, ads, or offers."
-      : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like — OR they've confirmed your brief. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
+      ? "- You are done when you hold: niche/vibe, tone, and content they like (or they've confirmed your brief). Then wrap up. Never-do is optional. Do not ask about customers, ads, or offers."
+      : "- You are done the moment you hold niche, audience, angle, and tone — OR they've confirmed your brief. Never-do and admired accounts are nice-to-haves, not a reason to keep asking. The instant you have the core, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
     "- Typical finish: 4 to 7 turns. Never pad to fill turns, never rush. Prefer a brief+confirm over a long interrogation.",
     `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short warm note (no "talk soon" / goodbye — we keep texting them next). If they said faceless, do NOT ask for photos of their face. Personal face-forward accounts can get a photo ask; business or faceless accounts are told their first ideas are coming.`,
   ]
@@ -1006,6 +1009,28 @@ function alreadyAskedAdmiredAccounts(transcript: OnboardingTurnMsg[]): boolean {
   );
 }
 
+/** True when Kip already asked van vs crew / solo vs team. */
+function alreadyAskedStaffing(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(van|crew|just you|on your own|solo|with a (?:mate|team|crew)|one[- ](?:man|person)|how (?:do you|are you) (?:set up|staffed|run it)|run (?:this|it) (?:solo|alone|yourself))\b/i.test(
+        t.content,
+      ),
+  );
+}
+
+/** True when Kip already asked what they don't want said. */
+function alreadyAskedNeverDos(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(don'?t want (?:said|posted|in (?:the )?captions?)|never say|never-do|hard no|off.?limits|what (?:shouldn'?t|not to) (?:say|post)|words you (?:hate|avoid)|keep out of (?:the )?captions?)\b/i.test(
+        t.content,
+      ),
+  );
+}
+
 export async function onboardingNext(
   brand: Brand,
   body: string,
@@ -1026,6 +1051,20 @@ export async function onboardingNext(
         "(You already asked about admired/example accounts earlier. Do NOT ask again — even if they said they don't know. Move on to something else you still need, or wrap up if you have enough.)",
     });
   }
+  if (alreadyAskedStaffing(transcript)) {
+    messages.push({
+      role: "user",
+      content:
+        "(You already asked van vs crew / solo vs team. Do NOT ask again. Wrap up if you hold niche, audience, and tone.)",
+    });
+  }
+  if (alreadyAskedNeverDos(transcript)) {
+    messages.push({
+      role: "user",
+      content:
+        "(You already asked a never-do / what they don't want said. Do NOT ask again. Wrap up now if you hold the core.)",
+    });
+  }
 
   const unsureCount = countUnsureUserReplies(transcript);
   const briefSent = alreadySentBrief(transcript);
@@ -1041,7 +1080,7 @@ export async function onboardingNext(
       content:
         "(They just confirmed your brief. Do NOT ask another question. Wrap up NOW with SETUP_COMPLETE and a warm sign-off.)",
     });
-  } else if (!briefSent && (unsureCount >= 2 || turns >= 5)) {
+  } else if (!briefSent && (unsureCount >= 2 || turns >= 4)) {
     // Enough signal (or too many idks) — force a plain-English brief + single confirm.
     messages.push({
       role: "user",
@@ -1361,9 +1400,16 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     `update content_plans
         set status = 'failed', updated_at = now()
       where brand_id = $1
-        and status in ('pending', 'proposed')`,
+        and status in ('pending', 'proposed', 'accepted')`,
     [brandId],
   );
+
+  // Previous chat's look, memory, and strategy must not leak into the new one.
+  await query(`delete from design_memory where brand_id = $1`, [brandId]);
+  await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
+  await query(`delete from research_snapshots where brand_id = $1`, [brandId]);
+  await query(`delete from pillars where brand_id = $1`, [brandId]);
+  await ensurePillars(brandId).catch(() => {});
 
   // New chat, new interview — don't greet yesterday's owner, recap a previous
   // voice, or keep a café look pack / niche from Lab Cafe.
@@ -1372,9 +1418,13 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
   delete facts.look_pack;
   delete facts.differentiators;
   delete facts.pending_destination_link;
+  delete facts.kip_preferences;
+  delete facts.kip_decisions;
+  delete facts.open_loops;
   await query(
     `update brands
         set brand_voice_profile = $2::jsonb,
+            voice_guide_md = null,
             facts = $3::jsonb,
             visual = '{}'::jsonb,
             icp = '{}'::jsonb,
@@ -1424,12 +1474,19 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   );
   await query(`delete from media_assets where brand_id = $1`, [brandId]);
   await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
+  await query(`delete from design_memory where brand_id = $1`, [brandId]);
+  await query(`delete from research_snapshots where brand_id = $1`, [brandId]);
+  await query(`delete from pillars where brand_id = $1`, [brandId]);
+  await ensurePillars(brandId).catch(() => {});
 
   const facts = { ...(brand.facts ?? {}), lab: true as const };
   delete facts.owner_name;
   delete facts.look_pack;
   delete facts.differentiators;
   delete facts.pending_destination_link;
+  delete facts.kip_preferences;
+  delete facts.kip_decisions;
+  delete facts.open_loops;
   await query(
     `update brands
         set onboarding_state = $2::jsonb,
@@ -1450,5 +1507,4 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
       JSON.stringify(facts),
     ],
   );
-  await query(`delete from design_memory where brand_id = $1`, [brandId]);
 }

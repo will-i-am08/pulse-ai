@@ -150,6 +150,31 @@ export async function buildConversationContext(
   return `${loopsPrefix}--- Earlier conversation summary ---\n${summary.trim()}\n\n--- Recent messages ---\n${recentText}`;
 }
 
+/** Matches onboarding WRAP_ACK so we can detect inbound during voice compile. */
+export const WRAP_ACK_PREFIX = "Love it — I've got what I need";
+
+/**
+ * True when the owner already texted after the wrap-ack SMS (including during
+ * the slow voice compile, which finishes after WRAP_ACK and sets completed_at
+ * too late for a completed_at check).
+ */
+export async function ownerMovedOnSinceWrapAck(
+  brandId: string,
+  opts?: { withinMinutes?: number },
+): Promise<boolean> {
+  const wrap = await queryOne<{ created_at: string }>(
+    `select created_at from messages
+      where brand_id = $1 and direction = 'outbound' and body like $2
+      order by created_at desc
+      limit 1`,
+    [brandId, `${WRAP_ACK_PREFIX}%`],
+  );
+  if (!wrap?.created_at) return false;
+  return ownerInboundAfter(brandId, wrap.created_at, {
+    withinMinutes: opts?.withinMinutes ?? 15,
+  });
+}
+
 /**
  * True when the owner texted after `since`. Optional `withinMinutes` limits
  * the lookback so a later idle conversation can still get the parked plan.

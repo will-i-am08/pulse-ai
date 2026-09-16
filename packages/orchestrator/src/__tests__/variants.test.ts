@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseVariantChoice, variantPickSms, lookPackForBrand } from "../variants.js";
 import {
   resolveLookPackFromNiche,
@@ -101,5 +104,22 @@ describe("look packs", () => {
         icp: {},
       } as never).id,
     ).toBe("tradie_daylight");
+  });
+
+  it("florist looks differ by crop, not just grade", () => {
+    const [close, wide, side] = LOOK_PACKS_V1.florist_bloom.variantDirections;
+    expect(close).toMatch(/close-up/i);
+    expect(wide).toMatch(/wider|overhead/i);
+    expect(side).toMatch(/45-degree|side angle/i);
+    expect(wide).not.toBe(close);
+    expect(side).not.toBe(wide);
+  });
+
+  it("asks each look to differ by crop and lighting", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../variants.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/different crop AND lighting/);
   });
 });

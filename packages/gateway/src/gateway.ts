@@ -10,7 +10,7 @@ import {
   looksLikePhotoBackgroundAsk,
   looksLikeSlowSmsWork,
   buildOnboardingPlanSms,
-  ownerInboundAfter,
+  ownerMovedOnSinceWrapAck,
   refersToAttachedMedia,
 } from "@pulse/orchestrator";
 import {
@@ -935,36 +935,37 @@ export async function handleInbound(
         const brandId = finishOnboardingBrandId;
         try {
           const rundown = await finishOnboarding(brandId);
-          // Main voice recap first (no goodbye), then the plan afterthought as its own SMS.
+          // Main voice recap first (no goodbye). Skip the plan tease if they
+          // already moved on during wrap (completed_at is too late to catch that).
           await deliver(brandId, rundown.main, undefined, { pace: false });
-          await new Promise((r) => setTimeout(r, 900));
-          await deliver(brandId, rundown.afterthought, undefined, { pace: false });
+          const movedOn = await ownerMovedOnSinceWrapAck(brandId);
+          if (!movedOn) {
+            await new Promise((r) => setTimeout(r, 900));
+            await deliver(brandId, rundown.afterthought, undefined, { pace: false });
+          }
 
           // Kick the plan immediately so the concrete ETA is real — don't wait on the 30s worker tick.
           // Routed through `defer` so serverless callers can keep the isolate
           // alive (Next's after()); a bare detached promise here was frozen on
           // webhook return and the plan SMS never went out.
-          defer(async () => {
-            try {
-              const wrapped = await queryOne<{ completed_at: string | null }>(
-                `select onboarding_state->>'completed_at' as completed_at from brands where id = $1`,
-                [brandId],
-              );
-              const since = wrapped?.completed_at;
-              // Don't dump the plan (or an overrun) on top of hi / a reel / a photo.
-              if (since && (await ownerInboundAfter(brandId, since, { withinMinutes: 10 }))) return;
-              const sms = await buildOnboardingPlanSms(brandId);
-              if (sms) {
-                if (since && (await ownerInboundAfter(brandId, since, { withinMinutes: 10 }))) return;
-                await deliver(brandId, sms, undefined, { pace: false });
-                return;
+          if (!movedOn) {
+            defer(async () => {
+              try {
+                // Don't dump the plan (or an overrun) on top of hi / a reel / a photo.
+                if (await ownerMovedOnSinceWrapAck(brandId)) return;
+                const sms = await buildOnboardingPlanSms(brandId);
+                if (sms) {
+                  if (await ownerMovedOnSinceWrapAck(brandId)) return;
+                  await deliver(brandId, sms, undefined, { pace: false });
+                  return;
+                }
+                // Research isn't ready. Wrap already promised ~2 minutes — the
+                // worker nudges after promised_at. Don't text "still finishing" now.
+              } catch (err) {
+                console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
               }
-              // Research isn't ready. Wrap already promised ~2 minutes — the
-              // worker nudges after promised_at. Don't text "still finishing" now.
-            } catch (err) {
-              console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
-            }
-          });
+            });
+          }
         } catch (err) {
           console.error(`handleInbound: finishOnboarding failed for brand ${brandId}`, err);
           await sendToBrand(
