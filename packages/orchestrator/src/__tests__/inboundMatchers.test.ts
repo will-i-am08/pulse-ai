@@ -11,6 +11,7 @@ import {
   looksLikeConnectStatus,
   userAskedForContentWork,
   SCRATCH_OR_TWEAK_ASK_RE,
+  looksLikeCarouselCommand,
 } from "../processInbound.js";
 import { looksLikeBoostRequest } from "../boost.js";
 import { looksLikeCalendarAsk } from "../agentTools.js";
@@ -300,6 +301,13 @@ describe("processInbound SQL contracts", () => {
     expect(src).toMatch(/pending && message\.body && newMedia\.length === 0 && CANCEL_RE\.test\(message\.body\)/);
     expect(src).toMatch(/Owner discarded the pending draft/);
   });
+
+  it("stores our-booking-link-is and competitor intel even with a pending draft", () => {
+    expect(src).toMatch(/!pending \|\| storeOnFile/);
+    expect(src).toMatch(/booking\\s\+link\\s\+is/);
+    expect(src).not.toMatch(/!pending && looksLikeDestinationLinkIntent/);
+    expect(src).not.toMatch(/!pending && COMPETITOR_RE/);
+  });
 });
 
 // Finding 10 — "tweak it" must not trigger a full plan rebuild unprompted.
@@ -355,5 +363,22 @@ table("looksLikeConnectStatus", looksLikeConnectStatus, {
     "draft me 3 posts",
     "what platforms should I try next year",
     "boost this",
+  ],
+});
+
+table("looksLikeCarouselCommand", looksLikeCarouselCommand, {
+  must: [
+    "make it a carousel",
+    "turn these into a carousel",
+    "bundle these into a carousel",
+    "bundle these into a carousel, cinematic, text over the top",
+    "as a carousel",
+    "carousel",
+  ],
+  mustNot: [
+    "carousel ideas for next week",
+    "what's a carousel",
+    "make a reel",
+    "put this on my story",
   ],
 });

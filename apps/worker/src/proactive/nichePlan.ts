@@ -55,7 +55,7 @@ export async function runNichePlanLoop(): Promise<void> {
       const link = `${env.APP_BASE_URL.replace(/\/$/, "")}/app/content-plan`;
       await sendToBrand(
         brand.id,
-        `${planTextSummary(plan)}\n\nFull plan → ${link}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`,
+        `${planTextSummary(plan)}\n\nFull plan → ${link}\n\nReply yes to use this plan, or tell me what to tweak.`,
       );
     } catch (err) {
       logger.error(`niche plan build failed for ${row.id}`, {
