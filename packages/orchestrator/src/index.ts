@@ -34,6 +34,7 @@ export {
   looksLikeSkipConnect,
   looksLikeDoneReply,
   looksLikeUnsureReply,
+  looksLikeReadyToWrap,
   craftHumanAck,
   replyAlreadyAcked,
   stripLeadingAck,

@@ -162,12 +162,24 @@ export async function ownerMovedOnSinceWrapAck(
   brandId: string,
   opts?: { withinMinutes?: number },
 ): Promise<boolean> {
+  const kickoff = await queryOne<{ id: string }>(
+    `select id from kip_kickoffs
+      where brand_id = $1 and status in ('queued', 'running')
+      limit 1`,
+    [brandId],
+  );
+  if (kickoff) return true;
+
   const wrap = await queryOne<{ created_at: string }>(
     `select created_at from messages
-      where brand_id = $1 and direction = 'outbound' and body like $2
-      order by created_at desc
+      where brand_id = $1 and direction = 'outbound'
+        and (
+          body ilike 'Love it%got what I need%'
+          or body ilike 'Here''s how I''m reading your voice%'
+        )
+      order by created_at asc
       limit 1`,
-    [brandId, `${WRAP_ACK_PREFIX}%`],
+    [brandId],
   );
   if (!wrap?.created_at) return false;
   return ownerInboundAfter(brandId, wrap.created_at, {

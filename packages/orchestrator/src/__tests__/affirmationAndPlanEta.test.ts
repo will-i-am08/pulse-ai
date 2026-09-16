@@ -32,6 +32,9 @@ describe("plan ETA helpers", () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../gateway/src/gateway.ts"), "utf8");
     expect(src).toMatch(/worker nudges after promised_at/);
     expect(src).toMatch(/ownerMovedOnSinceWrapAck/);
+    const ctx = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../conversationContext.ts"), "utf8");
+    expect(ctx).toMatch(/kip_kickoffs/);
+    expect(ctx).toMatch(/got what I need/i);
   });
 
   it("ties wrap-ack detection to the live WRAP_ACK SMS", () => {
