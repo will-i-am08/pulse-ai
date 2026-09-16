@@ -1337,6 +1337,18 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     [brandId],
   );
 
+  // New chat, new interview — don't greet yesterday's owner or recap a
+  // previous voice. Keep lab:true and other facts.
+  const facts = { ...(brand.facts ?? {}) };
+  delete facts.owner_name;
+  await query(
+    `update brands
+        set brand_voice_profile = $2::jsonb,
+            facts = $3::jsonb
+      where id = $1`,
+    [brandId, JSON.stringify(emptyBrandVoiceProfile()), JSON.stringify(facts)],
+  );
+
   const greeting = await restartOnboarding(brandId);
   return { greeting, archivedChatId };
 }

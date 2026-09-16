@@ -308,6 +308,14 @@ describe("processInbound SQL contracts", () => {
     expect(src).not.toMatch(/!pending && looksLikeDestinationLinkIntent/);
     expect(src).not.toMatch(/!pending && COMPETITOR_RE/);
   });
+
+  it("asks for a clip on a bare make-a-reel instead of animating banked stills", () => {
+    const idx = src.indexOf('looksLikeMakeReelRequest(message.body) && newMedia.length === 0');
+    expect(idx).toBeGreaterThan(-1);
+    const slice = src.slice(idx, idx + 500);
+    expect(slice).toMatch(/Send me the video clip/);
+    expect(slice).not.toMatch(/pickFreshPhotos/);
+  });
 });
 
 // Finding 10 — "tweak it" must not trigger a full plan rebuild unprompted.
