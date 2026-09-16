@@ -143,14 +143,20 @@ const NO_PHOTOS_RE =
  * "do something inspirational", bare format-menu replies ("a post" / "carousel").
  */
 const DRAFT_POSTS_RE =
-  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
+  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?([\w'-]+\s+){0,2}(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?([\w'-]+\s+){0,2}posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
 
 /** Owner said "with this photo" / "use this" — expects attached media, not generated art. */
 export const REFERS_TO_ATTACHED_MEDIA_RE =
   /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\buse\s+th(is|ese)\b/i;
 
+/** "Generate the photo" is T2I, not a missing MMS of "the photo". */
+const GENERATED_MEDIA_ASK_RE =
+  /\b(generate|source|invent|create|make|ai[- ]?(generated|made|create)?)\s+(the\s+|a\s+|some\s+|me\s+)?(photo|pic|picture|image|shot|visual)s?\b/i;
+
 export function refersToAttachedMedia(body: string | null | undefined): boolean {
-  return Boolean(body?.trim() && REFERS_TO_ATTACHED_MEDIA_RE.test(body));
+  if (!body?.trim()) return false;
+  if (GENERATED_MEDIA_ASK_RE.test(body)) return false;
+  return REFERS_TO_ATTACHED_MEDIA_RE.test(body);
 }
 
 /** Creative "use this / inspirational" briefs (with or without an attached photo). */
