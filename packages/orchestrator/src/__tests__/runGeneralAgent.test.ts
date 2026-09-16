@@ -247,6 +247,33 @@ describe("generalAgentEligible", () => {
 
   it("is true when the flag is on with no media and no pending draft", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: false })).toBe(true);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "what's on this week?",
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for reel-only and draft-me-N asks so the dedicated engine runs", () => {
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "make a reel",
+      }),
+    ).toBe(false);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "draft me 3 posts",
+      }),
+    ).toBe(false);
   });
 });
 

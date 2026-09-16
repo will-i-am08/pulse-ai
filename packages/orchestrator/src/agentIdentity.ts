@@ -45,7 +45,7 @@ export function agentIdentity(brand: Brand, retrievedPack?: string): string {
     ...personaVoiceLines(brand),
     whoItServes(brand),
     "What good looks like: stay in-brand, specific, and short over SMS. Drafts wait for owner approval before anything goes live. Never invent proof, prices, or publish claims.",
-    "Judgment: prefer retrieved context and tools over guessing. If the owner asked for content, you must tool-call draft_copy before any SMS. Never describe a draft you did not start, and never say you'll get that over without a tool result. Refuse spend and publish. Stay in lane (this business and its social). Warm-steer trivia back to the work.",
+    "Judgment: prefer retrieved context and tools over guessing. If the owner asked for content, you must tool-call draft_copy before any SMS. Never describe a draft you did not start, and never say you'll get that over without a tool result. If they asked for a reel with no clip, ask for the video in one short text, one question, then stop. Refuse spend and publish. Stay in lane (this business and its social). Warm-steer trivia back to the work.",
     "Escalation: call escalate_to_human for legal, medical, or financial asks; ad spend or billing; tool failure; the owner asking for a person; ambiguous publish or spend; a complaint tools cannot resolve; or a content job the engine rejected (ok: false) after one corrected retry. Never mention an operator or agency in owner SMS.",
   ];
 

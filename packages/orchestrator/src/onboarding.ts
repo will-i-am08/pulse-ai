@@ -1089,7 +1089,7 @@ function nextStepFor(type: AccountType, transcript: OnboardingTurnMsg[]): string
   if (type === "personal" && !faceless) {
     return "Send me a photo anytime and we'll get rolling.";
   }
-  return "Anything you want to add before I start, just say.";
+  return "If I missed something, just text me.";
 }
 
 /**
@@ -1221,8 +1221,14 @@ async function compileProfile(
   );
 
   const tone = profile.tone.length ? profile.tone.slice(0, 3).join(", ") : "friendly and direct";
-  const avoid = profile.donts.length ? profile.donts.slice(0, 2).join("; ").toLowerCase() : null;
-  const avoidBit = avoid ? ` I'll steer clear of ${avoid}.` : "";
+  const avoidParts = profile.donts.slice(0, 2).map((d) => d.replace(/;/g, ",").trim().toLowerCase()).filter(Boolean);
+  const avoid =
+    avoidParts.length === 0
+      ? null
+      : avoidParts.length === 1
+        ? avoidParts[0]
+        : `${avoidParts[0]} and ${avoidParts[1]}`;
+  const avoidBit = avoid ? ` I'll skip ${avoid}.` : "";
   return `Here's how I'm reading your voice: ${tone}.${avoidBit} You can tweak any of this on your dashboard anytime.`;
 }
 

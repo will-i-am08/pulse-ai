@@ -462,7 +462,7 @@ export async function motionFromStills(
 
 /** SMS when motion/light-edit fails — fall back to static post. */
 export function videoEditFallbackSms(brandName: string): string {
-  return `Couldn't animate that into a Reel just now for ${brandName} — I've drafted a static post instead. Reply "yes" to approve, or send a video clip.`;
+  return `Couldn't animate that into a Reel just now for ${brandName} — I've drafted a static post instead. Reply yes to send it, or send a video clip.`;
 }
 
 /**

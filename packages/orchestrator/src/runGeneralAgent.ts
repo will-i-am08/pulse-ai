@@ -11,7 +11,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
 import { loadRecentChatTurns } from "./conversationContext.js";
-import { maybeEnqueueFromKipCommit } from "./kickoffs.js";
+import { isReelOnlyAsk, looksLikeKickoffRequest, maybeEnqueueFromKipCommit } from "./kickoffs.js";
 import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
@@ -36,15 +36,20 @@ const GENERAL_AGENT_FALLBACK_SMS =
 
 /**
  * True when the general-agent intercept may run: flag on, no attached media,
- * no pending_approval draft. Pure helper so tests can cover eligibility
- * without booting the full inbound router.
+ * no pending_approval draft, and the text isn't a dedicated engine job
+ * (reel-without-clip, draft-me-N). Those stay on the inbound router so Kip
+ * doesn't turn them into a questionnaire.
  */
 export function generalAgentEligible(opts: {
   flag: boolean;
   hasMedia: boolean;
   hasPending: boolean;
+  ownerMessage?: string;
 }): boolean {
-  return opts.flag && !opts.hasMedia && !opts.hasPending;
+  if (!opts.flag || opts.hasMedia || opts.hasPending) return false;
+  const t = (opts.ownerMessage ?? "").trim();
+  if (t && (isReelOnlyAsk(t) || looksLikeKickoffRequest(t))) return false;
+  return true;
 }
 
 function ownerUserContent(ownerMessage: string, mediaIds?: string[]): string {

@@ -243,7 +243,7 @@ const creative = planUgcCreative({
   return {
     ok: true,
     job,
-    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; Kip picked ${summarizeCreativePlan(creative)}; auto-tune on) (this may cost ${formatCostUsd(est / 100)}). I'll text when it's ready for approval 🎬`,
+    sms: `On it — cooking a UGC-style ${dest === "ads" ? "ad" : "Reel"} (AIGC; Kip picked ${summarizeCreativePlan(creative)}; auto-tune on) (this may cost ${formatCostUsd(est / 100)}). I'll text when it's ready for approval.`,
   };
 }
 
@@ -625,10 +625,10 @@ export async function processUgcJob(
 
     const destLine =
       dest === "ads"
-        ? `This is tagged as paid creative — reply "yes" to keep the draft, then ask me to run ads with it.`
+        ? `This is tagged as paid creative — reply yes to keep the draft, then ask me to run ads with it.`
         : dest === "both"
-          ? `Usable as organic Reel or paid creative. Reply "yes" to approve the Reel, or "run ads with this".`
-          : `Proposed for ${when}. Reply "yes" to approve as a Reel — or say "run ads with this".`;
+          ? `Usable as organic Reel or paid creative. Reply yes to send the Reel, or say run ads with this.`
+          : `Proposed for ${when}. Reply yes to send it as a Reel, or say run ads with this.`;
 
     // The MMS attachment stays the cover JPEG (carriers drop multi-MB mp4s, and the
     // media route buffers whole blobs under a 4.5MB cap) — but the client must be
@@ -636,7 +636,7 @@ export async function processUgcJob(
     const videoUrl = publicMediaUrl(mediaId);
     return {
       brandId: brand.id,
-      sms: `Your UGC-style video is ready (AIGC) 🎬\n\nWatch it: ${videoUrl}\n\n"${aigcCaption}"\n\n${destLine}`,
+      sms: `Your UGC-style video is ready (AIGC).\n\nWatch it: ${videoUrl}\n\n${aigcCaption}\n\n${destLine}`,
       mediaUrl: coverId ? publicMediaUrl(coverId) : videoUrl,
       videoUrl,
     };

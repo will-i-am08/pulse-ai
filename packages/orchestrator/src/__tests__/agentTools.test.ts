@@ -36,9 +36,13 @@ vi.mock("../ugc/index.js", () => ({
   queueUgcJob: vi.fn(async () => ({ ok: false, sms: "UGC isn't set up." })),
 }));
 
-vi.mock("../aiVideo.js", () => ({
-  queueAiVideoJob: vi.fn(async () => ({ ok: false, sms: "AI video isn't set up." })),
-}));
+vi.mock("../aiVideo.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../aiVideo.js")>();
+  return {
+    ...actual,
+    queueAiVideoJob: vi.fn(async () => ({ ok: false, sms: "AI video isn't set up." })),
+  };
+});
 
 vi.mock("../performanceDigest.js", () => ({
   buildPerformanceAnalysis: vi.fn(async () => ({
@@ -155,6 +159,19 @@ describe("helpers", () => {
     expect(out).toMatch(/scheduled/i);
     expect(out).not.toMatch(/emptyDays/);
     expect(out).not.toMatch(/2026-09-15T/);
+  });
+
+  it("summarizeCalendar caps at four posts and notes the rest", () => {
+    const now = new Date("2026-09-14T10:00:00.000Z");
+    const posts = [0, 1, 2, 3, 4].map((i) => ({
+      id: `p${i}`,
+      status: "scheduled" as const,
+      scheduled_at: new Date(now.getTime() + (i + 1) * 60 * 60 * 1000).toISOString(),
+      caption: `Post number ${i} with extra words so the excerpt trims`,
+    }));
+    const out = summarizeCalendar(posts, 7, now);
+    expect(out).toMatch(/Plus 1 more/);
+    expect(out).not.toMatch(/Post number 4/);
   });
 
   it("looksLikeCalendarAsk matches lookups and ignores drafts/ads", () => {
