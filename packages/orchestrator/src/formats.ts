@@ -333,6 +333,7 @@ export async function classifyStoryTone(brand: Brand, text: string): Promise<"ca
 export async function draftStoryOverlay(
   brand: Brand,
   mediaId: string,
+  brief?: string,
 ): Promise<{ overlay: string; cta?: string }> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   try {
@@ -342,6 +343,7 @@ export async function draftStoryOverlay(
         "Do NOT write a feed-length caption. Output ONLY JSON:",
         '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
+        "If the owner named a moment, class, offer, or time (tonight's class, this weekend, happy hour), the overlay MUST include that — never ignore their brief.",
         facelessPromptLine(brand) ?? "",
         profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
         "No hashtags, no emoji spam, no quotes.",
@@ -351,7 +353,9 @@ export async function draftStoryOverlay(
       messages: [
         {
           role: "user",
-          content: `Photo media id ${mediaId}. Write the story overlay now.`,
+          content: brief?.trim()
+            ? `Photo media id ${mediaId}. Owner brief: """${brief.trim()}""". Write the story overlay now.`
+            : `Photo media id ${mediaId}. Write the story overlay now.`,
         },
       ],
       maxTokens: 80,
@@ -1010,10 +1014,11 @@ export async function draftStoryFromPhoto(
   brand: Brand,
   photo: { id: string },
   pillar: Pillar,
+  brief?: string,
 ): Promise<{ post: Post; mediaUrl: string | null; auto: boolean } | null> {
   // Parallel: overlay copy + photo grade (C6).
   const [overlay, edited] = await Promise.all([
-    draftStoryOverlay(brand, photo.id),
+    draftStoryOverlay(brand, photo.id, brief),
     editImageForBrand(brand, photo.id).catch(() => null),
   ]);
   const tone = await classifyStoryTone(brand, `${overlay.overlay} ${overlay.cta ?? ""}`);

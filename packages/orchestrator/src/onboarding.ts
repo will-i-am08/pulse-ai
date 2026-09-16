@@ -13,7 +13,7 @@ import {
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
 import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
-import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
+import { brandTalkingIdentity, firstNameFromDisplayName, ownerFirstName } from "./persona.js";
 import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 
@@ -61,12 +61,19 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
     });
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { niche?: string; exemplars?: string };
     const niche = parsed.niche?.trim();
-    if (niche) await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
-    // Seed niche look pack from niche + brand name (Kive-style studios for Kip).
+    if (niche) {
+      const facts = { ...(brand.facts ?? {}), differentiators: niche };
+      await query("update brands set facts = $1::jsonb where id = $2", [
+        JSON.stringify(facts),
+        brand.id,
+      ]);
+      await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
+    }
+    // Seed niche look pack from what they actually said — never the lab placeholder name.
     try {
       const { resolveLookPackFromNiche } = await import("./lookPacks/index.js");
       const { setBrandLookPack } = await import("./variants.js");
-      const pack = resolveLookPackFromNiche(`${niche ?? ""} ${brand.name}`);
+      const pack = resolveLookPackFromNiche(niche ?? "");
       if (pack.id !== "generic_faithful") {
         await setBrandLookPack(brand.id, pack.id);
       }
@@ -114,7 +121,10 @@ function interviewerSystem(
           "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
         ];
   return [
-    `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
+    `${brandTalkingIdentity(brand)} Getting set up for a ${kind}. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
+    brand.facts?.lab
+      ? "LAB CHAT: The account name on file is a placeholder. Your FIRST question must learn what they actually do. Never open with coffee, café, Lab Cafe, or any assumption from the account name."
+      : "",
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     priorContent
       ? `From their connected socials / existing posts you already know:\n${priorContent}\nTreat this as prior context. Confirm or refine — do not re-ask things you already know well.`
@@ -470,8 +480,7 @@ async function mintConnectLink(
   const answers: Record<string, string> = { ...(prev.answers ?? {}) };
   const url = smsConnectUrl(brand.id, "meta");
   const sms =
-    `One tap to connect Instagram + Facebook — I'll take it from there:\n${url}\n\n` +
-    `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`;
+    `One tap to connect Instagram + Facebook — I'll take it from there: ${url} (expires in 15 min). Reply skip if you don't have them yet.`;
   answers.connect_link_sent_at = new Date().toISOString();
   await saveState(brand.id, {
     ...prev,
@@ -488,13 +497,7 @@ async function mintConnectLink(
 export function welcomeContactMessage(brand: Brand): string {
   const knownName = ownerFirstName(brand);
   const hi = knownName ? `Hi ${knownName}` : "Hi";
-  return (
-    `${hi}, it's Kip, thanks for jumping in!\n\n` +
-    `I sent my contact card — please add me to your contacts so I show up as Kip (not a random number). ` +
-    `On iPhone: tap the contact card / banner at the top and hit Add to Contacts. ` +
-    `On Android: open the contact card attachment and save it.\n\n` +
-    `Just message me Done when you've done that.`
-  );
+  return `${hi}, it's Kip. Save my contact so I show up as Kip, then reply done.`;
 }
 
 /** After contact is saved: one-tap Meta connect. */
@@ -1220,16 +1223,30 @@ async function compileProfile(
     [brand.id, voiceNotes || null],
   );
 
-  const tone = profile.tone.length ? profile.tone.slice(0, 3).join(", ") : "friendly and direct";
-  const avoidParts = profile.donts.slice(0, 2).map((d) => d.replace(/;/g, ",").trim().toLowerCase()).filter(Boolean);
-  const avoid =
-    avoidParts.length === 0
-      ? null
-      : avoidParts.length === 1
-        ? avoidParts[0]
-        : `${avoidParts[0]} and ${avoidParts[1]}`;
-  const avoidBit = avoid ? ` I'll skip ${avoid}.` : "";
-  return `Here's how I'm reading your voice: ${tone}.${avoidBit} You can tweak any of this on your dashboard anytime.`;
+  return voiceRecapSms(profile.tone, profile.donts);
+}
+
+/** Owner-facing voice recap — no dashboard send-off, no "I'll skip use jokes". */
+export function voiceRecapSms(tone: string[], donts: string[]): string {
+  const toneBit = tone.length ? tone.slice(0, 3).join(", ") : "friendly and direct";
+  const avoid = formatAvoidList(donts);
+  const avoidBit = avoid ? ` I'll stay clear of ${avoid}.` : "";
+  return `Here's how I'm reading your voice: ${toneBit}.${avoidBit}`;
+}
+
+function formatAvoidList(donts: string[]): string | null {
+  const parts = donts.slice(0, 2).map(normalizeDont).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0]!;
+  return `${parts[0]} and ${parts[1]}`;
+}
+
+function normalizeDont(raw: string): string {
+  let s = raw.replace(/;/g, ",").trim();
+  s = s.replace(/^(please\s+)?(don't|do not|never|skip|avoid|no more|no)\s+/i, "");
+  s = s.replace(/^use\s+/i, "");
+  s = s.replace(/\.+$/, "");
+  return s.toLowerCase().trim();
 }
 
 
@@ -1327,20 +1344,32 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     [brandId],
   );
 
-  // Pending drafts belong to the archived chat. Leave them live and a "no"
-  // (or a mistaken LLM "approval") in the new interview can publish them.
+  // Pending / scheduled drafts belong to the archived chat. Leave them live
+  // and a calendar ask in the new interview recites yesterday's cafe posts.
   await query(
     `update posts
         set status = 'rejected', updated_at = now()
       where brand_id = $1
-        and status in ('pending_approval', 'draft')`,
+        and status in ('pending_approval', 'draft', 'approved', 'scheduled')`,
     [brandId],
   );
 
-  // New chat, new interview — don't greet yesterday's owner or recap a
-  // previous voice. Keep lab:true and other facts.
+  // Parked content-plan research from the last chat would land mid-interview.
+  await query(
+    `update content_plans
+        set status = 'failed', updated_at = now()
+      where brand_id = $1
+        and status in ('pending', 'proposed')`,
+    [brandId],
+  );
+
+  // New chat, new interview — don't greet yesterday's owner, recap a previous
+  // voice, or keep a café look pack / niche from Lab Cafe.
   const facts = { ...(brand.facts ?? {}) };
   delete facts.owner_name;
+  delete facts.look_pack;
+  delete facts.differentiators;
+  delete facts.pending_destination_link;
   await query(
     `update brands
         set brand_voice_profile = $2::jsonb,
@@ -1390,6 +1419,10 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
 
   const facts = { ...(brand.facts ?? {}), lab: true as const };
+  delete facts.owner_name;
+  delete facts.look_pack;
+  delete facts.differentiators;
+  delete facts.pending_destination_link;
   await query(
     `update brands
         set onboarding_state = $2::jsonb,

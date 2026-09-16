@@ -10,8 +10,7 @@ import {
   looksLikePhotoBackgroundAsk,
   looksLikeSlowSmsWork,
   buildOnboardingPlanSms,
-  planOverrunNudge,
-  ONBOARDING_PLAN_ETA_MINUTES,
+  ownerInboundAfter,
   refersToAttachedMedia,
 } from "@pulse/orchestrator";
 import {
@@ -920,24 +919,22 @@ export async function handleInbound(
           // alive (Next's after()); a bare detached promise here was frozen on
           // webhook return and the plan SMS never went out.
           defer(async () => {
-            const followUpStarted = new Date();
             try {
+              const wrapped = await queryOne<{ completed_at: string | null }>(
+                `select onboarding_state->>'completed_at' as completed_at from brands where id = $1`,
+                [brandId],
+              );
+              const since = wrapped?.completed_at;
+              // Don't dump the plan (or an overrun) on top of hi / a reel / a photo.
+              if (since && (await ownerInboundAfter(brandId, since, { withinMinutes: 10 }))) return;
               const sms = await buildOnboardingPlanSms(brandId);
               if (sms) {
+                if (since && (await ownerInboundAfter(brandId, since, { withinMinutes: 10 }))) return;
                 await deliver(brandId, sms, undefined, { pace: false });
                 return;
               }
-              // Don't interrupt if they already moved on (hi, draft me 3, a photo).
-              const movedOn = await queryOne<{ id: string }>(
-                `select id from messages
-                  where brand_id = $1 and direction = 'inbound' and created_at > $2
-                  limit 1`,
-                [brandId, followUpStarted.toISOString()],
-              );
-              if (movedOn) return;
-              await deliver(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
-                pace: false,
-              });
+              // Research isn't ready. Wrap already promised ~2 minutes — the
+              // worker nudges after promised_at. Don't text "still finishing" now.
             } catch (err) {
               console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
             }

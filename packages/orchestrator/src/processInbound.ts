@@ -466,7 +466,7 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
   const system = [
     `You are revising a social media caption for "${brand.name}" per the client's instruction.`,
     "Output ONLY the revised caption text, no preamble, no surrounding quotes.",
-    "Treat the instruction as a rewrite. If they name a different subject, drop the old one. If they say shorter, cut words. Never glue the new ask onto the old caption.",
+    "Treat the instruction as a rewrite. If they name a different subject, drop the old one. If they say shorter, the result MUST be fewer words than the current caption. If they say drop/remove/no CTA, delete the call-to-action line entirely (book now, link in bio, DM us, comment below). Never glue the new ask onto the old caption. Never return the same caption.",
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     profile.banned_words.length ? `Never use: ${profile.banned_words.join(", ")}.` : "",
     `Emoji policy: ${profile.emoji_policy}.`,
@@ -474,17 +474,47 @@ async function reviseCaption(brand: Brand, currentCaption: string, instruction: 
     .filter(Boolean)
     .join("\n");
 
-  const text = await callLLM({
-    system,
-    messages: [
-      {
-        role: "user",
-        content: `Current caption:\n"""${currentCaption}"""\n\nClient's edit instruction:\n"""${instruction}"""\n\nRewrite the caption.`,
-      },
-    ],
-    maxTokens: 400,
-  });
-  return text.trim();
+  const run = (extra: string) =>
+    callLLM({
+      system,
+      messages: [
+        {
+          role: "user",
+          content: `Current caption:\n"""${currentCaption}"""\n\nClient's edit instruction:\n"""${instruction}"""\n\n${extra}`,
+        },
+      ],
+      maxTokens: 400,
+    });
+
+  let text = (await run("Rewrite the caption.")).trim();
+  if (captionEditMissed(instruction, currentCaption, text)) {
+    text = (
+      await run(
+        "The last rewrite ignored the instruction. Rewrite again. Shorter means fewer words. Drop CTA means no book/link/DM line.",
+      )
+    ).trim();
+  }
+  return text;
+}
+
+/** True when a caption edit clearly did not follow a shorter / drop-CTA ask. */
+export function captionEditMissed(instruction: string, before: string, after: string): boolean {
+  const t = instruction.toLowerCase();
+  const prev = before.trim();
+  const next = after.trim();
+  if (!next) return false;
+  if (/\b(shorter|shorten|trim it|cut (it |this )?down|fewer words|less wordy|tighter)\b/.test(t)) {
+    if (next.length >= Math.floor(prev.length * 0.9)) return true;
+  }
+  if (
+    /\b(drop|remove|no|without|skip)\b.{0,32}\b(cta|call to action|link|book now|dm|comment)\b/.test(t) ||
+    /\b(no cta|drop the cta|remove the cta|no link|drop cta)\b/.test(t)
+  ) {
+    if (/\b(book now|link in bio|dm (me|us)|comment (below|link)|tap the link|link in our bio)\b/i.test(next)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function answerQuestion(
@@ -1614,7 +1644,7 @@ async function routeInbound(
         for (const p of photos.slice(0, 5)) {
           const pillar = (await classifyPhotoPillar(brand, pillars, p.id)) ?? pillars[0];
           if (!pillar) continue;
-          const s = await draftStoryFromPhoto(brand, p, pillar);
+          const s = await draftStoryFromPhoto(brand, p, pillar, message.body ?? undefined);
           if (s) results.push(s);
         }
         if (results.length) {

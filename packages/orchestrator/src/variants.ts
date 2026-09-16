@@ -58,7 +58,7 @@ export function lookPackForBrand(brand: Brand, nicheHint?: string | null): LookP
     nicheHint ||
     brand.facts?.differentiators ||
     brand.icp?.segments?.join(" ") ||
-    brand.name;
+    (brand.facts?.lab ? "" : brand.name);
   return resolveLookPackFromNiche(niche);
 }
 

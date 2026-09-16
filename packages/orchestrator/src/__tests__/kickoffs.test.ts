@@ -9,7 +9,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
   };
 });
 
-import { query } from "@pulse/shared";
+import { query, queryOne } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
   looksLikeSlowSmsWork,
@@ -27,6 +27,7 @@ import {
 } from "../kickoffs.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
+const mockedQueryOne = queryOne as unknown as ReturnType<typeof vi.fn>;
 
 describe("looksLikeKickoffRequest", () => {
   it("catches first-batch / stock / no-photos asks", () => {
@@ -290,6 +291,20 @@ describe("deliverUnstreamed", () => {
   it("is a no-op when deliver is omitted", async () => {
     const results = [{ brandId: "b1", sms: "Need pillars before I draft." }];
     await expect(deliverUnstreamed(results)).resolves.toEqual(results);
+  });
+
+  it("skips failure SMS when the owner already texted", async () => {
+    mockedQueryOne.mockResolvedValueOnce({ id: "m1" });
+    const deliver = vi.fn(async () => {});
+    const results = [
+      {
+        brandId: "b1",
+        sms: "Couldn't finish those drafts just then — try again in a moment?",
+        skipIfInboundAfter: new Date().toISOString(),
+      },
+    ];
+    await deliverUnstreamed(results, deliver);
+    expect(deliver).not.toHaveBeenCalled();
   });
 });
 

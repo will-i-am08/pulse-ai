@@ -45,6 +45,13 @@ describe("personaVoiceLines", () => {
     expect(full).toMatch(/Creative default/i);
     expect(full).toMatch(/upload photos/i);
   });
+
+  it("does not treat a lab placeholder name as the real business", () => {
+    const brand = { name: "Lab Cafe", facts: { lab: true } } as unknown as Brand;
+    const voice = personaVoiceLines(brand).join("\n");
+    expect(voice).toMatch(/placeholder/i);
+    expect(voice).not.toMatch(/You are Kip — "Lab Cafe"'s social media manager/);
+  });
 });
 
 describe("connectionSummary", () => {

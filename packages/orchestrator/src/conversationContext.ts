@@ -149,3 +149,32 @@ export async function buildConversationContext(
 
   return `${loopsPrefix}--- Earlier conversation summary ---\n${summary.trim()}\n\n--- Recent messages ---\n${recentText}`;
 }
+
+/**
+ * True when the owner texted after `since`. Optional `withinMinutes` limits
+ * the lookback so a later idle conversation can still get the parked plan.
+ */
+export async function ownerInboundAfter(
+  brandId: string,
+  since: Date | string,
+  opts?: { withinMinutes?: number },
+): Promise<boolean> {
+  const iso = typeof since === "string" ? since : since.toISOString();
+  const windowMin = opts?.withinMinutes;
+  const row =
+    typeof windowMin === "number" && Number.isFinite(windowMin)
+      ? await queryOne<{ id: string }>(
+          `select id from messages
+            where brand_id = $1 and direction = 'inbound' and created_at > $2
+              and created_at > now() - make_interval(mins => $3)
+            limit 1`,
+          [brandId, iso, Math.max(1, Math.floor(windowMin))],
+        )
+      : await queryOne<{ id: string }>(
+          `select id from messages
+            where brand_id = $1 and direction = 'inbound' and created_at > $2
+            limit 1`,
+          [brandId, iso],
+        );
+  return Boolean(row);
+}

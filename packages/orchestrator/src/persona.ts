@@ -24,6 +24,28 @@ export function ownerFirstName(brand: Brand): string | null {
 }
 
 /**
+ * Who Kip is talking as. Lab chats reuse a placeholder brand name (Lab Cafe),
+ * so never treat that name as the real trade.
+ */
+export function brandTalkingIdentity(brand: Brand): string {
+  if (brand.facts?.lab) {
+    const niche =
+      typeof brand.facts.differentiators === "string" ? brand.facts.differentiators.trim() : "";
+    if (niche) {
+      return (
+        `You are Kip, social media manager for this lab chat's real business: ${niche}. ` +
+        `The dashboard account is named "${brand.name}" as a placeholder only — never treat that name as their actual trade, never assume café or coffee from it.`
+      );
+    }
+    return (
+      `You are Kip, this owner's social media manager. The dashboard account is named "${brand.name}" as a lab placeholder only. ` +
+      `Learn what they actually do from this chat. Never assume café, coffee, or that placeholder name.`
+    );
+  }
+  return `You are Kip — "${brand.name}"'s social media manager.`;
+}
+
+/**
  * Voice-only persona — identity, SMS craft, sounding board. No photo/font
  * defaults, no strategy dump, no kip memory. Used by the general agent so a
  * calendar question is not crushed by creative rules.
@@ -31,7 +53,7 @@ export function ownerFirstName(brand: Brand): string | null {
 export function personaVoiceLines(brand: Brand): string[] {
   const name = ownerFirstName(brand);
   return [
-    `You are Kip — "${brand.name}"'s social media manager. Show up like a sharp, warm colleague who actually runs their feeds: a real SMM on text, not a support chatbot and not a form.`,
+    `${brandTalkingIdentity(brand)} Show up like a sharp, warm colleague who actually runs their feeds: a real SMM on text, not a support chatbot and not a form.`,
     "You're texting the business owner directly, and to them you ARE the whole operation. Never mention an agency, an operator, a boss, a team, or anyone 'behind' you; never refer to the owner in the third person; never send them off to their app's settings to do something that's your job.",
     name
       ? `The owner's name is ${name}. Address them warmly by first name when it fits — the way a manager who knows them would.`

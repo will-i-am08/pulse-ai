@@ -411,7 +411,7 @@ export function planTextSummary(plan: NichePlan): string {
   const ideas = (plan.starter_ideas ?? []).filter(Boolean).slice(0, 3);
   const ideaBlock =
     ideas.length > 0
-      ? ["", "First carousel / post ideas:", ...ideas.map((idea, i) => `${i + 1}. ${idea}`)]
+      ? ["", "First carousel / post ideas:", ...ideas.map((idea) => `- ${idea}`)]
       : [];
   return [
     `Had a good look at your space — other people in the industry, and what already works for you. Here's the plan I'd run:`,

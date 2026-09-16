@@ -30,6 +30,7 @@ import {
 } from "./visualMode.js";
 import { mapWithConcurrency, DRAFT_CONCURRENCY, withTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
+import { ownerInboundAfter } from "./conversationContext.js";
 
 
 /**
@@ -64,6 +65,8 @@ export type KickoffDrainResult = {
   kickoffFailure?: string;
   /** Repeated-failure escalation for OPERATOR_PHONE (worker sends it). */
   operatorAlert?: string;
+  /** Skip this SMS when the owner already texted after this time. */
+  skipIfInboundAfter?: string | Date;
 };
 
 /** Optional per-draft delivery hook — SMS as soon as each draft is ready. */
@@ -78,6 +81,11 @@ export type KickoffDrainOpts = {
    * this so a lab request cannot SMS a real brand (or vice versa).
    */
   brandId?: string;
+  /**
+   * Skip failure SMS if the owner texted after this timestamp (look-pick,
+   * a new ask). Still records the kickoff as failed.
+   */
+  interruptAfter?: string | Date;
 };
 
 const COMMIT_RE =
@@ -695,8 +703,9 @@ export async function reclaimStaleKickoffs(opts?: {
   const results: KickoffDrainResult[] = rows.map((r) => ({
     brandId: r.brand_id,
     sms: STALE_FAIL_SMS,
+    skipIfInboundAfter: r.created_at,
   }));
-  return deliverUnstreamed(results, opts?.deliver);
+  return deliverUnstreamed(results, opts);
 }
 
 async function draftGeneratedPiece(
@@ -808,12 +817,22 @@ async function maybeEnqueueQaSelfHeal(
 /** SMS results that never went through the mid-batch stream (total failure / early exit). */
 export async function deliverUnstreamed(
   results: KickoffDrainResult[],
-  deliver?: KickoffDrainOpts["deliver"],
+  deliverOrOpts?: KickoffDeliver | KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
-  if (!deliver) return results;
+  const opts: KickoffDrainOpts =
+    typeof deliverOrOpts === "function" ? { deliver: deliverOrOpts } : (deliverOrOpts ?? {});
+  if (!opts.deliver) return results;
   for (const r of results) {
+    const since = r.skipIfInboundAfter ?? opts.interruptAfter;
+    if (since) {
+      try {
+        if (await ownerInboundAfter(r.brandId, since)) continue;
+      } catch (err) {
+        console.error("kickoff: interrupt check failed", err);
+      }
+    }
     try {
-      await deliver(r);
+      await opts.deliver(r);
     } catch (err) {
       console.error("kickoff: deliver failed for unstreamed SMS", err);
     }
@@ -837,7 +856,7 @@ async function runFirstBatch(
           sms: "Tried to draft your first batch but you don't have pillars set yet — say \"rebuild my plan\" and I'll set those up first.",
         },
       ],
-      opts?.deliver,
+      opts,
     );
   }
   const visuals = resolveVisualMode(brand, payload);
@@ -939,7 +958,7 @@ async function runFirstBatch(
                 "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
             ),
       ],
-      opts?.deliver,
+      opts,
     );
   }
   return out;
@@ -961,7 +980,7 @@ async function runDraftPosts(
           sms: "Need pillars before I draft — say \"rebuild my plan\" and I'll set those up.",
         },
       ],
-      opts?.deliver,
+      opts,
     );
   }
   const visuals = resolveVisualMode(brand, payload);
@@ -1054,7 +1073,7 @@ async function runDraftPosts(
               qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
             ),
       ],
-      opts?.deliver,
+      opts,
     );
   }
   return out;
@@ -1211,6 +1230,10 @@ export async function processKickoff(
   const claimed = await claimKickoff(kickoffId);
   if (!claimed) return [];
   const brandId = claimed.brand_id;
+  const drainOpts: KickoffDrainOpts = {
+    ...opts,
+    interruptAfter: claimed.created_at ?? claimed.started_at ?? undefined,
+  };
 
   const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
     if (!opts?.deliver) return;
@@ -1243,10 +1266,10 @@ export async function processKickoff(
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
       case "first_batch":
-        results = await runFirstBatch(brand, payload, opts, heartbeat);
+        results = await runFirstBatch(brand, payload, drainOpts, heartbeat);
         break;
       case "draft_posts":
-        results = await runDraftPosts(brand, payload, opts, heartbeat);
+        results = await runDraftPosts(brand, payload, drainOpts, heartbeat);
         break;
       case "trend_draft":
       case "competitor_draft":
@@ -1279,8 +1302,12 @@ export async function processKickoff(
     const failResult: KickoffDrainResult = {
       brandId,
       sms: "That background task glitched on my side — say the word and I'll retry.",
+      skipIfInboundAfter: claimed.created_at ?? claimed.started_at ?? undefined,
     };
-    await deliverOnce(failResult);
+    const since = failResult.skipIfInboundAfter;
+    if (!since || !(await ownerInboundAfter(brandId, since))) {
+      await deliverOnce(failResult);
+    }
     return [failResult];
   } finally {
     clearInterval(stopHeartbeat);
