@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { looksLikeSkipConnect, looksLikeUnsureReply } from "../onboarding.js";
 
 describe("looksLikeSkipConnect", () => {
@@ -28,5 +31,18 @@ describe("looksLikeUnsureReply", () => {
   it("rejects real answers", () => {
     expect(looksLikeUnsureReply("entrepreneurial tips and quotes")).toBe(false);
     expect(looksLikeUnsureReply("faceless stock photos")).toBe(false);
+  });
+});
+
+describe("lab chat restart", () => {
+  it("clears the previous owner name and voice profile before the new greeting", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    const fn = src.slice(src.indexOf("export async function archiveLabChatAndRestart"));
+    expect(fn).toMatch(/delete facts\.owner_name/);
+    expect(fn).toMatch(/emptyBrandVoiceProfile/);
+    expect(fn.indexOf("delete facts.owner_name")).toBeLessThan(fn.indexOf("restartOnboarding"));
   });
 });

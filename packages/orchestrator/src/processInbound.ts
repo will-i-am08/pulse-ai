@@ -2167,34 +2167,12 @@ async function routeInbound(
         return { reply: queued.sms };
       }
 
-      // "Make a reel" with no media → use fresh banked photos or ask for a clip.
+      // "Make a reel" with no clip attached — ask for the video. Don't raid
+      // the photo bank and try to animate stills; that turns into a failed
+      // motion job plus a static draft.
       if (message.body && looksLikeMakeReelRequest(message.body) && newMedia.length === 0) {
-        const pillars = await ensurePillars(brand.id);
-        const pillar = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
-        const photos = pillar ? await pickFreshPhotos(brand.id, 3) : [];
-        if (pillar && photos.length >= 1) {
-          const reel = await draftReelFromStills(
-            brand,
-            photos.map((p) => p.id),
-            pillar,
-          );
-          if (reel.ok) {
-            const when = reel.post.scheduled_at
-              ? formatSlot(new Date(reel.post.scheduled_at))
-              : "soon";
-            return {
-              reply: `Made a Reel from your photos.\n\n${reel.post.caption}\n\nProposed for ${when}. Reply yes to send it, or send a video clip for a native Reel.`,
-              postId: reel.post.id,
-              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
-            };
-          }
-          return {
-            reply: `${videoEditFallbackSms(brand.name)} Or send a video clip and I'll draft a Reel from that.`,
-          };
-        }
         return {
-          reply:
-            'Send me a video clip (or a few photos) and say "make a reel" — or "generate a video …" for AI video.',
+          reply: "Send me the video clip and I'll draft the Reel from that.",
         };
       }
 

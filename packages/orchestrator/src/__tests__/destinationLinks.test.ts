@@ -268,5 +268,6 @@ describe("intent helpers", () => {
   it("asks to confirm an update as a booking link, not a post CTA", () => {
     expect(confirmationSms("https://calendly.com/lab-cafe", "update")).toMatch(/as your booking link/);
     expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/for this post/);
+    expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/Reply "yes"/);
   });
 });

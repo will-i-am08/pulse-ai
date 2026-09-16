@@ -263,7 +263,7 @@ export function confirmationSms(url: string, context?: DestinationLinkContext): 
           : "for this post";
   return (
     `Is this the right link ${why}?\n${url}\n\n` +
-    `Reply "yes" to use it, send the correct URL, or "no" to skip.`
+    `Reply yes to use it, send the correct URL, or no to skip.`
   );
 }
 
