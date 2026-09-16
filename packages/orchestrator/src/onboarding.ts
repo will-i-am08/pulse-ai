@@ -123,7 +123,7 @@ function interviewerSystem(
   return [
     `${brandTalkingIdentity(brand)} Getting set up for a ${kind}. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
     brand.facts?.lab
-      ? "LAB CHAT: The account name on file is a placeholder. Your FIRST question must learn what they actually do. Never open with coffee, café, Lab Cafe, or any assumption from the account name."
+      ? "LAB CHAT: The account name on file is a placeholder. Never say that name, Lab Cafe, café, or coffee to the owner. Never call it a placeholder out loud. Your FIRST question is simply what they actually do."
       : "",
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     priorContent
@@ -1229,16 +1229,18 @@ async function compileProfile(
 /** Owner-facing voice recap — no dashboard send-off, no "I'll skip use jokes". */
 export function voiceRecapSms(tone: string[], donts: string[]): string {
   const toneBit = tone.length ? tone.slice(0, 3).join(", ") : "friendly and direct";
-  const avoid = formatAvoidList(donts);
-  const avoidBit = avoid ? ` I'll stay clear of ${avoid}.` : "";
+  const avoidBits = donts.slice(0, 2).map(formatDontLine).filter(Boolean);
+  const avoidBit = avoidBits.length ? ` ${avoidBits.join(" ")}` : "";
   return `Here's how I'm reading your voice: ${toneBit}.${avoidBit}`;
 }
 
-function formatAvoidList(donts: string[]): string | null {
-  const parts = donts.slice(0, 2).map(normalizeDont).filter(Boolean);
-  if (parts.length === 0) return null;
-  if (parts.length === 1) return parts[0]!;
-  return `${parts[0]} and ${parts[1]}`;
+function formatDontLine(raw: string): string {
+  const s = normalizeDont(raw);
+  if (!s) return "";
+  if (/^(create|use|invent|make|sell|shout|post|run|add|include|write)\b/i.test(s)) {
+    return `I won't ${s}.`;
+  }
+  return `I'll stay clear of ${s}.`;
 }
 
 function normalizeDont(raw: string): string {

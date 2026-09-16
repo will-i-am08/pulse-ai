@@ -55,8 +55,10 @@ describe("voiceRecapSms", () => {
   it("does not say I'll skip use-jokes or send them to a dashboard", () => {
     const sms = voiceRecapSms(["warm", "direct"], ["use jokes in captions", "Don't sell hard"]);
     expect(sms).toMatch(/warm, direct/);
-    expect(sms).toMatch(/stay clear of jokes in captions and sell hard/i);
+    expect(sms).toMatch(/I'll stay clear of jokes in captions/i);
+    expect(sms).toMatch(/I won't sell hard/i);
     expect(sms).not.toMatch(/I'll skip use /i);
+    expect(sms).not.toMatch(/I'll stay clear of .+ and /i);
     expect(sms).not.toMatch(/dashboard/i);
   });
 });

@@ -12,6 +12,7 @@ import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
 import { loadRecentChatTurns } from "./conversationContext.js";
 import { isReelOnlyAsk, looksLikeKickoffRequest, maybeEnqueueFromKipCommit } from "./kickoffs.js";
+import { looksLikeCompetitorAsk } from "./competitors.js";
 import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
@@ -48,7 +49,7 @@ export function generalAgentEligible(opts: {
 }): boolean {
   if (!opts.flag || opts.hasMedia || opts.hasPending) return false;
   const t = (opts.ownerMessage ?? "").trim();
-  if (t && (isReelOnlyAsk(t) || looksLikeKickoffRequest(t))) return false;
+  if (t && (isReelOnlyAsk(t) || looksLikeKickoffRequest(t) || looksLikeCompetitorAsk(t))) return false;
   return true;
 }
 

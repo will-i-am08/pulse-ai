@@ -3,6 +3,16 @@ import { callLLM, stripMarkdown } from "./llm.js";
 import { persistCompetitorResearch, safePublicUrl } from "./research.js";
 import { brandTalkingIdentity } from "./persona.js";
 
+/** Owner is asking what a rival is doing on ads or socials. */
+export function looksLikeCompetitorAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  return (
+    /\b(competitors?|competition|rivals?|spy on|size up|scope out|ad library|keep an eye on)\b|\bwhat(?:'?s| is| are)\b[\w'&.\- ]{1,40}\b(?:running|advertising|posting|doing|promoting|up to)\b[\w'&.\- ]{0,25}\b(?:ad|ads|social|socials|insta|instagram|facebook|fb|tiktok)\b/i.test(
+      body,
+    )
+  );
+}
+
 const MAX_WATCHES = 3;
 
 // Competitor intelligence: given a competitor the owner names, find their socials

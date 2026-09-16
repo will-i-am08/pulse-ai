@@ -83,7 +83,7 @@ import {
 } from "./crmWebhook.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
-import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
+import { competitorIntel, addCompetitorWatch, extractCompetitorName, looksLikeCompetitorAsk } from "./competitors.js";
 import {
   getProposedPlan,
   applyNichePlan,
@@ -338,11 +338,6 @@ async function maybeEnqueueFromKipCommitIfAsked(
   if (!userAskedForContentWork(userMessage)) return;
   await maybeEnqueueFromKipCommit(brand, userMessage, kipReply, sourceMessageId);
 }
-
-// Competitor-intel intent: "what's X doing on ads/socials", "check out the
-// competition", "spy on [name]", "ad library". Routed to a web-search rundown.
-const COMPETITOR_RE =
-  /\b(competitors?|competition|rivals?|spy on|size up|scope out|ad library|keep an eye on)\b|\bwhat(?:'?s| is| are)\b[\w'&.\- ]{1,40}\b(?:running|advertising|posting|doing|promoting|up to)\b[\w'&.\- ]{0,25}\b(?:ad|ads|social|socials|insta|instagram|facebook|fb|tiktok)\b/i;
 
 // "Keep an eye on X" / "watch X" — also registers a weekly competitor watch.
 const WATCH_ADD_RE = /\b(keep (?:an eye|tabs) on|start watching|watch|monitor|track)\s+\S/i;
@@ -1546,7 +1541,7 @@ async function routeInbound(
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.
   // Runs before the classifier switch since it can read as a question or an instruction.
-  if (message.body && newMedia.length === 0 && COMPETITOR_RE.test(message.body)) {
+  if (message.body && newMedia.length === 0 && looksLikeCompetitorAsk(message.body)) {
     // "Keep an eye on X" also registers a weekly watch, then gives the first rundown.
     if (WATCH_ADD_RE.test(message.body)) {
       const name = extractCompetitorName(message.body);

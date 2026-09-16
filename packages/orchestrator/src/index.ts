@@ -345,6 +345,7 @@ export {
 } from "./nichePlan.js";
 export {
   competitorIntel,
+  looksLikeCompetitorAsk,
   extractCompetitorName,
   addCompetitorWatch,
   listCompetitorWatches,
