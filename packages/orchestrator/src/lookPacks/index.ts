@@ -147,9 +147,9 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     baseDirection:
       "Bloom-true floral photography: honest colour on the real stems and wrap. Keep the actual arrangement recognisable — never swap flowers.",
     variantDirections: [
-      "Bright daylight close-up of the real blooms, crisp petals, shallow depth — keep the actual arrangement exact.",
-      "Darker editorial grade on the same flowers, moody shadows still readable, richer colour — do not change the bouquet.",
-      "Lifestyle wrapping or counter framing of the real arrangement (hands or kraft paper only if already in frame) — same flowers, wider context.",
+      "Tight petal close-up filling the frame, bright window light, shallow depth — keep the actual flowers exact.",
+      "Wider overhead of the full bouquet on a counter or kraft wrap, more of the table in frame — same flowers, clearly a wider crop than a close-up. Simple kraft or linen staging around the real blooms is fine; do not swap varieties.",
+      "45-degree side angle, darker editorial shadows, more negative space around the arrangement — same flowers, a third distinct crop and grade from the close-up and the overhead.",
     ],
     negativeCues: "no invented blooms, no swapped varieties, no fake shop signage",
     defaultAspect: "4:5",

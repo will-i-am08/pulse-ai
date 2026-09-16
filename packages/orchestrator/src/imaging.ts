@@ -554,8 +554,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never include a person's name. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",

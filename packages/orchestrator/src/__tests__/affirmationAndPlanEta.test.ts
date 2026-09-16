@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { looksLikeAffirmation } from "../classify.js";
 import { planOverrunNudge, ONBOARDING_PLAN_ETA_MINUTES } from "../nichePlan.js";
+import { WRAP_ACK } from "../onboarding.js";
+import { WRAP_ACK_PREFIX } from "../conversationContext.js";
 
 describe("looksLikeAffirmation", () => {
   it("detects pure vibes that aren't actionable approvals", () => {
@@ -29,6 +31,10 @@ describe("plan ETA helpers", () => {
   it("does not send the overrun immediately when research is not ready", () => {
     const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../gateway/src/gateway.ts"), "utf8");
     expect(src).toMatch(/worker nudges after promised_at/);
-    expect(src).toMatch(/ownerInboundAfter/);
+    expect(src).toMatch(/ownerMovedOnSinceWrapAck/);
+  });
+
+  it("ties wrap-ack detection to the live WRAP_ACK SMS", () => {
+    expect(WRAP_ACK.startsWith(WRAP_ACK_PREFIX)).toBe(true);
   });
 });

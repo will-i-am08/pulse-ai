@@ -8,7 +8,7 @@ import {
   planTextSummary,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
-  ownerInboundAfter,
+  ownerMovedOnSinceWrapAck,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -41,12 +41,9 @@ export async function runNichePlanLoop(): Promise<void> {
         continue;
       }
       // Don't interrupt a live beat (hi / reel / photo) with a plan or overrun.
-      const wrappedAt = brand.onboarding_state?.completed_at;
-      if (
-        isOnboardingTimedPlan(row) &&
-        wrappedAt &&
-        (await ownerInboundAfter(brand.id, wrappedAt, { withinMinutes: 10 }))
-      ) {
+      // Use wrap-ack time, not completed_at — inbound during voice compile is
+      // otherwise invisible.
+      if (isOnboardingTimedPlan(row) && (await ownerMovedOnSinceWrapAck(brand.id))) {
         continue;
       }
       // Onboarding plans promised a concrete ETA — prefer the fast path.

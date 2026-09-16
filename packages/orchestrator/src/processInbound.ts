@@ -688,12 +688,17 @@ async function routeInbound(
     if (!step.complete) return { reply: step.reply };
     return { reply: WRAP_ACK, finishOnboardingBrandId: brand.id };
   }
-  // Wrap-up compiling in the background: don't start over — ack and hold the line.
+  // Wrap-up compiling in the background: don't start over. If they already
+  // asked for a draft, hold quietly — the plan tease must not pile on after.
   if (brand.onboarding_state?.status === "wrapping_up") {
+    const wrapBody = message.body ?? "";
+    if (looksLikeKickoffRequest(wrapBody) || DRAFT_FILLER_RE.test(wrapBody) || looksLikeMakeReelRequest(wrapBody)) {
+      return { reply: "Got it — finishing your voice first, then I'll draft that." };
+    }
     return {
       reply: acknowledgeThenContinue(
         brand,
-        message.body ?? "",
+        wrapBody,
         "Still putting your voice together — nearly there.",
       ),
     };

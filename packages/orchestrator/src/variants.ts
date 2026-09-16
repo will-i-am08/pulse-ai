@@ -118,7 +118,8 @@ export async function generatePhotoVariants(
   const ids = await mapWithConcurrency(directions, SLIDE_RENDER_CONCURRENCY, async (dir, i) => {
     const request = [
       pack.baseDirection,
-      dir,
+      `Look ${i + 1} of ${count}: ${dir}`,
+      `This look MUST be obviously different from the other ${count - 1} looks — different crop AND lighting, not a near-duplicate grade of the same crop.`,
       pack.negativeCues ? `Avoid: ${pack.negativeCues}.` : "",
       hint ? `Also: ${hint}.` : "",
       "Output must stay truthful to the real subject in the photo.",
