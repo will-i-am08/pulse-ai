@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { looksLikeSkipConnect, looksLikeUnsureReply, voiceRecapSms } from "../onboarding.js";
+import { looksLikeSkipConnect, looksLikeUnsureReply, looksLikeReadyToWrap, voiceRecapSms } from "../onboarding.js";
 
 describe("looksLikeSkipConnect", () => {
   it("accepts common skip phrases", () => {
@@ -34,6 +34,19 @@ describe("looksLikeUnsureReply", () => {
   });
 });
 
+describe("looksLikeReadyToWrap", () => {
+  it("matches a clear we're-good", () => {
+    expect(looksLikeReadyToWrap("yeah that sounds right")).toBe(true);
+    expect(looksLikeReadyToWrap("that's enough, wrap it")).toBe(true);
+    expect(looksLikeReadyToWrap("sound right")).toBe(true);
+  });
+
+  it("does not wrap a real answer or a bare yeah", () => {
+    expect(looksLikeReadyToWrap("yeah")).toBe(false);
+    expect(looksLikeReadyToWrap("Homeowners around Brunswick")).toBe(false);
+  });
+});
+
 describe("lab chat restart", () => {
   it("clears the previous owner name, kip memory, and voice before the new greeting", () => {
     const src = readFileSync(
@@ -56,6 +69,15 @@ describe("lab chat restart", () => {
     expect(fn).toMatch(/content_plans/);
     expect(fn).toMatch(/'pending', 'proposed', 'accepted'/);
     expect(fn.indexOf("delete facts.owner_name")).toBeLessThan(fn.indexOf("restartOnboarding"));
+  });
+
+  it("wraps on yeah-that-sounds-right without another discovery question", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/looksLikeReadyToWrap/);
+    expect(src).toMatch(/turns >= 3 && looksLikeReadyToWrap/);
   });
 
   it("tells the interviewer this is a brand-new chat with no prior memory", () => {

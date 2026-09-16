@@ -984,6 +984,17 @@ export function looksLikeUnsureReply(body: string): boolean {
   );
 }
 
+/** Strong "we're good" — wrap even if the brief SMS hasn't landed yet. */
+export function looksLikeReadyToWrap(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return (
+    /^(yeah that sounds right|that sounds right|sounds? (good|right)|wrap it|that'?s enough|that'?s it|sound right)\b/i.test(
+      t,
+    ) || /\b(wrap it up|that'?s enough, wrap)\b/i.test(t)
+  );
+}
+
 function countUnsureUserReplies(transcript: OnboardingTurnMsg[]): number {
   return transcript.filter((t) => t.role === "user" && looksLikeUnsureReply(t.content)).length;
 }
@@ -1068,18 +1079,15 @@ export async function onboardingNext(
 
   const unsureCount = countUnsureUserReplies(transcript);
   const briefSent = alreadySentBrief(transcript);
-  // They confirmed a brief — stop interviewing and wrap.
-  if (
-    briefSent &&
+  const confirm =
     /^(y+|yes|yeah|yep|yup|correct|sounds? good|perfect|right|done|that's (it|right)|thats (it|right)|good)\b/i.test(
       body.trim(),
-    )
-  ) {
-    messages.push({
-      role: "user",
-      content:
-        "(They just confirmed your brief. Do NOT ask another question. Wrap up NOW with SETUP_COMPLETE and a warm sign-off.)",
-    });
+    );
+  // They confirmed a brief, or they clearly want to stop interviewing.
+  if ((briefSent && confirm) || (turns >= 3 && looksLikeReadyToWrap(body))) {
+    transcript.push({ role: "assistant", content: "SETUP_COMPLETE:" });
+    await saveState(brand.id, { status: "wrapping_up", type, turns, transcript, answers });
+    return { reply: WRAP_ACK, complete: true };
   } else if (!briefSent && (unsureCount >= 2 || turns >= 4)) {
     // Enough signal (or too many idks) — force a plain-English brief + single confirm.
     messages.push({
