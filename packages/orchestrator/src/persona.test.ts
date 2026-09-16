@@ -49,7 +49,7 @@ describe("personaVoiceLines", () => {
   it("does not treat a lab placeholder name as the real business", () => {
     const brand = { name: "Lab Cafe", facts: { lab: true } } as unknown as Brand;
     const voice = personaVoiceLines(brand).join("\n");
-    expect(voice).toMatch(/placeholder/i);
+    expect(voice).toMatch(/Never mention the dashboard account name/i);
     expect(voice).not.toMatch(/You are Kip — "Lab Cafe"'s social media manager/);
   });
 });

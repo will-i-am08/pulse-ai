@@ -261,10 +261,7 @@ export function confirmationSms(url: string, context?: DestinationLinkContext): 
       : context === "onboarding" || context === "update"
           ? "as your booking link"
           : "for this post";
-  return (
-    `Is this the right link ${why}?\n${url}\n\n` +
-    `Reply yes to use it, send the correct URL, or no to skip.`
-  );
+  return `Is this the right link ${why}? ${url} Reply yes to use it, send the correct URL, or no to skip.`;
 }
 
 /**

@@ -274,6 +274,14 @@ describe("generalAgentEligible", () => {
         ownerMessage: "draft me 3 posts",
       }),
     ).toBe(false);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "what's Petbarn doing on instagram?",
+      }),
+    ).toBe(false);
   });
 });
 

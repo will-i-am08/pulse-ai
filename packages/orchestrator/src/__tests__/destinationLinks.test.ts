@@ -269,5 +269,6 @@ describe("intent helpers", () => {
     expect(confirmationSms("https://calendly.com/lab-cafe", "update")).toMatch(/as your booking link/);
     expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/for this post/);
     expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/Reply "yes"/);
+    expect(confirmationSms("https://calendly.com/lab-cafe", "update")).not.toMatch(/\n\n/);
   });
 });

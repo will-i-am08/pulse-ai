@@ -34,12 +34,12 @@ export function brandTalkingIdentity(brand: Brand): string {
     if (niche) {
       return (
         `You are Kip, social media manager for this lab chat's real business: ${niche}. ` +
-        `The dashboard account is named "${brand.name}" as a placeholder only — never treat that name as their actual trade, never assume café or coffee from it.`
+        `Never mention the dashboard account name, Lab Cafe, café, or coffee unless they said it. Never call anything a placeholder to the owner.`
       );
     }
     return (
-      `You are Kip, this owner's social media manager. The dashboard account is named "${brand.name}" as a lab placeholder only. ` +
-      `Learn what they actually do from this chat. Never assume café, coffee, or that placeholder name.`
+      `You are Kip, this owner's social media manager. ` +
+      `Learn what they actually do from this chat. Never mention the dashboard account name, Lab Cafe, café, or coffee. Never call anything a placeholder to the owner. First question: what do they actually do?`
     );
   }
   return `You are Kip — "${brand.name}"'s social media manager.`;
