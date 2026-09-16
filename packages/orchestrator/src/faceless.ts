@@ -19,6 +19,8 @@ export type FacelessBrandBits = {
     business_name?: string;
     faceless?: boolean;
     nameless?: boolean;
+    lab?: boolean;
+    differentiators?: string;
   } | null;
   onboarding_state?: {
     transcript?: Array<{ content?: string; body?: string }>;
@@ -31,6 +33,9 @@ type OnboardingBits = NonNullable<FacelessBrandBits["onboarding_state"]>;
 
 const BUSINESS_NAME_HINT =
   /\b(cafe|café|coffee|kitchen|bakery|studio|salon|gym|clinic|dental|barber|shop|store|co\b|company|agency|media|lab|labs|restaurant|bar|inn|hotel|boutique|market|garage|motors|auto|fitness|yoga|spa|brewery|winery|farm|realty|law|legal|plumbing|electric)\b/i;
+
+const LAB_PLACEHOLDER_NAME = /^(lab\s*caf[eé]|lab\s*coffee)$/i;
+const CAFE_SCENE_RE = /\b(caf[eé]|coffee|espresso|latte|bakery|brunch|roaster|pastr)/i;
 
 function factsOf(brand: FacelessBrandBits): BrandFacts {
   return (brand.facts ?? {}) as BrandFacts;
@@ -103,17 +108,84 @@ export function personalNameTokens(brand: FacelessBrandBits): string[] {
   return [...tokens];
 }
 
+/** Dashboard dummy name used by lab chats — never a real marque. */
+export function isLabPlaceholderName(name: string | null | undefined): boolean {
+  return LAB_PLACEHOLDER_NAME.test((name ?? "").trim());
+}
+
+function labTradeLabel(brand: FacelessBrandBits): string {
+  const niche = factsOf(brand).differentiators;
+  return typeof niche === "string" ? niche.trim() : "";
+}
+
+/**
+ * Name / trade to put in image + overlay LLM prompts.
+ * Lab chats keep "Lab Cafe" on the dashboard row — never feed that to Flux.
+ */
+export function creativeBrandLabel(brand: FacelessBrandBits): string {
+  const facts = factsOf(brand);
+  if (facts.lab === true) {
+    const niche = labTradeLabel(brand);
+    if (niche) return niche;
+    return "this owner's business";
+  }
+  const business = (facts.business_name ?? "").trim();
+  if (business) return business;
+  return (brand.name ?? "").trim() || "this business";
+}
+
+function nicheLooksLikeCafe(niche: string): boolean {
+  return CAFE_SCENE_RE.test(niche);
+}
+
+/**
+ * T2I / edit constraint so a sparky (or florist, groomer, …) never inherits
+ * the lab dashboard's café pixels.
+ */
+export function creativeSceneConstraint(brand: FacelessBrandBits): string {
+  const facts = factsOf(brand);
+  if (facts.lab !== true) return "";
+  const niche = labTradeLabel(brand);
+  const cafeBan =
+    "Never depict a café, coffee shop, espresso machine, latte art, bakery counter, or Lab Cafe branding unless the owner said they run a café.";
+  if (niche) {
+    return [
+      `This business is: ${niche}. Depict that trade's real world — tools, job sites, clients, products, premises.`,
+      nicheLooksLikeCafe(niche) ? "" : cafeBan,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return `Depict the owner's actual trade from this chat. ${cafeBan} If the trade is unknown, use a generic honest workplace — not a café.`;
+}
+
+/** Drop leftover café visual DNA when this lab chat is not a café. */
+export function labSafeVisualBit(bit: string, brand: FacelessBrandBits): boolean {
+  if (!bit.trim()) return false;
+  if (factsOf(brand).lab !== true) return true;
+  if (nicheLooksLikeCafe(labTradeLabel(brand))) return true;
+  return !CAFE_SCENE_RE.test(bit);
+}
+
 /**
  * Masthead burned onto photo tiles / quote cards.
  * - Explicit nameless / faceless personal → empty (no "BILL CALDER").
+ * - Lab placeholder ("Lab Cafe") → empty; never stamp the dummy name.
  * - Real business name (café etc.) → brand / business_name stamp is OK.
  */
 export function overlayMasthead(brand: FacelessBrandBits): string {
   if (isNamelessCreative(brand)) return "";
   const facts = factsOf(brand);
+  if (facts.lab === true) {
+    const business = (facts.business_name ?? "").trim();
+    if (business && !isLabPlaceholderName(business)) return business.toUpperCase();
+    return "";
+  }
   const business = (facts.business_name ?? "").trim();
   if (business) return business.toUpperCase();
-  return (brand.name ?? "").trim().toUpperCase();
+  const name = (brand.name ?? "").trim();
+  if (isLabPlaceholderName(name)) return "";
+  return name.toUpperCase();
 }
 
 /** Prompt line for draft LLMs when the account is faceless / nameless-personal. */

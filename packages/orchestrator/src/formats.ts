@@ -21,6 +21,7 @@ import {
   generatePhotoImage,
   applyTextTile,
   brandPhotoStyleBits,
+  shouldOverlayHeadline,
 } from "./imaging.js";
 import {
   facelessPromptLine,
@@ -28,6 +29,8 @@ import {
   isFacelessBrand,
   overlayMasthead,
   stripPersonalNames,
+  creativeBrandLabel,
+  creativeSceneConstraint,
 } from "./faceless.js";
 import {
   looksLikeCityscapeBrief,
@@ -147,6 +150,26 @@ export function weightsFromFormatMix(mix: string | null | undefined): Array<[Pos
   return entries.length ? entries : null;
 }
 
+/** Burn a shared headline onto carousel slides when the owner asked for text. */
+async function overlayCarouselIfAsked(
+  brand: Brand,
+  mediaIds: string[],
+  caption: string,
+  brief?: string,
+): Promise<string[]> {
+  if (!brief?.trim()) return mediaIds;
+  if (!shouldOverlayHeadline(brand, brief, { caption, format: "carousel" })) {
+    return mediaIds;
+  }
+  const headline = await generateHeadline(brand, caption);
+  const out: string[] = [];
+  for (const id of mediaIds) {
+    const tiled = await applyTextTile(brand, id, headline);
+    out.push(tiled ?? id);
+  }
+  return out;
+}
+
 /** Turn the parked photos into ONE carousel post (consistent grade across slides). */
 export async function resolveAsCarousel(
   brand: Brand,
@@ -160,11 +183,12 @@ export async function resolveAsCarousel(
   }
 
   // C6: caption + shared grade in parallel where safe.
-  const [captionResult, mediaIds] = await Promise.all([
+  const [captionResult, gradedIds] = await Promise.all([
     draftCaption(brand.id, ids),
     gradePhotoBundle(brand, ids),
   ]);
   const caption = captionResult.caption;
+  const mediaIds = await overlayCarouselIfAsked(brand, gradedIds, caption);
 
   const pillars = await ensurePillars(brand.id);
   const pillar = await classifyPhotoPillar(brand, pillars, ids[0]!);
@@ -314,7 +338,7 @@ export async function classifyStoryTone(brand: Brand, text: string): Promise<"ca
   try {
     const verdict = await callLLM({
       system: [
-        `Classifying a Story for "${brand.name}". Is it a casual, behind-the-scenes CANDID, or SALESY (a price, discount, offer, guarantee, or a factual claim/promotion)?`,
+        `Classifying a Story for "${creativeBrandLabel(brand)}". Is it a casual, behind-the-scenes CANDID, or SALESY (a price, discount, offer, guarantee, or a factual claim/promotion)?`,
         'Answer with exactly one word: "candid" or "salesy". When unsure, answer "salesy".',
       ].join("\n"),
       messages: [{ role: "user", content: text.slice(0, 500) }],
@@ -339,7 +363,7 @@ export async function draftStoryOverlay(
   try {
     const raw = await callLLM({
       system: [
-        `Write STORY overlay copy for "${brand.name}" — Instagram Stories are ephemeral and vertical.`,
+        `Write STORY overlay copy for "${creativeBrandLabel(brand)}" — Instagram Stories are ephemeral and vertical.`,
         "Do NOT write a feed-length caption. Output ONLY JSON:",
         '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
@@ -433,7 +457,7 @@ export async function generateTypedCarousel(
   };
 
   const system = [
-    `You write a ${kindGuide[kind]} for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    `You write a ${kindGuide[kind]} for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     'Output ONLY JSON: {"caption":"<short feed caption>","slides":["<slide 1>","<slide 2>",...]}',
     "3 to 5 slides. Each slide is ONE short punchy line (max about 10 words). No emoji, no quotes, no dashes of any kind.",
@@ -556,8 +580,9 @@ export async function generatePhotoTextCarousel(
     /* creativePlan optional */
   }
   const system = [
-    `You write a swipeable Instagram carousel for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
+    creativeSceneConstraint(brand),
     visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
     looksLikeComparisonBrief(topic)
@@ -740,10 +765,15 @@ export async function generatePhotoTextCarousel(
         ? "hero composition, sharp subject, clean background, premium editorial still, photoreal not AI-slop"
         : "",
       noFace,
+      creativeSceneConstraint(brand),
     ]
       .filter(Boolean)
       .join(". ");
-    let img = await generatePhotoImage(prompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+    let img = await generatePhotoImage(prompt, "1:1", {
+      quality: photoQuality,
+      brief: topic || undefined,
+      brand,
+    });
     if (index === 0 && img && !opts?.strongerPhoto) {
       const retryPrompt = [
         slide.photoPrompt,
@@ -751,10 +781,15 @@ export async function generatePhotoTextCarousel(
         dnaBit,
         "hero composition, sharp subject, clean background, premium editorial still",
         noFace,
+        creativeSceneConstraint(brand),
       ]
         .filter(Boolean)
         .join(". ");
-      const retry = await generatePhotoImage(retryPrompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+      const retry = await generatePhotoImage(retryPrompt, "1:1", {
+        quality: photoQuality,
+        brief: topic || undefined,
+        brand,
+      });
       if (retry) img = retry;
     }
     if (!img) return null;
@@ -968,13 +1003,15 @@ export async function draftCarouselFromPhotos(
   brand: Brand,
   photoIds: string[],
   pillar: Pillar,
+  opts?: { brief?: string },
 ): Promise<{ post: Post; mediaUrl: string | null } | null> {
   if (photoIds.length < 2) return null;
-  const [captionResult, mediaIds] = await Promise.all([
+  const [captionResult, gradedIds] = await Promise.all([
     draftCaption(brand.id, photoIds),
     gradePhotoBundle(brand, photoIds),
   ]);
   const caption = captionResult.caption;
+  const mediaIds = await overlayCarouselIfAsked(brand, gradedIds, caption, opts?.brief);
   // Generated/bot-assembled value still respects autopilot for *photo* bundles,
   // but tip/typed generators above always force pending_approval.
   const autopilot = Boolean(pillar.autopilot);

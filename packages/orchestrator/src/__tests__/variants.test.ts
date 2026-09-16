@@ -52,13 +52,17 @@ describe("look packs", () => {
     expect(resolveLookPackFromNiche("local plumber tradie").id).toBe("tradie_daylight");
     expect(resolveLookPackFromNiche("pizza restaurant").id).toBe("food_hero");
     expect(resolveLookPackFromNiche("candle boutique retail").id).toBe("retail_shelf");
+    expect(resolveLookPackFromNiche("neighbourhood florist bouquet").id).toBe("florist_bloom");
+    expect(resolveLookPackFromNiche("dog groomer in Bondi").id).toBe("salon_clean");
+    expect(resolveLookPackFromNiche("emergency electrician sparky").id).toBe("tradie_daylight");
     expect(resolveLookPackFromNiche("random consulting").id).toBe("generic_faithful");
   });
 
   it("each pack has three variant directions", () => {
     for (const pack of Object.values(LOOK_PACKS_V1)) {
-      expect(pack.variantDirections).toHaveLength(3);
-      expect(pack.defaultAspect).toBe("4:5");
+    expect(pack.variantDirections).toHaveLength(3);
+    expect(new Set(pack.variantDirections).size).toBe(3);
+    expect(pack.defaultAspect).toBe("4:5");
     }
   });
 

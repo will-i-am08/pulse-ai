@@ -7,6 +7,9 @@ import {
   stripPersonalNames,
   facelessPromptLine,
   facelessPhotoConstraint,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  isLabPlaceholderName,
 } from "../faceless.js";
 import { looksLikeGapFillDraftAsk } from "../draftAsk.js";
 import { inferKickoffFromUserMessage, looksLikeKickoffRequest } from "../kickoffs.js";
@@ -18,6 +21,8 @@ type MiniBrand = {
     nameless?: boolean;
     owner_name?: string;
     business_name?: string;
+    lab?: boolean;
+    differentiators?: string;
   };
   onboarding_state: {
     status?: string;
@@ -107,6 +112,29 @@ describe("faceless / nameless creatives", () => {
     expect(isFacelessBrand(b)).toBe(true);
     expect(isNamelessCreative(b)).toBe(false);
     expect(overlayMasthead(b)).toBe("BILL CALDER");
+  });
+
+  it("never stamps Lab Cafe onto lab-chat creatives", () => {
+    const sparky = mini({
+      name: "Lab Cafe",
+      facts: { lab: true, differentiators: "emergency electrician in Brunswick" },
+    });
+    expect(isLabPlaceholderName("Lab Cafe")).toBe(true);
+    expect(creativeBrandLabel(sparky)).toMatch(/electrician/i);
+    expect(creativeBrandLabel(sparky)).not.toMatch(/lab cafe/i);
+    expect(overlayMasthead(sparky)).toBe("");
+    expect(creativeSceneConstraint(sparky)).toMatch(/electrician/i);
+    expect(creativeSceneConstraint(sparky)).toMatch(/espresso/i);
+    expect(creativeSceneConstraint(sparky)).not.toMatch(/unless they said they run a café.*electrician/i);
+  });
+
+  it("lab with a real business_name may stamp that marque", () => {
+    const b = mini({
+      name: "Lab Cafe",
+      facts: { lab: true, business_name: "Spark Right", differentiators: "electrician" },
+    });
+    expect(overlayMasthead(b)).toBe("SPARK RIGHT");
+    expect(creativeBrandLabel(b)).toBe("electrician");
   });
 });
 

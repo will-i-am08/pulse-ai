@@ -3,6 +3,7 @@ import { draftCaption } from "./draftCaption.js";
 import { editImageForBrand } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
+import { labSafeVisualBit } from "./faceless.js";
 
 // The photo library: every photo the client texts in is banked as a media_asset,
 // forever. Two pools:
@@ -102,9 +103,11 @@ export async function bankedPhotoCount(brandId: string): Promise<number> {
 export function visualReference(brand: Brand, hasRealPhotos = false): string {
   const v = brand.visual ?? {};
   const bits: string[] = [];
-  if (v.aesthetic) bits.push(v.aesthetic);
-  if (v.aesthetic_notes) bits.push(v.aesthetic_notes);
-  if (v.photo_treatment) bits.push(`photo treatment: ${v.photo_treatment}`);
+  if (v.aesthetic && labSafeVisualBit(v.aesthetic, brand)) bits.push(v.aesthetic);
+  if (v.aesthetic_notes && labSafeVisualBit(v.aesthetic_notes, brand)) bits.push(v.aesthetic_notes);
+  if (v.photo_treatment && labSafeVisualBit(v.photo_treatment, brand)) {
+    bits.push(`photo treatment: ${v.photo_treatment}`);
+  }
   if (v.colors?.length) bits.push(`colours ${v.colors.join(", ")}`);
   if (v.fonts?.length) bits.push(`fonts ${v.fonts.join(", ")}`);
   if (bits.length) return `Match the brand's real aesthetic — ${bits.join("; ")}.`;

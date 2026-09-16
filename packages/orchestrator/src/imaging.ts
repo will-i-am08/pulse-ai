@@ -17,7 +17,14 @@ import {
 import { callLLM } from "./llm.js";
 import { routeImageJob, stillChainForQuality, type CreativeQuality } from "./modelRouter.js";
 import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
-import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
+import {
+  overlayMasthead,
+  isNamelessCreative,
+  stripPersonalNames,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  labSafeVisualBit,
+} from "./faceless.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
@@ -147,7 +154,7 @@ export function brandPhotoStyleBits(brand: Brand): string[] {
     ps.framing ? `framing: ${ps.framing}` : "",
     ps.common_subjects?.length ? `common subjects: ${ps.common_subjects.join(", ")}` : "",
     ps.recurring_motifs?.length ? `motifs: ${ps.recurring_motifs.join(", ")}` : "",
-  ].filter((b): b is string => Boolean(b));
+  ].filter((b): b is string => typeof b === "string" && labSafeVisualBit(b, brand));
 }
 
 /** Vision LLM: given the photo + brand (+ the client's own request), write a Flux Kontext edit instruction. */
@@ -172,6 +179,7 @@ export async function generateEditPrompt(
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
     styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
     asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else (still keep business subjects truthful).` : "",
+    creativeSceneConstraint(brand),
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
@@ -186,7 +194,7 @@ export async function generateEditPrompt(
     .toBuffer();
   const content: ContentPart[] = [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } },
-    { type: "text", text: `Brand: "${brand.name}". Write the single edit instruction now.` },
+    { type: "text", text: `Brand: "${creativeBrandLabel(brand)}". Write the single edit instruction now.` },
   ];
   const out = await callLLM({ system, messages: [{ role: "user", content }], maxTokens: 150 });
   return out.trim();
@@ -315,7 +323,9 @@ export async function generatePhotoImage(
     );
   }
 
-  const buf = await generatePhotoImageInner(prompt, ratio, quality, opts?.brief);
+  const scene = brand ? creativeSceneConstraint(brand) : "";
+  const fullPrompt = [prompt, scene].filter(Boolean).join(". ");
+  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief);
   if (buf && brand) await recordAiSpend(brand.id, "image").catch(() => {});
   return buf;
 }
@@ -551,7 +561,7 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
         role: "user",
         content: nameless
           ? `Faceless brand voice. Post caption: "${caption}". Give the overlay headline (no personal names).`
-          : `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.`,
+          : `Brand: ${creativeBrandLabel(brand)}. Post caption: "${caption}". Give the overlay headline.`,
       },
     ],
     maxTokens: 20,
@@ -562,7 +572,7 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   );
   // Never fall back to the owner's personal brand name on faceless accounts.
   if (cleaned) return cleaned;
-  return nameless ? "START HERE" : brand.name.toUpperCase();
+  return overlayMasthead(brand) || "START HERE";
 }
 
 /**

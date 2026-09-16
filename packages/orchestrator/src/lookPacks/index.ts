@@ -10,6 +10,7 @@ export type LookPackId =
   | "tradie_daylight"
   | "food_hero"
   | "retail_shelf"
+  | "florist_bloom"
   | "generic_faithful";
 
 export type LookPack = {
@@ -49,7 +50,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     id: "salon_clean",
     label: "Salon clean",
     smsName: "salon-clean",
-    niches: ["salon", "hair", "beauty", "barber", "spa", "nails", "lash", "brow", "skincare clinic"],
+    niches: ["salon", "hair", "beauty", "barber", "spa", "nails", "lash", "brow", "skincare clinic", "groomer", "dog groom", "pet groom"],
     baseDirection:
       "Clean salon editorial: bright even light, crisp whites, polished mirrors and tools. Keep the real cut, colour, and space accurate.",
     variantDirections: [
@@ -85,6 +86,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
       "tradie",
       "plumber",
       "electrician",
+      "sparky",
+      "sparkie",
       "builder",
       "carpenter",
       "roofer",
@@ -96,9 +99,9 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     baseDirection:
       "Honest daylight on real work: clear detail on tools, materials, and finished jobs. Keep the real site and craftsmanship truthful.",
     variantDirections: [
-      "Clear outdoor daylight on the real job site — keep materials and finished work exact.",
-      "Closer detail of the real craftsmanship (joint, finish, install) with tidy framing.",
-      "Warm late-day light on the real van/tools/work — no invented brand logos or fake before/after.",
+      "Wide establishing daylight shot of the real job site, switchboard, or van — keep materials and finished work exact.",
+      "Tight macro of the real install (wiring, fitting, joint, finish) with tidy framing and a clearly different crop from a wide shot.",
+      "Warm late-day wrap on the real tools or completed board — different colour grade and angle from the other two looks, no invented brand logos.",
     ],
     negativeCues: "no fake certifications, no invented logos on vans",
     defaultAspect: "4:5",
@@ -136,6 +139,22 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     defaultAspect: "4:5",
     motionHint: "gentle turntable orbit of the product",
   },
+  florist_bloom: {
+    id: "florist_bloom",
+    label: "Florist bloom",
+    smsName: "florist-bloom",
+    niches: ["florist", "flower", "bloom", "bouquet", "floral", "posy"],
+    baseDirection:
+      "Bloom-true floral photography: honest colour on the real stems and wrap. Keep the actual arrangement recognisable — never swap flowers.",
+    variantDirections: [
+      "Bright daylight close-up of the real blooms, crisp petals, shallow depth — keep the actual arrangement exact.",
+      "Darker editorial grade on the same flowers, moody shadows still readable, richer colour — do not change the bouquet.",
+      "Lifestyle wrapping or counter framing of the real arrangement (hands or kraft paper only if already in frame) — same flowers, wider context.",
+    ],
+    negativeCues: "no invented blooms, no swapped varieties, no fake shop signage",
+    defaultAspect: "4:5",
+    motionHint: "slow drift across petals",
+  },
   generic_faithful: {
     id: "generic_faithful",
     label: "Faithful polish",
@@ -144,9 +163,9 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     baseDirection:
       "Faithful social polish: better light, colour fidelity, and tidiness while keeping the real subject recognisable.",
     variantDirections: [
-      "Brighter balanced light and cleaner colour on the real subject — no reinvention.",
-      "Slightly tighter crop with softer background blur — keep the subject exact.",
-      "Warmer natural grade with tidy edges — same scene, more scroll-stopping polish.",
+      "Brighter even light and cleaner colour, slightly wider scene — keep the real subject exact.",
+      "Dramatic tighter crop with shallow depth and darker readable edges — same subject, clearly a different framing.",
+      "Cooler desaturated grade, offset composition, tidy background — same subject, a third distinct look.",
     ],
     negativeCues: "no fantasy props, no relocated premises, no fake text in frame",
     defaultAspect: "4:5",
@@ -194,7 +213,7 @@ export function parseLookChangeRequest(body: string | null | undefined): LookCha
   const wantsChange =
     /\b(change look|change the look|new look|different look|switch look|look pack)\b/i.test(t) ||
     /\b(more lifestyle|cleaner|darker|brighter|warmer|cooler|punchier|moodier)\b/i.test(t) ||
-    /\b(cafe|café|salon|gym|tradie|food|retail|faithful)\b/i.test(t);
+    /\b(cafe|café|salon|gym|tradie|food|retail|faithful|florist|bloom)\b/i.test(t);
 
   if (!wantsChange) return null;
 
@@ -215,6 +234,7 @@ export function parseLookChangeRequest(body: string | null | undefined): LookCha
   if (/\bpunch(y|ier)?\b|\bgym\b|\bfitness\b/i.test(t)) return { kind: "set", packId: "gym_punchy" };
   if (/\btradie\b|\bdaylight\b/i.test(t)) return { kind: "set", packId: "tradie_daylight" };
   if (/\bfood\b|\bhero\b|\brestaurant\b/i.test(t)) return { kind: "set", packId: "food_hero" };
+  if (/\bflorist\b|\bbloom\b|\bbouquet\b/i.test(t)) return { kind: "set", packId: "florist_bloom" };
   if (/\bretail\b|\bshelf\b|\bproduct\b/i.test(t)) return { kind: "set", packId: "retail_shelf" };
   if (/\bdarker\b|\bmood(y|ier)?\b/i.test(t)) return { kind: "hint", hint: "darker moodier grade, still readable" };
   if (/\bbrighter\b/i.test(t)) return { kind: "hint", hint: "brighter cleaner light" };

@@ -48,3 +48,19 @@ describe("clampSmsParts", () => {
     for (const part of parts) expect(part.length).toBeLessThanOrEqual(MAX_SMS_PART_CHARS);
   });
 });
+
+describe("mediaIdsFromPublicUrls", () => {
+  it("extracts media UUIDs from public preview URLs and skips vCards", async () => {
+    const { mediaIdsFromPublicUrls } = await import("./gateway.js");
+    const a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    expect(
+      mediaIdsFromPublicUrls([
+        `https://web.example/api/media/${a}`,
+        `/api/media/${b}`,
+        "https://web.example/kip.vcf",
+        "https://web.example/api/media/not-a-uuid",
+      ]),
+    ).toEqual([a, b]);
+  });
+});

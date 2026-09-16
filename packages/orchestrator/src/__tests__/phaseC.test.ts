@@ -99,6 +99,11 @@ describe("C1 photo_style + headline defaults", () => {
     expect(
       shouldOverlayHeadline(brand, "post this", { caption: "20% off flat whites today", format: "feed" }),
     ).toBe(true);
+    expect(
+      shouldOverlayHeadline(brand, "carousel with cinematic photos with text over the top", {
+        format: "carousel",
+      }),
+    ).toBe(true);
     expect(shouldOverlayHeadline(fakeBrand({ account_type: "personal" }), "cool pic", { format: "feed" })).toBe(
       false,
     );

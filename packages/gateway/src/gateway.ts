@@ -355,6 +355,31 @@ export async function captureMedia(
   return captured;
 }
 
+const PUBLIC_MEDIA_UUID =
+  /\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+/** Pull stored media UUIDs from public `/api/media/{id}` URLs (skip vCards). */
+export function mediaIdsFromPublicUrls(urls?: string[]): string[] {
+  if (!urls?.length) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    if (!raw || /\.vcf(\?|$)/i.test(raw)) continue;
+    let path = raw;
+    try {
+      path = new URL(raw).pathname;
+    } catch {
+      /* relative or already a path */
+    }
+    const m = path.match(PUBLIC_MEDIA_UUID) ?? raw.match(PUBLIC_MEDIA_UUID);
+    if (!m) continue;
+    const id = m[1]!.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
 
 /**
  * Send an outbound message via the active channel and log it as an outbound Message row.
@@ -439,10 +464,11 @@ export async function sendToBrand(
     }
 
     try {
+      const partMediaIds = i === parts.length - 1 ? mediaIdsFromPublicUrls(mediaUrls) : [];
       await query(
-        `insert into messages (brand_id, direction, channel, body, provider_message_sid)
-       values ($1, $2, $3, $4, $5)`,
-        [brandId, "outbound", channel.name, part, providerMessageId],
+        `insert into messages (brand_id, direction, channel, body, media_ids, provider_message_sid)
+       values ($1, $2, $3, $4, $5::uuid[], $6)`,
+        [brandId, "outbound", channel.name, part, partMediaIds, providerMessageId],
       );
     } catch (err) {
       console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);

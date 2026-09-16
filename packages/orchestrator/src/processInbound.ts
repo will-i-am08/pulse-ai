@@ -1658,7 +1658,11 @@ async function routeInbound(
       if (photos.length >= 2 && cmdCarousel) {
         const pillars = await ensurePillars(brand.id);
         const pillar = (await classifyPhotoPillar(brand, pillars, photos[0]!.id)) ?? pillars[0];
-        const res = pillar ? await draftCarouselFromPhotos(brand, photos.map((m) => m.id), pillar) : null;
+        const res = pillar
+          ? await draftCarouselFromPhotos(brand, photos.map((m) => m.id), pillar, {
+              brief: message.body ?? undefined,
+            })
+          : null;
         if (res) {
           const when = res.post.scheduled_at ? formatSlot(new Date(res.post.scheduled_at)) : "soon";
           return {
