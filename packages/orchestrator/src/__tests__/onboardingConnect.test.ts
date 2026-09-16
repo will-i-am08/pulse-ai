@@ -44,6 +44,7 @@ describe("lab chat restart", () => {
     expect(fn).toMatch(/delete facts\.owner_name/);
     expect(fn).toMatch(/delete facts\.look_pack/);
     expect(fn).toMatch(/delete facts\.differentiators/);
+    expect(fn).toMatch(/visual = '\{\}'::jsonb/);
     expect(fn).toMatch(/emptyBrandVoiceProfile/);
     expect(fn).toMatch(/'pending_approval', 'draft', 'approved', 'scheduled'/);
     expect(fn).toMatch(/content_plans/);

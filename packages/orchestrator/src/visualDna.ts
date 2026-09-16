@@ -10,6 +10,9 @@ import {
   facelessPhotoConstraint,
   facelessPromptLine,
   isFacelessBrand,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  labSafeVisualBit,
 } from "./faceless.js";
 import { brandPhotoStyleBits } from "./imaging.js";
 import { visualReference } from "./library.js";
@@ -64,10 +67,14 @@ function buildPromptBlock(brand: Brand, designContext: DesignContext): string {
 
   // Identity + constraints first so truncation keeps memory / faceless cues.
   const priority: string[] = [
-    v.aesthetic ? `Aesthetic: ${v.aesthetic}.` : "",
-    v.aesthetic_notes ? String(v.aesthetic_notes).trim() : "",
+    `Brand: ${creativeBrandLabel(brand)}.`,
+    creativeSceneConstraint(brand),
+    labSafeVisualBit(v.aesthetic ?? "", brand) && v.aesthetic ? `Aesthetic: ${v.aesthetic}.` : "",
+    labSafeVisualBit(String(v.aesthetic_notes ?? ""), brand) ? String(v.aesthetic_notes ?? "").trim() : "",
     v.colors?.length ? `Colours: ${v.colors.join(", ")}.` : "",
-    v.photo_treatment ? `Photo treatment: ${v.photo_treatment}.` : "",
+    labSafeVisualBit(v.photo_treatment ?? "", brand) && v.photo_treatment
+      ? `Photo treatment: ${v.photo_treatment}.`
+      : "",
     faceLine ?? "",
     facePhoto,
     ...memory.map((n) => `Memory: ${n}`),

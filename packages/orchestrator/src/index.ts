@@ -201,6 +201,14 @@ export {
   generatePhotoImage,
 } from "./imaging.js";
 export {
+  overlayMasthead,
+  isNamelessCreative,
+  isFacelessBrand,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  isLabPlaceholderName,
+} from "./faceless.js";
+export {
   generatePhotoVariants,
   parkVariantPick,
   getPendingVariantPick,

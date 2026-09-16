@@ -122,6 +122,9 @@ export async function generatePhotoVariants(
       pack.negativeCues ? `Avoid: ${pack.negativeCues}.` : "",
       hint ? `Also: ${hint}.` : "",
       "Output must stay truthful to the real subject in the photo.",
+      brand.facts?.lab && pack.id !== "cafe_warm"
+        ? "Do not restyle this into a café, coffee shop, espresso machine, or bakery scene."
+        : "",
     ]
       .filter(Boolean)
       .join(" ");

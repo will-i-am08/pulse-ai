@@ -15,7 +15,7 @@ import { resolveVisualMode, type VisualMode } from "./visualMode.js";
 import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
-import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames } from "./faceless.js";
+import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames, creativeBrandLabel, creativeSceneConstraint } from "./faceless.js";
 import {
   looksLikeCityscapeBrief,
   looksLikeComparisonBrief,
@@ -49,8 +49,10 @@ export async function generateFillerPost(
   const captionJob = captionJobForFormat(formatHint);
   const facelessLine = facelessPromptLine(brand);
   const noFace = facelessPhotoConstraint(brand);
+  const trade = creativeBrandLabel(brand);
+  const scene = creativeSceneConstraint(brand);
   const system = [
-    `You write a short social post for "${brand.name}" in the "${pillar.name}" content pillar (${pillar.description}).`,
+    `You write a short social post for "${trade}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     `Content job for this slot: ${job}. Preferred format bias: ${formatHint}.`,
     captionJobPrompt(captionJob),
     hooksPromptBlock(job, 2),
@@ -64,6 +66,7 @@ export async function generateFillerPost(
       ? "VISUAL brief: photo_prompt MUST be a cinematic cityscape / skyline background (urban dusk or night lights), not a desk, office, or abstract wash."
       : "",
     facelessLine ?? "",
+    scene,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
     "Never invent discounts, awards, or testimonials not in offers/facts. Only use numbers from the proof bank / facts.",
@@ -148,7 +151,7 @@ export async function generateFillerPost(
       const ref = visualReference(brand, false);
       const stockCue =
         "Photorealistic editorial photograph, full-frame camera, natural grain, real-world materials, documentary lighting — not CGI, not AI art, not plastic HDR, no text, no logos, no watermark, no UI, no random props unrelated to the subject";
-      const prompt = [photoPrompt, stockCue, noFace, ref].filter(Boolean).join(". ");
+      const prompt = [photoPrompt, stockCue, noFace, scene, ref].filter(Boolean).join(". ");
       // Pass the brand so this counts against AI_WEEKLY_SPEND_CAP_USD — fillers
       // generate one paid image per draft, which was previously uncapped.
       img = await generatePhotoImage(prompt, "1:1", { brand });

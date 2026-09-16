@@ -19,6 +19,7 @@ import {
 import { draftCaption } from "./draftCaption.js";
 import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
+import { overlayMasthead } from "./faceless.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -497,7 +498,7 @@ export async function draftReelFromVideo(
       blob.bytes,
       {
         trimStartSec: /\b(start|beginning)\b/i.test(body) ? 0.5 : undefined,
-        textOverlay: wantsOverlay ? brand.name.slice(0, 24) : undefined,
+        textOverlay: wantsOverlay ? overlayMasthead(brand).slice(0, 24) || undefined : undefined,
       },
       video.content_type,
     );
