@@ -167,7 +167,7 @@ Brief: *“Abstract dry-brush charcoal on cream #f4f1ea, same stroke weight as a
 | Display | `Syne` 700–800 |
 | Poster line | 2–5 words, wheatpaste scale |
 | Supporting | `DM Sans` / SF Pro |
-| Wordmark | SF Pro / system 600 |
+| Wordmark | SF Pro / system 600 in product; on posters Syne 800 at nameplate / name-hero scale — still **Kip**, never KIP |
 
 Outcome lines: `SOCIAL’S HANDLED.` · `OFF YOUR MIND.` · `POSTED. YOU’RE FREE.` — not feature mechanics.
 
@@ -176,15 +176,22 @@ Outcome lines: `SOCIAL’S HANDLED.` · `OFF YOUR MIND.` · `POSTED. YOU’RE FR
 ## 8. Poster & post grammar
 
 1. Full-bleed Kin (or relief) plate  
-2. Disc in type band (readable)  
-3. One line (+ whisper)  
+2. **Nameplate** — disc + **Kip** (Polsia puts the brand name on the wall; we do too — title case *Kip*, never all-caps KIP)  
+3. One outcome line (+ whisper)  
 4. No stats strip / feature pills  
 
-**Landing first viewport:** large Kip disc · one headline · one sentence · one CTA · one Kin plate. Full-bleed. No card grid.
+### Nameplate modes
 
-**Social:** still plates + type; wall density; disc on every tile.
+| Mode | What shows | When |
+|---|---|---|
+| **Standard** | Disc + Kip, then claim | Default posters, feed, wall |
+| **Name hero** | Disc + oversized **Kip**, claim as whisper-scale | Brand billboards, launch, wheatpaste |
 
-**Don’t:** invert the cat · second cat in art · Polsia orange/Times · Lindy blue/UI hero · rounded SaaS card traps.
+**Landing first viewport:** large Kip disc + wordmark · one headline · one sentence · one CTA · one Kin plate.
+
+**Social:** nameplate on every tile; wall density.
+
+**Don’t:** invert the cat · second cat in art · drop the wordmark on posters · Polsia orange/Times · Lindy blue/UI hero · all-caps “KIP”.
 
 ---
 
@@ -218,10 +225,10 @@ Settle plate → arrive type → seal last. No bounce. Respect `prefers-reduced-
 1. Life after Kip — or how Kip works?  
 2. Relief in under a second?  
 3. Looks like the **logo’s hand** — or a different studio?  
-4. Disc readable and unaltered?  
+4. Disc + **Kip** nameplate readable — or just a orphaned seal?  
 5. Marks from whiskers / arcs / ticks / ears?  
 6. Type band ≥40%?  
-7. No Polsia orange/cult, no Lindy blue/UI-hero?
+7. No Polsia orange/cult, no Lindy blue/UI-hero, no all-caps KIP?
 
 ---
 

@@ -271,22 +271,46 @@
       background: var(--disc);
     }
     .billboard .typeband {
-      padding: 14px 14px 16px;
-      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      padding: 12px 14px 14px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
       background: var(--disc); color: var(--ink);
     }
     .billboard.on-dark .typeband { background: var(--void); color: var(--paper); }
-    .billboard .seal {
-      width: 36px; height: 36px; border-radius: 50%; margin-bottom: 6px;
+    .billboard .nameplate {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .billboard .nameplate img {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    }
+    .billboard .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(18px, 2vw, 24px);
+      letter-spacing: -0.04em; line-height: 1;
     }
     .billboard .line {
       font-family: var(--display); font-weight: 800;
-      font-size: clamp(20px, 2.2vw, 28px);
+      font-size: clamp(18px, 2vw, 26px);
       letter-spacing: -0.045em; line-height: 0.92;
       text-transform: uppercase; margin: 0;
     }
     .billboard .whisper {
-      font-size: 12px; opacity: 0.62; line-height: 1.35; max-width: 26ch;
+      font-size: 11px; opacity: 0.62; line-height: 1.35; max-width: 26ch;
+    }
+    /* Name-as-architecture — Polsia physics, Kip casing */
+    .billboard.name-hero {
+      grid-template-rows: 1.1fr 0.9fr;
+    }
+    .billboard.name-hero .nameplate .word {
+      font-size: clamp(36px, 4.5vw, 52px);
+      letter-spacing: -0.055em;
+    }
+    .billboard.name-hero .line {
+      font-size: clamp(14px, 1.6vw, 18px);
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: -0.02em;
+      opacity: 0.72;
     }
 
     .posters {
@@ -305,21 +329,41 @@
       background: var(--disc);
     }
     .poster .typeband {
-      padding: 22px 20px 24px;
-      display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+      padding: 20px 20px 22px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
       background: var(--disc); color: var(--ink);
     }
     .poster.on-dark .typeband { background: var(--void); color: var(--paper); }
-    .poster .seal {
-      width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px;
+    .poster .nameplate {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px;
+    }
+    .poster .nameplate img {
+      width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+    }
+    .poster .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(28px, 3.6vw, 40px);
+      letter-spacing: -0.045em; line-height: 1;
     }
     .poster .line {
       font-family: var(--display); font-weight: 800;
-      font-size: clamp(30px, 4vw, 44px);
+      font-size: clamp(26px, 3.4vw, 40px);
       letter-spacing: -0.05em; line-height: 0.92;
       text-transform: uppercase; margin: 0;
     }
     .poster .whisper { font-size: 14px; opacity: 0.62; max-width: 32ch; }
+    .poster.name-hero .nameplate .word {
+      font-size: clamp(56px, 8vw, 96px);
+      letter-spacing: -0.06em;
+    }
+    .poster.name-hero .line {
+      font-size: clamp(18px, 2.2vw, 24px);
+      text-transform: none;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      opacity: 0.72;
+    }
 
     .lockups {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
@@ -359,14 +403,24 @@
     }
     .tile .typeband {
       padding: 10px 12px 12px;
-      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
       background: var(--disc); color: var(--ink);
     }
     .tile.on-dark .typeband { background: var(--void); color: var(--paper); }
-    .tile .seal { width: 28px; height: 28px; border-radius: 50%; }
+    .tile .nameplate {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 4px;
+    }
+    .tile .nameplate img {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    }
+    .tile .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: 15px; letter-spacing: -0.03em; line-height: 1;
+    }
     .tile .line {
       font-family: var(--display); font-weight: 800;
-      font-size: clamp(18px, 2vw, 24px);
+      font-size: clamp(16px, 1.8vw, 22px);
       letter-spacing: -0.04em; line-height: 0.92;
       text-transform: uppercase; margin: 0;
     }
@@ -638,23 +692,29 @@
     <section id="wall">
       <div class="wrap">
         <p class="kicker">Poster wall</p>
-        <h2 class="section-title">Billboard the relief — in Kip’s hand.</h2>
+        <h2 class="section-title">Billboard Kip. Then the relief.</h2>
         <p class="lede">
-          Same template every tile. Kin plates + larger disc in the type band. Wheatpaste density, logo kinship.
+          Same template every tile. Disc + <strong>Kip</strong> nameplate on every piece — Polsia-scale brand presence, Kip casing and hand.
         </p>
         <div class="wall">
-          <article class="billboard">
+          <article class="billboard name-hero">
             <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Social’s handled.</p>
               <span class="whisper">Cheap. Completely done.</span>
             </div>
           </article>
-          <article class="billboard on-dark">
+          <article class="billboard name-hero on-dark">
             <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Off your mind.</p>
               <span class="whisper">The old cost was thinking about it.</span>
             </div>
@@ -662,7 +722,10 @@
           <article class="billboard">
             <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Posted. You’re free.</p>
               <span class="whisper">One small act. Then silence.</span>
             </div>
@@ -670,7 +733,10 @@
           <article class="billboard">
             <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">You don’t think about it.</p>
               <span class="whisper">That’s the product.</span>
             </div>
@@ -678,7 +744,10 @@
           <article class="billboard">
             <div class="art"><img src="plates/plate-kin-seal-field.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Sorted.</p>
               <span class="whisper">Without the agency bill.</span>
             </div>
@@ -686,7 +755,10 @@
           <article class="billboard">
             <div class="art"><img src="plates/plate-kin-wide.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">It goes out. You don’t.</p>
               <span class="whisper">While you’re on the tools.</span>
             </div>
@@ -694,7 +766,10 @@
           <article class="billboard on-dark">
             <div class="art"><img src="plates/plate-relief-nightband.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Done.</p>
               <span class="whisper">Social, off the list.</span>
             </div>
@@ -702,7 +777,10 @@
           <article class="billboard">
             <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Quiet calendar.</p>
               <span class="whisper">Feeds stay alive anyway.</span>
             </div>
@@ -714,23 +792,49 @@
     <section id="posters">
       <div class="wrap">
         <p class="kicker">Large posters</p>
-        <h2 class="section-title">Mark present. Claim huge.</h2>
+        <h2 class="section-title">Kip on the wall. Claim under it.</h2>
         <p class="lede">
-          Art from the logo hand. Disc readable. Type band solid — never stroke through glyphs.
+          Polsia puts the name on the wall. We do too: disc + <strong>Kip</strong>, then the claim. Name can also be the monument — still title-case <em>Kip</em>, never all-caps KIP.
         </p>
         <div class="posters">
+          <article class="poster name-hero">
+            <div class="art"><img src="plates/plate-kin-seal-field.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">Social’s handled — cheap, completely done.</h3>
+            </div>
+          </article>
+          <article class="poster name-hero on-dark">
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">Off your mind. That’s the product.</h3>
+            </div>
+          </article>
           <article class="poster">
             <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <h3 class="line">Social’s handled.</h3>
               <p class="whisper">Cheap social media management — completely done.</p>
             </div>
           </article>
           <article class="poster on-dark">
-            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <h3 class="line">You don’t think about it.</h3>
               <p class="whisper">The old cost was the mental load.</p>
             </div>
@@ -747,28 +851,40 @@
           <article class="tile">
             <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Handled.</p>
             </div>
           </article>
           <article class="tile on-dark">
             <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Off you.</p>
             </div>
           </article>
           <article class="tile">
             <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Sorted.</p>
             </div>
           </article>
           <article class="tile">
             <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
             <div class="typeband">
-              <img class="seal" src="kip-logo.png" alt="" />
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
               <p class="line">Free.</p>
             </div>
           </article>
@@ -801,9 +917,9 @@
           <div class="rule do">
             <h3>Do</h3>
             <ul>
-              <li>Keep the disc cream and the cat charcoal — always</li>
+              <li>Put disc + <strong>Kip</strong> on every poster — name is brand architecture</li>
               <li>Derive marks from whiskers, arcs, ticks, ears</li>
-              <li>Show the seal large enough to read as Kip</li>
+              <li>Keep the disc cream and the cat charcoal — always</li>
               <li>Put type on a solid band (≥40% on Kin posters)</li>
               <li>Sell life after social is handled</li>
             </ul>
@@ -812,6 +928,7 @@
             <h3>Don’t</h3>
             <ul>
               <li>Draw a second cat into the plate</li>
+              <li>Drop the wordmark and rely on the disc alone on posters</li>
               <li>Invert, recolour, or bubble the logo</li>
               <li>Let abstract art become a different brand</li>
               <li>Use Polsia orange / Lindy blue as chrome</li>
