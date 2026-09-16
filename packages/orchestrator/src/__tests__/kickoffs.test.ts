@@ -59,6 +59,11 @@ describe("looksLikeKickoffRequest", () => {
     ).toBe(true);
     expect(looksLikeKickoffRequest("make me a carousel")).toBe(true);
     expect(looksLikeKickoffRequest("Generate the photos")).toBe(true);
+    expect(
+      looksLikeKickoffRequest(
+        "Make me a feed post about a safety switch check this week. Generate the photo.",
+      ),
+    ).toBe(true);
   });
 
   it("ignores plain chat", () => {
@@ -97,6 +102,13 @@ describe("looksLikeKickoffRequest", () => {
     expect(refersToAttachedMedia("use this")).toBe(true);
     expect(refersToAttachedMedia("use these")).toBe(true);
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
+    expect(refersToAttachedMedia("Generate the photo")).toBe(false);
+    expect(
+      refersToAttachedMedia(
+        "Make me a feed post about a safety switch check this week. Generate the photo.",
+      ),
+    ).toBe(false);
+    expect(refersToAttachedMedia("Post a good morning post with this photo")).toBe(true);
   });
 
   it("treats use-this / inspirational briefs and bare format-menu replies as kickoffs", () => {
