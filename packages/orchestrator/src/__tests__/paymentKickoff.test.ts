@@ -120,7 +120,7 @@ describe("kickOffOnboardingAfterPayment", () => {
     const msg = await kickOffOnboardingAfterPayment(brand.id);
 
     expect(msg.toLowerCase()).toMatch(/hi alex/);
-    expect(msg.toLowerCase()).toMatch(/thanks for jumping in/);
+    expect(msg.toLowerCase()).toMatch(/save my contact/);
     expect(msg.toLowerCase()).toMatch(/contact/);
     expect(msg.toLowerCase()).toMatch(/done/);
     expect(msg).not.toContain("https://app.example/c/test");
@@ -259,8 +259,10 @@ describe("handleAwaitingConnect", () => {
 describe("welcomeContactMessage", () => {
   it("greets by name and asks to save the contact", () => {
     const msg = welcomeContactMessage(fakeBrand());
-    expect(msg).toMatch(/Hi Alex, it's Kip, thanks for jumping in!/);
-    expect(msg.toLowerCase()).toMatch(/add me to your contacts/);
-    expect(msg.toLowerCase()).toMatch(/message me done/);
+    expect(msg).toMatch(/Hi Alex, it's Kip/);
+    expect(msg.toLowerCase()).toMatch(/save my contact/);
+    expect(msg.toLowerCase()).toMatch(/reply done/);
+    expect(msg).not.toMatch(/iPhone/);
+    expect(msg).not.toMatch(/Android/);
   });
 });

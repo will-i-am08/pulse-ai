@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseVariantChoice, variantPickSms } from "../variants.js";
+import { parseVariantChoice, variantPickSms, lookPackForBrand } from "../variants.js";
 import {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
@@ -78,5 +78,24 @@ describe("look packs", () => {
   it("getLookPack falls back to generic", () => {
     expect(getLookPack("nope").id).toBe("generic_faithful");
     expect(getLookPack("cafe_warm").smsName).toBe("café-warm");
+  });
+
+  it("does not treat a lab placeholder name as a café niche", () => {
+    expect(
+      lookPackForBrand({
+        name: "Lab Cafe",
+        facts: { lab: true },
+        brand_voice_profile: {},
+        icp: {},
+      } as never).id,
+    ).toBe("generic_faithful");
+    expect(
+      lookPackForBrand({
+        name: "Lab Cafe",
+        facts: { lab: true, differentiators: "emergency plumber in Brunswick" },
+        brand_voice_profile: {},
+        icp: {},
+      } as never).id,
+    ).toBe("tradie_daylight");
   });
 });

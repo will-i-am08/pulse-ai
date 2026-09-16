@@ -51,42 +51,42 @@ export type ConnectPurpose = "meta" | "ads" | "linkedin" | "tiktok" | "crm";
 export function connectLinkMessage(brand: Brand, purpose: ConnectPurpose): string {
   if (purpose === "crm") {
     const link = smsConnectUrl(brand.id, "crm");
-    return `CRM webhook settings (expires in 15 min):\n${link}\n\nOr text me: set crm webhook https://hooks.zapier.com/…`;
+    return `CRM webhook settings (expires in 15 min): ${link}. Or text me: set crm webhook https://hooks.zapier.com/…`;
   }
   if (purpose === "ads") {
     if (isAdsConnected(brand)) {
       const link = smsConnectUrl(brand.id, "ads");
       const name = brand.ad_account_name ?? brand.ad_account_id ?? "your ad account";
       const flag = adsEnabled(brand) ? "Ads are on." : 'Ads feature is off — say "enable ads" to spend.';
-      return `You're linked to ${name}. ${flag}\n\nTo reconnect a different ad account, tap this (expires in 15 min):\n${link}`;
+      return `You're linked to ${name}. ${flag} To reconnect a different ad account, tap this (expires in 15 min): ${link}`;
     }
     const link = smsConnectUrl(brand.id, "ads");
-    return `One tap to connect your Meta ad account — I'll text you when it's linked:\n${link}\n\n(Link expires in 15 minutes. If it does, just ask me again.)`;
+    return `One tap to connect your Meta ad account — I'll text you when it's linked: ${link} (expires in 15 min). If it does, just ask me again.`;
   }
   if (purpose === "linkedin") {
     if (isLinkedInConnected(brand)) {
       const link = smsConnectUrl(brand.id, "linkedin");
       const name = brand.linkedin_org_name ?? "your Company Page";
-      return `LinkedIn is connected: ${name}.\n\nTo reconnect a different Page, tap this (expires in 15 min):\n${link}`;
+      return `LinkedIn is connected: ${name}. To reconnect a different Page, tap this (expires in 15 min): ${link}`;
     }
     const link = smsConnectUrl(brand.id, "linkedin");
-    return `One tap to connect your LinkedIn Company Page — I'll confirm the page name here when it's linked:\n${link}\n\n(Link expires in 15 minutes.)`;
+    return `One tap to connect your LinkedIn Company Page — I'll confirm the page name here when it's linked: ${link} (expires in 15 min).`;
   }
   if (purpose === "tiktok") {
     if (isTikTokConnected(brand)) {
       const link = smsConnectUrl(brand.id, "tiktok");
       const name = brand.tiktok_display_name ?? "your TikTok";
-      return `TikTok is connected: ${name}.\n\nTo reconnect or update privacy / music consent, tap this (expires in 15 min):\n${link}`;
+      return `TikTok is connected: ${name}. To reconnect or update privacy / music consent, tap this (expires in 15 min): ${link}`;
     }
     const link = smsConnectUrl(brand.id, "tiktok");
-    return `One tap to connect TikTok — you'll confirm privacy level and music consent on the next screen:\n${link}\n\n(Link expires in 15 minutes.)`;
+    return `One tap to connect TikTok — you'll confirm privacy level and music consent on the next screen: ${link} (expires in 15 min).`;
   }
   if (isMetaConnected(brand)) {
     const link = smsConnectUrl(brand.id, "meta");
-    return `${metaConnectStatusMessage(brand)}\n\nTo reconnect with a different account, tap this (expires in 15 min):\n${link}`;
+    return `${metaConnectStatusMessage(brand)} To reconnect with a different account, tap this (expires in 15 min): ${link}`;
   }
   const link = smsConnectUrl(brand.id, "meta");
-  return `One tap to connect Instagram + Facebook — I'll take it from there:\n${link}\n\n(Link expires in 15 minutes. If it does, just ask me again and I'll send a fresh one.)`;
+  return `One tap to connect Instagram + Facebook — I'll take it from there: ${link} (expires in 15 min). If it does, just ask me again and I'll send a fresh one.`;
 }
 
 export function looksLikeAdsToggle(body: string): "enable" | "disable" | null {

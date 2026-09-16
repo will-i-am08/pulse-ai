@@ -13,6 +13,7 @@ export {
   loadRecentChatTurns,
   normalizeChatTurns,
   resolveConversationContextArgs,
+  ownerInboundAfter,
 } from "./conversationContext.js";
 export type { ChatTurn, BuildConversationContextOpts } from "./conversationContext.js";
 export { quickSocialReply, quickReengageReply } from "./socialReply.js";
@@ -41,6 +42,7 @@ export {
   finishOnboarding,
   type OnboardingRundown,
   WRAP_ACK,
+  voiceRecapSms,
   restartOnboarding,
   archiveLabChatAndRestart,
   listLabChats,
@@ -63,6 +65,7 @@ export type { LabChatSummary } from "./onboarding.js";
 export {
   ownerFirstName,
   firstNameFromDisplayName,
+  brandTalkingIdentity,
   personaLines,
   personaVoiceLines,
   connectionSummary,

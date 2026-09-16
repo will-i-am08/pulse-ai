@@ -8,6 +8,7 @@ import {
   planTextSummary,
   planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
+  ownerInboundAfter,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -37,6 +38,15 @@ export async function runNichePlanLoop(): Promise<void> {
       const brand = await queryOne<Brand>("select * from brands where id = $1", [row.brand_id]);
       if (!brand) {
         await markPlanFailed(row.id);
+        continue;
+      }
+      // Don't interrupt a live beat (hi / reel / photo) with a plan or overrun.
+      const wrappedAt = brand.onboarding_state?.completed_at;
+      if (
+        isOnboardingTimedPlan(row) &&
+        wrappedAt &&
+        (await ownerInboundAfter(brand.id, wrappedAt, { withinMinutes: 10 }))
+      ) {
         continue;
       }
       // Onboarding plans promised a concrete ETA — prefer the fast path.

@@ -12,6 +12,7 @@ import {
   userAskedForContentWork,
   SCRATCH_OR_TWEAK_ASK_RE,
   looksLikeCarouselCommand,
+  captionEditMissed,
 } from "../processInbound.js";
 import { looksLikeBoostRequest } from "../boost.js";
 import { looksLikeCalendarAsk } from "../agentTools.js";
@@ -389,4 +390,16 @@ table("looksLikeCarouselCommand", looksLikeCarouselCommand, {
     "make a reel",
     "put this on my story",
   ],
+});
+
+describe("captionEditMissed", () => {
+  it("flags a shorter ask that didn't get shorter", () => {
+    const cap = "Morning brew at Lab Cafe — come say hi. Book now, link in bio.";
+    expect(captionEditMissed("shorter, drop the CTA", cap, cap)).toBe(true);
+  });
+
+  it("passes when the caption actually got shorter and lost the CTA", () => {
+    const before = "Morning brew at Lab Cafe — come say hi. Book now, link in bio.";
+    expect(captionEditMissed("shorter, drop the CTA", before, "Morning brew. Come say hi.")).toBe(false);
+  });
 });

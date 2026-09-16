@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { looksLikeAffirmation } from "../classify.js";
 import { planOverrunNudge, ONBOARDING_PLAN_ETA_MINUTES } from "../nichePlan.js";
 
@@ -21,5 +24,11 @@ describe("plan ETA helpers", () => {
   it("quotes a concrete onboarding ETA", () => {
     expect(ONBOARDING_PLAN_ETA_MINUTES).toBe(2);
     expect(planOverrunNudge(2)).toMatch(/about 2 more minutes/i);
+  });
+
+  it("does not send the overrun immediately when research is not ready", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../gateway/src/gateway.ts"), "utf8");
+    expect(src).toMatch(/worker nudges after promised_at/);
+    expect(src).toMatch(/ownerInboundAfter/);
   });
 });

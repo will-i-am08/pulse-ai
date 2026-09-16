@@ -772,7 +772,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
       }
       const pillar = await firstPillar(ctx.brand.id);
       if (!pillar) return toolError("No content pillars available.");
-      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar);
+      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, hint);
       if (!drafted?.post) return toolError("Could not draft story.");
       return JSON.stringify({
         ok: true,
