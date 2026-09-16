@@ -209,7 +209,12 @@ function clipCaption(caption: string | null | undefined, max = 140): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-function draftOfferSms(caption: string, when: string, prefix: string, slideNote = ""): string {
+function draftOfferSms(
+  caption: string | null | undefined,
+  when: string,
+  prefix: string,
+  slideNote = "",
+): string {
   return `${prefix}${slideNote} for ${when}:\n\n${clipCaption(caption, 180)}\n\nReply yes to send it, or tell me a change.`;
 }
 
