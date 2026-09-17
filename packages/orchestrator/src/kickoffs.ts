@@ -144,7 +144,7 @@ const NO_PHOTOS_RE =
  * "do something inspirational", bare format-menu replies ("a post" / "carousel").
  */
 const DRAFT_POSTS_RE =
-  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?([\w'-]+\s+){0,2}(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?([\w'-]+\s+){0,2}posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
+  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?([\w'-]+\s+){0,4}(posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?([\w'-]+\s+){0,2}posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?|slides?|cards?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?|slides?|cards?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
 
 /** Owner said "with this photo" / "use this" — expects attached media, not generated art. */
 export const REFERS_TO_ATTACHED_MEDIA_RE =
@@ -235,14 +235,29 @@ function draftOfferSms(
 
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
 function inferDraftCount(t: string, wantsCarousel: boolean): number {
-  const explicit = /\b(\d+)\b/.exec(t);
-  if (explicit) {
-    const n = Number(explicit[1]);
-    if (Number.isFinite(n)) return Math.min(5, Math.max(1, n));
+  const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?`;
+  const qtyMatch = new RegExp(String.raw`\b(\d+)\s+([\w'-]+\s+){0,4}(?:${piece})\b`, "i").exec(t);
+  const singularMatch = new RegExp(
+    String.raw`\b(a|an|one|single)\s+(?!(?:few|couple|bunch)\b)([\w'-]+\s+){0,4}(?:${piece})\b`,
+    "i",
+  ).exec(t);
+  const bareDraftNum = /\b(?:draft|make|create|write)\s+(?:me\s+)?(\d+)\b/i.exec(t);
+  const clampCount = (n: number) => Math.min(5, Math.max(1, n));
+  // When both fire ("3 posts and a carousel" vs "a post about 2 carousels"),
+  // the earlier phrase in the ask wins.
+  if (qtyMatch && Number.isFinite(Number(qtyMatch[1]))) {
+    if (!singularMatch || qtyMatch.index <= singularMatch.index) {
+      return clampCount(Number(qtyMatch[1]));
+    }
+  }
+  if (bareDraftNum && !singularMatch && Number.isFinite(Number(bareDraftNum[1]))) {
+    return clampCount(Number(bareDraftNum[1]));
   }
   if (wantsCarousel) return 1;
-  if (/\b(a|an|one|single)\s+(post|carr?ousel)\b/i.test(t)) return 1;
-  if (/\b(post|carr?ousel)\s+(comparing|about|with|on|for)\b/i.test(t)) return 1;
+  // Singular article + optional modifiers + a creative-piece noun (not only "a post").
+  // Do not treat "a few/couple/bunch posts" as singular — those stay at the default 2.
+  if (singularMatch) return 1;
+  if (new RegExp(String.raw`\b(?:${piece})\s+(comparing|about|with|on|for)\b`, "i").test(t)) return 1;
   return 2;
 }
 
