@@ -12,6 +12,8 @@ const WONT_VERBS =
   /^(create|invent|make|sell|shout|post|run|add|include|write|show|share|mention|feature|highlight|focus|put|keep|have|get|go|give|take|bring|personalize|personalise)\b/i;
 /** -ize/-ise verbs the LLM dumps as leftover infinitives (personalize, weaponize). */
 const IZE_INFINITIVE = /^[a-z]{4,}(?:ise|ize)\b/i;
+/** Hyphenated verbs: over-explain, over-sell. */
+const HYPHEN_VERB = /^over-\w+\b/i;
 const LEADING_ADVERB = /^(overly|too|very|really|so)\s+/i;
 const AVOID_GUARD = /^(be|show|use|skip|avoid|don't|do not)(?:\s+|$)/i;
 const STAY_CLEAR_LEFTOVER =
@@ -35,7 +37,20 @@ function stemLeadingGerund(phrase: string): string {
 
 function looksLikeInfinitiveHead(word: string): boolean {
   const w = word.toLowerCase();
-  return WONT_VERBS.test(w) || IZE_INFINITIVE.test(w);
+  return WONT_VERBS.test(w) || IZE_INFINITIVE.test(w) || HYPHEN_VERB.test(w);
+}
+
+/** Compound leftovers like "over-explain or be verbose" must not stay-clear. */
+function phraseHasLeftoverInfinitive(phrase: string): boolean {
+  if (verbLedRemainder(phrase)) return true;
+  for (const part of phrase.split(/\s+or\s+/i)) {
+    const p = part.trim();
+    if (!p) continue;
+    if (/^be\s+/i.test(p)) return true;
+    const head = stemLeadingGerund(p).split(/\s+/).filter(Boolean)[0] ?? "";
+    if (looksLikeInfinitiveHead(head)) return true;
+  }
+  return false;
 }
 
 /** LLM asides like "(this is clinic brand, not priya's personal account)" never go on SMS. */
@@ -96,7 +111,7 @@ export function formatDontForRecap(raw: string): string {
   if (afterGuard) {
     return `I won't ${afterGuard}.`;
   }
-  if (WONT_VERBS.test(phrase)) {
+  if (WONT_VERBS.test(phrase) || phraseHasLeftoverInfinitive(phrase)) {
     return `I won't ${phrase}.`;
   }
   const stayClear = `I'll stay clear of ${phrase}.`;
