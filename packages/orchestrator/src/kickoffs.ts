@@ -1,6 +1,7 @@
 import {
   query,
   queryOne,
+  publicMediaUrl,
   type Brand,
   type KipKickoff,
   type KipKickoffKind,
@@ -28,7 +29,7 @@ import {
   withPreferredVisuals,
   type VisualMode,
 } from "./visualMode.js";
-import { mapWithConcurrency, DRAFT_CONCURRENCY, withTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
+import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
 import { ownerInboundAfter } from "./conversationContext.js";
 
@@ -786,6 +787,115 @@ function isDraftPiece(
   return Boolean(piece && typeof piece === "object" && "post" in piece && "kindLabel" in piece);
 }
 
+type GeneratedPiece = Awaited<ReturnType<typeof draftGeneratedPiece>>;
+type SlotOutcome = KickoffDrainResult | (KickoffDrainResult & { __qaOnly: true }) | null;
+type PendingDraft = { work: Promise<GeneratedPiece>; index: number };
+
+function isOfferedDraft(
+  r: SlotOutcome,
+): r is KickoffDrainResult {
+  return r != null && !("__qaOnly" in r && r.__qaOnly);
+}
+
+function qaOnlyDraft(
+  r: SlotOutcome,
+): r is KickoffDrainResult & { __qaOnly: true } {
+  return r != null && "__qaOnly" in r && Boolean(r.__qaOnly);
+}
+
+async function slotOutcomeFromPiece(
+  brand: Brand,
+  piece: GeneratedPiece,
+  makeResult: (piece: { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }) => KickoffDrainResult,
+  opts?: KickoffDrainOpts,
+): Promise<SlotOutcome> {
+  if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+  if (!isDraftPiece(piece)) return null;
+  const result = makeResult(piece);
+  if (opts?.deliver) {
+    try {
+      await opts.deliver(result);
+      await markPostOffered(piece.post.id);
+    } catch (err) {
+      console.error("kickoff: deliver failed", err);
+    }
+  }
+  return result;
+}
+
+/** Await slot work that raced past the deadline so we never fail-SMS while it still writes. */
+async function awaitPendingDraftWork(
+  pending: PendingDraft[],
+  mapPiece: (piece: GeneratedPiece, index: number) => Promise<SlotOutcome>,
+  heartbeat?: () => Promise<void>,
+): Promise<SlotOutcome[]> {
+  if (pending.length === 0) return [];
+  return Promise.all(
+    pending.map(async ({ work, index }) => {
+      try {
+        const piece = await work;
+        return await mapPiece(piece, index);
+      } catch (err) {
+        console.error("kickoff: pending slot failed", err);
+        return null;
+      } finally {
+        await heartbeat?.();
+      }
+    }),
+  );
+}
+
+/** Last-resort: offer posts this drain already wrote even if the slot promise didn't map. */
+async function recoverRecentKickoffPosts(
+  brand: Brand,
+  since: Date,
+  opts: KickoffDrainOpts | undefined,
+  prefixFor: (n: number, count: number) => string,
+): Promise<KickoffDrainResult[]> {
+  const posts = await query<Post>(
+    `select * from posts
+      where brand_id = $1
+        and status in ('pending_approval', 'draft')
+        and created_at >= $2::timestamptz
+        and created_at > now() - interval '10 minutes'
+        and coalesce(cardinality(media_ids), 0) > 0
+        and coalesce(style_meta->>'variant_pick','') <> 'true'
+      order by created_at asc
+      limit 5`,
+    [brand.id, since.toISOString()],
+  );
+  if (!posts.length) return [];
+  const out: KickoffDrainResult[] = [];
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i]!;
+    const mediaIds = post.media_ids ?? [];
+    if (!mediaIds.length) continue;
+    const when = post.scheduled_at ? formatSlot(new Date(post.scheduled_at)) : "soon";
+    const slideN = mediaIds.length;
+    const slideNote =
+      (post.format === "carousel" || slideN > 1) && slideN > 1
+        ? ` (${slideN} slides — swipe)`
+        : "";
+    const mediaUrl = mediaIds[0] ? publicMediaUrl(mediaIds[0]!) : undefined;
+    const result: KickoffDrainResult = {
+      brandId: brand.id,
+      sms: draftOfferSms(post.caption, when, prefixFor(i + 1, posts.length), slideNote),
+      mediaUrl,
+      mediaUrls: mediaIds.map((id) => publicMediaUrl(id)),
+    };
+    if (opts?.deliver) {
+      try {
+        await opts.deliver(result);
+        await markPostOffered(post.id);
+      } catch (err) {
+        console.error("recoverRecentKickoffPosts: deliver failed", err);
+      }
+    }
+    out.push(result);
+  }
+  return out;
+}
+
 /** After hard Design QA failure, queue one more photo-carousel attempt (capped). */
 async function maybeEnqueueQaSelfHeal(
   brand: Brand,
@@ -870,6 +980,31 @@ async function runFirstBatch(
   const kinds: TypedCarouselKind[] = ["tip", "steps", "before_after", "menu_offer"];
   const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
   const slots = Array.from({ length: count }, (_, i) => i);
+  const drainStarted = new Date();
+  const pending: PendingDraft[] = [];
+
+  const mapPiece = (piece: GeneratedPiece, i: number) =>
+    slotOutcomeFromPiece(
+      brand,
+      piece,
+      (p) => {
+        const when = p.post.scheduled_at ? formatSlot(new Date(p.post.scheduled_at)) : "soon";
+        const n = i + 1;
+        const slideN = p.mediaUrls?.length ?? (p.post.media_ids?.length ?? 0);
+        const slideNote =
+          p.kindLabel.includes("carousel") && slideN > 1 ? ` (${slideN} slides — swipe)` : "";
+        return {
+          brandId: brand.id,
+          sms:
+            n === 1
+              ? draftOfferSms(p.post.caption, when, `First batch, ${n}/${count}`, slideNote)
+              : draftOfferSms(p.post.caption, when, `Batch ${n}/${count}`, slideNote),
+          mediaUrl: p.mediaUrl,
+          mediaUrls: p.mediaUrls,
+        };
+      },
+      opts,
+    );
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     // One bad slot must not abort the batch. mapWithConcurrency is Promise.all
@@ -880,53 +1015,22 @@ async function runFirstBatch(
     try {
       const pillar = pillars[i % pillars.length]!;
       const kind = kinds[i % kinds.length]!;
-      const piece = await withTimeout(
-        draftGeneratedPiece(
-          brand,
-          pillar,
-          "carousel",
-          kind,
-          visuals,
-          String(payload.topicHint ?? ""),
-          { forceFresh: payload.forceFresh === true },
-        ),
-        DRAFT_SLOT_TIMEOUT_MS,
-        `first_batch slot ${i + 1}`,
+      const work = draftGeneratedPiece(
+        brand,
+        pillar,
+        "carousel",
+        kind,
+        visuals,
+        String(payload.topicHint ?? ""),
+        { forceFresh: payload.forceFresh === true },
       );
-      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-      if (!isDraftPiece(piece)) return null;
-      const when = piece.post.scheduled_at
-        ? formatSlot(new Date(piece.post.scheduled_at))
-        : "soon";
-      const n = i + 1;
-      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-      const slideNote =
-        piece.kindLabel.includes("carousel") && slideN > 1
-          ? ` (${slideN} slides — swipe)`
-          : "";
-      const result: KickoffDrainResult = {
-        brandId: brand.id,
-        sms:
-          n === 1
-            ? draftOfferSms(piece.post.caption, when, `First batch, ${n}/${count}`, slideNote)
-            : draftOfferSms(piece.post.caption, when, `Batch ${n}/${count}`, slideNote),
-        mediaUrl: piece.mediaUrl,
-        mediaUrls: piece.mediaUrls,
-      };
-      if (opts?.deliver) {
-        try {
-          await opts.deliver(result);
-          // Stamp AFTER a successful send: this records when the draft was put in
-          // front of the client, which is how a bare "yes" resolves which draft it
-          // means. Slots are drafted concurrently, so created_at order does not
-          // match SMS delivery order — without this, "yes" to batch 1/3 approves
-          // whichever row happened to insert last.
-          await markPostOffered(piece.post.id);
-        } catch (err) {
-          console.error(`runFirstBatch: deliver failed for slot ${n}`, err);
-        }
+      const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
+      if (!raced.ok) {
+        pending.push({ work, index: i });
+        work.catch(() => {});
+        return null;
       }
-      return result;
+      return await mapPiece(raced.value, i);
     } catch (err) {
       console.error(`runFirstBatch: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
       return null;
@@ -936,14 +1040,26 @@ async function runFirstBatch(
     }
   });
 
-  const out = drafted.filter(
-    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
-  );
+  let outcomes: SlotOutcome[] = [...drafted];
+  let out = outcomes.filter(isOfferedDraft);
+  // Always await timed-out siblings — even when some slots already succeeded —
+  // so a late write cannot orphan a post that a later retry would duplicate.
+  if (pending.length > 0) {
+    const late = await awaitPendingDraftWork(pending, mapPiece, heartbeat);
+    outcomes = [...outcomes, ...late];
+    out = outcomes.filter(isOfferedDraft);
+  }
   if (!out.length) {
-    const qaFail = drafted.find(
-      (r): r is KickoffDrainResult & { __qaOnly: true } =>
-        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
-    );
+    let recovered: KickoffDrainResult[] = [];
+    try {
+      recovered = await recoverRecentKickoffPosts(brand, drainStarted, opts, (n, total) =>
+        n === 1 ? `First batch, ${n}/${total}` : `Batch ${n}/${total}`,
+      );
+    } catch (err) {
+      console.error("runFirstBatch: recoverRecentKickoffPosts failed", err);
+    }
+    if (recovered.length) return recovered;
+    const qaFail = outcomes.find(qaOnlyDraft);
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
@@ -993,6 +1109,27 @@ async function runDraftPosts(
   await rememberPreferredVisuals(brand, visuals);
   const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
   const slots = Array.from({ length: count }, (_, i) => i);
+  const drainStarted = new Date();
+  const pending: PendingDraft[] = [];
+
+  const mapPiece = (piece: GeneratedPiece, _i: number) =>
+    slotOutcomeFromPiece(
+      brand,
+      piece,
+      (p) => {
+        const when = p.post.scheduled_at ? formatSlot(new Date(p.post.scheduled_at)) : "soon";
+        const slideN = p.mediaUrls?.length ?? (p.post.media_ids?.length ?? 0);
+        const slideNote =
+          p.kindLabel.includes("carousel") && slideN > 1 ? ` (${slideN} slides — swipe)` : "";
+        return {
+          brandId: brand.id,
+          sms: draftOfferSms(p.post.caption, when, "Draft ready", slideNote),
+          mediaUrl: p.mediaUrl,
+          mediaUrls: p.mediaUrls,
+        };
+      },
+      opts,
+    );
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     // See runFirstBatch: isolate the slot so one failure degrades the batch
@@ -1003,46 +1140,22 @@ async function runDraftPosts(
       // "A post" may still be a carousel when preferCarousel/format says so — not banned.
       const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
       const prefer = forceCarousel ? "carousel" : "filler";
-      const piece = await withTimeout(
-        draftGeneratedPiece(
-          brand,
-          pillar,
-          prefer,
-          i % 2 === 0 ? "tip" : "steps",
-          visuals,
-          String(payload.topicHint ?? ""),
-          { forceFresh: payload.forceFresh === true },
-        ),
-        DRAFT_SLOT_TIMEOUT_MS,
-        `draft_posts slot ${i + 1}`,
+      const work = draftGeneratedPiece(
+        brand,
+        pillar,
+        prefer,
+        i % 2 === 0 ? "tip" : "steps",
+        visuals,
+        String(payload.topicHint ?? ""),
+        { forceFresh: payload.forceFresh === true },
       );
-      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-      if (!isDraftPiece(piece)) return null;
-      const when = piece.post.scheduled_at
-        ? formatSlot(new Date(piece.post.scheduled_at))
-        : "soon";
-      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-      const slideNote =
-        piece.kindLabel.includes("carousel") && slideN > 1
-          ? ` (${slideN} slides — swipe)`
-          : "";
-      const result: KickoffDrainResult = {
-        brandId: brand.id,
-        sms: draftOfferSms(piece.post.caption, when, "Draft ready", slideNote),
-        mediaUrl: piece.mediaUrl,
-        mediaUrls: piece.mediaUrls,
-      };
-      if (opts?.deliver) {
-        try {
-          await opts.deliver(result);
-          // See runFirstBatch: records that this draft was offered, so a bare
-          // "yes" resolves to the draft the client was actually just shown.
-          await markPostOffered(piece.post.id);
-        } catch (err) {
-          console.error("runDraftPosts: deliver failed", err);
-        }
+      const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
+      if (!raced.ok) {
+        pending.push({ work, index: i });
+        work.catch(() => {});
+        return null;
       }
-      return result;
+      return await mapPiece(raced.value, i);
     } catch (err) {
       console.error(`runDraftPosts: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
       return null;
@@ -1051,17 +1164,31 @@ async function runDraftPosts(
     }
   });
 
-  const out = drafted.filter(
-    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
-  );
+  let outcomes: SlotOutcome[] = [...drafted];
+  let out = outcomes.filter(isOfferedDraft);
+  // See runFirstBatch: await every timed-out sibling even when `out` is non-empty.
+  if (pending.length > 0) {
+    const late = await awaitPendingDraftWork(pending, mapPiece, heartbeat);
+    outcomes = [...outcomes, ...late];
+    out = outcomes.filter(isOfferedDraft);
+  }
   if (!out.length) {
     // Must deliver here — unlike successful drafts, this path never streamed SMS mid-batch.
     // Otherwise Kip goes silent after an instant ack while the kickoff result still claims smsCount: 1.
     // Prefer Design QA fail SMS when the only (or all) photo carousel attempts failed QA.
-    const qaFail = drafted.find(
-      (r): r is KickoffDrainResult & { __qaOnly: true } =>
-        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
-    );
+    let recovered: KickoffDrainResult[] = [];
+    try {
+      recovered = await recoverRecentKickoffPosts(
+        brand,
+        drainStarted,
+        opts,
+        () => "Draft ready",
+      );
+    } catch (err) {
+      console.error("runDraftPosts: recoverRecentKickoffPosts failed", err);
+    }
+    if (recovered.length) return recovered;
+    const qaFail = outcomes.find(qaOnlyDraft);
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [

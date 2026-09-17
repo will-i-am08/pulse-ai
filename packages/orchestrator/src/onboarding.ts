@@ -17,6 +17,9 @@ import { brandTalkingIdentity, firstNameFromDisplayName, ownerFirstName } from "
 import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
 import { ensurePillars } from "./pillars.js";
+import { voiceRecapSms } from "./voice/recapGrammar.js";
+
+export { voiceRecapSms, formatDontForRecap, normalizeDontForRecap } from "./voice/recapGrammar.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -1263,32 +1266,6 @@ async function compileProfile(
 
   return voiceRecapSms(profile.tone, profile.donts);
 }
-
-/** Owner-facing voice recap — no dashboard send-off, no "I'll skip use jokes". */
-export function voiceRecapSms(tone: string[], donts: string[]): string {
-  const toneBit = tone.length ? tone.slice(0, 3).join(", ") : "friendly and direct";
-  const avoidBits = donts.slice(0, 2).map(formatDontLine).filter(Boolean);
-  const avoidBit = avoidBits.length ? ` ${avoidBits.join(" ")}` : "";
-  return `Here's how I'm reading your voice: ${toneBit}.${avoidBit}`;
-}
-
-function formatDontLine(raw: string): string {
-  const s = normalizeDont(raw);
-  if (!s) return "";
-  if (/^(create|use|invent|make|sell|shout|post|run|add|include|write)\b/i.test(s)) {
-    return `I won't ${s}.`;
-  }
-  return `I'll stay clear of ${s}.`;
-}
-
-function normalizeDont(raw: string): string {
-  let s = raw.replace(/;/g, ",").trim();
-  s = s.replace(/^(please\s+)?(don't|do not|never|skip|avoid|no more|no)\s+/i, "");
-  s = s.replace(/^use\s+/i, "");
-  s = s.replace(/\.+$/, "");
-  return s.toLowerCase().trim();
-}
-
 
 /** Soft-restart the interview for any brand: fresh transcript via startOnboarding. */
 export async function restartOnboarding(brandId: string): Promise<string> {

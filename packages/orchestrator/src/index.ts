@@ -46,6 +46,8 @@ export {
   type OnboardingRundown,
   WRAP_ACK,
   voiceRecapSms,
+  formatDontForRecap,
+  normalizeDontForRecap,
   restartOnboarding,
   archiveLabChatAndRestart,
   listLabChats,
@@ -219,6 +221,7 @@ export {
 } from "./faceless.js";
 export {
   generatePhotoVariants,
+  buildVariantEditRequest,
   parkVariantPick,
   getPendingVariantPick,
   parseVariantChoice,
@@ -238,6 +241,8 @@ export {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
   listLookPackSms,
+  PHOTO_EDIT_FAITHFUL_CORE,
+  PHOTO_EDIT_FAITHFUL_PROHIBITION,
 } from "./lookPacks/index.js";
 export type { LookPack, LookPackId, LookFrameGravity } from "./lookPacks/index.js";
 export {
@@ -281,7 +286,7 @@ export {
   routeFeedPhoto,
 } from "./modelRouter.js";
 export type { ImageJob, ImageEngine, RouteDecision, CreativeQuality } from "./modelRouter.js";
-export { mapWithConcurrency, withTimeout, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
+export { mapWithConcurrency, withTimeout, raceTimeout, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 export {
   createInteraction,
   claimInteraction,
