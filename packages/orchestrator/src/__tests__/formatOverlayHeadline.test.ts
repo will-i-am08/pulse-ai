@@ -22,8 +22,8 @@ describe("formatOverlayHeadline", () => {
     expect(out.split(/\s+/).length).toBeLessThanOrEqual(5);
   });
 
-  it("strips punctuation and quotes", () => {
-    expect(formatOverlayHeadline(`"Hello, world's best!"`)).toBe("HELLO WORLDS BEST");
+  it("strips wrapping quotes but keeps possessives", () => {
+    expect(formatOverlayHeadline(`"Hello, world's best!"`)).toBe("HELLO WORLD'S BEST");
     expect(formatOverlayHeadline("\u2018Peak Season\u2019 \u2014 2024")).toBe("PEAK SEASON 2024");
   });
 
@@ -81,6 +81,29 @@ describe("formatOverlayHeadline", () => {
     expect(out).not.toMatch(/(^|\s)40(\s|$)/);
     expect(out.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
     expect(out.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+    const last = out.split(/\s+/).filter(Boolean).pop();
+    expect(last && OVERLAY_TRAILING_FUNCTION_WORDS.has(last)).toBe(false);
+  });
+
+  it("keeps degree signs and possessive apostrophes as tokens", () => {
+    expect(formatOverlayHeadline("SCORE AT 45°")).toBe("SCORE AT 45°");
+    expect(formatOverlayHeadline("score at 45 degrees")).toBe("SCORE AT 45 DEGREES");
+    const owned = formatOverlayHeadline("schedule your dog's annual vaccination");
+    expect(owned).toContain("DOG'S");
+    expect(owned).not.toMatch(/\bDOGS\b/);
+    const alreadyShort = formatOverlayHeadline("SCHEDULE YOUR DOG'S ANNUAL");
+    expect(alreadyShort).not.toMatch(/\bANNUAL$/);
+    expect(alreadyShort).not.toBe("SCHEDULE YOUR DOGS ANNUAL");
+  });
+
+  it("does not leave a dangling adjective after the char cap", () => {
+    const out = formatOverlayHeadline("SCHEDULE YOUR DOG'S ANNUAL VACCINATION");
+    expect(out.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+    expect(out.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
+    expect(out).not.toMatch(/\bANNUAL$/);
+    expect(out).not.toBe("SCHEDULE YOUR DOGS ANNUAL");
+    expect(out).not.toBe("SCHEDULE YOUR DOG'S ANNUAL");
+    expect(out).toMatch(/VACCINATION|SCHEDULE/);
     const last = out.split(/\s+/).filter(Boolean).pop();
     expect(last && OVERLAY_TRAILING_FUNCTION_WORDS.has(last)).toBe(false);
   });
