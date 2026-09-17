@@ -9,8 +9,6 @@ import {
   looksLikeCalendarAsk,
   looksLikePhotoBackgroundAsk,
   looksLikeSlowSmsWork,
-  buildOnboardingPlanSms,
-  ownerMovedOnSinceWrapAck,
   refersToAttachedMedia,
 } from "@pulse/orchestrator";
 import {
@@ -519,15 +517,9 @@ export type HandleInboundOpts = {
   channel?: MessageChannel;
   resolveBrand?: (from: string) => Promise<Brand | null>;
   /**
-   * Schedule follow-up work that must outlive the HTTP response (the onboarding
-   * plan SMS). On Vercel the isolate is frozen the moment the webhook returns
-   * 204, so a bare `void (async () => ...)()` here silently never runs — the
-   * same trap `scheduleKickoffDrain` documents. Serverless callers MUST pass
-   * `defer: (task) => after(task)` from `next/server`; the gateway is
-   * platform-agnostic and cannot import Next itself.
-   *
-   * Default reproduces the old detached behaviour so non-serverless callers
-   * (worker, tests, lab) are unchanged.
+   * Optional scheduler for work that must outlive the HTTP response.
+   * Serverless callers may still pass `defer: (task) => after(task)`.
+   * Wrap no longer queues a plan SMS here — research stays silent.
    */
   defer?: (task: () => Promise<void>) => void;
 };
@@ -589,11 +581,6 @@ export async function handleInbound(
   // its stand-in). Never let typing break the pipeline.
   const channel = opts?.channel ?? activeChannel();
   const resolve = opts?.resolveBrand ?? resolveBrand;
-  const defer =
-    opts?.defer ??
-    ((task: () => Promise<void>) => {
-      void task().catch((err) => console.error("handleInbound: deferred task failed", err));
-    });
   let keeper: TypingKeeper | null = null;
 
   // sendToBrand returns false on silent failure (Twilio 21610 STOP / 21614 /
@@ -930,42 +917,13 @@ export async function handleInbound(
         });
       }
       // Onboarding just completed: the ack is already with the owner. Now do
-      // the slow compile and deliver the rundown as a second message.
+      // the slow compile and deliver the voice rundown. Plan research is
+      // seeded silently — SMS the plan only if they explicitly ask later.
       if (finishOnboardingBrandId) {
         const brandId = finishOnboardingBrandId;
         try {
           const rundown = await finishOnboarding(brandId);
-          // Main voice recap first (no goodbye). Skip the plan tease if they
-          // already moved on during wrap (completed_at is too late to catch that).
           await deliver(brandId, rundown.main, undefined, { pace: false });
-          const movedOn = await ownerMovedOnSinceWrapAck(brandId);
-          if (!movedOn) {
-            await new Promise((r) => setTimeout(r, 900));
-            await deliver(brandId, rundown.afterthought, undefined, { pace: false });
-          }
-
-          // Kick the plan immediately so the concrete ETA is real — don't wait on the 30s worker tick.
-          // Routed through `defer` so serverless callers can keep the isolate
-          // alive (Next's after()); a bare detached promise here was frozen on
-          // webhook return and the plan SMS never went out.
-          if (!movedOn) {
-            defer(async () => {
-              try {
-                // Don't dump the plan (or an overrun) on top of hi / a reel / a photo.
-                if (await ownerMovedOnSinceWrapAck(brandId)) return;
-                const sms = await buildOnboardingPlanSms(brandId);
-                if (sms) {
-                  if (await ownerMovedOnSinceWrapAck(brandId)) return;
-                  await deliver(brandId, sms, undefined, { pace: false });
-                  return;
-                }
-                // Research isn't ready. Wrap already promised ~2 minutes — the
-                // worker nudges after promised_at. Don't text "still finishing" now.
-              } catch (err) {
-                console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
-              }
-            });
-          }
         } catch (err) {
           console.error(`handleInbound: finishOnboarding failed for brand ${brandId}`, err);
           await sendToBrand(

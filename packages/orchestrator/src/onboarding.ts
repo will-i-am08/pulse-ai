@@ -12,7 +12,7 @@ import {
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
+import { seedPendingPlan } from "./nichePlan.js";
 import { brandTalkingIdentity, firstNameFromDisplayName, ownerFirstName } from "./persona.js";
 import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
@@ -1130,7 +1130,7 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
   const step = await onboardingNext(brand, body);
   if (!step.complete) return { reply: step.reply, done: false };
   const rundown = await finishOnboarding(brand.id);
-  return { reply: `${step.reply}\n\n${rundown.main}\n\n${rundown.afterthought}`, done: true };
+  return { reply: `${step.reply}\n\n${rundown.main}`, done: true };
 }
 
 /** Next step tailored to the account: personal brands send a photo, everyone else gets ideas first. */
@@ -1143,22 +1143,19 @@ function nextStepFor(type: AccountType, transcript: OnboardingTurnMsg[]): string
 }
 
 /**
- * SMS messages delivered after WRAP_ACK once the voice compile finishes.
- * Kept as separate bubbles on purpose:
- *   1. main — voice recap + next step (no goodbye / "talk soon")
- *   2. afterthought — plan tease as a human "oh and one more thing" beat,
- *      including the concrete ETA promise in the SAME bubble
+ * SMS delivered after WRAP_ACK once the voice compile finishes.
+ * Voice recap + next step only (no goodbye / "talk soon"). Plan research is
+ * seeded silently — never an ETA tease, overrun, or auto-dumped plan SMS.
  */
 export type OnboardingRundown = {
   main: string;
-  afterthought: string;
 };
 
 /**
  * Heavy wrap-up: compile the voice profile, capture name/niche, seed the plan
- * research, and return the rundown as TWO SMS messages (main + afterthought).
- * Runs AFTER the instant WRAP_ACK. Does not text the parked LLM sign-off —
- * those often say "talk soon" right before we keep talking.
+ * research silently, and return the voice rundown SMS. Runs AFTER the instant
+ * WRAP_ACK. Does not text the parked LLM sign-off — those often say "talk soon"
+ * right before we keep talking.
  */
 export async function finishOnboarding(brandId: string): Promise<OnboardingRundown> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -1200,14 +1197,8 @@ export async function finishOnboarding(brandId: string): Promise<OnboardingRundo
     .then(({ seedOnboardingNicheExemplars }) => seedOnboardingNicheExemplars(brand.id))
     .catch(() => {});
 
-  const afterthought =
-    type === "personal"
-      ? `One more thing — I'm putting together a light niche plan and first carousel ideas for you. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`
-      : `One more thing — I'm studying your space to build a content plan and first carousel ideas. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`;
-
   return {
     main: `${recap}\n\n${nextStepFor(type, transcript)}`,
-    afterthought,
   };
 }
 

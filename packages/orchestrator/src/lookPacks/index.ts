@@ -13,6 +13,21 @@ export type LookPackId =
   | "florist_bloom"
   | "generic_faithful";
 
+export type LookFrameGravity = "attention" | "north" | "centre" | "south" | "entropy";
+
+/** Crop-first, subject-agnostic — never assume the photo contains the pack's hero object. */
+const CROP_VARIANT_DIRECTIONS: [string, string, string] = [
+  "Tight crop filling the frame with the real subject already in the photo. Extreme close. Shallow depth. Keep the actual object exact — do not replace it.",
+  "Medium 45-degree framing with more of the real setting visible around the same subject. Different lighting from a close-up. Do not invent a new object.",
+  "Wider establishing crop showing the full subject and surroundings. Clearly more environment than a close-up. Different colour grade. Same real subject.",
+];
+
+const CROP_VARIANT_FRAMES: [LookFrameGravity, LookFrameGravity, LookFrameGravity] = [
+  "attention",
+  "centre",
+  "entropy",
+];
+
 export type LookPack = {
   id: LookPackId;
   label: string;
@@ -22,8 +37,10 @@ export type LookPack = {
   niches: string[];
   /** Shared grade direction for the pack */
   baseDirection: string;
-  /** Three diversity briefs (lighting / scene / mood) within the pack */
+  /** Three crop-first diversity briefs within the pack */
   variantDirections: [string, string, string];
+  /** Mutually exclusive 4:5 crop gravities, one per look */
+  variantFrames: [LookFrameGravity, LookFrameGravity, LookFrameGravity];
   negativeCues: string;
   defaultAspect: "4:5";
   motionHint?: string;
@@ -37,11 +54,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["cafe", "café", "coffee", "bakery", "brunch", "tea", "espresso", "roaster"],
     baseDirection:
       "Warm café atmosphere: soft golden window light, cosy textures, steam and ceramic if present. Keep the real food, drink, and premises truthful.",
-    variantDirections: [
-      "Warm morning window light, soft highlights on the real subject, gentle steam/atmosphere if natural — keep the product/place exact.",
-      "Closer hero framing of the real item on the counter, shallow depth, creamy bokeh — do not invent a different dish or cup.",
-      "Moody late-afternoon café grade: richer shadows still readable, wood and ceramic tones — same subject, cleaner clutter.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake menu boards, no relocated storefront, no invented plating",
     defaultAspect: "4:5",
     motionHint: "slow push-in on the cup or plate",
@@ -53,11 +67,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["salon", "hair", "beauty", "barber", "spa", "nails", "lash", "brow", "skincare clinic", "groomer", "dog groom", "pet groom"],
     baseDirection:
       "Clean salon editorial: bright even light, crisp whites, polished mirrors and tools. Keep the real cut, colour, and space accurate.",
-    variantDirections: [
-      "Bright clean salon light, soft fill, crisp whites — keep the real hair/skin/nails exact.",
-      "Soft beauty-editorial grade with gentle glow on the real subject — no face reshape, no fake results.",
-      "Minimal mirror-reflection framing of the real scene, tidy background, cool-neutral whites.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake before/after, no face morphing, no invented products",
     defaultAspect: "4:5",
     motionHint: "gentle orbit around the finished look",
@@ -69,11 +80,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["gym", "fitness", "pt", "personal trainer", "crossfit", "yoga", "pilates", "boxing", "martial"],
     baseDirection:
       "High-energy fitness look: punchy contrast, directional light, sweat and grit if present. Keep the real athletes, gear, and gym truthful.",
-    variantDirections: [
-      "Punchy directional gym light, strong contrast, keep the real person and equipment exact.",
-      "Low-angle hero of the real lift/move, kinetic energy, readable shadows — no invented medals or physiques.",
-      "Clean morning gym window light on the real scene, sharper detail, less clutter.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake physiques, no invented PRs or medals",
     defaultAspect: "4:5",
     motionHint: "quick push-in on the effort beat",
@@ -98,11 +106,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     ],
     baseDirection:
       "Honest daylight on real work: clear detail on tools, materials, and finished jobs. Keep the real site and craftsmanship truthful.",
-    variantDirections: [
-      "Wide establishing daylight shot of the real job site, switchboard, or van — keep materials and finished work exact.",
-      "Tight macro of the real install (wiring, fitting, joint, finish) with tidy framing and a clearly different crop from a wide shot.",
-      "Warm late-day wrap on the real tools or completed board — different colour grade and angle from the other two looks, no invented brand logos.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake certifications, no invented logos on vans",
     defaultAspect: "4:5",
     motionHint: "slow pan across the finished detail",
@@ -114,11 +119,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["restaurant", "food", "pizza", "burger", "sushi", "catering", "chef", "kitchen", "takeaway", "diner"],
     baseDirection:
       "Food-hero photography: appetising light, rich colour on the real dish, shallow depth. Never invent plating that isn't there.",
-    variantDirections: [
-      "Overhead food-hero of the real dish, appetising light, tidy crumbs — keep plating exact.",
-      "45-degree hero of the real plate with soft side light and shallow depth.",
-      "Close bite-detail of the real food texture, warm grade, no invented garnishes.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no invented garnishes, no fake steam that changes the dish",
     defaultAspect: "4:5",
     motionHint: "slow drizzle or steam drift if already in frame",
@@ -130,11 +132,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["retail", "shop", "boutique", "store", "ecommerce", "product", "candle", "jewellery", "jewelry", "fashion"],
     baseDirection:
       "Clean product/retail look: accurate packaging, labels, and materials. Improve light and tidiness without distorting the SKU.",
-    variantDirections: [
-      "Clean product shelf light — keep packaging, labels, and materials exact.",
-      "Lifestyle surface staging around the real product (table, linen) without changing the SKU.",
-      "Soft studio-grade light on the real item, neutral backdrop tidy-up — no logo redraw.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no logo redraw, no warped packaging, no fake claims on labels",
     defaultAspect: "4:5",
     motionHint: "gentle turntable orbit of the product",
@@ -146,11 +145,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: ["florist", "flower", "bloom", "bouquet", "floral", "posy"],
     baseDirection:
       "Bloom-true floral photography: honest colour on the real stems and wrap. Keep the actual arrangement recognisable — never swap flowers.",
-    variantDirections: [
-      "Tight petal close-up filling the frame, bright window light, shallow depth — keep the actual flowers exact.",
-      "Wider overhead of the full bouquet on a counter or kraft wrap, more of the table in frame — same flowers, clearly a wider crop than a close-up. Simple kraft or linen staging around the real blooms is fine; do not swap varieties.",
-      "45-degree side angle, darker editorial shadows, more negative space around the arrangement — same flowers, a third distinct crop and grade from the close-up and the overhead.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no invented blooms, no swapped varieties, no fake shop signage",
     defaultAspect: "4:5",
     motionHint: "slow drift across petals",
@@ -162,11 +158,8 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     niches: [],
     baseDirection:
       "Faithful social polish: better light, colour fidelity, and tidiness while keeping the real subject recognisable.",
-    variantDirections: [
-      "Brighter even light and cleaner colour, slightly wider scene — keep the real subject exact.",
-      "Dramatic tighter crop with shallow depth and darker readable edges — same subject, clearly a different framing.",
-      "Cooler desaturated grade, offset composition, tidy background — same subject, a third distinct look.",
-    ],
+    variantDirections: CROP_VARIANT_DIRECTIONS,
+    variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fantasy props, no relocated premises, no fake text in frame",
     defaultAspect: "4:5",
   },

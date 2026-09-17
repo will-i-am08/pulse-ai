@@ -203,6 +203,11 @@ export {
   brandPhotoStyleBits,
   gradePhotoBundle,
   generatePhotoImage,
+  generateHeadline,
+  formatOverlayHeadline,
+  overlaySafeInset,
+  OVERLAY_HEADLINE_MAX_WORDS,
+  OVERLAY_HEADLINE_MAX_CHARS,
 } from "./imaging.js";
 export {
   overlayMasthead,
@@ -224,6 +229,7 @@ export {
   lookPackForBrand,
   setBrandLookPack,
   frameFeedImage,
+  imagesTooSimilar,
   VARIANT_COUNT,
 } from "./variants.js";
 export {
@@ -233,7 +239,7 @@ export {
   parseLookChangeRequest,
   listLookPackSms,
 } from "./lookPacks/index.js";
-export type { LookPack, LookPackId } from "./lookPacks/index.js";
+export type { LookPack, LookPackId, LookFrameGravity } from "./lookPacks/index.js";
 export {
   createDemoSession,
   getDemoSession,
@@ -343,7 +349,6 @@ export {
   researchNichePlanFallback,
   buildPlanWithFallback,
   buildOnboardingPlanSms,
-  planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
   PLAN_WEB_SEARCH_DEEP,
   PLAN_WEB_SEARCH_HYBRID,
