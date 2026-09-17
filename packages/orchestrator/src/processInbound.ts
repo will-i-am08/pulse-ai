@@ -689,7 +689,7 @@ async function routeInbound(
     return { reply: WRAP_ACK, finishOnboardingBrandId: brand.id };
   }
   // Wrap-up compiling in the background: don't start over. If they already
-  // asked for a draft, hold quietly — the plan tease must not pile on after.
+  // asked for a draft, hold quietly — don't start a new interview on top.
   if (brand.onboarding_state?.status === "wrapping_up") {
     const wrapBody = message.body ?? "";
     if (looksLikeKickoffRequest(wrapBody) || DRAFT_FILLER_RE.test(wrapBody) || looksLikeMakeReelRequest(wrapBody)) {

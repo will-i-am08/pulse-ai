@@ -22,6 +22,7 @@ import {
   applyTextTile,
   brandPhotoStyleBits,
   shouldOverlayHeadline,
+  formatOverlayHeadline,
 } from "./imaging.js";
 import {
   facelessPromptLine,
@@ -365,7 +366,7 @@ export async function draftStoryOverlay(
       system: [
         `Write STORY overlay copy for "${creativeBrandLabel(brand)}" — Instagram Stories are ephemeral and vertical.`,
         "Do NOT write a feed-length caption. Output ONLY JSON:",
-        '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
+        '{"overlay":"<max 5 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
         "If the owner named a moment, class, offer, or time (tonight's class, this weekend, happy hour), the overlay MUST include that — never ignore their brief.",
         facelessPromptLine(brand) ?? "",
@@ -388,7 +389,9 @@ export async function draftStoryOverlay(
       overlay?: string;
       cta?: string;
     };
-    const overlay = stripPersonalNames(humanizeCaption(String(parsed.overlay ?? "")), brand).slice(0, 48);
+    const overlay = formatOverlayHeadline(
+      stripPersonalNames(humanizeCaption(String(parsed.overlay ?? "")), brand),
+    );
     let cta = stripPersonalNames(humanizeCaption(String(parsed.cta ?? "")), brand).slice(0, 48);
     const sticker = String((parsed as { sticker?: string }).sticker ?? "none");
     const q = humanizeCaption(String((parsed as { question_prompt?: string }).question_prompt ?? "")).slice(0, 60);
@@ -398,7 +401,7 @@ export async function draftStoryOverlay(
     console.error("draftStoryOverlay failed", err);
   }
   const masthead = overlayMasthead(brand);
-  return { overlay: (masthead || "START HERE").slice(0, 24) };
+  return { overlay: formatOverlayHeadline(masthead || "START HERE") };
 }
 
 async function renderTypedSlides(
@@ -592,8 +595,8 @@ export async function generatePhotoTextCarousel(
       ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
       : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤8 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
-      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
+      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
       ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
@@ -657,10 +660,9 @@ export async function generatePhotoTextCarousel(
       caption = stripPersonalNames(sanitizeChatText(String(parsed.caption ?? "")), brand).trim();
       slides = (parsed.slides ?? [])
         .map((s) => ({
-          overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
-            .replace(/["']/g, "")
-            .trim()
-            .slice(0, ideaMode ? 64 : 64),
+          overlay: formatOverlayHeadline(
+            stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand),
+          ),
           photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
           ideaBlurb: stripPersonalNames(
             sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
@@ -743,7 +745,7 @@ export async function generatePhotoTextCarousel(
   if (forceFresh) {
     for (let i = 0; i < slides.length; i++) {
       slides[i]!.photoPrompt = mutatePhotoPrompt(slides[i]!.photoPrompt, 3, i);
-      slides[i]!.overlay = slides[i]!.overlay.slice(0, 40);
+      slides[i]!.overlay = formatOverlayHeadline(slides[i]!.overlay);
       if (slides[i]!.ideaBlurb) {
         slides[i]!.ideaBlurb = slides[i]!.ideaBlurb!.slice(0, 120);
       }
@@ -805,7 +807,7 @@ export async function generatePhotoTextCarousel(
     let eyebrow: string | undefined = ideaMode ? "IDEA" : undefined;
     let overlay = slide.overlay;
     if (opts?.shortenOverlay) {
-      overlay = overlay.slice(0, 36);
+      overlay = formatOverlayHeadline(overlay);
       if (body) body = body.slice(0, 90);
       eyebrow = undefined;
     }
@@ -868,7 +870,7 @@ export async function generatePhotoTextCarousel(
           slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, attempt, idx);
         }
         if (wantShorter || attempt >= 2) {
-          slide.overlay = slide.overlay.slice(0, attempt >= 3 ? 28 : 40);
+          slide.overlay = formatOverlayHeadline(slide.overlay);
           if (slide.ideaBlurb) {
             slide.ideaBlurb = slide.ideaBlurb.slice(0, attempt >= 3 ? 70 : 110);
           }
@@ -900,7 +902,7 @@ export async function generatePhotoTextCarousel(
     for (let idx = 0; idx < slides.length; idx++) {
       const slide = slides[idx]!;
       slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
-      slide.overlay = slide.overlay.slice(0, 32);
+      slide.overlay = formatOverlayHeadline(slide.overlay);
       if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
       const id = await renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true });
       if (!id) {

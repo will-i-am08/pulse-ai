@@ -16,34 +16,52 @@ import {
   type Post,
 } from "@pulse/shared";
 import { editImageForBrand } from "./imaging.js";
-import { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
 import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
-import { getLookPack, resolveLookPackFromNiche, type LookPack, type LookPackId } from "./lookPacks/index.js";
+import {
+  getLookPack,
+  resolveLookPackFromNiche,
+  type LookFrameGravity,
+  type LookPack,
+  type LookPackId,
+} from "./lookPacks/index.js";
 
 export const VARIANT_COUNT = 3;
 
-/** Crop/letterbox a photo into 4:5 feed frame. */
-export async function frameFeedImage(imgBytes: Uint8Array): Promise<Buffer> {
+/** Crop/letterbox a photo into 4:5 feed frame. Gravity picks which region survives. */
+export async function frameFeedImage(
+  imgBytes: Uint8Array,
+  gravity: LookFrameGravity | string = "centre",
+): Promise<Buffer> {
   const width = 1080;
   const height = 1350;
+  const position = gravity || "centre";
   return sharp(Buffer.from(imgBytes))
     .rotate()
-    .resize({ width, height, fit: "cover", position: "centre" })
+    .resize({ width, height, fit: "cover", position })
     .jpeg({ quality: 88 })
     .toBuffer();
 }
 
-async function storeFramedCopy(brandId: string, mediaId: string): Promise<string> {
-  const blob = await getMedia(mediaId);
-  if (!blob || !blob.contentType.startsWith("image/")) return mediaId;
-  const framed = await frameFeedImage(blob.bytes);
+/** Mean absolute pixel diff on a 32×32 greyscale downscale. True when frames look near-identical. */
+export async function imagesTooSimilar(a: Buffer, b: Buffer): Promise<boolean> {
+  const size = 32;
+  const [ra, rb] = await Promise.all([
+    sharp(a).resize(size, size, { fit: "fill" }).greyscale().raw().toBuffer(),
+    sharp(b).resize(size, size, { fit: "fill" }).greyscale().raw().toBuffer(),
+  ]);
+  let acc = 0;
+  for (let i = 0; i < ra.length; i++) acc += Math.abs(ra[i]! - rb[i]!);
+  return acc / ra.length < 14;
+}
+
+async function storeFramedBuffer(brandId: string, jpeg: Buffer): Promise<string> {
   const newId = randomUUID();
   await query(
     `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
      values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
     [newId, brandId, newId],
   );
-  await putMedia(newId, new Uint8Array(framed), "image/jpeg");
+  await putMedia(newId, new Uint8Array(jpeg), "image/jpeg");
   return newId;
 }
 
@@ -114,29 +132,55 @@ export async function generatePhotoVariants(
   const pack = opts?.pack ?? lookPackForBrand(brand);
   const hint = opts?.extraHint?.trim();
   const directions = pack.variantDirections.slice(0, count);
+  const mediaIds: string[] = [];
+  const framedBuffers: Buffer[] = [];
 
-  const ids = await mapWithConcurrency(directions, SLIDE_RENDER_CONCURRENCY, async (dir, i) => {
-    const request = [
-      pack.baseDirection,
-      `Look ${i + 1} of ${count}: ${dir}`,
-      `This look MUST be obviously different from the other ${count - 1} looks — different crop AND lighting, not a near-duplicate grade of the same crop.`,
-      pack.negativeCues ? `Avoid: ${pack.negativeCues}.` : "",
-      hint ? `Also: ${hint}.` : "",
-      "Output must stay truthful to the real subject in the photo.",
-      brand.facts?.lab && pack.id !== "cafe_warm"
-        ? "Do not restyle this into a café, coffee shop, espresso machine, or bakery scene."
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const edited = await editImageForBrand(brand, mediaId, request).catch(() => null);
-    if (!edited) return null;
-    await recordAiSpend(brand.id, "image");
-    // Frame to 4:5 for feed-first vertical.
-    return storeFramedCopy(brand.id, edited).catch(() => edited);
-  });
+  for (let i = 0; i < directions.length; i++) {
+    const dir = directions[i]!;
+    const gravity = pack.variantFrames[i] ?? "centre";
+    let accepted: Buffer | null = null;
 
-  const mediaIds = ids.filter((id): id is string => Boolean(id));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const request = [
+        pack.baseDirection,
+        `Look ${i + 1} of ${count}: ${dir}`,
+        "This look MUST be a different crop from the other looks.",
+        attempt === 1
+          ? "CROP HARDER — previous attempt was too similar. Change framing dramatically."
+          : "",
+        pack.negativeCues ? `Avoid: ${pack.negativeCues}.` : "",
+        hint ? `Also: ${hint}.` : "",
+        "Output must stay truthful to the real subject in the photo.",
+        brand.facts?.lab && pack.id !== "cafe_warm"
+          ? "Do not restyle this into a café, coffee shop, espresso machine, or bakery scene."
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const edited = await editImageForBrand(brand, mediaId, request).catch(() => null);
+      if (!edited) continue;
+      await recordAiSpend(brand.id, "image");
+      const blob = await getMedia(edited);
+      if (!blob) continue;
+      const framed = await frameFeedImage(blob.bytes, gravity);
+
+      let similar = false;
+      for (const prev of framedBuffers) {
+        if (await imagesTooSimilar(framed, prev)) {
+          similar = true;
+          break;
+        }
+      }
+      if (similar && attempt === 0) continue;
+      accepted = framed;
+      break;
+    }
+
+    if (!accepted) continue;
+    framedBuffers.push(accepted);
+    const stored = await storeFramedBuffer(brand.id, accepted).catch(() => null);
+    if (stored) mediaIds.push(stored);
+  }
   if (mediaIds.length === 0) {
     return { ok: false, spendSms: "", reason: "failed" };
   }

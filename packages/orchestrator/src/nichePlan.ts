@@ -15,7 +15,7 @@ import {
   formatBiasForJob,
 } from "./contentJobs.js";
 
-/** Concrete minutes Kip quotes after onboarding — and delivers against. */
+/** Research SLA after onboarding wrap (promised_at). Never quoted in SMS. */
 export const ONBOARDING_PLAN_ETA_MINUTES = 2;
 
 // The niche-research custom plan. A background pass studies the brand's niche +
@@ -487,11 +487,4 @@ export async function buildOnboardingPlanSms(brandId: string): Promise<string | 
 
   await markPlanProposed(row.id, plan);
   return `${planTextSummary(plan)}\n\nReply yes to use this plan, or tell me what to tweak.`;
-}
-
-/** Fresh concrete ETA when research overruns the original promise. */
-export function planOverrunNudge(extraMinutes = 2): string {
-  return (
-    `Still finishing your content plan — about ${extraMinutes} more minutes, then I'll text it through.`
-  );
 }

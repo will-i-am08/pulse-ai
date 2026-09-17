@@ -6,6 +6,7 @@ import {
   generatePhotoImage,
   generateHeadline,
   applyTextTile,
+  formatOverlayHeadline,
 } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -73,7 +74,7 @@ export async function generateFillerPost(
     NEVER_INVENT_PROOF,
     "No scarcity, book-now, filling-up-fast, or SALE energy unless the owner brief explicitly asks for a promo.",
     wantPhoto
-      ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<4-12 word overlay headline>"}'
+      ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
       : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
     wantPhoto
       ? [
@@ -117,7 +118,9 @@ export async function generateFillerPost(
         return null;
       }
       caption = stripPersonalNames(drafted.caption, brand);
-      card = stripPersonalNames(drafted.card, brand);
+      card = wantPhoto
+        ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
+        : stripPersonalNames(drafted.card, brand);
       photoPrompt = drafted.photoPrompt;
       if (!topic) break;
       const compliance = await reviewBriefCompliance({

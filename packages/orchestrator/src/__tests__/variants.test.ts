@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseVariantChoice, variantPickSms, lookPackForBrand } from "../variants.js";
+import { parseVariantChoice, variantPickSms, lookPackForBrand, frameFeedImage, imagesTooSimilar } from "../variants.js";
 import {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
@@ -61,11 +61,23 @@ describe("look packs", () => {
     expect(resolveLookPackFromNiche("random consulting").id).toBe("generic_faithful");
   });
 
-  it("each pack has three variant directions", () => {
+  it("each pack has three variant directions and three distinct frames", () => {
     for (const pack of Object.values(LOOK_PACKS_V1)) {
-    expect(pack.variantDirections).toHaveLength(3);
-    expect(new Set(pack.variantDirections).size).toBe(3);
-    expect(pack.defaultAspect).toBe("4:5");
+      expect(pack.variantDirections).toHaveLength(3);
+      expect(new Set(pack.variantDirections).size).toBe(3);
+      expect(pack.variantFrames).toHaveLength(3);
+      expect(new Set(pack.variantFrames).size).toBe(3);
+      expect(pack.variantFrames).toEqual(["attention", "centre", "entropy"]);
+      expect(pack.defaultAspect).toBe("4:5");
+    }
+  });
+
+  it("variantDirections are crop-first and subject-agnostic", () => {
+    for (const pack of Object.values(LOOK_PACKS_V1)) {
+      for (const line of pack.variantDirections) {
+        expect(line).toMatch(/crop|framing|establishing/i);
+        expect(line).not.toMatch(/petal|bouquet|espresso|hair/i);
+      }
     }
   });
 
@@ -106,20 +118,75 @@ describe("look packs", () => {
     ).toBe("tradie_daylight");
   });
 
-  it("florist looks differ by crop, not just grade", () => {
-    const [close, wide, side] = LOOK_PACKS_V1.florist_bloom.variantDirections;
-    expect(close).toMatch(/close-up/i);
-    expect(wide).toMatch(/wider|overhead/i);
-    expect(side).toMatch(/45-degree|side angle/i);
-    expect(wide).not.toBe(close);
-    expect(side).not.toBe(wide);
+  it("florist looks differ by crop, not just grade, and stay subject-agnostic", () => {
+    const [close, medium, wide] = LOOK_PACKS_V1.florist_bloom.variantDirections;
+    expect(close).toMatch(/tight crop|extreme close/i);
+    expect(medium).toMatch(/45-degree|medium/i);
+    expect(wide).toMatch(/wider establishing|full subject/i);
+    for (const line of [close, medium, wide]) {
+      expect(line).not.toMatch(/petal|bouquet|espresso|hair/i);
+    }
+    expect(new Set(LOOK_PACKS_V1.florist_bloom.variantFrames).size).toBe(3);
   });
 
-  it("asks each look to differ by crop and lighting", () => {
+  it("generates looks sequentially and retries similar frames", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../variants.ts"),
       "utf8",
     );
-    expect(src).toMatch(/different crop AND lighting/);
+    const gen = src.slice(src.indexOf("export async function generatePhotoVariants"));
+    expect(gen).toMatch(/for \(let i = 0; i < directions\.length/);
+    expect(gen).toMatch(/imagesTooSimilar/);
+    expect(gen).toMatch(/CROP HARDER/);
+    expect(gen).toMatch(/frameFeedImage\(blob\.bytes, gravity\)/);
+    expect(gen).not.toMatch(/mapWithConcurrency/);
+  });
+});
+
+describe("frameFeedImage gravity", () => {
+  it("accepts a gravity argument and crops differently for north vs south", async () => {
+    const { default: sharp } = await import("sharp");
+    const split = await sharp({
+      create: { width: 40, height: 80, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 40, height: 40, channels: 3, background: { r: 0, g: 0, b: 0 } },
+          })
+            .png()
+            .toBuffer(),
+          top: 40,
+          left: 0,
+        },
+      ])
+      .png()
+      .toBuffer();
+
+    const north = await frameFeedImage(split, "north");
+    const south = await frameFeedImage(split, "south");
+    const northStats = await sharp(north).stats();
+    const southStats = await sharp(south).stats();
+    const northMean = northStats.channels.slice(0, 3).reduce((a, c) => a + c.mean, 0) / 3;
+    const southMean = southStats.channels.slice(0, 3).reduce((a, c) => a + c.mean, 0) / 3;
+    expect(northMean).toBeGreaterThan(southMean);
+  });
+});
+
+describe("imagesTooSimilar", () => {
+  it("treats identical buffers as similar and black vs white as different", async () => {
+    const { default: sharp } = await import("sharp");
+    const black = await sharp({
+      create: { width: 32, height: 32, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const white = await sharp({
+      create: { width: 32, height: 32, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .jpeg()
+      .toBuffer();
+    expect(await imagesTooSimilar(black, black)).toBe(true);
+    expect(await imagesTooSimilar(black, white)).toBe(false);
   });
 });

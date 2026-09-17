@@ -105,6 +105,25 @@ describe("wrap hold", () => {
   });
 });
 
+describe("onboarding rundown SMS", () => {
+  it("is main-only — finishOnboarding does not concatenate an afterthought", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/export type OnboardingRundown = \{\s*main: string;\s*\}/);
+    const finish = src.slice(
+      src.indexOf("export async function finishOnboarding"),
+      src.indexOf("async function compileProfile"),
+    );
+    expect(finish).toMatch(/return \{\s*main:/);
+    expect(finish).not.toMatch(/afterthought/);
+    expect(src).not.toMatch(/I'll text you in about/);
+    expect(src).toMatch(/\$\{step\.reply\}\\n\\n\$\{rundown\.main\}/);
+    expect(src).not.toMatch(/rundown\.afterthought/);
+  });
+});
+
 describe("voiceRecapSms", () => {
   it("does not say I'll skip use-jokes or send them to a dashboard", () => {
     const sms = voiceRecapSms(["warm", "direct"], ["use jokes in captions", "Don't sell hard"]);

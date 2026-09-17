@@ -549,6 +549,30 @@ export function messageWantsImageEdit(body: string | null | undefined): boolean 
   );
 }
 
+export const OVERLAY_HEADLINE_MAX_WORDS = 5;
+export const OVERLAY_HEADLINE_MAX_CHARS = 28;
+
+/** Hard-cap overlay titles so they cannot smash in a 4:5 / MMS crop. */
+export function formatOverlayHeadline(text: string): string {
+  const cleaned = text
+    .replace(/["'`]/g, "")
+    .replace(/[\u2018\u2019\u201C\u201D]/g, "")
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+  const words = cleaned.split(" ").filter(Boolean).slice(0, OVERLAY_HEADLINE_MAX_WORDS);
+  let out = words.join(" ");
+  while (out.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
+    words.pop();
+    out = words.join(" ");
+  }
+  if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
+    out = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim();
+  }
+  return out;
+}
+
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
   const nameless = isNamelessCreative(brand);
@@ -567,21 +591,21 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
     maxTokens: 20,
   });
   const cleaned = stripPersonalNames(
-    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42),
+    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase(),
     brand,
   );
   // Never fall back to the owner's personal brand name on faceless accounts.
-  if (cleaned) return cleaned;
-  return overlayMasthead(brand) || "START HERE";
+  if (cleaned) return formatOverlayHeadline(cleaned);
+  return formatOverlayHeadline(overlayMasthead(brand) || "START HERE");
 }
 
 /**
  * Horizontal safe inset for burned-in overlays.
  * Parent padding + child width must NOT both subtract this (that overflows left/right).
- * ~11% each side leaves room for tall phone crops / MMS letterboxing.
+ * ~14% each side leaves room for tall phone crops / MMS letterboxing.
  */
 export function overlaySafeInset(width: number): number {
-  return Math.max(Math.round(width * 0.11), 48);
+  return Math.max(Math.round(width * 0.14), 64);
 }
 
 /** Scale overlay title so longer lines still fit inside the safe pad. */
@@ -589,14 +613,14 @@ function overlayFontSize(width: number, text: string, hasBody: boolean): number 
   const len = text.replace(/\s+/g, " ").trim().length;
   // With a body block, keep the title smaller so detail copy fits.
   if (hasBody) {
-    if (len > 32) return Math.round(width * 0.042);
-    if (len > 22) return Math.round(width * 0.048);
-    return Math.round(width * 0.055);
+    if (len > 22) return Math.round(width * 0.038);
+    if (len > 14) return Math.round(width * 0.044);
+    return Math.round(width * 0.050);
   }
-  if (len > 36) return Math.round(width * 0.048);
-  if (len > 28) return Math.round(width * 0.055);
-  if (len > 20) return Math.round(width * 0.065);
-  return Math.round(width * 0.075);
+  if (len > 22) return Math.round(width * 0.042);
+  if (len > 16) return Math.round(width * 0.050);
+  if (len > 10) return Math.round(width * 0.058);
+  return Math.round(width * 0.065);
 }
 
 function overlayBodyFontSize(width: number, text: string): number {
@@ -736,7 +760,10 @@ async function renderTile(
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        lineHeight: 1.1,
+        letterSpacing: "0.06em",
+        lineHeight: 1.18,
+        textAlign: "center",
+        justifyContent: "center",
         textTransform: hasBody ? "none" : "uppercase",
         wordBreak: "break-word",
         overflowWrap: "break-word",
@@ -927,7 +954,7 @@ export async function applyTextTile(
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const safeHeadline = stripPersonalNames(headline, brand);
+    const safeHeadline = formatOverlayHeadline(stripPersonalNames(headline, brand));
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
     const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual, {
@@ -971,7 +998,7 @@ export async function applyStoryCreative(
     const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
     const palette = resolveBrandPalette(brand.visual);
     const scrim = hexToRgb(palette.bgFrom);
-    const headline = stripPersonalNames(overlay, brand).toUpperCase().slice(0, 48);
+    const headline = formatOverlayHeadline(stripPersonalNames(overlay, brand));
     const ctaLine = stripPersonalNames((cta ?? "").trim(), brand).slice(0, 36);
     const padX = overlaySafeInset(width);
     const headlineSize = overlayFontSize(width, headline, Boolean(ctaLine));
@@ -1025,7 +1052,10 @@ export async function applyStoryCreative(
                         color: palette.text,
                         fontFamily: palette.displayFont,
                         fontSize: `${headlineSize}px`,
-                        lineHeight: 1.08,
+                        letterSpacing: "0.06em",
+                        lineHeight: 1.18,
+                        textAlign: "center",
+                        justifyContent: "center",
                         textTransform: "uppercase",
                         wordBreak: "break-word",
                         overflowWrap: "break-word",
