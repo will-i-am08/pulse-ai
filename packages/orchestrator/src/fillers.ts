@@ -77,6 +77,9 @@ export async function generateFillerPost(
       ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
       : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
     wantPhoto
+      ? "The card overlay must be a complete standalone headline, never a truncated sentence or sliced clause."
+      : "",
+    wantPhoto
       ? [
           "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption — and honour any background the owner named.",

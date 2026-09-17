@@ -596,10 +596,179 @@ export const OVERLAY_TRAILING_FUNCTION_WORDS = new Set([
   "WERE",
 ]);
 
-function popTrailingOverlayFunctionWords(words: string[]): void {
-  while (words.length > 1 && OVERLAY_TRAILING_FUNCTION_WORDS.has(words[words.length - 1]!)) {
+/**
+ * Interior fillers dropped when a cleaned overlay has more than 5 words, so
+ * content words survive instead of a first-N slice of a longer clause.
+ * Phrasal particles (UP/OVER/UNDER) stay — they are often part of the phrase.
+ * Quantifiers like EVERY stay interior so a later trailing strip can complete
+ * the headline (FLOSS … MISSES EVERY → MISSES) instead of skipping to SINGLE.
+ */
+const OVERLAY_INTERIOR_FILLER_WORDS = new Set([
+  "THE",
+  "A",
+  "AN",
+  "AND",
+  "OR",
+  "OF",
+  "TO",
+  "FOR",
+  "WITH",
+  "NOT",
+  "IN",
+  "ON",
+  "AT",
+  "BY",
+  "FROM",
+  "YOUR",
+  "MY",
+  "OUR",
+  "ITS",
+  "IS",
+  "ARE",
+  "WAS",
+  "WERE",
+  "BE",
+  "BEEN",
+  "BEING",
+  "THAT",
+  "THIS",
+  "THESE",
+  "THOSE",
+  "WHO",
+  "WHICH",
+  "WHAT",
+  "THEY",
+  "THEM",
+  "WE",
+  "YOU",
+  "I",
+  "ME",
+  "HE",
+  "SHE",
+  "IT",
+  "THEIR",
+  "HIS",
+  "HER",
+  "WHEN",
+  "IF",
+  "WHILE",
+  "BECAUSE",
+  "HOW",
+  "WHY",
+  "WHERE",
+  "VERY",
+  "OTHERWISE",
+]);
+
+/**
+ * Extra trailing leftovers a first-N cap of a longer sentence can still leave
+ * after filler drop (EVERY/THAT/YOU/ABOVE). Only applied when we compressed.
+ * Short headlines like LOVE YOU / RISE ABOVE are left alone.
+ */
+const OVERLAY_COMPRESS_DANGLE_WORDS = new Set([
+  ...OVERLAY_TRAILING_FUNCTION_WORDS,
+  "THAT",
+  "THIS",
+  "THESE",
+  "THOSE",
+  "EVERY",
+  "EACH",
+  "ANY",
+  "SOME",
+  "ALL",
+  "BOTH",
+  "SUCH",
+  "YOU",
+  "WE",
+  "THEY",
+  "THEM",
+  "HE",
+  "SHE",
+  "IT",
+  "ME",
+  "US",
+  "I",
+  "HIM",
+  "HER",
+  "WHO",
+  "WHOM",
+  "WHICH",
+  "WHAT",
+  "WHOSE",
+  "WHEN",
+  "IF",
+  "WHILE",
+  "BECAUSE",
+  "ALTHOUGH",
+  "THOUGH",
+  "UNLESS",
+  "UNTIL",
+  "SINCE",
+  "WHETHER",
+  "WHERE",
+  "WHY",
+  "HOW",
+  "ABOVE",
+  "BELOW",
+  "BEFORE",
+  "AFTER",
+  "BETWEEN",
+  "THROUGH",
+  "DURING",
+  "WITHOUT",
+  "WITHIN",
+  "ACROSS",
+  "AGAINST",
+  "AMONG",
+  "AROUND",
+  "BEHIND",
+  "BESIDE",
+  "BEYOND",
+  "ABOUT",
+  "VERY",
+  "TOO",
+  "JUST",
+  "ALSO",
+  "THEN",
+  "THAN",
+  "SO",
+  "EVEN",
+  "YET",
+  "WAY",
+  "SHOULD",
+  "WOULD",
+  "COULD",
+  "WILL",
+  "CAN",
+  "MAY",
+  "MIGHT",
+  "MUST",
+  "DO",
+  "DOES",
+  "DID",
+  "HAVE",
+  "HAS",
+  "HAD",
+  "BEEN",
+  "BEING",
+  "GET",
+  "GOT",
+  "OTHERWISE",
+]);
+
+function popTrailingOverlayWords(words: string[], stop: Set<string>): void {
+  while (words.length > 1 && stop.has(words[words.length - 1]!)) {
     words.pop();
   }
+}
+
+/** Drop interior fillers; keep the first and last tokens. */
+function dropInteriorOverlayFillers(words: string[]): string[] {
+  if (words.length <= 2) return words;
+  const first = words[0]!;
+  const last = words[words.length - 1]!;
+  const interior = words.slice(1, -1).filter((w) => !OVERLAY_INTERIOR_FILLER_WORDS.has(w));
+  return [first, ...interior, last];
 }
 
 /** Hard-cap overlay titles so they cannot smash in a 4:5 / MMS crop. */
@@ -607,11 +776,19 @@ export function formatOverlayHeadline(text: string): string {
   const cleaned = text
     .replace(/["'`]/g, "")
     .replace(/[\u2018\u2019\u201C\u201D]/g, "")
-    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    // Keep `%` so tokens like `40%` stay intact; other punctuation → spaces.
+    .replace(/[^a-zA-Z0-9%\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
-  const words = cleaned.split(" ").filter(Boolean).slice(0, OVERLAY_HEADLINE_MAX_WORDS);
+  let words = cleaned.split(" ").filter(Boolean);
+  const compressed = words.length > OVERLAY_HEADLINE_MAX_WORDS;
+  if (compressed) {
+    words = dropInteriorOverlayFillers(words);
+  }
+  words = words.slice(0, OVERLAY_HEADLINE_MAX_WORDS);
+  const trailStop = compressed ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
+  const stripTrail = () => popTrailingOverlayWords(words, trailStop);
   const fitWords = () => {
     let joined = words.join(" ");
     while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
@@ -622,15 +799,15 @@ export function formatOverlayHeadline(text: string): string {
   };
   // Char-cap can expose a new trailing function word; strip, then re-fit.
   fitWords();
-  popTrailingOverlayFunctionWords(words);
+  stripTrail();
   let out = fitWords();
-  popTrailingOverlayFunctionWords(words);
+  stripTrail();
   out = words.join(" ");
   if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
     const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
     const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
     if (cutMidWord && sliced.length > 1) sliced.pop();
-    popTrailingOverlayFunctionWords(sliced);
+    popTrailingOverlayWords(sliced, trailStop);
     out = sliced.join(" ");
   }
   return out;
@@ -641,8 +818,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",

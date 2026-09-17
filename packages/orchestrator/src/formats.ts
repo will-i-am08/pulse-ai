@@ -368,7 +368,7 @@ export async function draftStoryOverlay(
         `Write STORY overlay copy for "${creativeBrandLabel(brand)}" — Instagram Stories are ephemeral and vertical.`,
         "Do NOT write a feed-length caption. Output ONLY JSON:",
         '{"overlay":"<max 5 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
-        "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or).",
+        "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or). The overlay must be a complete standalone headline, never a truncated sentence or sliced clause.",
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
         "If the owner named a moment, class, offer, or time (tonight's class, this weekend, happy hour), the overlay MUST include that — never ignore their brief.",
         facelessPromptLine(brand) ?? "",
@@ -604,7 +604,7 @@ export async function generatePhotoTextCarousel(
     ideaMode
       ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
-    "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or).",
+    "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or). The overlay must be a complete standalone headline, never a truncated sentence or sliced clause.",
     "photo_prompt must match the owner brief visual (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
     "photo_prompt must read like a real photographer brief: specific make/model or vehicle class if cars, real location/time of day, lens feel — never 'epic AI fantasy' or abstract CGI.",
     noFace || "People in frame are fine when the brief calls for them; otherwise prefer clear subject photography.",

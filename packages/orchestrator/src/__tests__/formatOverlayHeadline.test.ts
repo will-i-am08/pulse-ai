@@ -72,6 +72,59 @@ describe("formatOverlayHeadline", () => {
     expect(OVERLAY_TRAILING_FUNCTION_WORDS.has("NOT")).toBe(true);
   });
 
+  it("does not slice a longer clause into a truncated fragment", () => {
+    const src = "FLOSS THE 40% YOUR BRUSH MISSES";
+    const out = formatOverlayHeadline(src);
+    expect(out).not.toBe("FLOSS THE 40 YOUR BRUSH");
+    expect(out).toBe("FLOSS 40% BRUSH MISSES");
+    expect(out).toContain("40%");
+    expect(out).not.toMatch(/(^|\s)40(\s|$)/);
+    expect(out.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
+    expect(out.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+    const last = out.split(/\s+/).filter(Boolean).pop();
+    expect(last && OVERLAY_TRAILING_FUNCTION_WORDS.has(last)).toBe(false);
+  });
+
+  it("keeps percent as part of a token", () => {
+    expect(formatOverlayHeadline("SAVE 40%")).toBe("SAVE 40%");
+    expect(formatOverlayHeadline("40% OFF TODAY")).toBe("40% OFF TODAY");
+    expect(formatOverlayHeadline("floss the 40% your brush misses")).toContain("40%");
+    expect(formatOverlayHeadline("floss the 40% your brush misses")).not.toMatch(/(^|\s)40(\s|$)/);
+  });
+
+  it("still headlines a source that has no percent", () => {
+    const out = formatOverlayHeadline("FLOSS THE 40 YOUR BRUSH MISSES");
+    expect(out).not.toBe("FLOSS THE 40 YOUR BRUSH");
+    expect(out).toBe("FLOSS 40 BRUSH MISSES");
+  });
+
+  it("drops interior fillers on long lines but keeps phrasal UP/OVER", () => {
+    expect(formatOverlayHeadline("WARM UP BEFORE THE HEAVY LIFT")).toBe("WARM UP BEFORE HEAVY LIFT");
+    expect(formatOverlayHeadline("GAME OVER FOR THE EARLY SHIFT")).toBe("GAME OVER EARLY SHIFT");
+  });
+
+  it("keeps middle content when first and last tokens are fillers", () => {
+    expect(formatOverlayHeadline("THE BEST COFFEE BREW FOR")).toBe("THE BEST COFFEE BREW");
+    expect(formatOverlayHeadline("THE BEST MORNING COFFEE FOR YOU")).toBe("THE BEST MORNING COFFEE");
+    const out = formatOverlayHeadline("THE BEST MORNING COFFEE FOR YOU");
+    expect(out.split(/\s+/).filter(Boolean).length).toBeGreaterThanOrEqual(2);
+    expect(out).toMatch(/BEST/);
+    expect(out).toMatch(/COFFEE/);
+  });
+
+  it("does not leave a first-N leftover on a longer compressed sentence", () => {
+    const long = formatOverlayHeadline(
+      "FLOSS THE 40% YOUR BRUSH MISSES EVERY SINGLE TIME YOU RUSH",
+    );
+    expect(long).toContain("40%");
+    expect(long).not.toMatch(/\bEVERY\b/);
+    expect(long).toBe("FLOSS 40% BRUSH MISSES");
+    const naive = "TWELVE WORD HEADLINE THAT IS WAY TOO LONG FOR THE OVERLAY CROP";
+    const twelve = formatOverlayHeadline(naive);
+    expect(twelve).not.toBe("TWELVE WORD HEADLINE THAT IS");
+    expect(twelve).not.toMatch(/\bTHAT\b/);
+  });
+
   it("never ends a multi-word overlay on a function word, including after the 28-char slice", () => {
     const samples = [
       "WARM UP SETS BUILD THE",
@@ -104,6 +157,31 @@ describe("formatOverlayHeadline", () => {
     expect(sliced.endsWith(" THE")).toBe(false);
     expect(sliced.split(/\s+/).filter(Boolean)).not.toContain("THE");
   });
+
+  it("caps long sentences without trailing function words", () => {
+    const sentences = [
+      "FLOSS THE 40% YOUR BRUSH MISSES EVERY SINGLE TIME YOU RUSH",
+      "Storm prep starts above the roofline when the gutters are full of leaves",
+      "You should always remember to check the seals and joints before the rain",
+      "This is a very long overlay line that would otherwise get sliced badly",
+      "Clear the blockages from the downspouts and secure them properly for rain",
+      "Warm up sets build the foundation of every heavy training session today",
+      "A quick tip for your brush and floss routine in the morning rush",
+      "Ready for rain with the gutters cleared and the joints sealed tight",
+    ];
+    for (const s of sentences) {
+      const out = formatOverlayHeadline(s);
+      const parts = out.split(/\s+/).filter(Boolean);
+      expect(parts.length, s).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
+      expect(out.length, s).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+      if (parts.length > 1) {
+        expect(
+          OVERLAY_TRAILING_FUNCTION_WORDS.has(parts[parts.length - 1]!),
+          `${s} -> ${out}`,
+        ).toBe(false);
+      }
+    }
+  });
 });
 
 describe("overlay headline wiring", () => {
@@ -116,6 +194,8 @@ describe("overlay headline wiring", () => {
     expect(generateHeadline).toMatch(/formatOverlayHeadline\(/);
     expect(generateHeadline).toMatch(/2-5 word/);
     expect(generateHeadline).toMatch(/Never end on a function word/);
+    expect(generateHeadline).toMatch(/standalone headline/);
+    expect(generateHeadline).toMatch(/truncated sentence/);
     expect(generateHeadline).not.toMatch(/4-12/);
 
     const applyTextTile = imaging.slice(
@@ -141,6 +221,8 @@ describe("overlay headline wiring", () => {
     const fillers = readFileSync(join(here, "../fillers.ts"), "utf8");
     expect(fillers).toMatch(/"card":"<2-5 word overlay headline>"/);
     expect(fillers).not.toMatch(/4-12 word overlay/);
+    expect(fillers).toMatch(/standalone headline/);
+    expect(fillers).toMatch(/truncated sentence/);
     expect(fillers).toMatch(/wantPhoto\s*\n\s*\? formatOverlayHeadline\(/);
   });
 
@@ -149,6 +231,8 @@ describe("overlay headline wiring", () => {
     expect(formats).toMatch(/"overlay":"<max 5 words>"/);
     expect(formats).toMatch(/"overlay":"<idea title max 5 words>"/);
     expect(formats).toMatch(/Never end an overlay on a function word/);
+    expect(formats).toMatch(/standalone headline/);
+    expect(formats).toMatch(/truncated sentence/);
     expect(formats).toMatch(/overlay:\s*formatOverlayHeadline\(/);
     expect(formats).not.toMatch(/ideaBlurb:\s*formatOverlayHeadline/);
     expect(formats).not.toMatch(/formatOverlayHeadline\([^)]*ideaBlurb/);
