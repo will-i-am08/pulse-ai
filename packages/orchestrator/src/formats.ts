@@ -39,6 +39,7 @@ import {
   reinforceTopicHint,
   reviewBriefCompliance,
 } from "./briefCompliance.js";
+import { NEVER_INVENT_PROOF } from "./persona.js";
 import { visualReference } from "./library.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -371,6 +372,7 @@ export async function draftStoryOverlay(
         "If the owner named a moment, class, offer, or time (tonight's class, this weekend, happy hour), the overlay MUST include that — never ignore their brief.",
         facelessPromptLine(brand) ?? "",
         profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
+        NEVER_INVENT_PROOF,
         "No hashtags, no emoji spam, no quotes.",
       ]
         .filter(Boolean)
@@ -462,6 +464,7 @@ export async function generateTypedCarousel(
   const system = [
     `You write a ${kindGuide[kind]} for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
+    NEVER_INVENT_PROOF,
     'Output ONLY JSON: {"caption":"<short feed caption>","slides":["<slide 1>","<slide 2>",...]}',
     "3 to 5 slides. Each slide is ONE short punchy line (max about 10 words). No emoji, no quotes, no dashes of any kind.",
     kind === "before_after" ? "Slide 2 should read as BEFORE; slide 3 as AFTER." : "",
@@ -604,6 +607,7 @@ export async function generatePhotoTextCarousel(
     "photo_prompt must read like a real photographer brief: specific make/model or vehicle class if cars, real location/time of day, lens feel — never 'epic AI fantasy' or abstract CGI.",
     noFace || "People in frame are fine when the brief calls for them; otherwise prefer clear subject photography.",
     "No text/logos/watermarks in the photo itself — overlay is burned on afterward.",
+    NEVER_INVENT_PROOF,
     ideaMode ? "Use web search to ground ideas in real demand/trends; do not invent fake statistics." : "",
   ]
     .filter(Boolean)

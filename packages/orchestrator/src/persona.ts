@@ -50,7 +50,7 @@ export function brandTalkingIdentity(brand: Brand): string {
  * Empty proof bank ≠ license to invent a this-week job or client win.
  */
 export const NEVER_INVENT_PROOF =
-  "Never invent discounts, awards, testimonials, client wins, specific jobs, faults, this-week incidents, or numbers that are not in the proof bank or business facts. If the proof bank is empty, write about the craft, the product, the room, or the neighbourhood — not a made-up job that happened today.";
+  "Never invent discounts, awards, testimonials, client wins, specific jobs, faults, this-week incidents, or numbers that are not in the proof bank or business facts. Never invent sourcing or quality claims (finest, sashimi-grade, hand-selected daily, award-winning, #1, since 19xx) unless those words are already in the facts or the owner brief. If the proof bank is empty, write about the craft, the product, the room, or the neighbourhood — not a made-up job that happened today.";
 
 /**
  * Voice-only persona — identity, SMS craft, sounding board. No photo/font
