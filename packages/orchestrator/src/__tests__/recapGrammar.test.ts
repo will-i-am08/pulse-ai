@@ -70,6 +70,18 @@ describe("formatDontForRecap", () => {
     ).not.toMatch(/priya|personal account|I'll stay clear of overly personalize/i);
   });
 
+  it("compound leftover infinitives become I won't (live barber)", () => {
+    expect(formatDontForRecap("over-explain or be verbose")).toBe(
+      "I won't over-explain or be verbose.",
+    );
+    expect(voiceRecapSms(["direct"], ["over-explain or be verbose"])).toMatch(
+      /I won't over-explain or be verbose/i,
+    );
+    expect(voiceRecapSms(["direct"], ["over-explain or be verbose"])).not.toMatch(
+      /I'll stay clear of over-explain/i,
+    );
+  });
+
   it("stems featuring/highlighting gerunds to I won't + base verb", () => {
     expect(formatDontForRecap("featuring faces")).toBe("I won't feature faces.");
     expect(formatDontForRecap("highlighting the brand")).toBe(
@@ -154,6 +166,7 @@ describe("voiceRecapSms grammar", () => {
         "overly personalize (this is clinic brand, not priya's personal account)",
         "be overly casual",
       ],
+      ["over-explain or be verbose", "skip the fluff"],
     ];
     for (const donts of samples) {
       const sms = voiceRecapSms(["warm"], donts);
