@@ -20,10 +20,35 @@ import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
 import {
   getLookPack,
   resolveLookPackFromNiche,
+  PHOTO_EDIT_FAITHFUL_CORE,
+  PHOTO_EDIT_FAITHFUL_PROHIBITION,
   type LookFrameGravity,
   type LookPack,
   type LookPackId,
 } from "./lookPacks/index.js";
+
+/** Variant edit prompt: grade + crop only. Never restage or invent subjects. */
+export function buildVariantEditRequest(
+  pack: LookPack,
+  lookIndex: number,
+  count: number,
+  opts?: { extraHint?: string; retryCrop?: boolean },
+): string {
+  const dir = pack.variantDirections[lookIndex] ?? pack.variantDirections[0]!;
+  return [
+    PHOTO_EDIT_FAITHFUL_CORE,
+    pack.baseDirection,
+    `Look ${lookIndex + 1} of ${count}: ${dir}`,
+    "This look MUST be a different crop from the other looks.",
+    opts?.retryCrop
+      ? "CROP HARDER — previous attempt was too similar. Change framing dramatically."
+      : "",
+    opts?.extraHint?.trim() ? `Also: ${opts.extraHint.trim()}.` : "",
+    PHOTO_EDIT_FAITHFUL_PROHIBITION,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export const VARIANT_COUNT = 3;
 
@@ -136,28 +161,17 @@ export async function generatePhotoVariants(
   const framedBuffers: Buffer[] = [];
 
   for (let i = 0; i < directions.length; i++) {
-    const dir = directions[i]!;
     const gravity = pack.variantFrames[i] ?? "centre";
     let accepted: Buffer | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const request = [
-        pack.baseDirection,
-        `Look ${i + 1} of ${count}: ${dir}`,
-        "This look MUST be a different crop from the other looks.",
-        attempt === 1
-          ? "CROP HARDER — previous attempt was too similar. Change framing dramatically."
-          : "",
-        pack.negativeCues ? `Avoid: ${pack.negativeCues}.` : "",
-        hint ? `Also: ${hint}.` : "",
-        "Output must stay truthful to the real subject in the photo.",
-        brand.facts?.lab && pack.id !== "cafe_warm"
-          ? "Do not restyle this into a café, coffee shop, espresso machine, or bakery scene."
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const edited = await editImageForBrand(brand, mediaId, request).catch(() => null);
+      const request = buildVariantEditRequest(pack, i, count, {
+        extraHint: hint,
+        retryCrop: attempt === 1,
+      });
+      const edited = await editImageForBrand(brand, mediaId, request, undefined, {
+        mode: "variant",
+      }).catch(() => null);
       if (!edited) continue;
       await recordAiSpend(brand.id, "image");
       const blob = await getMedia(edited);

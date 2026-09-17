@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseVariantChoice, variantPickSms, lookPackForBrand, frameFeedImage, imagesTooSimilar } from "../variants.js";
+import { parseVariantChoice, variantPickSms, lookPackForBrand, frameFeedImage, imagesTooSimilar, buildVariantEditRequest } from "../variants.js";
 import {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
   getLookPack,
   LOOK_PACKS_V1,
+  PHOTO_EDIT_FAITHFUL_PROHIBITION,
 } from "../lookPacks/index.js";
 
 describe("parseVariantChoice", () => {
@@ -137,9 +138,70 @@ describe("look packs", () => {
     const gen = src.slice(src.indexOf("export async function generatePhotoVariants"));
     expect(gen).toMatch(/for \(let i = 0; i < directions\.length/);
     expect(gen).toMatch(/imagesTooSimilar/);
-    expect(gen).toMatch(/CROP HARDER/);
+    expect(gen).toMatch(/retryCrop: attempt === 1/);
     expect(gen).toMatch(/frameFeedImage\(blob\.bytes, gravity\)/);
     expect(gen).not.toMatch(/mapWithConcurrency/);
+    expect(src).toMatch(/CROP HARDER/);
+    expect(gen).toMatch(/editImageForBrand\(brand, mediaId, request, undefined, \{\s*mode: "variant"/);
+    expect(gen).not.toMatch(/generateEditPrompt/);
+  });
+});
+
+describe("faithful variant edits", () => {
+  const OBJECT_NOUNS =
+    /\b(van|job site|tools?|pipes?|espresso|mirrors?|steam|ceramic|athletes?|finished jobs?)\b/i;
+
+  it("every pack baseDirection is grade-only (no van/tools/job site)", () => {
+    for (const pack of Object.values(LOOK_PACKS_V1)) {
+      expect(pack.baseDirection, pack.id).not.toMatch(OBJECT_NOUNS);
+      expect(pack.baseDirection, pack.id).not.toMatch(/\bvan\b/i);
+      expect(pack.baseDirection, pack.id).not.toMatch(/\btools?\b/i);
+      expect(pack.baseDirection, pack.id).not.toMatch(/job site/i);
+    }
+  });
+
+  it("every pack request includes the faithful prohibition and does not invent a trade scene", () => {
+    for (const pack of Object.values(LOOK_PACKS_V1)) {
+      const req = buildVariantEditRequest(pack, 0, 3);
+      expect(req).toContain(PHOTO_EDIT_FAITHFUL_PROHIBITION);
+      expect(req).not.toMatch(/depict that trade/i);
+      expect(req).not.toMatch(/plumber van|tools, job sites|finished jobs/i);
+      expect(req).not.toMatch(/restyle this into a café/i);
+      expect(req).not.toMatch(/Avoid: /);
+    }
+  });
+
+  it("generateEditPrompt no longer honours client request above everything / injects trade scenes", () => {
+    const imaging = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../imaging.ts"),
+      "utf8",
+    );
+    const start = imaging.indexOf("export async function generateEditPrompt");
+    const next = imaging.indexOf("\nasync function replicateEdit");
+    const fn = imaging.slice(start, next === -1 ? undefined : next);
+    expect(fn).toContain("export async function generateEditPrompt");
+    expect(fn).not.toContain("replicateEdit");
+    expect(fn).not.toMatch(/creativeSceneConstraint/);
+    expect(fn).not.toMatch(/Honour that request above everything else/);
+    expect(fn).not.toMatch(/MOST IMPORTANT/);
+  });
+
+  it("editImageForBrand variant mode skips generateEditPrompt", () => {
+    const imaging = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../imaging.ts"),
+      "utf8",
+    );
+    const start = imaging.indexOf("export async function editImageForBrand");
+    const next = imaging.indexOf("export async function gradePhotoBundle");
+    const fn = imaging.slice(start, next === -1 ? undefined : next);
+    const variantStart = fn.indexOf('if (opts?.mode === "variant")');
+    const elseStart = fn.indexOf("} else {", variantStart);
+    expect(variantStart).toBeGreaterThan(-1);
+    expect(elseStart).toBeGreaterThan(variantStart);
+    const variantBlock = fn.slice(variantStart, elseStart);
+    expect(variantBlock).not.toMatch(/await generateEditPrompt/);
+    expect(fn.slice(elseStart)).toMatch(/await generateEditPrompt/);
+    expect(variantBlock).toMatch(/PHOTO_EDIT_FAITHFUL_PROHIBITION/);
   });
 });
 

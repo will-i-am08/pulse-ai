@@ -126,6 +126,9 @@ describe("faceless / nameless creatives", () => {
     expect(creativeSceneConstraint(sparky)).toMatch(/electrician/i);
     expect(creativeSceneConstraint(sparky)).toMatch(/espresso/i);
     expect(creativeSceneConstraint(sparky)).not.toMatch(/unless they said they run a café.*electrician/i);
+    expect(creativeSceneConstraint(sparky, "t2i")).toMatch(/electrician/i);
+    expect(creativeSceneConstraint(sparky, "edit")).toBe("");
+    expect(creativeSceneConstraint(sparky, "edit")).not.toMatch(/tools, job sites/i);
   });
 
   it("lab with a real business_name may stamp that marque", () => {

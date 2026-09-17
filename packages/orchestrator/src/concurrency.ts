@@ -63,3 +63,35 @@ export async function withTimeout<T>(
     if (timer) clearTimeout(timer);
   }
 }
+
+export type RaceTimeoutOk<T> = { ok: true; value: T };
+export type RaceTimeoutLate<T> = { ok: false; work: Promise<T> };
+
+/**
+ * Race `work` against a timer without hiding or rejecting the original promise.
+ * Timeout returns `{ ok: false, work }` so the caller can still await it.
+ * Non-timeout rejection of `work` is rethrown.
+ */
+export async function raceTimeout<T>(
+  work: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<RaceTimeoutOk<T> | RaceTimeoutLate<T>> {
+  const timeoutSentinel = Symbol("raceTimeout");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const winner = await Promise.race([
+      work,
+      new Promise<typeof timeoutSentinel>((resolve) => {
+        timer = setTimeout(() => resolve(timeoutSentinel), ms);
+      }),
+    ]);
+    if (winner === timeoutSentinel) {
+      console.warn(`${label} timed out after ${ms}ms — continuing in background`);
+      return { ok: false, work };
+    }
+    return { ok: true, value: winner };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}

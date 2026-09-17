@@ -28,6 +28,12 @@ const CROP_VARIANT_FRAMES: [LookFrameGravity, LookFrameGravity, LookFrameGravity
   "entropy",
 ];
 
+export const PHOTO_EDIT_FAITHFUL_CORE =
+  "Enhance this exact photograph in place. Adjust only lighting, exposure, colour grade, sharpness, and crop/framing of what is already visible.";
+
+export const PHOTO_EDIT_FAITHFUL_PROHIBITION =
+  "Do not add, remove, replace, or restage any person, face, body, vehicle, van, storefront, uniform, tool, pipe, signage, text, logo, or trade prop that is not already clearly visible in the source photo. Do not change the subject category (e.g. food must stay food, not a job site).";
+
 export type LookPack = {
   id: LookPackId;
   label: string;
@@ -53,7 +59,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "café-warm",
     niches: ["cafe", "café", "coffee", "bakery", "brunch", "tea", "espresso", "roaster"],
     baseDirection:
-      "Warm café atmosphere: soft golden window light, cosy textures, steam and ceramic if present. Keep the real food, drink, and premises truthful.",
+      "Warm daylight grade: soft golden light, gentle contrast, inviting colour, even exposure — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake menu boards, no relocated storefront, no invented plating",
@@ -66,7 +72,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "salon-clean",
     niches: ["salon", "hair", "beauty", "barber", "spa", "nails", "lash", "brow", "skincare clinic", "groomer", "dog groom", "pet groom"],
     baseDirection:
-      "Clean salon editorial: bright even light, crisp whites, polished mirrors and tools. Keep the real cut, colour, and space accurate.",
+      "Clean editorial grade: bright even light, crisp whites, high clarity, neutral colour — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake before/after, no face morphing, no invented products",
@@ -79,7 +85,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "gym-punchy",
     niches: ["gym", "fitness", "pt", "personal trainer", "crossfit", "yoga", "pilates", "boxing", "martial"],
     baseDirection:
-      "High-energy fitness look: punchy contrast, directional light, sweat and grit if present. Keep the real athletes, gear, and gym truthful.",
+      "High-energy grade: punchy contrast, directional light, rich blacks, vivid colour — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake physiques, no invented PRs or medals",
@@ -105,7 +111,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
       "mechanic",
     ],
     baseDirection:
-      "Honest daylight on real work: clear detail on tools, materials, and finished jobs. Keep the real site and craftsmanship truthful.",
+      "Honest daylight grade: natural shadows, clear detail, neutral white balance, readable textures — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fake certifications, no invented logos on vans",
@@ -118,7 +124,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "food-hero",
     niches: ["restaurant", "food", "pizza", "burger", "sushi", "catering", "chef", "kitchen", "takeaway", "diner"],
     baseDirection:
-      "Food-hero photography: appetising light, rich colour on the real dish, shallow depth. Never invent plating that isn't there.",
+      "Appetising grade: rich colour, shallow depth, warm highlights, clean exposure — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no invented garnishes, no fake steam that changes the dish",
@@ -131,7 +137,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "retail-shelf",
     niches: ["retail", "shop", "boutique", "store", "ecommerce", "product", "candle", "jewellery", "jewelry", "fashion"],
     baseDirection:
-      "Clean product/retail look: accurate packaging, labels, and materials. Improve light and tidiness without distorting the SKU.",
+      "Clean product grade: even light, accurate colour, tidy edges, sharp detail — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no logo redraw, no warped packaging, no fake claims on labels",
@@ -144,7 +150,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "florist-bloom",
     niches: ["florist", "flower", "bloom", "bouquet", "floral", "posy"],
     baseDirection:
-      "Bloom-true floral photography: honest colour on the real stems and wrap. Keep the actual arrangement recognisable — never swap flowers.",
+      "Soft natural grade: honest colour, gentle contrast, natural saturation, clean exposure — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no invented blooms, no swapped varieties, no fake shop signage",
@@ -157,7 +163,7 @@ export const LOOK_PACKS_V1: Record<LookPackId, LookPack> = {
     smsName: "faithful polish",
     niches: [],
     baseDirection:
-      "Faithful social polish: better light, colour fidelity, and tidiness while keeping the real subject recognisable.",
+      "Faithful social polish: better light, colour fidelity, and sharpness while keeping the real subject recognisable — enhance only what is already in frame.",
     variantDirections: CROP_VARIANT_DIRECTIONS,
     variantFrames: CROP_VARIANT_FRAMES,
     negativeCues: "no fantasy props, no relocated premises, no fake text in frame",

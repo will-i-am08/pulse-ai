@@ -142,7 +142,11 @@ function nicheLooksLikeCafe(niche: string): boolean {
  * T2I / edit constraint so a sparky (or florist, groomer, …) never inherits
  * the lab dashboard's café pixels.
  */
-export function creativeSceneConstraint(brand: FacelessBrandBits): string {
+export function creativeSceneConstraint(
+  brand: FacelessBrandBits,
+  purpose: "t2i" | "edit" = "t2i",
+): string {
+  if (purpose === "edit") return "";
   const facts = factsOf(brand);
   if (facts.lab !== true) return "";
   const niche = labTradeLabel(brand);

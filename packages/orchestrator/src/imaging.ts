@@ -25,6 +25,7 @@ import {
   creativeSceneConstraint,
   labSafeVisualBit,
 } from "./faceless.js";
+import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
@@ -173,13 +174,16 @@ export async function generateEditPrompt(
   const asked = asked0.length > 2 ? asked0 : "";
   const styleBits = brandPhotoStyleBits(brand);
   const system = [
-    "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
-      ? "BUSINESS account — FAITHFUL ENHANCEMENT DEFAULT: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront."
+      ? "You write ONE image-editing instruction for the Flux Kontext model that faithfully polishes a client's phone photo. Prefer a faithful polish — lighting, colour, sharpness, tidiness — not a restaged scene."
+      : "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
+    business
+      ? "BUSINESS account — FAITHFUL POLISH: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, restage, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront, no invented tools or vehicles."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
     styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
-    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else (still keep business subjects truthful).` : "",
-    creativeSceneConstraint(brand),
+    asked
+      ? `Client request (lighting/grade/crop hint only — never restage or invent subjects): "${asked}".`
+      : "",
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
@@ -425,6 +429,7 @@ export async function editImageForBrand(
   request?: string,
   /** When set, skip LLM prompt generation and reuse this grade (photo-bundle consistency). */
   sharedPrompt?: string,
+  opts?: { mode?: "variant" | "creative" },
 ): Promise<string | null> {
   if (!getServerEnv().REPLICATE_API_TOKEN) return null;
   routeImageJob("photo_edit");
@@ -434,7 +439,17 @@ export async function editImageForBrand(
   // caller falls back to the original photo when this returns null.
   if (await imageSpendBlocked(brand)) return null;
   try {
-    const prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
+    let prompt: string;
+    if (opts?.mode === "variant") {
+      // Look-picker: use the faithful grade/crop request verbatim. Never run
+      // generateEditPrompt (that injects brand/trade scene constraints).
+      const req = (request ?? "").trim();
+      prompt = req.includes(PHOTO_EDIT_FAITHFUL_PROHIBITION)
+        ? req
+        : [req, PHOTO_EDIT_FAITHFUL_PROHIBITION].filter(Boolean).join(" ");
+    } else {
+      prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
+    }
     const edited = await replicateEdit(blob.bytes, prompt);
     await recordAiSpend(brand.id, "image").catch(() => {});
     const newId = randomUUID();
