@@ -567,6 +567,41 @@ export function messageWantsImageEdit(body: string | null | undefined): boolean 
 export const OVERLAY_HEADLINE_MAX_WORDS = 5;
 export const OVERLAY_HEADLINE_MAX_CHARS = 28;
 
+/** Trailing function words the overlay cap must never leave dangling. */
+export const OVERLAY_TRAILING_FUNCTION_WORDS = new Set([
+  "THE",
+  "A",
+  "AN",
+  "AND",
+  "OR",
+  "OF",
+  "TO",
+  "FOR",
+  "WITH",
+  "NOT",
+  "IN",
+  "ON",
+  "AT",
+  "BY",
+  "FROM",
+  "INTO",
+  "OVER",
+  "UNDER",
+  "UP",
+  "AS",
+  "IS",
+  "ARE",
+  "BE",
+  "WAS",
+  "WERE",
+]);
+
+function popTrailingOverlayFunctionWords(words: string[]): void {
+  while (words.length > 1 && OVERLAY_TRAILING_FUNCTION_WORDS.has(words[words.length - 1]!)) {
+    words.pop();
+  }
+}
+
 /** Hard-cap overlay titles so they cannot smash in a 4:5 / MMS crop. */
 export function formatOverlayHeadline(text: string): string {
   const cleaned = text
@@ -577,13 +612,26 @@ export function formatOverlayHeadline(text: string): string {
     .trim()
     .toUpperCase();
   const words = cleaned.split(" ").filter(Boolean).slice(0, OVERLAY_HEADLINE_MAX_WORDS);
-  let out = words.join(" ");
-  while (out.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
-    words.pop();
-    out = words.join(" ");
-  }
+  const fitWords = () => {
+    let joined = words.join(" ");
+    while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
+      words.pop();
+      joined = words.join(" ");
+    }
+    return joined;
+  };
+  // Char-cap can expose a new trailing function word; strip, then re-fit.
+  fitWords();
+  popTrailingOverlayFunctionWords(words);
+  let out = fitWords();
+  popTrailingOverlayFunctionWords(words);
+  out = words.join(" ");
   if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
-    out = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim();
+    const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
+    const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
+    if (cutMidWord && sliced.length > 1) sliced.pop();
+    popTrailingOverlayFunctionWords(sliced);
+    out = sliced.join(" ");
   }
   return out;
 }
@@ -593,8 +641,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",

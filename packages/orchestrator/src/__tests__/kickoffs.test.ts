@@ -257,6 +257,51 @@ describe("inferKickoffFromUserMessage", () => {
     expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
     expect(Number(r?.payload.count)).toBeGreaterThanOrEqual(1);
   });
+
+  it("singular designed tip-slide asks enqueue one post", () => {
+    const briefs = [
+      "Make me a designed tip slide about warm-up sets, short text overlay on a photo. Generate the photo.",
+      "Make me a designed tip slide about flossing, short text overlay on a photo. Generate the photo.",
+      "Make me a designed tip slide about warm-up sets, short text overlay on a photo.",
+    ];
+    for (const brief of briefs) {
+      expect(looksLikeKickoffRequest(brief), brief).toBe(true);
+      const r = inferKickoffFromUserMessage(brief);
+      expect(r?.kind, brief).toBe("draft_posts");
+      expect(r?.payload.count, brief).toBe(1);
+      expect(String(r?.ackSms ?? ""), brief).toMatch(/that post/i);
+    }
+  });
+
+  it("singular slide asks stay count 1 even when the topic contains a number", () => {
+    const brief =
+      "Make me a designed tip slide about 4 warm-up compounds, short text overlay on a photo. Generate the photo.";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+  });
+
+  it("quantity hedges still default to two drafts", () => {
+    const some = inferKickoffFromUserMessage("draft me some posts");
+    expect(some?.kind).toBe("draft_posts");
+    expect(some?.payload.count).toBe(2);
+
+    const few = inferKickoffFromUserMessage("draft me a few posts");
+    expect(few?.kind).toBe("draft_posts");
+    expect(few?.payload.count).toBe(2);
+
+    const fewAsk = "a few posts";
+    if (looksLikeKickoffRequest(fewAsk)) {
+      const bareFew = inferKickoffFromUserMessage(fewAsk);
+      expect(bareFew?.kind).toBe("draft_posts");
+      expect(bareFew?.payload.count).toBe(2);
+    }
+  });
+
+  it("explicit piece counts still win over the default", () => {
+    expect(inferKickoffFromUserMessage("draft me 3 posts")?.payload.count).toBe(3);
+    expect(inferKickoffFromUserMessage("make me 3 designed tip slides")?.payload.count).toBe(3);
+  });
 });
 
 describe("inferKickoffFromKipCommit", () => {
