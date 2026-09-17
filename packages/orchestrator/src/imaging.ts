@@ -756,10 +756,72 @@ const OVERLAY_COMPRESS_DANGLE_WORDS = new Set([
   "OTHERWISE",
 ]);
 
+/**
+ * Period / ordinal adjectives that need a following noun. Char-cap must not
+ * leave "SCHEDULE YOUR DOGS ANNUAL" after dropping VACCINATION.
+ */
+const OVERLAY_DANGLING_MODIFIERS = new Set([
+  "ANNUAL",
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "YEARLY",
+  "NEXT",
+  "LAST",
+  "FIRST",
+]);
+
+function isOverlayPossessive(word: string): boolean {
+  return /[A-Z0-9]+'S$/i.test(word);
+}
+
 function popTrailingOverlayWords(words: string[], stop: Set<string>): void {
   while (words.length > 1 && stop.has(words[words.length - 1]!)) {
     words.pop();
   }
+}
+
+/** After a cap, drop leftover adjectives and possessives that lost their noun. */
+function popTrailingOverlayModifiers(words: string[]): void {
+  let poppedOwned = false;
+  while (words.length > 1) {
+    const last = words[words.length - 1]!;
+    if (OVERLAY_DANGLING_MODIFIERS.has(last) || isOverlayPossessive(last)) {
+      poppedOwned = true;
+      words.pop();
+      continue;
+    }
+    if (poppedOwned && /^(YOUR|MY|OUR|ITS|THEIR|HIS|HER)$/.test(last)) {
+      words.pop();
+      continue;
+    }
+    break;
+  }
+}
+
+/** Prefer dropping an interior filler/modifier over the last content noun. */
+function dropInteriorForCharFit(words: string[]): boolean {
+  for (let i = words.length - 2; i >= 1; i--) {
+    const w = words[i]!;
+    if (OVERLAY_INTERIOR_FILLER_WORDS.has(w) || OVERLAY_DANGLING_MODIFIERS.has(w)) {
+      words.splice(i, 1);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Clean overlay copy: keep % ° and possessive apostrophes; drop other punctuation. */
+function cleanOverlayText(text: string): string {
+  let s = text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u00BA]/g, "°")
+    .replace(/"/g, "");
+  s = s.replace(/[^a-zA-Z0-9%'°\s]/g, " ");
+  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S.
+  s = s.replace(/(^|[^A-Za-z0-9])'+|'+(?![A-Za-z])/g, "$1");
+  return s.replace(/\s+/g, " ").trim().toUpperCase();
 }
 
 /** Drop interior fillers; keep the first and last tokens. */
@@ -773,14 +835,7 @@ function dropInteriorOverlayFillers(words: string[]): string[] {
 
 /** Hard-cap overlay titles so they cannot smash in a 4:5 / MMS crop. */
 export function formatOverlayHeadline(text: string): string {
-  const cleaned = text
-    .replace(/["'`]/g, "")
-    .replace(/[\u2018\u2019\u201C\u201D]/g, "")
-    // Keep `%` so tokens like `40%` stay intact; other punctuation → spaces.
-    .replace(/[^a-zA-Z0-9%\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  const cleaned = cleanOverlayText(text);
   let words = cleaned.split(" ").filter(Boolean);
   const compressed = words.length > OVERLAY_HEADLINE_MAX_WORDS;
   if (compressed) {
@@ -788,16 +843,20 @@ export function formatOverlayHeadline(text: string): string {
   }
   words = words.slice(0, OVERLAY_HEADLINE_MAX_WORDS);
   const trailStop = compressed ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
-  const stripTrail = () => popTrailingOverlayWords(words, trailStop);
+  const stripTrail = () => {
+    popTrailingOverlayWords(words, trailStop);
+    popTrailingOverlayModifiers(words);
+    popTrailingOverlayWords(words, trailStop);
+  };
   const fitWords = () => {
     let joined = words.join(" ");
     while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
-      words.pop();
+      if (!dropInteriorForCharFit(words)) words.pop();
       joined = words.join(" ");
     }
     return joined;
   };
-  // Char-cap can expose a new trailing function word; strip, then re-fit.
+  // Char-cap can expose a new trailing function word or dangling adjective.
   fitWords();
   stripTrail();
   let out = fitWords();
@@ -807,6 +866,8 @@ export function formatOverlayHeadline(text: string): string {
     const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
     const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
     if (cutMidWord && sliced.length > 1) sliced.pop();
+    popTrailingOverlayWords(sliced, trailStop);
+    popTrailingOverlayModifiers(sliced);
     popTrailingOverlayWords(sliced, trailStop);
     out = sliced.join(" ");
   }
@@ -818,8 +879,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or). It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",

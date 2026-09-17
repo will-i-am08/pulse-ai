@@ -6,7 +6,7 @@ import {
 } from "../voice/recapGrammar.js";
 
 const STAY_CLEAR_BAD =
-  /I'll stay clear of (feature|featuring|highlight|highlighting|focus|focusing|show|be|use|skip|put|keep|have|get|go)\b/i;
+  /I'll stay clear of (?:(?:overly|too|very|really|so)\s+)?(feature|featuring|highlight|highlighting|focus|focusing|show|be|use|skip|put|keep|have|get|go|personalize|personalise)\b/i;
 
 describe("normalizeDontForRecap", () => {
   it("strips directive prefixes repeatedly", () => {
@@ -45,6 +45,29 @@ describe("formatDontForRecap", () => {
     expect(formatDontForRecap("feature the cleaner in photos/videos")).toBe(
       "I won't feature the cleaner in photos/videos.",
     );
+  });
+
+  it("routes adverb + leftover infinitive to I won't and drops asides", () => {
+    expect(
+      formatDontForRecap(
+        "overly personalize (this is clinic brand, not priya's personal account)",
+      ),
+    ).toBe("I won't overly personalize.");
+    expect(formatDontForRecap("Don't overly personalise the clinic")).toBe(
+      "I won't overly personalise the clinic.",
+    );
+    expect(
+      voiceRecapSms(
+        ["calm", "clear"],
+        ["overly personalize (this is clinic brand, not priya's personal account)"],
+      ),
+    ).toMatch(/I won't overly personalize/i);
+    expect(
+      voiceRecapSms(
+        ["calm", "clear"],
+        ["overly personalize (this is clinic brand, not priya's personal account)"],
+      ),
+    ).not.toMatch(/priya|personal account|I'll stay clear of overly personalize/i);
   });
 
   it("stems featuring/highlighting gerunds to I won't + base verb", () => {
@@ -127,6 +150,10 @@ describe("voiceRecapSms grammar", () => {
       ["have faces in photos", "get too salesy"],
       ["go hard on promo", "make it salesy"],
       ["featuring faces", "highlighting the brand"],
+      [
+        "overly personalize (this is clinic brand, not priya's personal account)",
+        "be overly casual",
+      ],
     ];
     for (const donts of samples) {
       const sms = voiceRecapSms(["warm"], donts);

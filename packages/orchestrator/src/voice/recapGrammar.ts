@@ -1,17 +1,21 @@
 /**
  * Owner-facing voice recap — always grammatical.
- * Never "I'll stay clear of show/be/use/skip/feature …". Leftover infinitives
- * become "I won't …" — do not grow the strip-prefix list.
+ * Never "I'll stay clear of show/be/use/skip/feature/personalize …".
+ * Leftover infinitives (optionally after overly/too/very) become "I won't …".
+ * Do not grow the strip-prefix list.
  */
 
 const DIRECTIVE_PREFIX =
   /^(please\s+)?(do not|don't|never|no more|avoid|skip|stop|no)\s+/i;
 const STRIP_LEADING_VERBS = /^(use|show|share|mention|post|include|add)\s+/i;
 const WONT_VERBS =
-  /^(create|invent|make|sell|shout|post|run|add|include|write|show|share|mention|feature|highlight|focus|put|keep|have|get|go|give|take|bring)\b/i;
+  /^(create|invent|make|sell|shout|post|run|add|include|write|show|share|mention|feature|highlight|focus|put|keep|have|get|go|give|take|bring|personalize|personalise)\b/i;
+/** -ize/-ise verbs the LLM dumps as leftover infinitives (personalize, weaponize). */
+const IZE_INFINITIVE = /^[a-z]{4,}(?:ise|ize)\b/i;
+const LEADING_ADVERB = /^(overly|too|very|really|so)\s+/i;
 const AVOID_GUARD = /^(be|show|use|skip|avoid|don't|do not)(?:\s+|$)/i;
 const STAY_CLEAR_LEFTOVER =
-  /I'll stay clear of (feature|highlight|focus|show|be|use|skip|put|keep|have|get|go)\b/i;
+  /I'll stay clear of (?:(?:overly|too|very|really|so)\s+)?(feature|highlight|focus|show|be|use|skip|put|keep|have|get|go|personalize|personalise|create|invent|make|sell)\b/i;
 
 /** `featuring faces` → `feature faces` so leftover gerunds route to "I won't". */
 function stemLeadingGerund(phrase: string): string {
@@ -24,14 +28,37 @@ function stemLeadingGerund(phrase: string): string {
     candidates.push(stem.slice(0, -1));
   }
   for (const c of candidates) {
-    if (WONT_VERBS.test(c)) return `${c}${rest}`;
+    if (looksLikeInfinitiveHead(c)) return `${c}${rest}`;
   }
   return phrase;
 }
 
+function looksLikeInfinitiveHead(word: string): boolean {
+  const w = word.toLowerCase();
+  return WONT_VERBS.test(w) || IZE_INFINITIVE.test(w);
+}
+
+/** LLM asides like "(this is clinic brand, not priya's personal account)" never go on SMS. */
+function stripRecapAsides(s: string): string {
+  return s.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * If the phrase is (adverb +) an infinitive, return the I-won't complement.
+ * "overly personalize" → "overly personalize"; "casual tone" → null.
+ */
+function verbLedRemainder(phrase: string): string | null {
+  const adv = LEADING_ADVERB.exec(phrase)?.[0] ?? "";
+  const rest = phrase.slice(adv.length).trim();
+  const stemmed = stemLeadingGerund(rest);
+  const head = stemmed.split(/\s+/).filter(Boolean)[0] ?? "";
+  if (!head || !looksLikeInfinitiveHead(head)) return null;
+  return `${adv}${stemmed}`.replace(/\s+/g, " ").trim();
+}
+
 /** Strip directive prefixes and leading action verbs; rewrite `be X` → `X tone`. */
 export function normalizeDontForRecap(raw: string): string {
-  let s = raw.replace(/;/g, ",").trim();
+  let s = stripRecapAsides(raw.replace(/;/g, ",")).trim();
   let prev = "";
   while (s && s !== prev) {
     prev = s;
@@ -54,6 +81,10 @@ export function normalizeDontForRecap(raw: string): string {
 export function formatDontForRecap(raw: string): string {
   let phrase = stemLeadingGerund(normalizeDontForRecap(raw));
   if (!phrase) return "";
+  const verbLed = verbLedRemainder(phrase);
+  if (verbLed) {
+    return `I won't ${verbLed}.`;
+  }
   if (WONT_VERBS.test(phrase)) {
     return `I won't ${phrase}.`;
   }
@@ -61,7 +92,10 @@ export function formatDontForRecap(raw: string): string {
     phrase = phrase.replace(AVOID_GUARD, "").trim();
   }
   if (!phrase || /^(show|be|use|skip|avoid)$/i.test(phrase)) return "";
-  // After normalize, leftover infinitives still go to "I won't" — never stay-clear-of + verb.
+  const afterGuard = verbLedRemainder(phrase);
+  if (afterGuard) {
+    return `I won't ${afterGuard}.`;
+  }
   if (WONT_VERBS.test(phrase)) {
     return `I won't ${phrase}.`;
   }
