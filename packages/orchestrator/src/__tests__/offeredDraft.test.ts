@@ -102,11 +102,21 @@ describe("isInterviewLoopScratch", () => {
     expect(isInterviewLoopScratch("visual posts with minimal/no text overlay")).toBe(false);
   });
 
+  it("drops niche-intake waiting_on phrases", () => {
+    expect(isInterviewLoopScratch("owner to share what their business does")).toBe(true);
+    expect(isInterviewLoopScratch("what they actually do / niche")).toBe(true);
+    expect(isInterviewLoopScratch("are they a café or roastery")).toBe(true);
+  });
+
   it("readOpenLoops filters toxic prefs and waiting_on", () => {
     const loops = readOpenLoops({
       facts: {
         open_loops: {
-          waiting_on: ["owner's answer: what's bugging them", "yes on the Porsche draft"],
+          waiting_on: [
+            "owner's answer: what's bugging them",
+            "yes on the Porsche draft",
+            "owner to share niche",
+          ],
           prefs: ["stay in founder lane", "casual voice"],
           promised: ["deliver carousel drafts"],
           energy: "upbeat",
