@@ -241,11 +241,38 @@ describe("generalAgentEligible", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: true, hasPending: false })).toBe(false);
   });
 
-  it("is false when the flag is on and there is a pending draft", () => {
-    expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: true })).toBe(false);
+  it("is true when the flag is on with a pending draft (agent owns draft mutation)", () => {
+    expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: true })).toBe(true);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: true,
+        ownerMessage: "remove the text",
+      }),
+    ).toBe(true);
   });
 
-  it("is true when the flag is on with no media and no pending draft", () => {
+  it("is false for high-confidence approval when a draft is pending", () => {
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: true,
+        ownerMessage: "yes",
+      }),
+    ).toBe(false);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: true,
+        ownerMessage: "looks good",
+      }),
+    ).toBe(false);
+  });
+
+  it("is true when the flag is on with no media — including kickoff-shaped asks", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: false })).toBe(true);
     expect(
       generalAgentEligible({
@@ -255,17 +282,6 @@ describe("generalAgentEligible", () => {
         ownerMessage: "what's on this week?",
       }),
     ).toBe(true);
-  });
-
-  it("is false for reel-only and draft-me-N asks so the dedicated engine runs", () => {
-    expect(
-      generalAgentEligible({
-        flag: true,
-        hasMedia: false,
-        hasPending: false,
-        ownerMessage: "make a reel",
-      }),
-    ).toBe(false);
     expect(
       generalAgentEligible({
         flag: true,
@@ -273,15 +289,15 @@ describe("generalAgentEligible", () => {
         hasPending: false,
         ownerMessage: "draft me 3 posts",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       generalAgentEligible({
         flag: true,
         hasMedia: false,
         hasPending: false,
-        ownerMessage: "what's Petbarn doing on instagram?",
+        ownerMessage: "make a reel",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

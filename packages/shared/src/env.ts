@@ -29,8 +29,9 @@ const serverEnvSchema = z.object({
     .optional()
     .transform((v) => v === "true" || v === "1"),
   /**
-   * When "true"/"1", owner SMS with no attached media and no pending draft
-   * uses the general-agent tool loop. Off by default.
+   * When "true"/"1", owner SMS with no attached media uses the general-agent
+   * tool loop (including pending-draft create/revise via tools). High-confidence
+   * approval ("yes") and attached media stay on the classic router. Off by default.
    */
   KIP_GENERAL_AGENT: z
     .string()

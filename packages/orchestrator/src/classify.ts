@@ -28,6 +28,13 @@ const APPROVAL_RE =
   /^(yes|yep|yup|yeah|y|ok|okay|k|sounds good|sg|good|great|approve(d)?|go for it|do it|perfect|love it|nice|looks good|lgtm)[.!\s]*(👍|✅|👌|🙌|🔥)?$/i;
 const APPROVAL_EMOJI_ONLY_RE = /^[\s👍✅👌🙌🔥]+$/u;
 
+/** High-confidence yes/approve — hard gate before the general agent when a draft is pending. */
+export function looksLikeApproval(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return APPROVAL_RE.test(t) || APPROVAL_EMOJI_ONLY_RE.test(t);
+}
+
 /** Casual positive vibes with nothing actionable — not an approval ask. */
 const AFFIRMATION_RE =
   /^\s*(?:awesome|amazing|amazing thanks|fantastic|wonderful|brilliant|excellent|lovely|sweet|sick|dope|fire|rad|cool|legend|beaut(?:y)?|ace|solid|good stuff|nice one|love that|love this|this is (?:great|awesome|perfect)|so good)[.!\s]*$/i;
@@ -112,7 +119,7 @@ export function ruleBasedClassify(
     return { classification: "other", confidence: 0.3 };
   }
 
-  if (APPROVAL_RE.test(text) || APPROVAL_EMOJI_ONLY_RE.test(text)) {
+  if (looksLikeApproval(text)) {
     // Without something to approve, "yes"/"great"/"perfect" are just vibes —
     // not an approval action. Leave as other so chatBack handles them warmly.
     if (!hasPendingPost) {

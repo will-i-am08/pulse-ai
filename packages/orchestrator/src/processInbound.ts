@@ -12,6 +12,8 @@ import {
   generateHeadline,
   applyTextTile,
 } from "./imaging.js";
+import { reviseOfferedCaption } from "./offeredDraft.js";
+export { captionEditMissed } from "./offeredDraft.js";
 import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -457,59 +459,10 @@ async function updateMessageType(messageId: string, type: NonNullable<Message["t
 }
 
 async function reviseCaption(brand: Brand, currentCaption: string, instruction: string): Promise<string> {
-  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const system = [
-    `You are revising a social media caption for "${brand.name}" per the client's instruction.`,
-    "Output ONLY the revised caption text, no preamble, no surrounding quotes.",
-    "Treat the instruction as a rewrite. If they name a different subject, drop the old one. If they say shorter, the result MUST be fewer words than the current caption. If they say drop/remove/no CTA, delete the call-to-action line entirely (book now, link in bio, DM us, comment below). Never glue the new ask onto the old caption. Never return the same caption.",
-    profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
-    profile.banned_words.length ? `Never use: ${profile.banned_words.join(", ")}.` : "",
-    `Emoji policy: ${profile.emoji_policy}.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const run = (extra: string) =>
-    callLLM({
-      system,
-      messages: [
-        {
-          role: "user",
-          content: `Current caption:\n"""${currentCaption}"""\n\nClient's edit instruction:\n"""${instruction}"""\n\n${extra}`,
-        },
-      ],
-      maxTokens: 400,
-    });
-
-  let text = (await run("Rewrite the caption.")).trim();
-  if (captionEditMissed(instruction, currentCaption, text)) {
-    text = (
-      await run(
-        "The last rewrite ignored the instruction. Rewrite again. Shorter means fewer words. Drop CTA means no book/link/DM line.",
-      )
-    ).trim();
-  }
-  return text;
-}
-
-/** True when a caption edit clearly did not follow a shorter / drop-CTA ask. */
-export function captionEditMissed(instruction: string, before: string, after: string): boolean {
-  const t = instruction.toLowerCase();
-  const prev = before.trim();
-  const next = after.trim();
-  if (!next) return false;
-  if (/\b(shorter|shorten|trim it|cut (it |this )?down|fewer words|less wordy|tighter)\b/.test(t)) {
-    if (next.length >= Math.floor(prev.length * 0.9)) return true;
-  }
-  if (
-    /\b(drop|remove|no|without|skip)\b.{0,32}\b(cta|call to action|link|book now|dm|comment)\b/.test(t) ||
-    /\b(no cta|drop the cta|remove the cta|no link|drop cta)\b/.test(t)
-  ) {
-    if (/\b(book now|link in bio|dm (me|us)|comment (below|link)|tap the link|link in our bio)\b/i.test(next)) {
-      return true;
-    }
-  }
-  return false;
+  const revised = await reviseOfferedCaption(brand, currentCaption, instruction);
+  if (revised.ok) return revised.caption;
+  // Classic edit path: keep prior caption rather than persisting a clarifying question.
+  return currentCaption;
 }
 
 async function answerQuestion(
@@ -517,7 +470,7 @@ async function answerQuestion(
   context: string,
   question: string,
   sourceMessageId?: string | null,
-): Promise<{ reply: string; operatorAlert?: string }> {
+): Promise<{ reply: string; operatorAlert?: string; mediaUrl?: string }> {
   if (getServerEnv().KIP_GENERAL_AGENT) {
     return runGeneralAgent({
       brand,
@@ -1384,9 +1337,9 @@ async function routeInbound(
 
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads/digest/calendar) and greetings. Does not intercept
-  // attached media or a pending_approval draft — those keep the existing router.
-  // Pending + question still reaches runGeneralAgent via answerQuestion.
+  // connect/disconnect, ads/digest/calendar) and greetings. Owns draft create
+  // and pending-draft mutation via tools. Attached media and high-confidence
+  // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
   if (
     generalAgentEligible({
       flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
@@ -1401,7 +1354,7 @@ async function routeInbound(
       sourceMessageId: message.id,
       mediaIds: [],
     });
-    return { reply: out.reply, operatorAlert: out.operatorAlert };
+    return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
   }
 
   const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
@@ -2056,6 +2009,14 @@ async function routeInbound(
       const before = pending.caption ?? "";
       const after = await reviseCaption(brand, before, message.body ?? "");
 
+      if (after.trim() === before.trim()) {
+        return {
+          reply:
+            "Want that change on the image text, or the caption under it? Say \"remove the text on the image\" or tell me how to rewrite the caption.",
+          postId: pending.id,
+        };
+      }
+
       // Records the correction + folds the delta into brand_voice_profile.notes.
       await applyCorrection(brand.id, pending.id, before, after);
 
@@ -2157,7 +2118,7 @@ async function routeInbound(
       if (!getServerEnv().KIP_GENERAL_AGENT) {
         await maybeEnqueueFromKipCommitIfAsked(brand, message.body, out.reply, message.id);
       }
-      return { reply: out.reply, operatorAlert: out.operatorAlert };
+      return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
     }
 
     case "instruction":

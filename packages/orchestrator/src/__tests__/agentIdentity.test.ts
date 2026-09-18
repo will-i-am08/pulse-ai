@@ -42,8 +42,9 @@ describe("agentIdentity", () => {
 
   it("requires draft_copy before SMS when the owner asked for content", () => {
     const prompt = agentIdentity(stubBrand());
-    expect(prompt).toMatch(/must tool-call|draft_copy before/i);
+    expect(prompt).toMatch(/tool-call draft_copy before/i);
     expect(prompt).toMatch(/draft_copy/);
+    expect(prompt).toMatch(/set_image_text/);
     expect(prompt).toMatch(/reel with no clip/i);
     expect(prompt).not.toMatch(/✨/);
   });
@@ -77,7 +78,7 @@ describe("agentIdentity", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/Kip/i);
     expect(prompt).toMatch(/social media manager/i);
-    expect(prompt).toMatch(/must tool-call|draft_copy before/i);
+    expect(prompt).toMatch(/tool-call draft_copy before|draft_copy before/i);
     expect(prompt).not.toContain(RETRIEVED_PACK_HEADING);
     expect(listsToolMenu(prompt)).toBe(false);
   });
