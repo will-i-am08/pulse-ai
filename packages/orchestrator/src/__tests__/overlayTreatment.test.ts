@@ -11,7 +11,6 @@ import {
   DEFAULT_OVERLAY_TREATMENT,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
-  OVERLAY_TRAILING_FUNCTION_WORDS,
 } from "../imaging.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -145,15 +144,15 @@ describe("resolveOverlayTreatment", () => {
 });
 
 describe("splitOverlayStack", () => {
-  it("splits a formatted headline on word boundaries into 2–3 lines", () => {
+  it("puts each formatted word on its own line so Anton cannot smash", () => {
     const lines = splitOverlayStack("floss the 40% your brush misses");
     expect(lines.length).toBeGreaterThanOrEqual(2);
-    expect(lines.length).toBeLessThanOrEqual(3);
+    expect(lines.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
     expect(lines.join(" ")).toContain("40%");
     expect(lines.join(" ")).not.toMatch(/(^|\s)40(\s|$)/);
     for (const line of lines) {
       expect(line).toBe(formatOverlayHeadline(line));
-      expect(line.split(/\s+/).filter(Boolean).length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
+      expect(line.split(/\s+/).filter(Boolean)).toHaveLength(1);
       expect(line.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
     }
   });
@@ -162,36 +161,36 @@ describe("splitOverlayStack", () => {
     expect(splitOverlayStack("BREW")).toEqual(["BREW"]);
   });
 
-  it("returns two lines for a short phrase", () => {
+  it("returns one line per word for a short phrase", () => {
     const lines = splitOverlayStack("brew better");
     expect(lines).toEqual(["BREW", "BETTER"]);
   });
 
-  it("never leaves a multi-word line on a trailing function word", () => {
+  it("never leaves two words on the same stacked line", () => {
     const lines = splitOverlayStack("FLOSS THE 40% YOUR BRUSH MISSES EVERY SINGLE TIME");
     expect(lines.length).toBeGreaterThanOrEqual(2);
-    expect(lines.length).toBeLessThanOrEqual(3);
+    expect(lines.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
     for (const line of lines) {
-      const parts = line.split(/\s+/).filter(Boolean);
-      if (parts.length > 1) {
-        expect(OVERLAY_TRAILING_FUNCTION_WORDS.has(parts[parts.length - 1]!)).toBe(false);
-      }
+      expect(line.split(/\s+/).filter(Boolean)).toHaveLength(1);
     }
   });
 });
 
 describe("overlayWordNodes", () => {
-  it("keeps each word as its own node so spaces cannot collapse", () => {
+  it("keeps each word as its own node with a fixed-width spacer between", () => {
     const nodes = overlayWordNodes("FORTY FIVE DAYS HANGING", 12);
-    expect(nodes).toHaveLength(4);
+    expect(nodes).toHaveLength(7);
     expect(nodes.map((n) => n.props.children)).toEqual([
       "FORTY",
+      "\u00A0",
       "FIVE",
+      "\u00A0",
       "DAYS",
+      "\u00A0",
       "HANGING",
     ]);
-    expect(nodes[0]!.props.style).toMatchObject({ marginRight: 12 });
-    expect(nodes[3]!.props.style).toMatchObject({ marginRight: 0 });
+    expect(nodes[1]!.props.style).toMatchObject({ width: 12, minWidth: 12 });
+    expect(nodes[0]!.props.style).not.toHaveProperty("marginRight");
   });
 
   it("does not emit an empty node for blank input", () => {

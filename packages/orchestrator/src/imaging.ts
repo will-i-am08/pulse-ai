@@ -965,25 +965,15 @@ export function inferOverlayTreatment(
 }
 
 /**
- * Split a headline into 2–3 word-boundary lines. Each line still goes through
- * formatOverlayHeadline (5/28 + trailing-function rules).
+ * Stack like the pilates tip slide: one word per line.
+ * Intra-line gaps are what Satori smashes; a single word cannot collide.
+ * Each word still goes through formatOverlayHeadline (5/28 + trailing-function rules).
  */
 export function splitOverlayStack(text: string): string[] {
   const formatted = formatOverlayHeadline(text);
   const words = formatted.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) return formatted ? [formatted] : [];
-  const lineCount = words.length >= 5 ? 3 : 2;
-  const lines: string[] = [];
-  const base = Math.floor(words.length / lineCount);
-  const extra = words.length % lineCount;
-  let i = 0;
-  for (let l = 0; l < lineCount; l++) {
-    const n = base + (l < extra ? 1 : 0);
-    const line = formatOverlayHeadline(words.slice(i, i + n).join(" "));
-    i += n;
-    if (line) lines.push(line);
-  }
-  return lines.length ? lines : [formatted];
+  if (!words.length) return [];
+  return words.map((word) => formatOverlayHeadline(word)).filter(Boolean);
 }
 
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
@@ -1067,22 +1057,45 @@ export function resolveOverlayTreatment(
   });
 }
 
-/** One flex child per word so Satori cannot collapse spaces under letter-spacing. */
+/**
+ * One flex child per word, with a real spacer node between them.
+ * Satori ignores margin on flex children and collapses ASCII spaces under
+ * letter-spacing — a fixed-width NBSP box is the only gap it will paint.
+ */
 export function overlayWordNodes(
   line: string,
   gapPx: number,
 ): Array<Record<string, unknown>> {
   const words = line.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-  return words.map((word, i) => ({
-    type: "div",
-    props: {
-      style: {
-        display: "flex",
-        marginRight: i === words.length - 1 ? 0 : gapPx,
+  const nodes: Array<Record<string, unknown>> = [];
+  const gap = Math.max(1, Math.round(gapPx));
+  for (let i = 0; i < words.length; i++) {
+    nodes.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexShrink: 0,
+        },
+        children: words[i],
       },
-      children: word,
-    },
-  }));
+    });
+    if (i < words.length - 1) {
+      nodes.push({
+        type: "div",
+        props: {
+          style: {
+            display: "flex",
+            width: gap,
+            minWidth: gap,
+            flexShrink: 0,
+          },
+          children: "\u00A0",
+        },
+      });
+    }
+  }
+  return nodes;
 }
 
 function overlayBandStyle(
@@ -1188,12 +1201,13 @@ async function renderTile(
   const detailFont = "Inter";
   const leftAlign = treatment.placement === "chip" || treatment.placement === "low_left";
   const baseSize = overlayFontSize(width, longestTitle, hasBody);
+  const stackScale = stacked && titleLines.length >= 5 ? 0.82 : stacked && titleLines.length >= 4 ? 0.9 : 1;
   const fontSize =
     treatment.placement === "chip"
       ? Math.round(width * 0.022)
       : treatment.placement === "center"
-        ? Math.round(baseSize * 1.15)
-        : Math.round(baseSize * 1.08);
+        ? Math.round(baseSize * 1.15 * stackScale)
+        : Math.round(baseSize * 1.08 * stackScale);
   const bodySize = overlayBodyFontSize(width, body);
   const mastheadSize = Math.round(width * 0.036);
   const eyebrowSize = Math.round(width * 0.028);
@@ -1288,7 +1302,7 @@ async function renderTile(
       },
     });
   }
-  const wordGap = Math.max(6, Math.round(fontSize * 0.28));
+  const wordGap = Math.max(10, Math.round(fontSize * 0.36));
   const titleLineNodes = (stacked ? titleLines : [headline.replace(/\n/g, " ").trim()]).map(
     (line, i) => ({
       type: "div",

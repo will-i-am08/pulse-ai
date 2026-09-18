@@ -266,6 +266,20 @@ describe("inferKickoffFromUserMessage", () => {
     expect(Number(r?.payload.count)).toBeGreaterThanOrEqual(1);
   });
 
+  it("singular generate-a-photo asks enqueue one post", () => {
+    const briefs = [
+      "Generate a photo of the frames wall and put a small caption in the corner.",
+      "Generate a photo of the vitamin shelf and put a small caption in the corner.",
+      "Generate a picture of the pastry case with a small caption in the corner.",
+    ];
+    for (const brief of briefs) {
+      expect(looksLikeKickoffRequest(brief), brief).toBe(true);
+      const r = inferKickoffFromUserMessage(brief);
+      expect(r?.kind, brief).toBe("draft_posts");
+      expect(r?.payload.count, brief).toBe(1);
+    }
+  });
+
   it("singular designed tip-slide asks enqueue one post", () => {
     const briefs = [
       "Make me a designed tip slide about warm-up sets, short text overlay on a photo. Generate the photo.",
