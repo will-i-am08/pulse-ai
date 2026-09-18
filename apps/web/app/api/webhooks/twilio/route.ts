@@ -2,11 +2,10 @@
 // verification and the gateway/orchestrator pipeline it hands off to use
 // Node-only APIs (crypto, etc.), which the Edge runtime doesn't support.
 export const runtime = 'nodejs';
-// `handleInbound` runs the full turn inline: an unconditional ~2.8s human-pacing
-// burst sleep, the LLM call, then paced sends — a measured floor of ~7.4s before
-// the model is even counted. Vercel's default 10-15s cap kills the isolate
-// mid-turn, so the reply is never dispatched AND the queued kickoff drain never
-// runs, with nothing logged.
+// `handleInbound` runs the full turn inline: optional ~1.2s coalesce sleep
+// (skipped for complete short turns), the LLM call, then paced sends. Vercel's
+// default 10-15s cap can still kill slow LLM turns mid-flight, so the reply is
+// never dispatched AND the queued kickoff drain never runs, with nothing logged.
 //
 // Kickoff drains also run in Next `after()` on this same function budget.
 // Photo carousels (multiple fal gens + LLM + overlay) routinely exceed 60s —
