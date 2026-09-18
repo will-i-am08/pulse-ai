@@ -307,7 +307,12 @@ export async function approveSelectedDestinations(opts: {
   const { post, brand, actor, postNow } = opts;
   const dests = selectedDestinations(post);
   const slices = slicesForApproval(post);
-  const immediate = shouldPublishImmediately(dests, postNow);
+  const scheduledDue =
+    post.scheduled_at != null &&
+    Number.isFinite(new Date(post.scheduled_at).getTime()) &&
+    new Date(post.scheduled_at).getTime() <= Date.now() + 60_000;
+  // Past/due slots publish on the next tick — never keep yesterday's weekday on the row.
+  const immediate = shouldPublishImmediately(dests, postNow) || scheduledDue;
   const captions = captionsForPost(post);
   const scheduledAt = immediate ? new Date().toISOString() : post.scheduled_at;
 

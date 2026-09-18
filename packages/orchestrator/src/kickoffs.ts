@@ -32,6 +32,7 @@ import {
 import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
 import { ownerInboundAfter } from "./conversationContext.js";
+import { formatScheduledSlot } from "./smsTime.js";
 
 
 /**
@@ -209,12 +210,7 @@ const COMPETITOR_MOVE_RE =
   /\b(competitor|rival).{0,40}\b(posted|launched|running|doing|moved|dropped)\b|\bdraft .{0,30}\b(response|reply|counter)\b.{0,30}\b(competitor|rival)\b/i;
 
 function formatSlot(d: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
+  return formatScheduledSlot(d);
 }
 
 function clipCaption(caption: string | null | undefined, max = 140): string {

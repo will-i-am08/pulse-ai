@@ -26,10 +26,12 @@ describe("listsToolMenu", () => {
 
 describe("agentIdentity", () => {
   it("names Kip as this brand's social media manager", () => {
-    const prompt = agentIdentity(stubBrand());
+    const prompt = agentIdentity(stubBrand(), undefined, new Date("2026-09-18T03:11:00.000Z"));
     expect(prompt).toMatch(/Kip/i);
     expect(prompt).toMatch(/social media manager/i);
     expect(prompt).toContain("Sunrise Cafe");
+    expect(prompt).toMatch(/Local clock right now:.*Friday/i);
+    expect(prompt).toMatch(/Australia\/Sydney/);
   });
 
   it("includes the owner first name when known", () => {
