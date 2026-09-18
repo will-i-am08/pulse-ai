@@ -47,6 +47,9 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/tool-call draft_copy before/i);
     expect(prompt).toMatch(/draft_copy/);
     expect(prompt).toMatch(/set_image_text/);
+    expect(prompt).toMatch(/scout_ideas/);
+    expect(prompt).toMatch(/soft challenge|push back once|what it does for their niche/i);
+    expect(prompt).toMatch(/do not interview them first/i);
     expect(prompt).toMatch(/reel with no clip/i);
     expect(prompt).not.toMatch(/✨/);
   });

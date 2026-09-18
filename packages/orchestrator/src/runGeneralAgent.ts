@@ -34,8 +34,18 @@ export type RunGeneralAgentResult = {
 };
 
 /** In-character SMS when the tool loop throws. Never names an operator or agency. */
-const GENERAL_AGENT_FALLBACK_SMS =
-  "That one glitched on my side. Mind sending it again?";
+export function generalAgentFallbackSms(ownerMessage: string | null | undefined): string {
+  const t = (ownerMessage ?? "").trim();
+  // Only ask them to resend when they were clearly trying to deliver media / a failed attach.
+  if (
+    t &&
+    /\b(photo|pic|picture|image|video|clip|mms|send(ing)? (it|this|that) again|resent|re-?send)\b/i.test(t) &&
+    !/\b(draft|carousel|suggest|idea|research|look into|post about)\b/i.test(t)
+  ) {
+    return "That one glitched on my side. Mind sending it again?";
+  }
+  return "Hit a snag on my side — say go and I'll retry.";
+}
 
 /**
  * True when the general-agent intercept may run: flag on, no attached media.
@@ -118,8 +128,9 @@ export async function runGeneralAgent(
       },
     });
     reply = humanizeChat(stripMarkdown(raw));
-  } catch {
-    reply = humanizeChat(stripMarkdown(GENERAL_AGENT_FALLBACK_SMS));
+  } catch (err) {
+    console.error(`runGeneralAgent: brand ${brand.id}`, err);
+    reply = humanizeChat(stripMarkdown(generalAgentFallbackSms(ownerMessage)));
   }
 
   if (reply) {

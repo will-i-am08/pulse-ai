@@ -9,10 +9,11 @@ import {
   editImageForBrand,
   shouldOverlayHeadline,
   messageWantsImageEdit,
+  messageWantsStripPendingOverlay,
   generateHeadline,
   applyTextTile,
 } from "./imaging.js";
-import { reviseOfferedCaption } from "./offeredDraft.js";
+import { clearImageOverlay, reviseOfferedCaption } from "./offeredDraft.js";
 export { captionEditMissed } from "./offeredDraft.js";
 import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
@@ -1333,6 +1334,25 @@ async function routeInbound(
       await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
       return { reply: chat };
     }
+  }
+
+  // "Remove the text" / strip overlay on the pending draft — hard gate before
+  // general agent / caption revise so we never rewrite the caption into a meta refusal.
+  if (pending && message.body && newMedia.length === 0 && messageWantsStripPendingOverlay(message.body)) {
+    const stripped = await clearImageOverlay(brand, pending);
+    if (stripped.ok) {
+      return {
+        reply: stripped.ackSms ?? "Took the text off the image. Caption unchanged. Reply yes to send it.",
+        postId: pending.id,
+        mediaUrl: stripped.mediaUrl ?? undefined,
+      };
+    }
+    return {
+      reply:
+        stripped.error ??
+        "I couldn't strip the overlay on that one — say \"regenerate\" for a clean visual, or tell me how to rewrite the caption.",
+      postId: pending.id,
+    };
   }
 
   // General agent (flagged, off by default): after hard gates (onboarding, dest
