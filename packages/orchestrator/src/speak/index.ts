@@ -7,6 +7,7 @@ import type { Brand } from "@pulse/shared";
 import { callLLM } from "../llm.js";
 import { kipMemoryPromptBlock } from "../kipMemory.js";
 import { personaLines } from "../persona.js";
+import { localClockPromptLine } from "../smsTime.js";
 import { styleBankPromptBlock } from "./styleBank.js";
 import { loadRecentOutbound, recentOutsPromptBlock } from "./recentOuts.js";
 import { structuralConstraintPromptBlock } from "./constraints.js";
@@ -71,6 +72,7 @@ export function buildSpeakSystem(opts: BuildSpeakSystemOptions): string {
   const parts = [
     ...persona,
     memory && !persona.includes(memory) ? memory : "",
+    localClockPromptLine(),
     styleBankPromptBlock(opts.mode),
     recentOutsPromptBlock(opts.recentOutbound ?? []),
     structuralConstraintPromptBlock(opts.constraintSeed),

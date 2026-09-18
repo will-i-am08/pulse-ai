@@ -137,7 +137,7 @@ import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
 import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
 import { quickReengageReply, quickSocialReply } from "./socialReply.js";
-import { formatScheduledSlot as formatSlot } from "./smsTime.js";
+import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -2105,7 +2105,7 @@ async function routeInbound(
       const when = immediate
         ? ", going out now"
         : pending.scheduled_at
-          ? `, going out ${formatSlot(new Date(pending.scheduled_at))}`
+          ? `, going out ${formatGoingOutWhen(pending.scheduled_at)}`
           : "";
       return { reply: approvalReply(dests, when), postId: pending.id };
     }

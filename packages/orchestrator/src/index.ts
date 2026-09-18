@@ -76,7 +76,16 @@ export {
   connectionSummary,
   NEVER_INVENT_PROOF,
 } from "./persona.js";
-export { formatScheduledSlot, formatWeekday, localYmd, joinEnglish } from "./smsTime.js";
+export {
+  appTz,
+  formatScheduledSlot,
+  formatWeekday,
+  formatLocalClock,
+  formatGoingOutWhen,
+  localClockPromptLine,
+  localYmd,
+  joinEnglish,
+} from "./smsTime.js";
 
 export {
   runVoiceAnalysis,
