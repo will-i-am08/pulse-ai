@@ -213,6 +213,7 @@ export {
   inferOverlayTreatment,
   resolveOverlayTreatment,
   splitOverlayStack,
+  overlayWordNodes,
   DEFAULT_OVERLAY_TREATMENT,
 } from "./imaging.js";
 export {

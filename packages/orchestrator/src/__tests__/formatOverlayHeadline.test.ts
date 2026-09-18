@@ -236,7 +236,8 @@ describe("overlay headline wiring", () => {
       imaging.indexOf("async function renderTile"),
       imaging.indexOf("export async function applyTextTile"),
     );
-    expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.04em" : "0\.06em"/);
+    expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.02em" : "0\.03em"/);
+    expect(renderTile).toMatch(/overlayWordNodes\(/);
     expect(renderTile).toMatch(/overlaySafeInset\(/);
   });
 
