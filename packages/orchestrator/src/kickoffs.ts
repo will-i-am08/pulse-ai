@@ -200,7 +200,7 @@ export function looksLikeDraftPreviewOutbound(body: string | null | undefined): 
  * ask to use their own shots — default to generating / sourcing photos.
  */
 const PHOTO_OR_CAROUSEL_DRAFT_RE =
-  /\b(carr?ousels?).{0,80}\b(photos?|pictures?|pics?|imagery|cinematic|stock|generated|text)\b|\b((cinematic|business|stock|generated)\s+)?(photos?|pictures?).{0,60}\b(carr?ousel|text (over|on|overlay|on top))\b|\b(generate|source|find|get)\s+(the\s+|some\s+|me\s+)?(photos?|pictures?|pics?|imagery|visuals?)\b/i;
+  /\b(carr?ousels?).{0,80}\b(photos?|pictures?|pics?|imagery|cinematic|stock|generated|text)\b|\b((cinematic|business|stock|generated)\s+)?(photos?|pictures?).{0,60}\b(carr?ousel|text (over|on|overlay|on top))\b|\b(generate|source|find|get)\s+(the\s+|a\s+|an\s+|some\s+|me\s+)?(photos?|pictures?|pics?|imagery|visuals?)\b/i;
 
 const TREND_RE =
   /\b(trend(ing)?|what'?s (hot|new)|newsjack|timely|in the news|cultural moment)\b/i;
@@ -308,6 +308,7 @@ export function looksLikeKickoffRequest(body: string | null | undefined): boolea
   if (looksLikeUseThisBrief(t)) return true;
   if (DRAFT_POSTS_RE.test(t)) return true;
   if (PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) return true;
+  if (GENERATED_MEDIA_ASK_RE.test(t)) return true;
   if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) return true;
   if (COMPETITOR_MOVE_RE.test(t)) return true;
   return false;
@@ -362,7 +363,8 @@ export function inferKickoffFromUserMessage(
     looksLikeFormatMenuReply(t) ||
     looksLikeUseThisBrief(t) ||
     DRAFT_POSTS_RE.test(t) ||
-    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)
+    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t) ||
+    GENERATED_MEDIA_ASK_RE.test(t)
   ) {
     const payload = draftPostsPayloadFromText(t);
     // Bare "A post" / "carousel" menu replies → single piece of that format.

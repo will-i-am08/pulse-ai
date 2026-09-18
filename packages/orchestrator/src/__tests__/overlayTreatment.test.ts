@@ -195,6 +195,7 @@ describe("overlay treatment wiring", () => {
     expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.04em" : "0\.06em"/);
     expect(renderTile).toMatch(/overlaySafeInset\(/);
     expect(renderTile).toMatch(/overlayBandStyle\(/);
+    expect(renderTile).not.toMatch(/:\s*undefined/);
     expect(imaging).toMatch(/placement === "center"/);
     expect(imaging).toMatch(/placement === "chip"/);
     expect(imaging).toMatch(/placement === "low_left"/);
