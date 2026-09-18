@@ -73,6 +73,31 @@ describe("retrieveBrandContext", () => {
     expect(mockedBanked).toHaveBeenCalledWith("brand-1");
   });
 
+  it("engine pack describes offered draft overlay vs caption when pending exists", async () => {
+    mockedQueryOne.mockImplementation(async (sql: string) => {
+      if (String(sql).includes("pending_approval") && String(sql).includes("select *")) {
+        return {
+          id: "post-99",
+          status: "pending_approval",
+          caption: "Six figures on the system compounds.",
+          media_ids: ["tiled"],
+          source_media_ids: ["source"],
+          style_meta: { wants_text: true, headline: "CAR VS ENGINE", generated: true },
+          format: "feed",
+          platform: "instagram",
+          destinations: ["instagram"],
+          scheduled_at: null,
+        };
+      }
+      return null;
+    });
+    const pack = await retrieveBrandContext(stubBrand(), "remove the text");
+    expect(pack.text).toMatch(/Offered draft id: post-99/);
+    expect(pack.text).toMatch(/Text on image: YES/);
+    expect(pack.text).toMatch(/CAR VS ENGINE/);
+    expect(pack.text).toMatch(/set_image_text/);
+  });
+
   it("includes open loops and does not dump conversation history", async () => {
     const pack = await retrieveBrandContext(
       stubBrand({

@@ -3,11 +3,12 @@
  * Keyword overlap + recency only (no embeddings / pgvector). Never invents facts.
  */
 
-import { brandVoiceProfileSchema, query, queryOne, type Brand } from "@pulse/shared";
+import { brandVoiceProfileSchema, query, queryOne, type Brand, type Post } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { kipMemoryPromptBlock, readKipDecisions, readKipPreferences } from "./kipMemory.js";
 import { bankedPhotoCount } from "./library.js";
+import { formatOfferedDraftBlock } from "./offeredDraft.js";
 import { connectionSummary } from "./persona.js";
 import { formatScheduledSlot } from "./smsTime.js";
 import { openLoopsPromptBlock, readOpenLoops } from "./speak/openLoops.js";
@@ -178,7 +179,6 @@ async function safeQueryOne<T>(sql: string, params: unknown[]): Promise<T | null
   }
 }
 
-type PendingDraftRow = { id: string; status: string; caption: string | null };
 type KickoffRow = { kind: string };
 type TonePostRow = {
   caption: string | null;
@@ -200,11 +200,10 @@ type UpcomingRow = { scheduled_at: string; caption: string | null; status: strin
 async function formatEngine(brand: Brand): Promise<string> {
   const [photoCount, pending, kickoffs, upcoming] = await Promise.all([
     bankedPhotoCount(brand.id).catch(() => 0),
-    safeQueryOne<PendingDraftRow>(
-      `select id, status, caption
-         from posts
+    safeQueryOne<Post>(
+      `select * from posts
         where brand_id = $1 and status = 'pending_approval'
-        order by created_at desc
+        order by coalesce(last_offered_at, created_at) desc, created_at desc
         limit 1`,
       [brand.id],
     ),
@@ -237,9 +236,7 @@ async function formatEngine(brand: Brand): Promise<string> {
   }
 
   if (pending?.id) {
-    lines.push(
-      `Pending draft: ${pending.id} ${pending.status} — ${excerpt(pending.caption, 80)}`,
-    );
+    lines.push(formatOfferedDraftBlock(pending));
   } else {
     lines.push(`Pending draft: ${NONE}`);
   }

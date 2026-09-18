@@ -94,6 +94,15 @@ export { runGeneralAgent, generalAgentEligible } from "./runGeneralAgent.js";
 export type { RunGeneralAgentOpts, RunGeneralAgentResult } from "./runGeneralAgent.js";
 export { retrieveBrandContext, rankByKeywordOverlap } from "./retrieveContext.js";
 export type { BrandContextPack } from "./retrieveContext.js";
+export {
+  loadOfferedDraft,
+  formatOfferedDraftBlock,
+  offeredDraftView,
+  looksLikeMetaCaption,
+  captionEditMissed,
+  clearImageOverlay,
+  setImageOverlay,
+} from "./offeredDraft.js";
 export { agentIdentity, listsToolMenu } from "./agentIdentity.js";
 export {
   KIP_AGENT_TOOLS,

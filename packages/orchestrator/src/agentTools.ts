@@ -15,6 +15,7 @@ import {
   type Brand,
   type KipKickoffKind as KipKickoffKindT,
   type Platform as PlatformT,
+  type Post,
   type PostFormat as PostFormatT,
   type PostStatus,
 } from "@pulse/shared";
@@ -38,6 +39,15 @@ import { draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
 import { queueUgcJob } from "./ugc/index.js";
 import { queueAiVideoJob } from "./aiVideo.js";
+import {
+  clearImageOverlay,
+  formatOfferedDraftBlock,
+  loadOfferedDraft,
+  rejectOfferedDraft,
+  restyleOfferedImage,
+  reviseOfferedDraftCaption,
+  setImageOverlay,
+} from "./offeredDraft.js";
 
 export type AgentToolContext = {
   brand: Brand;
@@ -46,6 +56,8 @@ export type AgentToolContext = {
   retrievedPack?: string;
   notifyOperator?: (body: string) => Promise<boolean | void>;
   operatorAlerts?: string[];
+  /** Last preview URL from a draft mutation tool (for MMS). */
+  lastMediaUrl?: { url?: string | null };
 };
 
 export type { KipMemoryBucket };
@@ -140,6 +152,44 @@ const rememberFactInputSchema = z
       .enum(["kip_preferences", "kip_decisions"])
       .optional()
       .describe("Where to store it (default kip_preferences)."),
+  })
+  .strict();
+
+const getOfferedDraftInputSchema = z.object({}).strict();
+
+const reviseCaptionInputSchema = z
+  .object({
+    instruction: z.string().min(1).describe("How to change the CAPTION (feed copy), not image overlay."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const setImageTextInputSchema = z
+  .object({
+    enabled: z.boolean().describe("false = strip overlay / restore clean source; true = burn headline on image."),
+    headline: z.string().optional().describe("Optional overlay headline when enabled is true."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const restyleImageInputSchema = z
+  .object({
+    instruction: z.string().min(1).describe("How to restyle the PHOTO (brighter, different vibe, etc.)."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const regenerateCreativeInputSchema = z
+  .object({
+    brief: z.string().optional().describe("Optional new brief / topic for a fresh creative."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft (rejected first)."),
+  })
+  .strict();
+
+const rejectDraftInputSchema = z
+  .object({
+    note: z.string().optional().describe("Optional reason for the audit log."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
   })
   .strict();
 
@@ -247,7 +297,7 @@ function toolDef(
   };
 }
 
-/** Anthropic tool definitions for the question tool loop. */
+/** Anthropic tool definitions for the question / general-agent tool loop. */
 export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   toolDef(
     "schedule_post",
@@ -263,6 +313,36 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
     "draft_copy",
     "Content-engine facade: draft a caption, queue posts/first batch/carousel/story/trend/competitor, pull from library, or queue UGC/reel. Never publishes — owner still approves.",
     draftCopyInputSchema,
+  ),
+  toolDef(
+    "get_offered_draft",
+    "Read the pending draft currently in front of the owner (caption vs on-image text, media, format). Use before mutating a draft.",
+    getOfferedDraftInputSchema,
+  ),
+  toolDef(
+    "revise_caption",
+    "Rewrite ONLY the feed caption on the offered draft. Not for removing text burned onto the image — use set_image_text for that. Never publishes.",
+    reviseCaptionInputSchema,
+  ),
+  toolDef(
+    "set_image_text",
+    "Turn on/off text burned onto the IMAGE of the offered draft. enabled=false restores the clean source photo and clears the overlay; caption is unchanged. Never publishes.",
+    setImageTextInputSchema,
+  ),
+  toolDef(
+    "restyle_image",
+    "Re-edit the offered draft PHOTO from source (brighter, background, vibe). Re-applies overlay only if the draft already had wants_text. Never publishes.",
+    restyleImageInputSchema,
+  ),
+  toolDef(
+    "regenerate_creative",
+    "Scrap the offered draft and queue a fresh creative (draft_posts kickoff). Never publishes.",
+    regenerateCreativeInputSchema,
+  ),
+  toolDef(
+    "reject_draft",
+    "Discard the offered pending draft without publishing. Use when the owner wants it scrapped.",
+    rejectDraftInputSchema,
   ),
   toolDef(
     "check_calendar",
@@ -841,6 +921,106 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
   }
 }
 
+function rememberMediaUrl(ctx: AgentToolContext, mediaUrl?: string | null) {
+  if (ctx.lastMediaUrl && mediaUrl) ctx.lastMediaUrl.url = mediaUrl;
+}
+
+async function resolveOfferedPost(ctx: AgentToolContext, postId?: string) {
+  if (postId?.trim()) {
+    const row = await queryOne<Post>(
+      `select * from posts where id = $1 and brand_id = $2 and status = 'pending_approval'`,
+      [postId.trim(), ctx.brand.id],
+    );
+    if (!row) return null;
+    return row;
+  }
+  return loadOfferedDraft(ctx.brand.id);
+}
+
+async function toolGetOfferedDraft(ctx: AgentToolContext): Promise<string> {
+  const post = await loadOfferedDraft(ctx.brand.id);
+  if (!post) {
+    return JSON.stringify({
+      ok: true,
+      pending: false,
+      note: "No pending_approval draft in front of the owner right now.",
+    });
+  }
+  return JSON.stringify({
+    ok: true,
+    pending: true,
+    draft: formatOfferedDraftBlock(post),
+    postId: post.id,
+  });
+}
+
+async function toolReviseCaption(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(reviseCaptionInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to revise.");
+  const result = await reviseOfferedDraftCaption(ctx.brand, post, parsed.data.instruction);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolSetImageText(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(setImageTextInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to update.");
+  const result = parsed.data.enabled
+    ? await setImageOverlay(ctx.brand, post, parsed.data.headline)
+    : await clearImageOverlay(ctx.brand, post);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolRestyleImage(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(restyleImageInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to restyle.");
+  const result = await restyleOfferedImage(ctx.brand, post, parsed.data.instruction);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolRegenerateCreative(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(regenerateCreativeInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (post) {
+    await rejectOfferedDraft(ctx.brand, post, "Owner asked to regenerate — rejecting prior draft");
+  }
+  const brief = (parsed.data.brief || "").trim();
+  const result = await enqueueKickoff(ctx.brand, "draft_posts", {
+    payload: {
+      count: 1,
+      topicHint: brief.slice(0, 400) || undefined,
+      forceFresh: true,
+    },
+    reason: "user_request",
+    sourceMessageId: ctx.sourceMessageId ?? null,
+  });
+  return JSON.stringify({
+    ok: true,
+    kickoffId: result.kickoff?.id ?? null,
+    alreadyQueued: result.alreadyQueued,
+    ackSms: result.ackSms ?? "On it — generating a fresh draft. I'll text when it's ready.",
+    note: KICKOFF_NOTE,
+  });
+}
+
+async function toolRejectDraft(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(rejectDraftInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to reject.");
+  const result = await rejectOfferedDraft(ctx.brand, post, parsed.data.note);
+  return JSON.stringify(result);
+}
+
 /**
  * Execute one agent tool. Returns a JSON string for Anthropic tool_result content.
  */
@@ -857,6 +1037,18 @@ export async function executeAgentTool(
         return await toolPullAnalytics(ctx, input);
       case "draft_copy":
         return await toolDraftCopy(ctx, input);
+      case "get_offered_draft":
+        return await toolGetOfferedDraft(ctx);
+      case "revise_caption":
+        return await toolReviseCaption(ctx, input);
+      case "set_image_text":
+        return await toolSetImageText(ctx, input);
+      case "restyle_image":
+        return await toolRestyleImage(ctx, input);
+      case "regenerate_creative":
+        return await toolRegenerateCreative(ctx, input);
+      case "reject_draft":
+        return await toolRejectDraft(ctx, input);
       case "check_calendar":
         return await toolCheckCalendar(ctx, input);
       case "escalate_to_human":

@@ -104,9 +104,15 @@ describe("KIP_AGENT_TOOLS", () => {
       "check_calendar",
       "draft_copy",
       "escalate_to_human",
+      "get_offered_draft",
       "pull_analytics",
+      "regenerate_creative",
+      "reject_draft",
       "remember_fact",
+      "restyle_image",
+      "revise_caption",
       "schedule_post",
+      "set_image_text",
     ]);
     for (const t of KIP_AGENT_TOOLS) {
       expect(t.input_schema).toMatchObject({ type: "object", additionalProperties: false });

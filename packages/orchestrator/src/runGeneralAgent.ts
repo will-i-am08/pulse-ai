@@ -4,15 +4,16 @@
  * promised work without a successful draft_copy.
  *
  * Gated by KIP_GENERAL_AGENT (off by default). Does not rewrite the content engine.
+ * When on, owns create + revise of drafts via tools (including pending drafts).
  */
 
 import type { Brand } from "@pulse/shared";
 import type Anthropic from "@anthropic-ai/sdk";
 import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
+import { looksLikeApproval } from "./classify.js";
 import { loadRecentChatTurns } from "./conversationContext.js";
-import { isReelOnlyAsk, looksLikeKickoffRequest, maybeEnqueueFromKipCommit } from "./kickoffs.js";
-import { looksLikeCompetitorAsk } from "./competitors.js";
+import { maybeEnqueueFromKipCommit } from "./kickoffs.js";
 import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
@@ -29,6 +30,7 @@ export type RunGeneralAgentOpts = {
 export type RunGeneralAgentResult = {
   reply: string;
   operatorAlert?: string;
+  mediaUrl?: string;
 };
 
 /** In-character SMS when the tool loop throws. Never names an operator or agency. */
@@ -36,10 +38,10 @@ const GENERAL_AGENT_FALLBACK_SMS =
   "That one glitched on my side. Mind sending it again?";
 
 /**
- * True when the general-agent intercept may run: flag on, no attached media,
- * no pending_approval draft, and the text isn't a dedicated engine job
- * (reel-without-clip, draft-me-N). Those stay on the inbound router so Kip
- * doesn't turn them into a questionnaire.
+ * True when the general-agent intercept may run: flag on, no attached media.
+ * Pending drafts are allowed — the agent mutates them via tools.
+ * High-confidence approval ("yes") stays on the hard-gate router.
+ * Attached media stays on the photo/video pipeline.
  */
 export function generalAgentEligible(opts: {
   flag: boolean;
@@ -47,9 +49,9 @@ export function generalAgentEligible(opts: {
   hasPending: boolean;
   ownerMessage?: string;
 }): boolean {
-  if (!opts.flag || opts.hasMedia || opts.hasPending) return false;
+  if (!opts.flag || opts.hasMedia) return false;
   const t = (opts.ownerMessage ?? "").trim();
-  if (t && (isReelOnlyAsk(t) || looksLikeKickoffRequest(t) || looksLikeCompetitorAsk(t))) return false;
+  if (opts.hasPending && looksLikeApproval(t)) return false;
   return true;
 }
 
@@ -80,6 +82,7 @@ export async function runGeneralAgent(
   ]);
   const system = agentIdentity(brand, pack.text);
   const operatorAlerts: string[] = [];
+  const lastMediaUrl: { url?: string | null } = {};
   let remembered = false;
 
   const historyMessages: Anthropic.MessageParam[] = history.map((t) => ({
@@ -110,6 +113,7 @@ export async function runGeneralAgent(
           mediaIds,
           retrievedPack: pack.text,
           operatorAlerts,
+          lastMediaUrl,
         });
       },
     });
@@ -128,5 +132,9 @@ export async function runGeneralAgent(
     await recordKipMemory(brand, durable, "kip_preferences").catch(() => {});
   }
 
-  return { reply, operatorAlert: operatorAlerts[0] };
+  return {
+    reply,
+    operatorAlert: operatorAlerts[0],
+    mediaUrl: lastMediaUrl.url || undefined,
+  };
 }
