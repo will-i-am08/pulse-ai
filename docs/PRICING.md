@@ -170,24 +170,20 @@ Current `PricingPlans` bullets are directionally right. Prefer concrete ceilings
 
 ---
 
-## 7. Wiring status (pre-Stripe)
+## 7. Wiring status (Stripe Checkout)
 
-**Enforcement is off.** Pro/Max are marketing + preference storage only.
+**Plan feature enforcement is still off.** Pro vs Max ceilings in `plan.ts` do not lock product behaviour. New signups must complete Stripe Checkout (or be marked complimentary) before SMS onboarding.
 
 | Piece | Status |
 |-------|--------|
-| Landing prices + bullets | Live (AUD $79 / $149) |
-| `facts.plan` / `plan_preference` | Stored on payment UI submit |
-| `packages/shared/src/plan.ts` | Catalog + `entitlementsFor()` — always open until Stripe |
-| Per-plan UGC / AI / feature locks | **Not applied** |
+| Landing prices + bullets | Live (AUD $79 / $149, GST-inclusive) |
+| Hosted Checkout + Customer Portal | `/payment`, `/app/billing` |
+| Webhook | `POST /api/webhooks/billing` (Stripe signature) |
+| `facts.plan` / `plan_preference` / `facts.payment` | Synced from Stripe Prices + operator actions |
+| Operator billing | Complimentary, discount, refund, remote plan change on `/app/operator/users/[id]` |
+| Per-plan UGC / AI / feature locks | **Not applied** (`PLAN_ENFORCEMENT` stays false) |
 | Ops caps (`AI_WEEKLY_*`, `AI_VIDEO_COST_CAP_*`) | Global safety rails only — same for every brand |
 
-When Stripe ships:
+To collect payments, follow [`STRIPE_SETUP.md`](STRIPE_SETUP.md). Production currently uses **Kip ai test** (`sk_test_`, test cards). Live **Kip Ai** keys stay off until a real-charge cutover.
 
-1. Set `PLAN_ENFORCEMENT=true` **and** `STRIPE_SECRET_KEY` (both required).
-2. Map Stripe Prices → `facts.plan.tier`.
-3. Then optionally apply intended ceilings in `plan.ts` (Pro ~$6 UGC/mo, Max ~$20, etc.).
-4. Default `autopilot` / `ads` from entitlements on signup — not before.
-5. Keep Kling primary; Seedance as fallback / explicit premium regen.
-
-Until then: do **not** branch product behavior on Pro vs Max.
+Until enforcement is on: do **not** branch product behaviour on Pro vs Max (Pro payers currently get the full envelope).

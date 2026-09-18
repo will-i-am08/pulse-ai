@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { BrandLockup } from '../components/BrandLockup';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
+import { hasPaidAccess } from '@pulse/shared';
 import styles from '../auth.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,7 @@ export default async function CheckMessagesPage() {
   const brands = await listBrandsForOwner(user.id);
   const brand = brands[0] ?? null;
 
-  if (!brand?.facts?.payment?.submitted_at) {
+  if (!brand || !hasPaidAccess(brand.facts)) {
     redirect('/payment');
   }
 

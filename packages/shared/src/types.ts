@@ -747,15 +747,56 @@ export interface BrandPlanFacts {
   selected_at?: string;
 }
 
+export type BrandPaymentStatus =
+  | "incomplete"
+  | "submitted"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "none";
+
+export type BrandPaymentDiscountDuration = "once" | "forever" | "repeating";
+
+/** Snapshot of an operator-applied Stripe coupon. */
+export interface BrandPaymentDiscount {
+  percent_off?: number;
+  amount_off_cents?: number;
+  coupon_id?: string;
+  duration?: BrandPaymentDiscountDuration;
+  duration_in_months?: number;
+  applied_at?: string;
+  applied_by?: string;
+}
+
+/** Last operator billing action (refund / comp / plan / discount). */
+export interface BrandOperatorBillingAction {
+  action: "comp" | "uncomp" | "discount" | "refund" | "plan_change";
+  at: string;
+  by?: string;
+  note?: string;
+}
+
 /**
- * Payment UI / future billing markers on the brand.
- * Not a paywall — must not block /app or product features until Stripe.
+ * Payment / Stripe markers on the brand.
+ * Access gating uses {@link import("./billing.js").hasPaidAccess} — not this type alone.
  */
 export interface BrandPaymentFacts {
-  /** Set when the owner submits the payment UI (Stripe not connected yet). */
+  /** Set when Checkout completes or a pre-Stripe demo submit happened. */
   submitted_at?: string;
-  /** Display-only status until a real processor is plugged in. */
-  status?: "submitted" | "active" | "none";
+  status?: BrandPaymentStatus;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  stripe_price_id?: string;
+  current_period_end?: string;
+  cancel_at_period_end?: boolean;
+  /** Operator-granted free access. Survives canceled Stripe subscriptions. */
+  complimentary?: boolean;
+  complimentary_reason?: string;
+  complimentary_at?: string;
+  complimentary_by?: string;
+  discount?: BrandPaymentDiscount | null;
+  last_operator_action?: BrandOperatorBillingAction;
 }
 
 /** Owner must SMS-confirm a discovered booking/destination URL before Kip saves or uses it. */
@@ -814,9 +855,9 @@ export interface BusinessFacts {
   creative_refresh?: { last_at?: string; week_key?: string };
   /** Preference chosen on signup / pricing before checkout (may differ from `plan`). */
   plan_preference?: BrandPlanFacts;
-  /** Confirmed plan after payment UI submit. */
+  /** Confirmed plan after Checkout (or operator plan change). */
   plan?: BrandPlanFacts;
-  /** Payment UI / future billing markers — never used to block /app access. */
+  /** Stripe / complimentary billing markers. */
   payment?: BrandPaymentFacts;
   /** How this brand arrived (QR/SMS funnel, etc.). */
   acquisition?: {

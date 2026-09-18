@@ -38,6 +38,10 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | Wave 3 | Direct Post |
 | `TIKTOK_AUDIT_PASSED` | Wave 3 live | Set `true` only after Content Posting audit |
 | `X_CLIENT_ID` / `THREADS_APP_ID` (+ secrets) | optional | Destinations behind `platformConfigured()` |
+| `STRIPE_SECRET_KEY` | to take payment | **Now:** `sk_test_…` from **Kip ai test** on Production + Preview. Later: `sk_live_…` from **Kip Ai** on Production only |
+| `STRIPE_WEBHOOK_SECRET` | to take payment | Signing secret for `POST /api/webhooks/billing` |
+| `STRIPE_PRICE_*` | optional | Pin specific Price IDs. Default: lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year` |
+| `PLAN_ENFORCEMENT` | no | Leave false until Pro vs Max feature locks ship |
 
 ---
 
@@ -140,7 +144,36 @@ if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<toke
 
 ---
 
+## Stripe (Production is on Kip ai test)
+
+Operator walkthrough: [`STRIPE_SETUP.md`](STRIPE_SETUP.md). Checkout is shipped to Production, but charges stay Stripe **test mode** (`4242…`) until we flip to the live **Kip Ai** account.
+
+- [ ] **Now:** Vercel Preview + Development + **Production** = `sk_test_` from **Kip ai test**
+- [ ] **Now:** Production `STRIPE_WEBHOOK_SECRET` = signing secret for `we_1UGxNsHVCUBRaxA2HwgnJRyB` (Preview uses a different `whsec_`)
+- [ ] **Now:** Customer Portal on Kip ai test — four Prices, cancel at period end
+- [ ] **Now:** Production `/payment` shows the test-mode banner; Checkout with `4242…` → webhook 2xx → onboarding SMS
+- [ ] Later: AU Stripe **Kip Ai** live KYC + payouts
+- [ ] Later: re-enable live webhook `we_1UFqcEHq2ejcSwebHfq1FdZz`; Production env = `sk_live_` + live webhook secret
+- [ ] Invoice settings: legal name + ABN; customer emails (receipts + failed payments) on
+- [ ] Do **not** enable Stripe Tax exclusive GST on top of list prices
+- [ ] `PLAN_ENFORCEMENT` remains false
+- [ ] When flipping live: one real $79 charge → webhook → `facts.payment.status=active` → **one** onboarding SMS → receipt email → portal cancel-at-period-end
+
+### First-week refund playbook (manual)
+
+Advertised: email will@jmcalder.com within 7 days of the first charge.
+
+1. Open `/app/operator/users/<id>` → Billing.
+2. Refund the latest paid invoice (full or that week’s amount). Tick **Keep access** if they should stay on (complimentary) or **Cancel subscription** if they are leaving.
+3. Confirm the Stripe credit note/refund in the Dashboard.
+4. If SMS already started and they are leaving, pause the brand from operator tools as usual.
+
+Operator can also apply % discounts, change Pro/Max remotely, or mark an account complimentary without a refund.
+
+---
+
 ## Still requiring external human approval (cannot be coded)
+
 
 | Gate | Why code cannot finish it |
 | --- | --- |
