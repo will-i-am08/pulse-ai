@@ -120,6 +120,7 @@ describe("generateFillerPost photo mode", () => {
       brand,
       expect.any(String),
       "HIRE FOR SKILL NOT VIBES",
+      undefined,
     );
     expect(generateHeadline).not.toHaveBeenCalled();
 

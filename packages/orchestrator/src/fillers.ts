@@ -185,7 +185,12 @@ export async function generateFillerPost(
       photoHeadline =
         (card && card.replace(/["']/g, "").trim()) ||
         (await generateHeadline(brand, caption));
-      const tiledId = await applyTextTile(brand, mediaId, photoHeadline);
+      const tiledId = await applyTextTile(
+        brand,
+        mediaId,
+        photoHeadline,
+        topic ? { ask: topic } : undefined,
+      );
       if (tiledId) mediaId = tiledId;
     }
   } catch (err) {

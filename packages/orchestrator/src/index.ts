@@ -210,6 +210,10 @@ export {
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
+  inferOverlayTreatment,
+  resolveOverlayTreatment,
+  splitOverlayStack,
+  DEFAULT_OVERLAY_TREATMENT,
 } from "./imaging.js";
 export {
   overlayMasthead,

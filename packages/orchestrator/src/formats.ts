@@ -166,7 +166,7 @@ async function overlayCarouselIfAsked(
   const headline = await generateHeadline(brand, caption);
   const out: string[] = [];
   for (const id of mediaIds) {
-    const tiled = await applyTextTile(brand, id, headline);
+    const tiled = await applyTextTile(brand, id, headline, brief ? { ask: brief } : undefined);
     out.push(tiled ?? id);
   }
   return out;
@@ -821,11 +821,16 @@ export async function generatePhotoTextCarousel(
       brand,
       mediaId,
       overlay,
-      ideaMode || body
+      ideaMode || body || topic
         ? {
-            body,
-            eyebrow,
-            mixedFonts: ideaMode || Boolean(body),
+            ...(ideaMode || body
+              ? {
+                  body,
+                  eyebrow,
+                  mixedFonts: ideaMode || Boolean(body),
+                }
+              : {}),
+            ...(topic ? { ask: topic } : {}),
           }
         : undefined,
     );
