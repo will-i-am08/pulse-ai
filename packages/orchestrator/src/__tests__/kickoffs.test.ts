@@ -109,8 +109,10 @@ describe("looksLikeKickoffRequest", () => {
     expect(refersToAttachedMedia("Use this a do something inspirational")).toBe(true);
     expect(refersToAttachedMedia("use this")).toBe(true);
     expect(refersToAttachedMedia("use these")).toBe(true);
+    expect(refersToAttachedMedia("Could you use the photo I sent you?")).toBe(true);
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
     expect(refersToAttachedMedia("Generate the photo")).toBe(false);
+    expect(refersToAttachedMedia("I mean no text on the image")).toBe(false);
     expect(
       refersToAttachedMedia(
         "Make me a feed post about a safety switch check this week. Generate the photo.",
