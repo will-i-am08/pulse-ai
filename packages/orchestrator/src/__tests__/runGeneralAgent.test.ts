@@ -159,6 +159,8 @@ describe("runGeneralAgent", () => {
     });
     expect(out.reply.length).toBeGreaterThan(0);
     expect(out.reply.toLowerCase()).not.toMatch(/operator|agency/);
+    expect(out.reply.toLowerCase()).toMatch(/snag|retry|go/);
+    expect(out.reply.toLowerCase()).not.toMatch(/sending it again/);
     expect(mockedCommit).toHaveBeenCalledWith(brand, "draft a post", out.reply, "msg-err");
   });
 

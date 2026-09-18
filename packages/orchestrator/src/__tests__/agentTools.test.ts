@@ -112,6 +112,7 @@ describe("KIP_AGENT_TOOLS", () => {
       "restyle_image",
       "revise_caption",
       "schedule_post",
+      "scout_ideas",
       "set_image_text",
     ]);
     for (const t of KIP_AGENT_TOOLS) {

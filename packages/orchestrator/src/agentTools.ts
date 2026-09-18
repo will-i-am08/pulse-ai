@@ -39,6 +39,7 @@ import { draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
 import { queueUgcJob } from "./ugc/index.js";
 import { queueAiVideoJob } from "./aiVideo.js";
+import { scoutContentIdeas } from "./ideaScout.js";
 import {
   clearImageOverlay,
   formatOfferedDraftBlock,
@@ -152,6 +153,16 @@ const rememberFactInputSchema = z
       .enum(["kip_preferences", "kip_decisions"])
       .optional()
       .describe("Where to store it (default kip_preferences)."),
+  })
+  .strict();
+
+const scoutIdeasInputSchema = z
+  .object({
+    focus: z
+      .string()
+      .optional()
+      .describe("Optional topic, angle, or question to research for ideas."),
+    count: z.number().optional().describe("How many ideas (default 4, min 3, max 6)."),
   })
   .strict();
 
@@ -358,6 +369,11 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
     "remember_fact",
     "Store a short owner preference or decision on the brand for later turns. Keep text brief. Does not publish or change posts.",
     rememberFactInputSchema,
+  ),
+  toolDef(
+    "scout_ideas",
+    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use when the owner asks for suggestions, ideas, or to look into topics. Prefer this over interviewing them. Does not draft or publish.",
+    scoutIdeasInputSchema,
   ),
 ];
 
@@ -1021,6 +1037,25 @@ async function toolRejectDraft(ctx: AgentToolContext, input: unknown): Promise<s
   return JSON.stringify(result);
 }
 
+async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(scoutIdeasInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const result = await scoutContentIdeas(ctx.brand, {
+    focus: parsed.data.focus,
+    count: parsed.data.count,
+    retrievedPack: ctx.retrievedPack,
+  });
+  if (!result.ok) return toolError(result.error);
+  return JSON.stringify({
+    ok: true,
+    ideas: result.ideas,
+    note: result.note,
+    researchRefreshed: result.researchRefreshed,
+    ackHint:
+      "Text the owner a short rundown of these ideas (titles + why, lean on competitor/Ad Library angles when inspired_by is set). Offer to draft one they pick. Do not interview them for more intake first.",
+  });
+}
+
 /**
  * Execute one agent tool. Returns a JSON string for Anthropic tool_result content.
  */
@@ -1055,6 +1090,8 @@ export async function executeAgentTool(
         return await toolEscalateToHuman(ctx, input);
       case "remember_fact":
         return await toolRememberFact(ctx, input);
+      case "scout_ideas":
+        return await toolScoutIdeas(ctx, input);
       default:
         return toolError(`Unknown tool: ${name}`);
     }

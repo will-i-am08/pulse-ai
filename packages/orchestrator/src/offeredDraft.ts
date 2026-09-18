@@ -149,11 +149,36 @@ export function captionEditMissed(instruction: string, before: string, after: st
   return false;
 }
 
+/** True when the owner is asking to strip/change image overlay, not feed caption. */
+export function instructionLooksLikeOverlayStrip(instruction: string | null | undefined): boolean {
+  const t = (instruction ?? "").trim();
+  if (!t) return false;
+  if (/\b(caption|feed copy|under (the )?(post|photo)|post copy)\b/i.test(t) && !/\b(image|photo|pic|overlay)\b/i.test(t)) {
+    return false;
+  }
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(no text|without text|text off)\b.{0,24}\b(on|from)\s+(the\s+)?(image|photo|pic|picture|overlay)\b/i.test(t)) {
+    return true;
+  }
+  if (/^(no text|without text|text off|remove the text)\s*[!.?]*$/i.test(t)) return true;
+  return false;
+}
+
 export async function reviseOfferedCaption(
   brand: Brand,
   currentCaption: string,
   instruction: string,
 ): Promise<{ ok: true; caption: string } | { ok: false; error: string }> {
+  if (instructionLooksLikeOverlayStrip(instruction)) {
+    return {
+      ok: false,
+      error: "Instruction looks like image-overlay removal — use set_image_text instead.",
+    };
+  }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const system = [
     `You are revising a social media caption for "${brand.name}" per the client's instruction.`,

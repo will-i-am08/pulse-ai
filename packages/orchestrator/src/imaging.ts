@@ -504,12 +504,55 @@ export function messageWantsText(body: string | null | undefined): boolean {
   return /\b(text|caption on|words on|title on|headline|writing on|add text|put text|overlay)\b/i.test(body);
 }
 
-/** Explicit "no text on the image" / leave it clean. */
+/** Explicit "no text on the image" / leave it clean / strip overlay. */
 export function messageWantsNoText(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
-    body,
-  );
+  const t = body.trim();
+  if (
+    /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // "Remove the text", "take the text off the image"
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing|type)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/\b(text|words|headline|overlay)\b.{0,20}\b(off|from)\b.{0,12}\b(the\s+)?(image|photo|pic|picture)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Owner is asking to strip overlay on the *current* pending draft — not briefing a
+ * new creative ("no text, just good looking bread").
+ */
+export function messageWantsStripPendingOverlay(body: string | null | undefined): boolean {
+  if (!body) return false;
+  const t = body.trim();
+  // New creative brief that includes a no-text preference — not a pending strip.
+  if (
+    /\b(make|draft|create|generate|carousel|charasel|post about|knock (up|out))\b/i.test(t) &&
+    !/\b(remove|strip|take off|clear)\b/i.test(t)
+  ) {
+    return false;
+  }
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(no text|without text|text off)\b.{0,24}\b(on|from)\s+(the\s+)?(image|photo|pic|picture|overlay)\b/i.test(t)) {
+    return true;
+  }
+  if (/^(no text|without text|text off|remove the text)\s*[!.?]*$/i.test(t)) return true;
+  return false;
 }
 
 /**
