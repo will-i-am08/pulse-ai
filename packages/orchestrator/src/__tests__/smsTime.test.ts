@@ -58,4 +58,20 @@ describe("localClockPromptLine", () => {
     }).format(thuUtc);
     expect(utcWeekday).toMatch(/Thursday/i);
   });
+
+  it("does not throw when process.env.TZ is :UTC (live double-glitch root cause)", () => {
+    const prev = process.env.TZ;
+    const prevPulse = process.env.PULSE_APP_TZ;
+    try {
+      process.env.TZ = ":UTC";
+      delete process.env.PULSE_APP_TZ;
+      expect(() => localClockPromptLine(new Date("2026-09-18T03:58:00.000Z"))).not.toThrow();
+      expect(localClockPromptLine(new Date("2026-09-18T03:58:00.000Z"))).toMatch(/Australia\/Sydney/);
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+      if (prevPulse === undefined) delete process.env.PULSE_APP_TZ;
+      else process.env.PULSE_APP_TZ = prevPulse;
+    }
+  });
 });

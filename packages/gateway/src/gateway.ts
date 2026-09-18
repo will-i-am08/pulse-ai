@@ -32,6 +32,11 @@ import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
 import { claimContactCardSent, needsContactCard, releaseContactCardSent } from "./contactCardSent.js";
 import { handleUnknownInbound } from "./smsLead.js";
+import {
+  classifyInboundFailure,
+  inboundFailureOwnerSms,
+  shouldSendGlitchSms,
+} from "./inboundFailure.js";
 
 let channelSingleton: MessageChannel | null = null;
 let channelOverride: MessageChannel | null = null;
@@ -939,12 +944,24 @@ export async function handleInbound(
       // webhook return and left kickoffs stuck in `running` forever.
     } catch (err) {
       // Orchestrator failures must not lose the persisted inbound message — and
-      // the client should never be left with silence.
-      console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
-      try {
-        await sendToBrand(brand.id, "Ah — that one glitched on my side. Mind sending it again?", undefined, { channel });
-      } catch {
-        /* best-effort: the send itself may also be down */
+      // the client should never be left with silence. Classify so sticky config
+      // bugs (e.g. Invalid time zone :UTC) do not ask the owner to resend forever.
+      const failureClass = classifyInboundFailure(err);
+      console.error(
+        `handleInbound: processInbound failed for brand ${brand.id}, message ${message.id} class=${failureClass}`,
+        err,
+      );
+      if (shouldSendGlitchSms(brand.id)) {
+        const sms = inboundFailureOwnerSms(failureClass);
+        try {
+          await sendToBrand(brand.id, sms, undefined, { channel });
+        } catch {
+          /* best-effort: the send itself may also be down */
+        }
+      } else {
+        console.warn(
+          `handleInbound: suppressed duplicate glitch SMS for brand ${brand.id} (cooldown)`,
+        );
       }
     } finally {
       if (slowTimer) clearTimeout(slowTimer);

@@ -1,6 +1,8 @@
-/** App timezone for owner-facing "what day is it" (stands in for brand TZ). */
+import { appTz as sharedAppTz } from "@pulse/shared";
+
+/** App timezone for owner-facing day/time (stands in for brand TZ). */
 export function appTz(): string {
-  return process.env.TZ || "Australia/Sydney";
+  return sharedAppTz();
 }
 
 /**
@@ -33,8 +35,8 @@ export function localYmd(d: Date): string {
 
 /**
  * Full local clock for agent prompts, e.g. "Friday, 18 Sep 2026, 1:11 pm".
- * Always uses Australia/Sydney (or TZ) so Kip does not guess the weekday from
- * UTC while the owner is already on the next local calendar day.
+ * Uses {@link appTz} so Kip does not guess the weekday — and never throws on
+ * Vercel `TZ=:UTC`.
  */
 export function formatLocalClock(d: Date = new Date(), tz: string = appTz()): string {
   return new Intl.DateTimeFormat("en-AU", {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_APP_TZ, isPlatformDefaultTz, resolveAppTz } from "./tz.js";
 
 // Server-side environment. Validated lazily so importing this module in the
 // browser bundle (where only NEXT_PUBLIC_* exist) doesn't throw at import time.
@@ -151,7 +152,8 @@ const serverEnvSchema = z.object({
   // Outside production we still fall back to localhost so dev/tests don't need it
   // — see getServerEnv() below.
   APP_BASE_URL: z.string().url(),
-  TZ: z.string().default("Australia/Sydney"),
+  /** Owner-facing IANA timezone. Platform junk like `:UTC` is rewritten in getServerEnv. */
+  TZ: z.string().default(DEFAULT_APP_TZ),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -178,10 +180,16 @@ export function getServerEnv(): ServerEnv {
     const issues = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Invalid server environment:\n${issues}`);
   }
-  cached = parsed.data;
+  // Vercel sets TZ=:UTC which crashes Intl. Prefer a real IANA id and publish it
+  // as PULSE_APP_TZ so orchestrator clock helpers stay in sync.
+  const tz = isPlatformDefaultTz(parsed.data.TZ)
+    ? DEFAULT_APP_TZ
+    : resolveAppTz(parsed.data.TZ);
+  cached = { ...parsed.data, TZ: tz };
+  process.env.PULSE_APP_TZ = tz;
   if (!loggedAppBaseUrl && source.NODE_ENV !== "test") {
     loggedAppBaseUrl = true;
-    console.log(`env: APP_BASE_URL resolved to ${cached.APP_BASE_URL}`);
+    console.log(`env: APP_BASE_URL resolved to ${cached.APP_BASE_URL}; TZ=${cached.TZ}`);
   }
   return cached;
 }

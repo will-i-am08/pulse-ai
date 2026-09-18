@@ -19,6 +19,15 @@ export {
   mediaIdsFromPublicUrls,
 } from "./gateway.js";
 export type { TypingKeeper, HandleInboundOpts } from "./gateway.js";
+export {
+  classifyInboundFailure,
+  inboundFailureOwnerSms,
+  shouldSendGlitchSms,
+  resetGlitchSmsCooldown,
+  INBOUND_FAILURE_SMS_CONFIG,
+  INBOUND_FAILURE_SMS_RETRY,
+} from "./inboundFailure.js";
+export type { InboundFailureClass } from "./inboundFailure.js";
 export { createLinqChannel, LinqChannel } from "./linq-channel.js";
 export { deliverPendingLoginCodes } from "./loginCodes.js";
 // Re-exported from orchestrator so the worker (which depends on gateway, not
