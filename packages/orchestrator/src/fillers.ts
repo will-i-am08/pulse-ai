@@ -35,7 +35,7 @@ import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } f
 export async function generateFillerPost(
   brand: Brand,
   pillar: Pillar,
-  opts?: { visuals?: VisualMode; topicHint?: string | null },
+  opts?: { visuals?: VisualMode; topicHint?: string | null; destinations?: string[] | null },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
@@ -48,7 +48,13 @@ export async function generateFillerPost(
     description: pillar.description,
     content_job: (pillar as { content_job?: string }).content_job,
   });
-  const briefDests = extractPlatforms(topic);
+  // Prefer explicit kickoff destinations — agent briefs often drop "LinkedIn".
+  const briefDests = [
+    ...new Set([
+      ...(opts?.destinations ?? []).map((d) => String(d).toLowerCase()),
+      ...extractPlatforms(topic),
+    ]),
+  ];
   const linkedIn = isLinkedInPrimary(briefDests);
   const formatHint = formatBiasForJob(job, { destinations: briefDests });
   const captionJob = linkedIn ? "B" : captionJobForFormat(formatHint);

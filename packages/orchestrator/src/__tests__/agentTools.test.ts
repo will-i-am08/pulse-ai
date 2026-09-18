@@ -268,6 +268,51 @@ describe("executeAgentTool", () => {
     );
   });
 
+  it("draft_copy preserves LinkedIn from owner SMS when the model shortens the brief", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "post", count: 1, topic_hint: "hiring barista", visuals: "photo" },
+      {
+        brand: stubBrand(),
+        sourceMessageId: "msg-li",
+        ownerMessage: "Draft a LinkedIn post about hiring a barista — professional tone",
+      },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(true);
+    expect(mockedEnqueue).toHaveBeenCalledTimes(1);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          topicHint: "LinkedIn: hiring barista",
+          destinations: expect.arrayContaining(["linkedin"]),
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy carousel keeps LinkedIn destinations for photo carousels", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "carousel", count: 1, topic_hint: "3 tip slides on latte art", visuals: "photo" },
+      {
+        brand: stubBrand(),
+        ownerMessage: "Make a LinkedIn carousel about latte art tips",
+      },
+    );
+    expect(JSON.parse(raw).ok).toBe(true);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          preferCarousel: true,
+          format: "carousel",
+          destinations: expect.arrayContaining(["linkedin"]),
+          topicHint: expect.stringMatching(/^LinkedIn:/i),
+        }),
+      }),
+    );
+  });
+
   it("draft_copy job first_batch calls enqueueKickoff", async () => {
     const raw = await executeAgentTool(
       "draft_copy",

@@ -23,6 +23,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { enqueueKickoff, looksLikeKickoffRequest } from "./kickoffs.js";
+import { extractPlatforms } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 import {
   clampMemoryText,
   recordKipMemory,
@@ -53,6 +55,8 @@ import {
 export type AgentToolContext = {
   brand: Brand;
   sourceMessageId?: string | null;
+  /** Raw owner SMS/Lab text for this turn (platform names may be stripped from tool briefs). */
+  ownerMessage?: string | null;
   mediaIds?: string[];
   retrievedPack?: string;
   notifyOperator?: (body: string) => Promise<boolean | void>;
@@ -127,7 +131,12 @@ const checkCalendarInputSchema = z
 const draftCopyInputSchema = z
   .object({
     job: z.enum(DRAFT_COPY_JOBS).describe("Which content-engine job to run."),
-    brief: z.string().optional().describe("Optional brief or instructions."),
+    brief: z
+      .string()
+      .optional()
+      .describe(
+        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them.",
+      ),
     count: z.number().optional().describe("How many drafts to queue (job-dependent default)."),
     format: z.enum(PostFormat).optional().describe("Post format hint."),
     visuals: z
@@ -135,7 +144,12 @@ const draftCopyInputSchema = z
       .optional()
       .describe("Visual mode for queued drafts."),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
-    topic_hint: z.string().optional().describe("Topic hint for queued drafts."),
+    topic_hint: z
+      .string()
+      .optional()
+      .describe(
+        "Topic hint for queued drafts. Keep platform names (LinkedIn, Instagram, …) when the owner named them.",
+      ),
   })
   .strict();
 
@@ -773,6 +787,25 @@ function topicHintOf(brief?: string, topicHint?: string): string | undefined {
   return t || undefined;
 }
 
+/** Preserve owner-named platforms even when the model shortens the brief. */
+function destinationsForDraft(
+  ctx: AgentToolContext,
+  hint?: string,
+): string[] {
+  return extractPlatforms([ctx.ownerMessage, hint].filter(Boolean).join("\n"));
+}
+
+function enrichTopicHint(hint: string | undefined, destinations: string[]): string | undefined {
+  let t = (hint ?? "").trim();
+  if (!t && !destinations.length) return undefined;
+  if (isLinkedInPrimary(destinations) && t && !/\blinkedin\b/i.test(t)) {
+    t = `LinkedIn: ${t}`;
+  } else if (isLinkedInPrimary(destinations) && !t) {
+    t = "LinkedIn post";
+  }
+  return t || undefined;
+}
+
 async function firstPillar(brandId: string) {
   const pillars = await ensurePillars(brandId);
   return pillars[0] ?? null;
@@ -792,27 +825,37 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
   const count = parsed.data.count;
   const ids = mediaIdsFrom(ctx, parsed.data.media_ids);
   const hint = topicHintOf(brief, topic_hint);
+  const destinations = destinationsForDraft(ctx, hint);
+  const topicHint = enrichTopicHint(hint, destinations);
 
   switch (job) {
     case "caption": {
       const drafted = await draftCaption(ctx.brand.id, ids, {
         hint: [ctx.retrievedPack, brief].filter(Boolean).join("\n"),
+        asLinkedIn: isLinkedInPrimary(destinations),
       });
       const caption = drafted.caption ?? "";
       let postId: string | null = null;
       try {
         const slot = await scheduleSlot({
           brandId: ctx.brand.id,
-          platform: "instagram",
+          platform: isLinkedInPrimary(destinations) ? "linkedin" : "instagram",
           pillarId: null,
           postsPerWeek: 0,
           format: format ?? "feed",
         });
         const row = await queryOne<{ id: string }>(
           `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at, format)
-           values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4, $5)
+           values ($1, $2, $3::uuid[], $6, 'pending_approval', $4, $5)
            returning id`,
-          [ctx.brand.id, caption, ids, slot.toISOString(), format ?? "feed"],
+          [
+            ctx.brand.id,
+            caption,
+            ids,
+            slot.toISOString(),
+            format ?? "feed",
+            isLinkedInPrimary(destinations) ? "linkedin" : "instagram",
+          ],
         );
         postId = row?.id ?? null;
       } catch {
@@ -833,24 +876,27 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     case "post":
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count: positiveInt(count, 1),
-        topicHint: hint,
+        topicHint,
         format,
         visuals,
         preferCarousel: format === "carousel",
+        ...(destinations.length ? { destinations } : {}),
       });
     case "first_batch":
       return queueDraftKickoff(ctx, job, "first_batch", {
         count: positiveInt(count, 3),
         visuals,
-        topicHint: hint,
+        topicHint,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "carousel":
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count: positiveInt(count, 1),
-        topicHint: hint,
+        topicHint,
         format: "carousel",
         visuals,
         preferCarousel: true,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "story": {
       let photoId = ids[0];
@@ -861,14 +907,15 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
       if (!photoId) {
         return queueDraftKickoff(ctx, job, "draft_posts", {
           count: positiveInt(count, 1),
-          topicHint: hint,
+          topicHint,
           format: "story",
           visuals,
+          ...(destinations.length ? { destinations } : {}),
         });
       }
       const pillar = await firstPillar(ctx.brand.id);
       if (!pillar) return toolError("No content pillars available.");
-      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, hint);
+      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, topicHint);
       if (!drafted?.post) return toolError("Could not draft story.");
       return JSON.stringify({
         ok: true,
@@ -881,13 +928,15 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     }
     case "trend":
       return queueDraftKickoff(ctx, job, "trend_draft", {
-        topicHint: hint,
+        topicHint,
         visuals,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "competitor":
       return queueDraftKickoff(ctx, job, "competitor_draft", {
-        topicHint: hint,
+        topicHint,
         visuals,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "from_library": {
       const photo = await pickFreshPhoto(ctx.brand.id);

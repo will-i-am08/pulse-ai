@@ -120,6 +120,7 @@ export async function runGeneralAgent(
         return executeAgentTool(name, input, {
           brand,
           sourceMessageId,
+          ownerMessage,
           mediaIds,
           retrievedPack: pack.text,
           operatorAlerts,
