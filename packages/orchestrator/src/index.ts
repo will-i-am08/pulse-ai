@@ -471,6 +471,14 @@ export type { DueEventResult } from "./eventMemory.js";
 export { canSendProactive, recordProactiveSend } from "./proactiveBudget.js";
 export type { ProactiveChannel, ProactiveBudgetOpts } from "./proactiveBudget.js";
 export { composeEventFollowupSms } from "./eventFollowup.js";
+export {
+  readEngagementProfile,
+  engagementToneLines,
+  shouldRunProactive,
+  proactiveBudgetFor,
+  looksLikeEngagementPref,
+  updateEngagementFromMessage,
+} from "./engagementProfile.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";
 export type { MockupInput } from "./mockup.js";
 export {

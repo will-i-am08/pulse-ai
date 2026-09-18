@@ -1,6 +1,7 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import type { Actionable } from "@pulse/gateway";
+import { readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
 import { logger } from "../lib/logger.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,6 +28,10 @@ export interface CheckinDeps {
  *    instead of the generic "anything to send me?".
  */
 export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: CheckinDeps): Promise<void> {
+  if (!shouldRunProactive("checkin", readEngagementProfile(brand))) {
+    logger.info(`skip checkin for brand ${brand.id}: engagement set to quiet`);
+    return; // no markSent — owner may re-enable, and this stays cheap
+  }
   if (!deps.isDaytime(deps.now())) {
     logger.info(`skip checkin for brand ${brand.id}: outside daytime hours`);
     return; // no markSent — retry when it's a sociable hour

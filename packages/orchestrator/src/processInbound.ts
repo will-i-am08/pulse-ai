@@ -53,6 +53,7 @@ import {
   cancelCampaign,
 } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
+import { updateEngagementFromMessage, looksLikeEngagementPref } from "./engagementProfile.js";
 import {
   looksLikeBrandContextUpdate,
   updateBrandContextFromMessage,
@@ -2244,6 +2245,14 @@ async function routeInbound(
         }
         const ctxReply = await updateBrandContextFromMessage(brand, message.body);
         if (ctxReply) return { reply: ctxReply };
+      }
+
+      // Engagement preferences ("ease off the check-ins", "morning report at 8")
+      // tune how proactive/warm/frequent Kip is for THIS owner. Checked before
+      // business facts so "stop messaging me so much" isn't misread as a fact.
+      if (message.body && looksLikeEngagementPref(message.body)) {
+        const prefReply = await updateEngagementFromMessage(brand, message.body);
+        if (prefReply) return { reply: prefReply };
       }
 
       // Business facts stated by the owner ("we're open till 6 now", "coffee's $5")

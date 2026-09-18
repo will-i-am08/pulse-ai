@@ -159,6 +159,10 @@ Back it with a lightweight `proactive_sends(brand_id, channel, sent_at)` table (
 
 **Outcome:** Every proactive behaviour and the persona tone read a per-owner profile. Owner can change it in plain language.
 
+> **Status (built):** schema + `readEngagementProfile`; NL control (`looksLikeEngagementPref` / `updateEngagementFromMessage`) wired into `processInbound` ahead of the business-fact path; persona tone (`engagementToneLines`); gating primitives (`shouldRunProactive`, `proactiveBudgetFor`) wired into **check-in** (quiet → skip), **weekly digest / report** (cadence off → skip) and **autonomy** (quiet → no trend/competitor drafts). Inert at the `balanced` default, so existing behaviour and tests are unchanged.
+>
+> **Remaining Phase 2 wiring (follow-up):** report `hour_local` + `daily` cadence needs the trigger schedule to honour the chosen hour (currently the digest still fires Monday late-morning); `high` → 2×/week check-in and the autonomy budget bump to 2/24h (autonomy still uses its own 1/24h kickoff throttle); competitorWatch loop quiet-gate. None block the dial's core behaviour.
+
 ### 3.1 Explicit NL control — `packages/orchestrator/src/engagementProfile.ts`
 
 - `looksLikeEngagementPref(body)` — regex signal: *ease off, stop messaging, too much, more often, check in daily, morning report, quiet, leave me alone, hit me up, keep me posted*, report-time phrases.

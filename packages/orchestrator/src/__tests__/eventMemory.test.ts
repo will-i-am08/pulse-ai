@@ -57,14 +57,14 @@ describe("parseEventsResponse", () => {
       followed_up_at: null,
       created_at: NOW.toISOString(),
     });
-    expect(out[0].id).toBeTruthy();
+    expect(out[0]?.id).toBeTruthy();
   });
 
   it("tolerates markdown fencing and prose around the JSON", () => {
     const raw = "Sure!\n```json\n{\"events\":[{\"summary\":\"store opening\",\"kind\":\"launch\"}]}\n```";
     const out = parseEventsResponse(raw, NOW.toISOString());
     expect(out).toHaveLength(1);
-    expect(out[0].when_iso).toBeNull();
+    expect(out[0]?.when_iso).toBeNull();
   });
 
   it("returns [] on empty, junk, or missing summary", () => {

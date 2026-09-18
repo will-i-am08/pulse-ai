@@ -1,4 +1,5 @@
 import { query, type Brand } from "@pulse/shared";
+import { readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
 import { sendToBrand, isDaytime, buildPerformanceDigest } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -25,6 +26,9 @@ export async function runWeeklyDigestLoop(): Promise<void> {
   const brands = await query<Brand>("select * from brands where status = 'active'");
   for (const brand of brands) {
     try {
+      // Owners who turned automatic reports off don't get the weekly recap.
+      if (!shouldRunProactive("report", readEngagementProfile(brand))) continue;
+
       const recent = await query<{ id: string }>(
         `select id from messages
           where brand_id = $1 and direction = 'outbound' and body like $2
