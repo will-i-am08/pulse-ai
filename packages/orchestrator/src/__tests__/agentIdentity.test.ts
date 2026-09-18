@@ -52,6 +52,8 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/soft challenge|push back once|what it does for their niche/i);
     expect(prompt).toMatch(/do not interview them first/i);
     expect(prompt).toMatch(/reel with no clip/i);
+    expect(prompt).toMatch(/Brand recall:/i);
+    expect(prompt).toMatch(/never\/don't content bans/i);
     expect(prompt).not.toMatch(/✨/);
   });
 

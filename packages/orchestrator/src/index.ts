@@ -128,6 +128,7 @@ export {
   readKipPreferences,
   readKipDecisions,
   clampMemoryText,
+  splitMemoryAtoms,
   durablePrefFromCorrectionNote,
 } from "./kipMemory.js";
 export { planSmartTurn, parseSmartPlan, looksLikeMultiStepAsk } from "./smartPlan.js";
