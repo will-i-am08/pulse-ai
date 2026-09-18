@@ -235,7 +235,7 @@ function draftOfferSms(
 
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
 function inferDraftCount(t: string, wantsCarousel: boolean): number {
-  const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?`;
+  const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|photos?|pictures?|pics?`;
   const qtyMatch = new RegExp(String.raw`\b(\d+)\s+([\w'-]+\s+){0,4}(?:${piece})\b`, "i").exec(t);
   const singularMatch = new RegExp(
     String.raw`\b(a|an|one|single)\s+(?!(?:few|couple|bunch)\b)([\w'-]+\s+){0,4}(?:${piece})\b`,
