@@ -13,10 +13,28 @@ export type KipMemoryEntry = { text: string; atISO: string };
 const MAX_MEMORY_ENTRIES = 20;
 const MAX_MEMORY_TEXT = 200;
 const PROMPT_MAX_EACH = 6;
-const PROMPT_TEXT_MAX = 100;
+const PROMPT_TEXT_MAX = 160;
 
 export function clampMemoryText(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, MAX_MEMORY_TEXT);
+}
+
+/**
+ * Split a compound "for the record" blob into atomic prefs so bans and
+ * format rules don't get lost when the model summarises brand knowledge.
+ * Single short prefs stay one entry.
+ */
+export function splitMemoryAtoms(text: string): string[] {
+  const cleaned = clampMemoryText(text);
+  if (!cleaned) return [];
+  const parts = cleaned
+    .split(/(?<=[.!;])\s+|(?<=\S)\s*;\s+(?=\S)/)
+    .map((p) => p.replace(/^[,.\s]+|[,.\s]+$/g, "").trim())
+    .filter((p) => p.length >= 8)
+    .map((p) => clampMemoryText(p))
+    .filter(Boolean);
+  if (parts.length <= 1) return [cleaned];
+  return parts;
 }
 
 function asEntries(raw: unknown): KipMemoryEntry[] {
@@ -70,7 +88,9 @@ export function kipMemoryPromptBlock(facts: BusinessFacts | null | undefined): s
       `Recent decisions: ${decisions.map((e) => truncateEntry(e.text)).join("; ")}.`,
     );
   }
-  lines.push("Honour these when drafting or advising; do not dump them verbatim into SMS.");
+  lines.push(
+    "Honour these when drafting or advising. When the owner asks what you know about their brand or prefs, briefly list each remembered item — including never/don't content bans. Do not invent extras or paste raw JSON.",
+  );
   return lines.join("\n");
 }
 
@@ -81,25 +101,31 @@ export function mergeKipMemoryFact(
   text: string,
   atISO = new Date().toISOString(),
 ): BusinessFacts {
-  const cleaned = clampMemoryText(text);
-  const base: BusinessFacts = { ...(facts ?? {}) };
-  const prev = asEntries(base[bucket]);
-  prev.push({ text: cleaned, atISO });
-  base[bucket] = prev.slice(-MAX_MEMORY_ENTRIES);
+  const atoms = splitMemoryAtoms(text);
+  let base: BusinessFacts = { ...(facts ?? {}) };
+  for (const atom of atoms) {
+    const prev = asEntries(base[bucket]);
+    // Dedupe exact text (case-insensitive) so re-stating a ban does not stack.
+    const lower = atom.toLowerCase();
+    if (prev.some((e) => e.text.toLowerCase() === lower)) continue;
+    prev.push({ text: atom, atISO });
+    base = { ...base, [bucket]: prev.slice(-MAX_MEMORY_ENTRIES) };
+  }
   return base;
 }
 
 /**
  * Persist a short preference or decision on the brand and update the in-memory brand.
+ * Compound blobs are split into atomic entries.
  */
 export async function recordKipMemory(
   brand: Brand,
   text: string,
   bucket: KipMemoryBucket,
 ): Promise<BusinessFacts> {
-  const cleaned = clampMemoryText(text);
-  if (!cleaned) return brand.facts ?? {};
-  const merged = mergeKipMemoryFact(brand.facts, bucket, cleaned);
+  const atoms = splitMemoryAtoms(text);
+  if (!atoms.length) return brand.facts ?? {};
+  const merged = mergeKipMemoryFact(brand.facts, bucket, text);
   await query(`update brands set facts = $1::jsonb where id = $2`, [
     JSON.stringify(merged),
     brand.id,
