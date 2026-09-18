@@ -415,6 +415,12 @@ export {
 } from "./research.js";
 export type { ResearchFocus } from "./research.js";
 export {
+  gatherIdeaResearchBank,
+  ensureIdeaResearchBank,
+  scoutContentIdeas,
+} from "./ideaScout.js";
+export type { ScoutIdea, IdeaResearchBank, ScoutContentIdeasResult } from "./ideaScout.js";
+export {
   looksLikeStrategyRequest,
   getProposedStrategyBrief,
   proposeStrategyBrief,
