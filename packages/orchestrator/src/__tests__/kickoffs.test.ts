@@ -24,6 +24,7 @@ import {
   reclaimStaleKickoffs,
   STALE_RUNNING_KICKOFF_MS,
   runKickoffDrain,
+  zeroDraftOwnerSms,
 } from "../kickoffs.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
@@ -180,6 +181,16 @@ describe("inferKickoffFromUserMessage", () => {
     );
     expect(r?.kind).toBe("first_batch");
     expect(r?.payload.visuals).toBe("generated");
+  });
+
+  it("does not treat a singular generated-photo post ask as first_batch", () => {
+    const brief =
+      "Draft a LinkedIn post about hiring a barista. Professional tone. Use generated photo visuals.";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(r?.payload.visuals).toMatch(/generated|photo/);
   });
 
   it("defaults draft posts to photo visuals", () => {
@@ -491,5 +502,21 @@ describe("runKickoffDrain", () => {
     expect(mockedQuery.mock.calls[0]![1]).toEqual(expect.arrayContaining(["lab-brand"]));
     expect(queuedSql).toMatch(/brand_id = \$1/);
     expect(mockedQuery.mock.calls[1]![1]).toEqual(["lab-brand", 2]);
+  });
+});
+
+describe("zeroDraftOwnerSms", () => {
+  it("points designed LinkedIn failures at a photo retry", () => {
+    const sms = zeroDraftOwnerSms({
+      visuals: "designed",
+      destinations: ["linkedin"],
+      topicHint: "hiring barista",
+    });
+    expect(sms).toMatch(/LinkedIn/i);
+    expect(sms).toMatch(/photo please/i);
+  });
+
+  it("keeps a short retry for ordinary photo zero-drafts", () => {
+    expect(zeroDraftOwnerSms({ visuals: "photo" })).toMatch(/try again/i);
   });
 });

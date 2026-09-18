@@ -104,6 +104,7 @@ import {
   looksLikeFormatMenuReply,
   looksLikeFormatMenuOutbound,
   looksLikeDraftPreviewOutbound,
+  inferDraftCount,
 } from "./kickoffs.js";
 import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
@@ -521,7 +522,15 @@ async function trySmartPlannerKickoff(
   const plan = await planSmartTurn({ brand, message: body, context });
   if (!plan?.kickoffKind) return null;
   const kicked = await enqueueKickoff(brand, plan.kickoffKind, {
-    payload: { plan, topicHint: body.slice(0, 280) },
+    payload: {
+      plan,
+      topicHint: body.slice(0, 280),
+      count: inferDraftCount(body, /\bcarr?ousels?\b/i.test(body)),
+      ...((() => {
+        const destinations = extractPlatforms(body);
+        return destinations.length ? { destinations } : {};
+      })()),
+    },
     reason: "user_request",
     sourceMessageId: sourceMessageId ?? null,
     ackSms: plan.speakHint ?? null,

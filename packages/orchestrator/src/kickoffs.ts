@@ -241,7 +241,7 @@ function draftOfferSms(
 }
 
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
-function inferDraftCount(t: string, wantsCarousel: boolean): number {
+export function inferDraftCount(t: string, wantsCarousel: boolean): number {
   const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|photos?|pictures?|pics?`;
   const qtyMatch = new RegExp(String.raw`\b(\d+)\s+([\w'-]+\s+){0,4}(?:${piece})\b`, "i").exec(t);
   const singularMatch = new RegExp(
@@ -266,6 +266,27 @@ function inferDraftCount(t: string, wantsCarousel: boolean): number {
   if (singularMatch) return 1;
   if (new RegExp(String.raw`\b(?:${piece})\s+(comparing|about|with|on|for)\b`, "i").test(t)) return 1;
   return 2;
+}
+
+/**
+ * True when the ask is a cold-start first batch — not a singular briefed post that
+ * merely asked for generated/stock photos.
+ */
+function wantsFirstBatchKickoff(t: string): boolean {
+  if (FIRST_BATCH_RE.test(t)) return true;
+  if (NO_PHOTOS_RE.test(t) && (STOCK_OR_GENERATED_RE.test(t) || /\b(just|please|can you|could you)\b/i.test(t))) {
+    return true;
+  }
+  if (!(STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))) return false;
+  // "Draft a LinkedIn post … generated photo" is draft_posts, not a 3-pack.
+  const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+  if (
+    (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) &&
+    inferDraftCount(t, wantsCarousel) === 1
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** Shared draft_posts payload so user-ask and Kip-commit paths keep the brief. */
@@ -353,11 +374,7 @@ export function inferKickoffFromUserMessage(
     };
   }
 
-  if (
-    FIRST_BATCH_RE.test(t) ||
-    (NO_PHOTOS_RE.test(t) && STOCK_OR_GENERATED_RE.test(t)) ||
-    (STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))
-  ) {
+  if (wantsFirstBatchKickoff(t)) {
     {
       const mode = inferVisualModeFromText(t);
       const visuals = visualsPayloadValue(mode, t);
@@ -444,7 +461,7 @@ export function inferKickoffFromKipCommit(
   if (COMPETITOR_MOVE_RE.test(blob)) {
     return { kind: "competitor_draft", payload: { hint: (userMessage ?? kipReply).slice(0, 280), count: 1 } };
   }
-  if (FIRST_BATCH_RE.test(blob) || STOCK_OR_GENERATED_RE.test(blob) || NO_PHOTOS_RE.test(userMessage ?? "")) {
+  if (FIRST_BATCH_RE.test(blob) || wantsFirstBatchKickoff(userMessage ?? "")) {
     return { kind: "first_batch", payload: { count: 3, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
   }
   if (DRAFT_POSTS_RE.test(blob) || CONTENT_WORK_RE.test(blob)) {
@@ -635,6 +652,22 @@ async function heartbeatKickoff(id: string): Promise<void> {
   ).catch((err) => console.error(`heartbeatKickoff: failed for ${id}`, err));
 }
 
+/** Owner-facing SMS when every draft slot returned nothing. */
+export function zeroDraftOwnerSms(payload: Record<string, unknown>): string {
+  const dests = destinationsFromPayload(payload);
+  const visuals = String(payload.visuals ?? "photo");
+  const li = isLinkedInPrimary(dests);
+  const platform = li ? "LinkedIn " : "";
+  if (visuals === "designed" || visuals === "text") {
+    return li
+      ? `Couldn't finish that ${platform}text-card draft — reply "photo please" and I'll regenerate with photos, or say go and I'll retry.`
+      : `Couldn't finish that designed draft — reply "photo please" and I'll regenerate with photos, or say go and I'll retry.`;
+  }
+  return li
+    ? `Couldn't finish that ${platform}draft just then — say go and I'll retry, or tweak the brief.`
+    : "Couldn't finish those drafts just then — try again in a moment?";
+}
+
 /** Zero-draft outcome: SMS the client, but record the row as a real failure. */
 async function zeroDraftFailure(
   brand: Brand,
@@ -786,7 +819,6 @@ async function draftGeneratedPiece(
 > {
   const destinations = genOpts?.destinations ?? [];
   const hint = topicHintWithDestinations(topicHint, destinations);
-  // Photo + carousel asks must become photo carousels — never a lone feed filler.
   if (prefer === "carousel" && visuals === "photo") {
     let photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
       topicHint: hint,
@@ -824,6 +856,17 @@ async function draftGeneratedPiece(
       destinations,
     });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
+    return null;
+  }
+  // LinkedIn-primary designed asks: skip generic typed/tip carousels (they ignore
+  // topicHint/destinations) and go straight to a LinkedIn-aware filler.
+  if (isLinkedInPrimary(destinations)) {
+    const filler = await generateFillerPost(brand, pillar, {
+      visuals: "designed",
+      topicHint: hint,
+      destinations,
+    });
+    if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
     return null;
   }
   if (prefer === "carousel" || visuals === "designed") {
@@ -928,6 +971,7 @@ async function recoverRecentKickoffPosts(
         and created_at > now() - interval '10 minutes'
         and coalesce(cardinality(media_ids), 0) > 0
         and coalesce(style_meta->>'variant_pick','') <> 'true'
+        and last_offered_at is null
       order by created_at asc
       limit 5`,
     [brand.id, since.toISOString()],
@@ -1164,7 +1208,18 @@ async function runDraftPosts(
   opts?: KickoffDrainOpts,
   heartbeat?: () => Promise<void>,
 ): Promise<KickoffDrainResult[]> {
-  const count = Math.min(5, Math.max(1, Number(payload.count ?? 2) || 2));
+  const topicForCount = String(payload.topicHint ?? payload.hint ?? "");
+  const wantsCarousel =
+    payload.preferCarousel === true ||
+    payload.format === "carousel" ||
+    /\bcarr?ousels?\b/i.test(topicForCount);
+  const inferredCount = topicForCount
+    ? inferDraftCount(topicForCount, wantsCarousel)
+    : 1;
+  const count = Math.min(
+    5,
+    Math.max(1, Number(payload.count ?? inferredCount) || inferredCount),
+  );
   const pillars = await ensurePillars(brand.id);
   if (!pillars.length) {
     return deliverUnstreamed(
@@ -1276,7 +1331,7 @@ async function runDraftPosts(
           : await zeroDraftFailure(
               brand,
               "draft_posts",
-              qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
+              qaFail?.sms ?? zeroDraftOwnerSms(payload),
             ),
       ],
       opts,

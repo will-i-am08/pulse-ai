@@ -1380,7 +1380,20 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     [brandId],
   );
 
-  // Previous chat's look, memory, and strategy must not leak into the new one.
+  const wasDone =
+    brand.onboarding_state?.status === "done" ||
+    typeof brand.onboarding_state?.completed_at === "string";
+  // Already-finished Lab setup: fresh thread only — keep brand memory and do
+  // not re-arm the contact-card / interview welcome.
+  if (wasDone) {
+    const name = brand.name?.trim() || "Lab";
+    return {
+      greeting: `Fresh chat for ${name} — same setup, clean thread. What do you want to draft?`,
+      archivedChatId,
+    };
+  }
+
+  // Previous chat's look, memory, and strategy must not leak into a new interview.
   await query(`delete from design_memory where brand_id = $1`, [brandId]);
   await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
   await query(`delete from research_snapshots where brand_id = $1`, [brandId]);
