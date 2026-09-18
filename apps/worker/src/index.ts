@@ -12,6 +12,7 @@ import { runCompetitorWatchLoop } from "./proactive/competitorWatch.js";
 import { runNichePlanLoop } from "./proactive/nichePlan.js";
 import { runConnectNudgeLoop } from "./proactive/connectNudge.js";
 import { runWeeklyDigestLoop } from "./proactive/weeklyDigest.js";
+import { runEventFollowupLoop } from "./proactive/eventFollowup.js";
 import { runLinqInboundLoop } from "./proactive/linqInbound.js";
 import { runAiVideoLoop } from "./proactive/aiVideoLoop.js";
 import { runKickoffLoop, runKickoffReaperLoop } from "./proactive/kickoffLoop.js";
@@ -193,6 +194,12 @@ async function main(): Promise<void> {
   });
   const digestTimer = guardedInterval("weekly-digest", 60 * 60 * 1000, runWeeklyDigestLoop);
 
+  // Episodic event follow-up — "how'd the Emily Calder shoot go?" once an event
+  // the owner mentioned has passed. Flag-gated (KIP_EVENT_FOLLOWUP=on).
+  const eventFollowupTimer = guardedInterval("event-followup", 30 * 60 * 1000, runEventFollowupLoop, {
+    runSoonMs: 60_000,
+  });
+
   // Linq inbound drain — only meaningful when MESSAGE_CHANNEL=linq, but cheap to poll.
   const linqTimer = guardedInterval("linq-inbound", 3000, runLinqInboundLoop);
 
@@ -256,6 +263,7 @@ async function main(): Promise<void> {
     clearInterval(planTimer);
   clearInterval(connectNudgeTimer);
     clearInterval(digestTimer);
+    clearInterval(eventFollowupTimer);
     clearInterval(linqTimer);
     clearInterval(aiVideoTimer);
     clearInterval(kickoffTimer);

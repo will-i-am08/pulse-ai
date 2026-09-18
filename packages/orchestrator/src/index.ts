@@ -453,6 +453,24 @@ export {
 } from "./designBootstrap.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
+export {
+  looksLikeEvent,
+  extractEventsFromMessage,
+  parseEventsResponse,
+  rememberEvents,
+  readEvents,
+  eventsPromptBlock,
+  scheduleEventCapture,
+  selectDueEvent,
+  markEventFollowedUp,
+  closeEvents,
+  FOLLOWUP_GRACE_MS,
+  STALE_MS,
+} from "./eventMemory.js";
+export type { DueEventResult } from "./eventMemory.js";
+export { canSendProactive, recordProactiveSend } from "./proactiveBudget.js";
+export type { ProactiveChannel, ProactiveBudgetOpts } from "./proactiveBudget.js";
+export { composeEventFollowupSms } from "./eventFollowup.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";
 export type { MockupInput } from "./mockup.js";
 export {

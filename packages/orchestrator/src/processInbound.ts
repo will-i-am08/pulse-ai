@@ -128,6 +128,7 @@ import {
   cancelStrategyBrief,
 } from "./strategyBrief.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
+import { readEvents } from "./eventMemory.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
@@ -580,11 +581,24 @@ async function converse(brand: Brand, message: string): Promise<string> {
 async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id);
+  // A named event in the owner's world that just passed and we've not asked
+  // about is the warmest possible re-open ("how'd the Emily Calder shoot go?").
+  const now = Date.now();
+  const passedEvent = readEvents(brand.facts).find(
+    (e) =>
+      e.status !== "closed" &&
+      !e.followed_up_at &&
+      e.when_iso != null &&
+      new Date(e.when_iso).getTime() < now,
+  );
   return speakSMS({
     brand,
     mode: "reengage",
     modeLines: [
       `They've just come back after a break — you two last spoke ${phrase}.`,
+      passedEvent
+        ? `They recently had: ${passedEvent.summary}. Open by warmly asking how it went before anything else.`
+        : "",
       actionable
         ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now. Or start fresh if they'd rather.`
         : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,

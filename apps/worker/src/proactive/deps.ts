@@ -38,4 +38,10 @@ export {
   markConnectNudgeSent,
   clearSkippedConnectFlags,
   runCreativeRefreshPass,
+  selectDueEvent,
+  markEventFollowedUp,
+  closeEvents,
+  composeEventFollowupSms,
+  canSendProactive,
+  recordProactiveSend,
 } from "@pulse/orchestrator";
