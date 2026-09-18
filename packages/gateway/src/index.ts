@@ -14,6 +14,7 @@ export {
   shouldSendSlowWorkFiller,
   shouldSkipInboundBurst,
   outboundTypingPauseMs,
+  looksLikeCompleteSmsTurn,
   looksLikeProgressCheck,
   refersToAttachedMedia,
   mediaIdsFromPublicUrls,

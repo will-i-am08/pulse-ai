@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  looksLikeCompleteSmsTurn,
   looksLikeProgressCheck,
   outboundTypingPauseMs,
   shouldSendInstantTextAck,
@@ -30,6 +31,22 @@ describe("looksLikeProgressCheck", () => {
   });
 });
 
+describe("looksLikeCompleteSmsTurn", () => {
+  it("treats punctuated single-bubble asks as finished", () => {
+    expect(looksLikeCompleteSmsTurn("can you make it shorter?")).toBe(true);
+    expect(looksLikeCompleteSmsTurn("Make the caption punchier!")).toBe(true);
+    expect(looksLikeCompleteSmsTurn("Please schedule this for Friday.")).toBe(true);
+  });
+
+  it("keeps dangling fragments waiting for a follow-up", () => {
+    expect(looksLikeCompleteSmsTurn("draft me 3")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("and then")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("something about")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("wait...")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("ok,")).toBe(false);
+  });
+});
+
 describe("shouldSkipInboundBurst", () => {
   it("skips the coalesce sleep for complete short turns", () => {
     expect(shouldSkipInboundBurst({ text: "hi", hasMedia: false })).toBe(true);
@@ -39,6 +56,7 @@ describe("shouldSkipInboundBurst", () => {
       true,
     );
     expect(shouldSkipInboundBurst({ text: "how's it going", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "can you make it shorter?", hasMedia: false })).toBe(true);
   });
 
   it("keeps the wait for split thoughts, MMS, and photo-referring text", () => {
@@ -50,14 +68,14 @@ describe("shouldSkipInboundBurst", () => {
 });
 
 describe("outboundTypingPauseMs", () => {
-  it("keeps a short first bubble under 600ms", () => {
-    expect(outboundTypingPauseMs("Hey!".length, 0)).toBeLessThanOrEqual(600);
-    expect(outboundTypingPauseMs("Hey Bill!".length, 0)).toBeLessThan(500);
+  it("keeps a short first bubble under 420ms", () => {
+    expect(outboundTypingPauseMs("Hey!".length, 0)).toBeLessThanOrEqual(420);
+    expect(outboundTypingPauseMs("Hey Bill!".length, 0)).toBeLessThan(420);
   });
 
   it("still paces a long first bubble", () => {
     expect(outboundTypingPauseMs(120, 0)).toBeGreaterThan(600);
-    expect(outboundTypingPauseMs(120, 0)).toBeLessThanOrEqual(2500);
+    expect(outboundTypingPauseMs(120, 0)).toBeLessThanOrEqual(1600);
   });
 });
 

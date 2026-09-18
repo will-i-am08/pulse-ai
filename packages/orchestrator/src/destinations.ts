@@ -292,7 +292,7 @@ export async function persistEditedCaptions(
  *
  * The status update is a CLAIM: `and status = 'pending_approval'` means only one
  * caller can win it. Without that predicate a second "yes" (or a dashboard
- * approve racing an SMS approve — the inbound burst window is 2800ms and this
+ * approve racing an SMS approve — the inbound burst window is ~1.2s and this
  * path does ~8 sequential round-trips before writing) re-ran the whole thing and
  * inserted a fresh approved sibling per extra destination every time, so
  * duplicate posts went live on X/Threads/LinkedIn/TikTok. `claimed: false` means

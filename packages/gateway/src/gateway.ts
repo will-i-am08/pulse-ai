@@ -49,7 +49,7 @@ export interface TypingKeeper {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Quiet window so rapid SMS from one owner become a single turn. */
-const INBOUND_BURST_MS = 2800;
+const INBOUND_BURST_MS = 1200;
 
 /**
  * Extra wait when the owner says "with this photo" but this webhook has no media.
@@ -61,17 +61,36 @@ const PHOTO_ARRIVAL_POLL_MS = 700;
 /** Re-export — single source of truth lives in @pulse/orchestrator. */
 export { refersToAttachedMedia };
 
-/** Fake-typing delay before an outbound bubble. Short first SMS stays snappy. */
+/**
+ * Fake-typing delay before an outbound bubble. Kept short — the burst wait and
+ * LLM already spent wall clock; long fake typing stacked on top felt like lag.
+ */
 export function outboundTypingPauseMs(partLength: number, partIndex: number): number {
-  if (partIndex === 0 && partLength < 80) {
-    return Math.min(280 + partLength * 12, 600);
+  if (partIndex === 0 && partLength < 120) {
+    return Math.min(160 + partLength * 8, 420);
   }
-  return Math.min(700 + partLength * 25, partIndex === 0 ? 2500 : 1200);
+  return Math.min(500 + partLength * 18, partIndex === 0 ? 1600 : 900);
 }
 
 /**
- * Whole-turn hi / thanks / calendar / progress ping — skip the 2.8s coalesce
- * sleep. Keep the wait for split thoughts, MMS, and "with this photo".
+ * Finished single-bubble asks (end with ? / ! / .) — skip coalesce. Keep the
+ * wait for dangling fragments ("draft me 3", "and then…") that often get a
+ * follow-up SMS a beat later.
+ */
+export function looksLikeCompleteSmsTurn(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t || t.length > 320) return false;
+  if (/[,;:]\s*$/.test(t)) return false;
+  if (/\b(and|or|but|with|for|about|of|to|the|a|an)\s*$/i.test(t)) return false;
+  if (/\.\.\.\s*$|…\s*$/.test(t)) return false;
+  if (/[?!]$/.test(t)) return true;
+  if (/\.$/.test(t) && /\s/.test(t) && t.length >= 16) return true;
+  return false;
+}
+
+/**
+ * Whole-turn hi / thanks / calendar / progress / complete ask — skip the
+ * coalesce sleep. Keep the wait for split thoughts, MMS, and "with this photo".
  */
 export function shouldSkipInboundBurst(opts: { text: string; hasMedia: boolean }): boolean {
   if (opts.hasMedia) return false;
@@ -82,7 +101,8 @@ export function shouldSkipInboundBurst(opts: { text: string; hasMedia: boolean }
     looksLikeGreeting(t) ||
     looksLikeAffirmation(t) ||
     looksLikeCalendarAsk(t) ||
-    looksLikeProgressCheck(t)
+    looksLikeProgressCheck(t) ||
+    looksLikeCompleteSmsTurn(t)
   );
 }
 
@@ -558,7 +578,7 @@ async function waitForSiblingMedia(
 ): Promise<MediaAsset[]> {
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
-    await sleep(PHOTO_ARRIVAL_POLL_MS);
+    // Check first — media may already be on a sibling when we enter.
     const row = await queryOne<{ media_ids: string[] | null }>(
       `select media_ids from messages
        where brand_id = $1
@@ -572,6 +592,9 @@ async function waitForSiblingMedia(
     );
     const ids = row?.media_ids?.filter(Boolean) ?? [];
     if (ids.length > 0) return loadMediaAssets(ids);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(PHOTO_ARRIVAL_POLL_MS, remaining));
   }
   return [];
 }
@@ -825,7 +848,7 @@ export async function handleInbound(
       !shouldSkipInboundBurst({ text: inboundText, hasMedia: newMedia.length > 0 })
     ) {
       // The lookback MUST equal the sleep. When it was longer (BURST_MS + 500)
-      // a message landing in the 2800-3300ms seam was both already answered by
+      // a message landing in the post-sleep seam was both already answered by
       // its own turn AND pulled into the next one, so the orchestrator
       // re-answered it — a confused double reply. `id desc` breaks ties on
       // identical created_at, so two simultaneous rows agree on one winner
