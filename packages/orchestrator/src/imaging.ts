@@ -1296,7 +1296,7 @@ async function renderTile(
         lineHeight: 1.18,
         textAlign: titleAlign,
         justifyContent: titleJustify,
-        alignItems: stacked ? (leftAlign ? "flex-start" : "center") : undefined,
+        alignItems: leftAlign ? "flex-start" : "center",
         textTransform: hasBody ? "none" : "uppercase",
         wordBreak: "break-word",
         overflowWrap: "break-word",

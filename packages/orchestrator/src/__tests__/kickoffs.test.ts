@@ -64,6 +64,14 @@ describe("looksLikeKickoffRequest", () => {
         "Make me a feed post about a safety switch check this week. Generate the photo.",
       ),
     ).toBe(true);
+    expect(
+      looksLikeKickoffRequest(
+        "Generate a photo of the vitamin shelf and put a small caption in the corner.",
+      ),
+    ).toBe(true);
+    expect(inferKickoffFromUserMessage("Generate a photo of the vitamin shelf")?.kind).toBe(
+      "draft_posts",
+    );
   });
 
   it("ignores plain chat", () => {
