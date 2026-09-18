@@ -884,12 +884,20 @@ export type OverlayTreatment = {
   face: OverlayFace;
 };
 
-/** Default photo overlay: bottom band, stacked Anton — same type as a tip slide. */
+/** Default photo overlay: stacked Anton, smack in the middle — the pilates look. */
 export const DEFAULT_OVERLAY_TREATMENT: OverlayTreatment = {
-  placement: "bottom",
+  placement: "center",
   stack: "stack",
   face: "anton",
 };
+
+/** Carousel / unsigned asks rotate through these so slides are not all one band. */
+export const OVERLAY_STYLE_CYCLE: OverlayPlacement[] = ["center", "top", "bottom"];
+
+export function cycleOverlayPlacement(slideIndex = 0): OverlayPlacement {
+  const i = Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex)) : 0;
+  return OVERLAY_STYLE_CYCLE[i % OVERLAY_STYLE_CYCLE.length]!;
+}
 
 function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
   const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
@@ -922,23 +930,16 @@ function overlayFaceFromContext(
 export function inferOverlayTreatment(
   ask: string | null | undefined,
   visual?: VisualProfile | null,
-  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean; slideIndex?: number },
 ): OverlayTreatment {
   const text = (ask ?? "").replace(/\s+/g, " ").trim();
   const faceDefault = overlayFaceFromContext(visual, opts);
 
   if (
-    /\b(small caption|tiny caption|corner caption|caption in the corner|in the corner|as a chip|chip caption|caption chip)\b/i.test(
+    /\b(designed tip(?: slide)?|tip slide|text card(?: on (?:a |the )?photo)?|big stacked type|stacked type|stacked text|stacked headline)\b/i.test(
       text,
     ) ||
-    (/\bchip\b/i.test(text) && /\b(caption|overlay|text|small)\b/i.test(text)) ||
-    (/\bcorner\b/i.test(text) && /\b(caption|overlay|text|small)\b/i.test(text))
-  ) {
-    return { placement: "chip", stack: "single", face: "inter" };
-  }
-
-  if (
-    /\b(designed tip(?: slide)?|tip slide|text card(?: on (?:a |the )?photo)?|big stacked type|stacked type|stacked text|stacked headline)\b/i.test(
+    /\b(in the middle|smack bang|dead cent(?:er|re)|cent(?:er|re)(?:ed)? (?:text|type|headline|overlay))\b/i.test(
       text,
     )
   ) {
@@ -961,7 +962,21 @@ export function inferOverlayTreatment(
     return { placement: "top", stack: "stack", face: faceDefault };
   }
 
-  return { placement: "bottom", stack: "stack", face: faceDefault };
+  if (
+    /\b(at the bottom|headline at the bottom|text at the bottom|bottom (?:band|caption|headline))\b/i.test(
+      text,
+    ) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "bottom", stack: "stack", face: faceDefault };
+  }
+
+  // Corner/chip/cinematic/default: rotate center → top → bottom. Never a pill.
+  return {
+    placement: cycleOverlayPlacement(opts?.slideIndex),
+    stack: "stack",
+    face: faceDefault,
+  };
 }
 
 /**
@@ -1044,16 +1059,24 @@ export type TextTileOptions = {
   ask?: string;
   /** Explicit recipe; wins over ask inference. */
   treatment?: OverlayTreatment;
+  /** Carousel slide index — rotates center / top / bottom when the ask is unlocked. */
+  slideIndex?: number;
 };
 
 export function resolveOverlayTreatment(
   opts?: TextTileOptions | null,
   visual?: VisualProfile | null,
 ): OverlayTreatment {
-  if (opts?.treatment) return opts.treatment;
+  if (opts?.treatment) {
+    if (opts.treatment.placement === "chip") {
+      return { ...opts.treatment, placement: "center", stack: "stack" };
+    }
+    return opts.treatment;
+  }
   return inferOverlayTreatment(opts?.ask, visual, {
     ideaBlurb: Boolean(opts?.body),
     mixedFonts: opts?.mixedFonts,
+    slideIndex: opts?.slideIndex,
   });
 }
 
@@ -1107,6 +1130,8 @@ function overlayBandStyle(
   scrim: { r: number; g: number; b: number },
 ): Record<string, unknown> {
   const fade = `rgba(${scrim.r},${scrim.g},${scrim.b}`;
+  // Legacy chip recipe was a rounded bubble — never paint that.
+  if (placement === "chip") placement = "center";
   if (placement === "top") {
     return {
       position: "absolute",
@@ -1132,7 +1157,7 @@ function overlayBandStyle(
       justifyContent: "center",
       alignItems: "center",
       padding: `${Math.round(height * 0.18)}px ${pad}px`,
-      background: `linear-gradient(to bottom, ${fade},0.25) 0%, ${fade},0.55) 40%, ${fade},0.55) 60%, ${fade},0.25) 100%)`,
+      background: `linear-gradient(to bottom, ${fade},0.12) 0%, ${fade},0.38) 42%, ${fade},0.38) 58%, ${fade},0.12) 100%)`,
     };
   }
   if (placement === "low_left") {
@@ -1147,21 +1172,6 @@ function overlayBandStyle(
       alignItems: "flex-start",
       padding: `${Math.round(pad * 1.1)}px ${pad}px ${padY}px ${pad}px`,
       background: `linear-gradient(to right, ${fade},0.82) 0%, ${fade},0.45) 70%, ${fade},0) 100%)`,
-    };
-  }
-  if (placement === "chip") {
-    return {
-      position: "absolute",
-      bottom: `${Math.round(height * 0.055)}px`,
-      left: `${Math.round(width * 0.055)}px`,
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "flex-start",
-      maxWidth: `${Math.round(width * 0.42)}px`,
-      padding: `${Math.round(height * 0.01)}px ${Math.round(width * 0.018)}px`,
-      background: `${fade},0.9)`,
-      borderRadius: `${Math.round(width * 0.08)}px`,
     };
   }
   return {
@@ -1199,15 +1209,13 @@ async function renderTile(
   const longestTitle = titleLines.reduce((a, l) => (l.length > a.length ? l : a), headline);
   const titleFont = treatment.face === "anton" ? "Anton" : "Inter";
   const detailFont = "Inter";
-  const leftAlign = treatment.placement === "chip" || treatment.placement === "low_left";
+  const leftAlign = treatment.placement === "low_left";
   const baseSize = overlayFontSize(width, longestTitle, hasBody);
   const stackScale = stacked && titleLines.length >= 5 ? 0.82 : stacked && titleLines.length >= 4 ? 0.9 : 1;
   const fontSize =
-    treatment.placement === "chip"
-      ? Math.round(width * 0.022)
-      : treatment.placement === "center"
-        ? Math.round(baseSize * 1.15 * stackScale)
-        : Math.round(baseSize * 1.08 * stackScale);
+    treatment.placement === "center"
+      ? Math.round(baseSize * 1.18 * stackScale)
+      : Math.round(baseSize * 1.08 * stackScale);
   const bodySize = overlayBodyFontSize(width, body);
   const mastheadSize = Math.round(width * 0.036);
   const eyebrowSize = Math.round(width * 0.028);
@@ -1332,8 +1340,9 @@ async function renderTile(
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        letterSpacing: treatment.placement === "chip" ? "0.02em" : "0.03em",
+        letterSpacing: "0.03em",
         lineHeight: 1.05,
+        textShadow: "0 4px 28px rgba(0,0,0,0.55)",
         textAlign: titleAlign,
         justifyContent: titleJustify,
         alignItems: leftAlign ? "flex-start" : "center",

@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import {
   inferOverlayTreatment,
   resolveOverlayTreatment,
+  cycleOverlayPlacement,
   splitOverlayStack,
   overlayWordNodes,
   formatOverlayHeadline,
   DEFAULT_OVERLAY_TREATMENT,
+  OVERLAY_STYLE_CYCLE,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
 } from "../imaging.js";
@@ -40,19 +42,23 @@ describe("inferOverlayTreatment", () => {
     },
     {
       ask: "carousel with cinematic photos with text over the top",
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "small caption in the corner",
-      want: { placement: "chip", stack: "single", face: "inter" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "put a chip caption on it",
-      want: { placement: "chip", stack: "single", face: "inter" },
+      want: { placement: "center", stack: "stack", face: "anton" },
+    },
+    {
+      ask: "text in the middle",
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "text at the top",
@@ -64,41 +70,41 @@ describe("inferOverlayTreatment", () => {
     },
     {
       ask: "",
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "post this photo",
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Impact"] },
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Playfair Display"] },
-      want: { placement: "bottom", stack: "stack", face: "inter" },
+      want: { placement: "center", stack: "stack", face: "inter" },
     },
     {
       ask: "post this",
       visual: { fonts: ["Anton"] },
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "small caption in the corner",
       visual: { fonts: ["Impact"] },
-      want: { placement: "chip", stack: "single", face: "inter" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "carousel of cinematic cars",
       opts: { ideaBlurb: true },
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
     {
       ask: "cinematic carousel",
       opts: { mixedFonts: true },
-      want: { placement: "bottom", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton" },
     },
   ];
 
@@ -110,14 +116,35 @@ describe("inferOverlayTreatment", () => {
     }
   });
 
-  it("defaults to stacked Anton on the bottom band when the owner says nothing", () => {
+  it("defaults to stacked Anton in the middle when the owner says nothing", () => {
     expect(inferOverlayTreatment(null)).toEqual(DEFAULT_OVERLAY_TREATMENT);
     expect(inferOverlayTreatment(undefined, {})).toEqual(DEFAULT_OVERLAY_TREATMENT);
     expect(DEFAULT_OVERLAY_TREATMENT).toEqual({
+      placement: "center",
+      stack: "stack",
+      face: "anton",
+    });
+  });
+
+  it("rotates unlocked asks through center, top, then bottom", () => {
+    expect(OVERLAY_STYLE_CYCLE).toEqual(["center", "top", "bottom"]);
+    expect(cycleOverlayPlacement(0)).toBe("center");
+    expect(cycleOverlayPlacement(1)).toBe("top");
+    expect(cycleOverlayPlacement(2)).toBe("bottom");
+    expect(cycleOverlayPlacement(3)).toBe("center");
+    expect(inferOverlayTreatment("text over the top", {}, { slideIndex: 1 })).toEqual({
+      placement: "top",
+      stack: "stack",
+      face: "anton",
+    });
+    expect(inferOverlayTreatment("text over the top", {}, { slideIndex: 2 })).toEqual({
       placement: "bottom",
       stack: "stack",
       face: "anton",
     });
+    expect(
+      inferOverlayTreatment("designed tip slide", {}, { slideIndex: 2 }),
+    ).toEqual({ placement: "center", stack: "stack", face: "anton" });
   });
 });
 
@@ -131,12 +158,12 @@ describe("resolveOverlayTreatment", () => {
         },
         {},
       ),
-    ).toEqual({ placement: "chip", stack: "single", face: "inter" });
+    ).toEqual({ placement: "center", stack: "stack", face: "inter" });
   });
 
-  it("treats idea body as Anton title on the default band", () => {
+  it("treats idea body as Anton title in the middle", () => {
     expect(resolveOverlayTreatment({ body: "who pays and why now" }, {})).toEqual({
-      placement: "bottom",
+      placement: "center",
       stack: "stack",
       face: "anton",
     });
@@ -216,17 +243,18 @@ describe("overlay treatment wiring", () => {
       imaging.indexOf("async function renderTile"),
       imaging.indexOf("export async function applyTextTile"),
     );
-    expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.02em" : "0\.03em"/);
+    expect(renderTile).toMatch(/letterSpacing: "0\.03em"/);
+    expect(renderTile).toMatch(/textShadow:/);
     expect(renderTile).toMatch(/overlayWordNodes\(/);
     expect(renderTile).toMatch(/overlaySafeInset\(/);
     expect(renderTile).toMatch(/overlayBandStyle\(/);
-    expect(imaging).toMatch(/width \* 0\.42/);
-    expect(imaging).toMatch(/width \* 0\.022/);
+    expect(imaging).not.toMatch(/borderRadius/);
     expect(renderTile).not.toMatch(/:\s*undefined/);
     expect(imaging).toMatch(/placement === "center"/);
     expect(imaging).toMatch(/placement === "chip"/);
     expect(imaging).toMatch(/placement === "low_left"/);
     expect(imaging).toMatch(/placement === "top"/);
+    expect(imaging).toMatch(/slideIndex/);
   });
 
   it("formats and inbound pass the owner ask into applyTextTile", () => {
@@ -235,6 +263,8 @@ describe("overlay treatment wiring", () => {
     const inbound = readFileSync(join(here, "../processInbound.ts"), "utf8");
     expect(formats).toMatch(/ask:\s*brief/);
     expect(formats).toMatch(/ask:\s*topic/);
+    expect(formats).toMatch(/slideIndex:\s*i/);
+    expect(formats).toMatch(/slideIndex:\s*index/);
     expect(fillers).toMatch(/ask:\s*topic/);
     expect(inbound).toMatch(/ask:\s*message\.body/);
   });
