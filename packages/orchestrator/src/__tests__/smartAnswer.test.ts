@@ -38,6 +38,9 @@ describe("answerWithTools", () => {
     expect(arg.task).toBe("smart_answer");
     expect(arg.maxRounds).toBe(3);
     expect(arg.tools?.length).toBeGreaterThanOrEqual(5);
+    const toolNames = (arg.tools ?? []).map((t: { name: string }) => t.name);
+    expect(toolNames).toContain("draft_copy");
+    expect(toolNames).not.toContain("get_brand_profile");
     expect(typeof arg.toolExecutor).toBe("function");
     expect(arg.system).toMatch(/NEVER publish/i);
     expect(arg.messages[0].content).toMatch(/What's on my calendar/);

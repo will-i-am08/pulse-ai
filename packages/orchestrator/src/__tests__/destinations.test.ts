@@ -305,6 +305,26 @@ describe("approval fan-out", () => {
     expect(mockedQueryOne).not.toHaveBeenCalled();
   });
 
+  it("past scheduled_at is treated as due now (no stale weekday kept on the row)", async () => {
+    winsTheClaim();
+    const past = "2026-09-17T13:21:00.000Z"; // Thu — live bug when approved on Fri
+    const before = Date.now();
+    await approveSelectedDestinations({
+      post: fakePost({
+        destinations: ["instagram"],
+        scheduled_at: past,
+        captions: buildPlatformCaptions("ok"),
+      }),
+      brand: fakeBrand(),
+      actor: "owner",
+      postNow: false,
+    });
+    const updateParams = mockedQuery.mock.calls[0]![1] as unknown[];
+    const written = String(updateParams[4]);
+    expect(written).not.toBe(past);
+    expect(new Date(written).getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
   // Finding 3: a second "yes" (or dashboard-approve racing SMS-approve) used to
   // re-run the whole fan-out and duplicate every extra destination.
   it("claims the row with a pending_approval predicate", async () => {

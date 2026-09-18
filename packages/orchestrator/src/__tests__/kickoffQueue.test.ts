@@ -345,7 +345,7 @@ describe("errors after the claim never orphan the row", () => {
 
     const out = await runKickoffDrain(2, { deliver: async () => {} });
 
-    // The second row was still processed rather than skipped for 20 minutes.
+    // The second row was still processed rather than skipped for the stale window.
     expect(out).toHaveLength(1);
     expect(out[0]?.brandId).toBe(BRAND.id);
   });

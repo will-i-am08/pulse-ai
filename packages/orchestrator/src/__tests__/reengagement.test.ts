@@ -52,4 +52,23 @@ describe("gapInfo time-aware ladder", () => {
     expect(g.bucket).toBe("long");
     expect(g.phrase).toBe("it's been a while");
   });
+
+  it("does not throw when process.env.TZ is Vercel junk :UTC (live glitch root cause)", () => {
+    const prev = process.env.TZ;
+    const prevPulse = process.env.PULSE_APP_TZ;
+    try {
+      process.env.TZ = ":UTC";
+      delete process.env.PULSE_APP_TZ;
+      const now = new Date("2026-09-18T03:00:00Z");
+      const last = new Date("2026-09-17T20:00:00Z"); // >4h gap → uses Intl timeZone
+      expect(() => gapInfo(last, now)).not.toThrow();
+      const g = gapInfo(last, now);
+      expect(g.bucket).not.toBe("seamless");
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+      if (prevPulse === undefined) delete process.env.PULSE_APP_TZ;
+      else process.env.PULSE_APP_TZ = prevPulse;
+    }
+  });
 });

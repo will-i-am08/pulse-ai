@@ -17,7 +17,15 @@ import {
 import { callLLM } from "./llm.js";
 import { routeImageJob, stillChainForQuality, type CreativeQuality } from "./modelRouter.js";
 import { assertAiSpendAllowed, recordAiSpend } from "./aiSpend.js";
-import { overlayMasthead, isNamelessCreative, stripPersonalNames } from "./faceless.js";
+import {
+  overlayMasthead,
+  isNamelessCreative,
+  stripPersonalNames,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  labSafeVisualBit,
+} from "./faceless.js";
+import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 // Fonts are embedded as base64 (see scripts/embed-fonts.ts) so they load the same
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
@@ -147,7 +155,7 @@ export function brandPhotoStyleBits(brand: Brand): string[] {
     ps.framing ? `framing: ${ps.framing}` : "",
     ps.common_subjects?.length ? `common subjects: ${ps.common_subjects.join(", ")}` : "",
     ps.recurring_motifs?.length ? `motifs: ${ps.recurring_motifs.join(", ")}` : "",
-  ].filter((b): b is string => Boolean(b));
+  ].filter((b): b is string => typeof b === "string" && labSafeVisualBit(b, brand));
 }
 
 /** Vision LLM: given the photo + brand (+ the client's own request), write a Flux Kontext edit instruction. */
@@ -166,12 +174,16 @@ export async function generateEditPrompt(
   const asked = asked0.length > 2 ? asked0 : "";
   const styleBits = brandPhotoStyleBits(brand);
   const system = [
-    "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
     business
-      ? "BUSINESS account — FAITHFUL ENHANCEMENT DEFAULT: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront."
+      ? "You write ONE image-editing instruction for the Flux Kontext model that faithfully polishes a client's phone photo. Prefer a faithful polish — lighting, colour, sharpness, tidiness — not a restaged scene."
+      : "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
+    business
+      ? "BUSINESS account — FAITHFUL POLISH: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, restage, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront, no invented tools or vehicles."
       : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
     styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
-    asked ? `MOST IMPORTANT — the client specifically asked for: "${asked}". Honour that request above everything else (still keep business subjects truthful).` : "",
+    asked
+      ? `Client request (lighting/grade/crop hint only — never restage or invent subjects): "${asked}".`
+      : "",
     "Keep the exposure natural and balanced: well-lit with clear detail in both the shadows and the highlights. Even a cinematic look must stay clean and readable — never dark, murky or underexposed, and never overexposed, washed-out or blown-out.",
     "Do NOT add any text, words, letters, captions, watermarks or logos to the image — keep it clean; any text is added separately.",
     "Base it on what is actually in the photo. Output ONLY the instruction (one or two sentences), no preamble, no quotes.",
@@ -186,7 +198,7 @@ export async function generateEditPrompt(
     .toBuffer();
   const content: ContentPart[] = [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } },
-    { type: "text", text: `Brand: "${brand.name}". Write the single edit instruction now.` },
+    { type: "text", text: `Brand: "${creativeBrandLabel(brand)}". Write the single edit instruction now.` },
   ];
   const out = await callLLM({ system, messages: [{ role: "user", content }], maxTokens: 150 });
   return out.trim();
@@ -315,7 +327,9 @@ export async function generatePhotoImage(
     );
   }
 
-  const buf = await generatePhotoImageInner(prompt, ratio, quality, opts?.brief);
+  const scene = brand ? creativeSceneConstraint(brand) : "";
+  const fullPrompt = [prompt, scene].filter(Boolean).join(". ");
+  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief);
   if (buf && brand) await recordAiSpend(brand.id, "image").catch(() => {});
   return buf;
 }
@@ -415,6 +429,7 @@ export async function editImageForBrand(
   request?: string,
   /** When set, skip LLM prompt generation and reuse this grade (photo-bundle consistency). */
   sharedPrompt?: string,
+  opts?: { mode?: "variant" | "creative" },
 ): Promise<string | null> {
   if (!getServerEnv().REPLICATE_API_TOKEN) return null;
   routeImageJob("photo_edit");
@@ -424,7 +439,17 @@ export async function editImageForBrand(
   // caller falls back to the original photo when this returns null.
   if (await imageSpendBlocked(brand)) return null;
   try {
-    const prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
+    let prompt: string;
+    if (opts?.mode === "variant") {
+      // Look-picker: use the faithful grade/crop request verbatim. Never run
+      // generateEditPrompt (that injects brand/trade scene constraints).
+      const req = (request ?? "").trim();
+      prompt = req.includes(PHOTO_EDIT_FAITHFUL_PROHIBITION)
+        ? req
+        : [req, PHOTO_EDIT_FAITHFUL_PROHIBITION].filter(Boolean).join(" ");
+    } else {
+      prompt = sharedPrompt ?? (await generateEditPrompt(brand, blob.bytes, request));
+    }
     const edited = await replicateEdit(blob.bytes, prompt);
     await recordAiSpend(brand.id, "image").catch(() => {});
     const newId = randomUUID();
@@ -479,12 +504,55 @@ export function messageWantsText(body: string | null | undefined): boolean {
   return /\b(text|caption on|words on|title on|headline|writing on|add text|put text|overlay)\b/i.test(body);
 }
 
-/** Explicit "no text on the image" / leave it clean. */
+/** Explicit "no text on the image" / leave it clean / strip overlay. */
 export function messageWantsNoText(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
-    body,
-  );
+  const t = body.trim();
+  if (
+    /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // "Remove the text", "take the text off the image"
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing|type)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/\b(text|words|headline|overlay)\b.{0,20}\b(off|from)\b.{0,12}\b(the\s+)?(image|photo|pic|picture)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Owner is asking to strip overlay on the *current* pending draft — not briefing a
+ * new creative ("no text, just good looking bread").
+ */
+export function messageWantsStripPendingOverlay(body: string | null | undefined): boolean {
+  if (!body) return false;
+  const t = body.trim();
+  // New creative brief that includes a no-text preference — not a pending strip.
+  if (
+    /\b(make|draft|create|generate|carousel|charasel|post about|knock (up|out))\b/i.test(t) &&
+    !/\b(remove|strip|take off|clear)\b/i.test(t)
+  ) {
+    return false;
+  }
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(no text|without text|text off)\b.{0,24}\b(on|from)\s+(the\s+)?(image|photo|pic|picture|overlay)\b/i.test(t)) {
+    return true;
+  }
+  if (/^(no text|without text|text off|remove the text)\s*[!.?]*$/i.test(t)) return true;
+  return false;
 }
 
 /**
@@ -539,39 +607,511 @@ export function messageWantsImageEdit(body: string | null | undefined): boolean 
   );
 }
 
+export const OVERLAY_HEADLINE_MAX_WORDS = 5;
+export const OVERLAY_HEADLINE_MAX_CHARS = 28;
+
+/** Trailing function words the overlay cap must never leave dangling. */
+export const OVERLAY_TRAILING_FUNCTION_WORDS = new Set([
+  "THE",
+  "A",
+  "AN",
+  "AND",
+  "OR",
+  "OF",
+  "TO",
+  "FOR",
+  "WITH",
+  "NOT",
+  "IN",
+  "ON",
+  "AT",
+  "BY",
+  "FROM",
+  "INTO",
+  "OVER",
+  "UNDER",
+  "UP",
+  "AS",
+  "IS",
+  "ARE",
+  "BE",
+  "WAS",
+  "WERE",
+]);
+
+/**
+ * Interior fillers dropped when a cleaned overlay has more than 5 words, so
+ * content words survive instead of a first-N slice of a longer clause.
+ * Phrasal particles (UP/OVER/UNDER) stay — they are often part of the phrase.
+ * Quantifiers like EVERY stay interior so a later trailing strip can complete
+ * the headline (FLOSS … MISSES EVERY → MISSES) instead of skipping to SINGLE.
+ */
+const OVERLAY_INTERIOR_FILLER_WORDS = new Set([
+  "THE",
+  "A",
+  "AN",
+  "AND",
+  "OR",
+  "OF",
+  "TO",
+  "FOR",
+  "WITH",
+  "NOT",
+  "IN",
+  "ON",
+  "AT",
+  "BY",
+  "FROM",
+  "YOUR",
+  "MY",
+  "OUR",
+  "ITS",
+  "IS",
+  "ARE",
+  "WAS",
+  "WERE",
+  "BE",
+  "BEEN",
+  "BEING",
+  "THAT",
+  "THIS",
+  "THESE",
+  "THOSE",
+  "WHO",
+  "WHICH",
+  "WHAT",
+  "THEY",
+  "THEM",
+  "WE",
+  "YOU",
+  "I",
+  "ME",
+  "HE",
+  "SHE",
+  "IT",
+  "THEIR",
+  "HIS",
+  "HER",
+  "WHEN",
+  "IF",
+  "WHILE",
+  "BECAUSE",
+  "HOW",
+  "WHY",
+  "WHERE",
+  "VERY",
+  "OTHERWISE",
+]);
+
+/**
+ * Extra trailing leftovers a first-N cap of a longer sentence can still leave
+ * after filler drop (EVERY/THAT/YOU/ABOVE). Only applied when we compressed.
+ * Short headlines like LOVE YOU / RISE ABOVE are left alone.
+ */
+const OVERLAY_COMPRESS_DANGLE_WORDS = new Set([
+  ...OVERLAY_TRAILING_FUNCTION_WORDS,
+  "THAT",
+  "THIS",
+  "THESE",
+  "THOSE",
+  "EVERY",
+  "EACH",
+  "ANY",
+  "SOME",
+  "ALL",
+  "BOTH",
+  "SUCH",
+  "YOU",
+  "WE",
+  "THEY",
+  "THEM",
+  "HE",
+  "SHE",
+  "IT",
+  "ME",
+  "US",
+  "I",
+  "HIM",
+  "HER",
+  "WHO",
+  "WHOM",
+  "WHICH",
+  "WHAT",
+  "WHOSE",
+  "WHEN",
+  "IF",
+  "WHILE",
+  "BECAUSE",
+  "ALTHOUGH",
+  "THOUGH",
+  "UNLESS",
+  "UNTIL",
+  "SINCE",
+  "WHETHER",
+  "WHERE",
+  "WHY",
+  "HOW",
+  "ABOVE",
+  "BELOW",
+  "BEFORE",
+  "AFTER",
+  "BETWEEN",
+  "THROUGH",
+  "DURING",
+  "WITHOUT",
+  "WITHIN",
+  "ACROSS",
+  "AGAINST",
+  "AMONG",
+  "AROUND",
+  "BEHIND",
+  "BESIDE",
+  "BEYOND",
+  "ABOUT",
+  "VERY",
+  "TOO",
+  "JUST",
+  "ALSO",
+  "THEN",
+  "THAN",
+  "SO",
+  "EVEN",
+  "YET",
+  "WAY",
+  "SHOULD",
+  "WOULD",
+  "COULD",
+  "WILL",
+  "CAN",
+  "MAY",
+  "MIGHT",
+  "MUST",
+  "DO",
+  "DOES",
+  "DID",
+  "HAVE",
+  "HAS",
+  "HAD",
+  "BEEN",
+  "BEING",
+  "GET",
+  "GOT",
+  "OTHERWISE",
+]);
+
+/**
+ * Period / ordinal adjectives that need a following noun. Char-cap must not
+ * leave "SCHEDULE YOUR DOGS ANNUAL" after dropping VACCINATION.
+ */
+const OVERLAY_DANGLING_MODIFIERS = new Set([
+  "ANNUAL",
+  "DAILY",
+  "WEEKLY",
+  "MONTHLY",
+  "YEARLY",
+  "NEXT",
+  "LAST",
+  "FIRST",
+]);
+
+function isOverlayPossessive(word: string): boolean {
+  return /[A-Z0-9]+'S$/i.test(word);
+}
+
+function popTrailingOverlayWords(words: string[], stop: Set<string>): void {
+  while (words.length > 1 && stop.has(words[words.length - 1]!)) {
+    words.pop();
+  }
+}
+
+/** After a cap, drop leftover adjectives and possessives that lost their noun. */
+function popTrailingOverlayModifiers(words: string[]): void {
+  let poppedOwned = false;
+  while (words.length > 1) {
+    const last = words[words.length - 1]!;
+    if (OVERLAY_DANGLING_MODIFIERS.has(last) || isOverlayPossessive(last)) {
+      poppedOwned = true;
+      words.pop();
+      continue;
+    }
+    if (poppedOwned && /^(YOUR|MY|OUR|ITS|THEIR|HIS|HER)$/.test(last)) {
+      words.pop();
+      continue;
+    }
+    break;
+  }
+}
+
+/** Prefer dropping an interior filler/modifier over the last content noun. */
+function dropInteriorForCharFit(words: string[]): boolean {
+  for (let i = words.length - 2; i >= 1; i--) {
+    const w = words[i]!;
+    if (OVERLAY_INTERIOR_FILLER_WORDS.has(w) || OVERLAY_DANGLING_MODIFIERS.has(w)) {
+      words.splice(i, 1);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Clean overlay copy: keep % ° and possessive apostrophes; drop other punctuation. */
+function cleanOverlayText(text: string): string {
+  let s = text
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u00BA]/g, "°")
+    .replace(/"/g, "");
+  s = s.replace(/[^a-zA-Z0-9%'°\s]/g, " ");
+  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S.
+  s = s.replace(/(^|[^A-Za-z0-9])'+|'+(?![A-Za-z])/g, "$1");
+  return s.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+/** Drop interior fillers; keep the first and last tokens. */
+function dropInteriorOverlayFillers(words: string[]): string[] {
+  if (words.length <= 2) return words;
+  const first = words[0]!;
+  const last = words[words.length - 1]!;
+  const interior = words.slice(1, -1).filter((w) => !OVERLAY_INTERIOR_FILLER_WORDS.has(w));
+  return [first, ...interior, last];
+}
+
+/** Hard-cap overlay titles so they cannot smash in a 4:5 / MMS crop. */
+export function formatOverlayHeadline(text: string): string {
+  const cleaned = cleanOverlayText(text);
+  let words = cleaned.split(" ").filter(Boolean);
+  const compressed = words.length > OVERLAY_HEADLINE_MAX_WORDS;
+  if (compressed) {
+    words = dropInteriorOverlayFillers(words);
+  }
+  words = words.slice(0, OVERLAY_HEADLINE_MAX_WORDS);
+  const trailStop = compressed ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
+  const stripTrail = () => {
+    popTrailingOverlayWords(words, trailStop);
+    popTrailingOverlayModifiers(words);
+    popTrailingOverlayWords(words, trailStop);
+  };
+  const fitWords = () => {
+    let joined = words.join(" ");
+    while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
+      if (!dropInteriorForCharFit(words)) words.pop();
+      joined = words.join(" ");
+    }
+    return joined;
+  };
+  // Char-cap can expose a new trailing function word or dangling adjective.
+  fitWords();
+  stripTrail();
+  let out = fitWords();
+  stripTrail();
+  out = words.join(" ");
+  if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
+    const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
+    const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
+    if (cutMidWord && sliced.length > 1) sliced.pop();
+    popTrailingOverlayWords(sliced, trailStop);
+    popTrailingOverlayModifiers(sliced);
+    popTrailingOverlayWords(sliced, trailStop);
+    out = sliced.join(" ");
+  }
+  return out;
+}
+
+export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
+export type OverlayStack = "single" | "stack";
+export type OverlayFace = "inter" | "anton";
+/** How words break across lines. Poster is the pilates one-word stack; pair/banner keep phrases together. */
+export type OverlayWrap = "banner" | "pair" | "poster";
+
+export type OverlayTreatment = {
+  placement: OverlayPlacement;
+  stack: OverlayStack;
+  face: OverlayFace;
+  wrap?: OverlayWrap;
+};
+
+/** Default photo overlay: stacked Anton, smack in the middle, two-line phrases. */
+export const DEFAULT_OVERLAY_TREATMENT: OverlayTreatment = {
+  placement: "center",
+  stack: "stack",
+  face: "anton",
+  wrap: "pair",
+};
+
+/** Carousel / unsigned asks rotate through these so slides are not all one band. */
+export const OVERLAY_STYLE_CYCLE: OverlayPlacement[] = ["center", "top", "bottom"];
+
+/** Line-break recipes so every slide is not one-word-per-line. */
+export const OVERLAY_WRAP_CYCLE: OverlayWrap[] = ["pair", "banner", "poster"];
+
+export function cycleOverlayPlacement(slideIndex = 0): OverlayPlacement {
+  const i = Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex)) : 0;
+  return OVERLAY_STYLE_CYCLE[i % OVERLAY_STYLE_CYCLE.length]!;
+}
+
+export function cycleOverlayWrap(slideIndex = 0): OverlayWrap {
+  const i = Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex)) : 0;
+  return OVERLAY_WRAP_CYCLE[i % OVERLAY_WRAP_CYCLE.length]!;
+}
+
+function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  // Same priority as resolveBrandPalette: serif wins, so "Playfair Display" stays Inter in v1.
+  if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
+    return false;
+  }
+  return fonts.some((f) => /anton|impact|bebas|display|condensed|oswald|archivo black/.test(f));
+}
+
+function overlayFaceFromContext(
+  visual?: VisualProfile | null,
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
+): OverlayFace {
+  if (opts?.ideaBlurb || opts?.mixedFonts) return "anton";
+  // Serif stays Inter in v1. Everything else uses Anton — Inter-on-a-band
+  // looked thin and smashed next to a stacked Anton tip slide.
+  if (overlayWantsDisplayFace(visual)) return "anton";
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
+    return "inter";
+  }
+  return "anton";
+}
+
+/**
+ * Deterministic overlay recipe from the owner's ask + site fonts.
+ * No extra LLM. Explicit clean-photo asks are gated by shouldOverlayHeadline.
+ */
+export function inferOverlayTreatment(
+  ask: string | null | undefined,
+  visual?: VisualProfile | null,
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean; slideIndex?: number },
+): OverlayTreatment {
+  const text = (ask ?? "").replace(/\s+/g, " ").trim();
+  const faceDefault = overlayFaceFromContext(visual, opts);
+
+  if (
+    /\b(designed tip(?: slide)?|tip slide|text card(?: on (?:a |the )?photo)?|big stacked type|stacked type|stacked text|stacked headline)\b/i.test(
+      text,
+    )
+  ) {
+    return { placement: "center", stack: "stack", face: "anton", wrap: "poster" };
+  }
+
+  if (
+    /\b(in the middle|smack bang|dead cent(?:er|re)|cent(?:er|re)(?:ed)? (?:text|type|headline|overlay))\b/i.test(
+      text,
+    )
+  ) {
+    return {
+      placement: "center",
+      stack: "stack",
+      face: "anton",
+      wrap: cycleOverlayWrap(opts?.slideIndex),
+    };
+  }
+
+  const wrap = cycleOverlayWrap(opts?.slideIndex);
+
+  if (
+    /\b((?:bottom|lower|low)[\s-]?left)\b/i.test(text) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "low_left", stack: "stack", face: faceDefault, wrap };
+  }
+
+  if (
+    /\b(at the top|headline at the top|text at the top|top of the (?:photo|image|pic|picture))\b/i.test(
+      text,
+    ) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "top", stack: "stack", face: faceDefault, wrap };
+  }
+
+  if (
+    /\b(at the bottom|headline at the bottom|text at the bottom|bottom (?:band|caption|headline))\b/i.test(
+      text,
+    ) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "bottom", stack: "stack", face: faceDefault, wrap };
+  }
+
+  // Corner/chip/cinematic/default: rotate center → top → bottom and pair → banner → poster.
+  return {
+    placement: cycleOverlayPlacement(opts?.slideIndex),
+    stack: "stack",
+    face: faceDefault,
+    wrap,
+  };
+}
+
+/**
+ * Break a headline into lines. Pair keeps 2–3 phrase-lines; banner is one line;
+ * poster is one word per line only for short titles (pilates). Word gaps on a
+ * line are handled by overlayWordNodes, not by isolating every word.
+ */
+export function splitOverlayStack(text: string, wrap: OverlayWrap = "pair"): string[] {
+  const formatted = formatOverlayHeadline(text);
+  const words = formatted.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  if (words.length === 1) return [formatted];
+
+  let mode = wrap;
+  if (mode === "poster" && words.length > 3) mode = "pair";
+  if (mode === "banner") return [formatted];
+  if (mode === "poster") {
+    return words.map((word) => formatOverlayHeadline(word)).filter(Boolean);
+  }
+
+  const lineCount = words.length >= 5 ? 3 : 2;
+  const lines: string[] = [];
+  const base = Math.floor(words.length / lineCount);
+  const extra = words.length % lineCount;
+  let i = 0;
+  for (let l = 0; l < lineCount; l++) {
+    const n = base + (l < extra ? 1 : 0);
+    const line = formatOverlayHeadline(words.slice(i, i + n).join(" "));
+    i += n;
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [formatted];
+}
+
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Never include a person's name. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",
         content: nameless
           ? `Faceless brand voice. Post caption: "${caption}". Give the overlay headline (no personal names).`
-          : `Brand: ${brand.name}. Post caption: "${caption}". Give the overlay headline.`,
+          : `Brand: ${creativeBrandLabel(brand)}. Post caption: "${caption}". Give the overlay headline.`,
       },
     ],
     maxTokens: 20,
   });
   const cleaned = stripPersonalNames(
-    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase().slice(0, 42),
+    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase(),
     brand,
   );
   // Never fall back to the owner's personal brand name on faceless accounts.
-  if (cleaned) return cleaned;
-  return nameless ? "START HERE" : brand.name.toUpperCase();
+  if (cleaned) return formatOverlayHeadline(cleaned);
+  return formatOverlayHeadline(overlayMasthead(brand) || "START HERE");
 }
 
 /**
  * Horizontal safe inset for burned-in overlays.
  * Parent padding + child width must NOT both subtract this (that overflows left/right).
- * ~11% each side leaves room for tall phone crops / MMS letterboxing.
+ * ~14% each side leaves room for tall phone crops / MMS letterboxing.
  */
 export function overlaySafeInset(width: number): number {
-  return Math.max(Math.round(width * 0.11), 48);
+  return Math.max(Math.round(width * 0.14), 64);
 }
 
 /** Scale overlay title so longer lines still fit inside the safe pad. */
@@ -579,14 +1119,14 @@ function overlayFontSize(width: number, text: string, hasBody: boolean): number 
   const len = text.replace(/\s+/g, " ").trim().length;
   // With a body block, keep the title smaller so detail copy fits.
   if (hasBody) {
-    if (len > 32) return Math.round(width * 0.042);
-    if (len > 22) return Math.round(width * 0.048);
-    return Math.round(width * 0.055);
+    if (len > 22) return Math.round(width * 0.038);
+    if (len > 14) return Math.round(width * 0.044);
+    return Math.round(width * 0.050);
   }
-  if (len > 36) return Math.round(width * 0.048);
-  if (len > 28) return Math.round(width * 0.055);
-  if (len > 20) return Math.round(width * 0.065);
-  return Math.round(width * 0.075);
+  if (len > 22) return Math.round(width * 0.042);
+  if (len > 16) return Math.round(width * 0.050);
+  if (len > 10) return Math.round(width * 0.058);
+  return Math.round(width * 0.065);
 }
 
 function overlayBodyFontSize(width: number, text: string): number {
@@ -603,7 +1143,138 @@ export type TextTileOptions = {
   eyebrow?: string;
   /** Force mixed display+body fonts (idea carousels). */
   mixedFonts?: boolean;
+  /** Owner ask used to infer placement/stack/face when treatment is omitted. */
+  ask?: string;
+  /** Explicit recipe; wins over ask inference. */
+  treatment?: OverlayTreatment;
+  /** Carousel slide index — rotates center / top / bottom when the ask is unlocked. */
+  slideIndex?: number;
 };
+
+export function resolveOverlayTreatment(
+  opts?: TextTileOptions | null,
+  visual?: VisualProfile | null,
+): OverlayTreatment {
+  if (opts?.treatment) {
+    const wrap = opts.treatment.wrap ?? cycleOverlayWrap(opts.slideIndex);
+    if (opts.treatment.placement === "chip") {
+      return { ...opts.treatment, placement: "center", stack: "stack", wrap };
+    }
+    return { ...opts.treatment, wrap };
+  }
+  return inferOverlayTreatment(opts?.ask, visual, {
+    ideaBlurb: Boolean(opts?.body),
+    mixedFonts: opts?.mixedFonts,
+    slideIndex: opts?.slideIndex,
+  });
+}
+
+/**
+ * One flex child per word, with a real spacer node between them.
+ * Satori ignores margin on flex children and collapses ASCII spaces under
+ * letter-spacing — a fixed-width NBSP box is the only gap it will paint.
+ */
+export function overlayWordNodes(
+  line: string,
+  gapPx: number,
+): Array<Record<string, unknown>> {
+  const words = line.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const nodes: Array<Record<string, unknown>> = [];
+  const gap = Math.max(1, Math.round(gapPx));
+  for (let i = 0; i < words.length; i++) {
+    nodes.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexShrink: 0,
+        },
+        children: words[i],
+      },
+    });
+    if (i < words.length - 1) {
+      nodes.push({
+        type: "div",
+        props: {
+          style: {
+            display: "flex",
+            width: gap,
+            minWidth: gap,
+            flexShrink: 0,
+          },
+          children: "\u00A0",
+        },
+      });
+    }
+  }
+  return nodes;
+}
+
+function overlayBandStyle(
+  placement: OverlayPlacement,
+  width: number,
+  height: number,
+  pad: number,
+  padY: number,
+  scrim: { r: number; g: number; b: number },
+): Record<string, unknown> {
+  const fade = `rgba(${scrim.r},${scrim.g},${scrim.b}`;
+  // Legacy chip recipe was a rounded bubble — never paint that.
+  if (placement === "chip") placement = "center";
+  if (placement === "top") {
+    return {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: `${width}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-start",
+      padding: `${padY}px ${pad}px ${Math.round(pad * 1.35)}px ${pad}px`,
+      background: `linear-gradient(to bottom, ${fade},0.9) 0%, ${fade},0.72) 55%, ${fade},0) 100%)`,
+    };
+  }
+  if (placement === "center") {
+    return {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: `${width}px`,
+      height: `${height}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: `${Math.round(height * 0.18)}px ${pad}px`,
+      background: `linear-gradient(to bottom, ${fade},0.12) 0%, ${fade},0.38) 42%, ${fade},0.38) 58%, ${fade},0.12) 100%)`,
+    };
+  }
+  if (placement === "low_left") {
+    return {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      width: `${Math.round(width * 0.72)}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-end",
+      alignItems: "flex-start",
+      padding: `${Math.round(pad * 1.1)}px ${pad}px ${padY}px ${pad}px`,
+      background: `linear-gradient(to right, ${fade},0.82) 0%, ${fade},0.45) 70%, ${fade},0) 100%)`,
+    };
+  }
+  return {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: `${width}px`,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: `${Math.round(pad * 1.35)}px ${pad}px ${padY}px ${pad}px`,
+    background: `linear-gradient(to top, ${fade},0.9) 0%, ${fade},0.72) 55%, ${fade},0) 100%)`,
+  };
+}
 
 async function renderTile(
   imgBytes: Uint8Array,
@@ -613,6 +1284,7 @@ async function renderTile(
   opts?: TextTileOptions,
 ): Promise<Buffer> {
   const palette = resolveBrandPalette(visual);
+  const treatment = resolveOverlayTreatment(opts, visual);
   const meta = await sharp(Buffer.from(imgBytes)).metadata();
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1350;
@@ -621,10 +1293,18 @@ async function renderTile(
   const body = (opts?.body ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
   const eyebrow = (opts?.eyebrow ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
   const hasBody = Boolean(body);
-  // Idea slides: Anton title + Inter body so type isn't one flat weight.
-  const titleFont = opts?.mixedFonts || hasBody ? "Anton" : palette.displayFont;
-  const detailFont = opts?.mixedFonts || hasBody ? "Inter" : palette.bodyFont;
-  const fontSize = overlayFontSize(width, headline, hasBody);
+  const titleLines = headline.split("\n").map((l) => l.trim()).filter(Boolean);
+  const stacked = titleLines.length > 1;
+  const longestTitle = titleLines.reduce((a, l) => (l.length > a.length ? l : a), headline);
+  const titleFont = treatment.face === "anton" ? "Anton" : "Inter";
+  const detailFont = "Inter";
+  const leftAlign = treatment.placement === "low_left";
+  const baseSize = overlayFontSize(width, longestTitle, hasBody);
+  const stackScale = stacked && titleLines.length >= 5 ? 0.82 : stacked && titleLines.length >= 4 ? 0.9 : 1;
+  const fontSize =
+    treatment.placement === "center"
+      ? Math.round(baseSize * 1.18 * stackScale)
+      : Math.round(baseSize * 1.08 * stackScale);
   const bodySize = overlayBodyFontSize(width, body);
   const mastheadSize = Math.round(width * 0.036);
   const eyebrowSize = Math.round(width * 0.028);
@@ -632,6 +1312,8 @@ async function renderTile(
   const padY = Math.round(height * 0.045);
   const scrim = hexToRgb(palette.bgFrom);
   const showMasthead = Boolean(masthead?.trim());
+  const titleAlign = leftAlign ? "left" : "center";
+  const titleJustify = leftAlign ? "flex-start" : "center";
 
   const children: Array<Record<string, unknown>> = [
     {
@@ -710,28 +1392,52 @@ async function renderTile(
           letterSpacing: "0.14em",
           textTransform: "uppercase",
           lineHeight: 1.2,
+          textAlign: titleAlign,
+          justifyContent: titleJustify,
         },
         children: eyebrow,
       },
     });
   }
+  const wordGap = Math.max(10, Math.round(fontSize * 0.36));
+  const titleLineNodes = (stacked ? titleLines : [headline.replace(/\n/g, " ").trim()]).map(
+    (line, i) => ({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "nowrap",
+          width: stacked ? "100%" : "auto",
+          maxWidth: "100%",
+          justifyContent: titleJustify,
+          textAlign: titleAlign,
+          marginTop: i === 0 ? 0 : Math.round(height * 0.008),
+        },
+        children: overlayWordNodes(line, wordGap),
+      },
+    }),
+  );
   textStack.push({
     type: "div",
     props: {
       style: {
         display: "flex",
-        flexWrap: "wrap",
+        flexDirection: "column",
+        flexWrap: "nowrap",
         width: "100%",
         maxWidth: "100%",
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        lineHeight: 1.1,
+        letterSpacing: "0.03em",
+        lineHeight: 1.05,
+        textShadow: "0 4px 28px rgba(0,0,0,0.55)",
+        textAlign: titleAlign,
+        justifyContent: titleJustify,
+        alignItems: leftAlign ? "flex-start" : "center",
         textTransform: hasBody ? "none" : "uppercase",
-        wordBreak: "break-word",
-        overflowWrap: "break-word",
       },
-      children: headline,
+      children: titleLineNodes,
     },
   });
   if (hasBody) {
@@ -750,6 +1456,8 @@ async function renderTile(
           fontWeight: 400,
           lineHeight: 1.28,
           letterSpacing: "0.01em",
+          textAlign: titleAlign,
+          justifyContent: titleJustify,
           wordBreak: "break-word",
           overflowWrap: "break-word",
           opacity: 0.92,
@@ -762,18 +1470,7 @@ async function renderTile(
   children.push({
     type: "div",
     props: {
-      style: {
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        width: `${width}px`,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-        // Pad only — children use width 100% of the content box (do NOT also subtract pad).
-        padding: `${Math.round(pad * 1.35)}px ${pad}px ${padY}px ${pad}px`,
-        background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.9) 0%, rgba(${scrim.r},${scrim.g},${scrim.b},0.72) 55%, rgba(${scrim.r},${scrim.g},${scrim.b},0) 100%)`,
-      },
+      style: overlayBandStyle(treatment.placement, width, height, pad, padY, scrim),
       children: textStack,
     },
   });
@@ -917,13 +1614,19 @@ export async function applyTextTile(
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const safeHeadline = stripPersonalNames(headline, brand);
+    const treatment = resolveOverlayTreatment(opts, brand.visual);
+    const rawHeadline = stripPersonalNames(headline, brand);
+    const safeHeadline =
+      treatment.stack === "stack"
+        ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair").join("\n")
+        : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
     const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual, {
       ...opts,
       body: safeBody,
       eyebrow: safeEyebrow,
+      treatment,
     });
     const newId = randomUUID();
     await query(
@@ -961,7 +1664,7 @@ export async function applyStoryCreative(
     const dataUri = `data:image/jpeg;base64,${jpeg.toString("base64")}`;
     const palette = resolveBrandPalette(brand.visual);
     const scrim = hexToRgb(palette.bgFrom);
-    const headline = stripPersonalNames(overlay, brand).toUpperCase().slice(0, 48);
+    const headline = formatOverlayHeadline(stripPersonalNames(overlay, brand));
     const ctaLine = stripPersonalNames((cta ?? "").trim(), brand).slice(0, 36);
     const padX = overlaySafeInset(width);
     const headlineSize = overlayFontSize(width, headline, Boolean(ctaLine));
@@ -1015,7 +1718,10 @@ export async function applyStoryCreative(
                         color: palette.text,
                         fontFamily: palette.displayFont,
                         fontSize: `${headlineSize}px`,
-                        lineHeight: 1.08,
+                        letterSpacing: "0.06em",
+                        lineHeight: 1.18,
+                        textAlign: "center",
+                        justifyContent: "center",
                         textTransform: "uppercase",
                         wordBreak: "break-word",
                         overflowWrap: "break-word",

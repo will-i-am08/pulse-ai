@@ -3,22 +3,23 @@
 Catalog, Checkout, webhooks, and operator billing are in the app. This page is only the
 external steps (API keys, Customer Portal, invoices).
 
-**Right now we are on sandbox.** Use the **Kip ai test** Stripe account. Do not put live
-keys on Preview. The production live webhook is disabled until go-live.
+**Production currently uses the Kip ai test account.** Checkout is live on the site, but
+cards are Stripe test cards (`4242…`) — no real money. The **Kip Ai** live webhook stays
+disabled until we flip to `sk_live_`.
 
 There are two Stripe *accounts*, not just a Test/Live toggle on one account:
 
 | Account | Use for |
 |---|---|
-| **Kip ai test** | Preview, local, first Checkout smoke |
-| **Kip Ai** | Production only, after sandbox works |
+| **Kip ai test** | Production (now), Preview, local |
+| **Kip Ai** | Real charges later |
 
 Do not open **Kip Ai**, flip the Dashboard to Test mode, and copy those keys — that test
 mode is a different catalog. We never created Prices there.
 
 ---
 
-## A. Hook up sandbox (do this now)
+## A. Production + Preview (Kip ai test)
 
 ### 1. Copy the test secret key
 
@@ -26,30 +27,31 @@ mode is a different catalog. We never created Prices there.
 2. [Developers → API keys](https://dashboard.stripe.com/test/apikeys)
 3. Reveal **Secret key** (`sk_test_…`). Leave Publishable key unused (hosted Checkout does not need it in Vercel).
 
-### 2. Confirm the test webhook
+### 2. Webhooks (test account)
 
-Already created: **Kip billing (preview / test)**  
-`we_1UFqaRHVCUBRaxA22n06qn4w`  
-URL: `https://pulse-ai-git-cursor-stripe-payment-i-c8a7ea-william08s-projects.vercel.app/api/webhooks/billing`
+| Env | Endpoint | URL |
+|---|---|---|
+| Preview | `we_1UFqaRHVCUBRaxA22n06qn4w` | PR preview `/api/webhooks/billing` |
+| Production | `we_1UGxNsHVCUBRaxA2HwgnJRyB` | `https://pulse-ai-william08s-projects.vercel.app/api/webhooks/billing` |
 
 Events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.
 
-Signing secret (`whsec_…`) was shown once when the endpoint was created. If you no longer have it: open that endpoint → **Reveal** / roll the signing secret.
+Each endpoint has its own `whsec_…`. Production must use the production signing secret.
 
-### 3. Paste both into Vercel (Preview + Development only)
+### 3. Vercel env (Preview **and** Production)
 
 [Vercel → pulse-ai → Environment Variables](https://vercel.com/william08s-projects/pulse-ai/settings/environment-variables)
 
 | Name | Value | Environments |
 |---|---|---|
-| `STRIPE_SECRET_KEY` | `sk_test_…` from Kip ai test | **Preview**, **Development** — not Production |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_…` for the preview webhook | **Preview**, **Development** — not Production |
+| `STRIPE_SECRET_KEY` | `sk_test_…` from Kip ai test | Preview, Development, **Production** |
+| `STRIPE_WEBHOOK_SECRET` | matching `whsec_…` for that env’s webhook | Preview / Production separately |
 
-Leave Production empty for now. Preview refuses `sk_live_` keys unless `STRIPE_ALLOW_LIVE=true`.
+Preview refuses `sk_live_` keys unless `STRIPE_ALLOW_LIVE=true`. Production may use `sk_test_` (test-mode banner shows on `/payment`).
 
 You do **not** need `STRIPE_PRICE_*`. Checkout loads Prices by lookup key (`kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year`).
 
-Redeploy the Preview deployment after saving (Deployments → ⋯ → Redeploy).
+Redeploy after saving.
 
 ### 3b. Enable DATABASE_URL on Preview (this is what caused the white screen)
 

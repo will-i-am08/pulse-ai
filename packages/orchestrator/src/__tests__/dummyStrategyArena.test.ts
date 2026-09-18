@@ -365,6 +365,7 @@ describe("dummy arena — organic + paid winning strategy", () => {
 
     const sms = planTextSummary(plan!);
     expect(sms).toMatch(/Jobs:/i);
+    expect(sms).not.toMatch(/^1\. /m);
 
     const ctx = brandContextForPrompt(brand);
     expect(ctx).toMatch(/Proof bank/i);

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MAX_SMS_PART_CHARS, clampSmsParts, splitIntoBubbles } from "./gateway.js";
 
 /**
@@ -7,9 +10,8 @@ import { MAX_SMS_PART_CHARS, clampSmsParts, splitIntoBubbles } from "./gateway.j
  * Twilio rejects a body over 1600 chars outright (error 21617) and delivers
  * NOTHING. `sendToBrand` used to skip splitting entirely whenever `pace: false`
  * was passed — which is exactly what every long-form send uses (the onboarding
- * voice rundown, its afterthought, and the first content plan). A real content
- * plan measures ~2200 chars, so a client finishing setup received silence at
- * the precise moment they decide whether the product works.
+ * voice rundown, and an explicit-ask content plan). A real content plan
+ * measures ~2200 chars, so a client who asked for the plan received silence.
  */
 describe("clampSmsParts", () => {
   it("leaves parts under the ceiling untouched", () => {
@@ -34,7 +36,7 @@ describe("clampSmsParts", () => {
   });
 
   it("splits a realistic onboarding content plan into sendable parts", () => {
-    // Shaped like buildOnboardingPlanSms output: long, multi-line, no single
+    // Shaped like an explicit-ask content plan: long, multi-line, no single
     // line near the limit — the case that previously went out as one body.
     const plan = Array.from(
       { length: 40 },
@@ -46,5 +48,33 @@ describe("clampSmsParts", () => {
 
     expect(parts.length).toBeGreaterThan(1);
     for (const part of parts) expect(part.length).toBeLessThanOrEqual(MAX_SMS_PART_CHARS);
+  });
+});
+
+describe("onboarding wrap SMS", () => {
+  it("delivers rundown.main only — no afterthought or deferred plan SMS", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "./gateway.ts"), "utf8");
+    const wrap = src.slice(src.indexOf("if (finishOnboardingBrandId)"));
+    expect(wrap).toMatch(/await deliver\(brandId, rundown\.main/);
+    expect(wrap).not.toMatch(/rundown\.afterthought/);
+    expect(wrap).not.toMatch(/buildOnboardingPlanSms/);
+    expect(wrap).not.toMatch(/I'll text you in about/);
+    expect(src).not.toMatch(/setTimeout\([\s\S]{0,500}buildOnboardingPlanSms/);
+  });
+});
+
+describe("mediaIdsFromPublicUrls", () => {
+  it("extracts media UUIDs from public preview URLs and skips vCards", async () => {
+    const { mediaIdsFromPublicUrls } = await import("./gateway.js");
+    const a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    expect(
+      mediaIdsFromPublicUrls([
+        `https://web.example/api/media/${a}`,
+        `/api/media/${b}`,
+        "https://web.example/kip.vcf",
+        "https://web.example/api/media/not-a-uuid",
+      ]),
+    ).toEqual([a, b]);
   });
 });

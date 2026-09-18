@@ -15,7 +15,7 @@ import {
   formatBiasForJob,
 } from "./contentJobs.js";
 
-/** Concrete minutes Kip quotes after onboarding — and delivers against. */
+/** Research SLA after onboarding wrap (promised_at). Never quoted in SMS. */
 export const ONBOARDING_PLAN_ETA_MINUTES = 2;
 
 // The niche-research custom plan. A background pass studies the brand's niche +
@@ -163,7 +163,7 @@ export async function proposeContentPlanFromSms(
     /* non-blocking */
   }
 
-  return `${planTextSummary(plan)}\n\nReply "yes" / "accept" to apply pillars, cadence, and format bias — or tell me what to change. Nothing goes live until you accept.`;
+  return `${planTextSummary(plan)}\n\nReply yes to use this plan, or tell me what to tweak. Nothing goes live until you accept.`;
 }
 
 /**
@@ -411,7 +411,7 @@ export function planTextSummary(plan: NichePlan): string {
   const ideas = (plan.starter_ideas ?? []).filter(Boolean).slice(0, 3);
   const ideaBlock =
     ideas.length > 0
-      ? ["", "First carousel / post ideas:", ...ideas.map((idea, i) => `${i + 1}. ${idea}`)]
+      ? ["", "First carousel / post ideas:", ...ideas.map((idea) => `- ${idea}`)]
       : [];
   return [
     `Had a good look at your space — other people in the industry, and what already works for you. Here's the plan I'd run:`,
@@ -486,12 +486,5 @@ export async function buildOnboardingPlanSms(brandId: string): Promise<string | 
   }
 
   await markPlanProposed(row.id, plan);
-  return `${planTextSummary(plan)}\n\nReply "yes" and I'll set it all up, or tell me what to tweak.`;
-}
-
-/** Fresh concrete ETA when research overruns the original promise. */
-export function planOverrunNudge(extraMinutes = 2): string {
-  return (
-    `Still finishing your content plan — about ${extraMinutes} more minutes, then I'll text it through.`
-  );
+  return `${planTextSummary(plan)}\n\nReply yes to use this plan, or tell me what to tweak.`;
 }

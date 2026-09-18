@@ -184,6 +184,6 @@ Current `PricingPlans` bullets are directionally right. Prefer concrete ceilings
 | Per-plan UGC / AI / feature locks | **Not applied** (`PLAN_ENFORCEMENT` stays false) |
 | Ops caps (`AI_WEEKLY_*`, `AI_VIDEO_COST_CAP_*`) | Global safety rails only — same for every brand |
 
-To collect payments, follow [`STRIPE_SETUP.md`](STRIPE_SETUP.md). Sandbox (**Kip ai test** on Preview) first; live **Kip Ai** keys stay off Production until that smoke test is green.
+To collect payments, follow [`STRIPE_SETUP.md`](STRIPE_SETUP.md). Production currently uses **Kip ai test** (`sk_test_`, test cards). Live **Kip Ai** keys stay off until a real-charge cutover.
 
 Until enforcement is on: do **not** branch product behaviour on Pro vs Max (Pro payers currently get the full envelope).

@@ -5,6 +5,7 @@ import {
   looksLikeSingularPostBrief,
   heuristicBriefCompliance,
   reinforceTopicHint,
+  interpretComplianceLlm,
 } from "../briefCompliance.js";
 import { inferKickoffFromUserMessage } from "../kickoffs.js";
 import { planFromOwnerText } from "../creativePlan.js";
@@ -76,5 +77,31 @@ describe("heuristicBriefCompliance", () => {
     const next = reinforceTopicHint(BRIEF, "MUST compare two named tools");
     expect(next).toMatch(/COMPLIANCE FIX/);
     expect(next).toMatch(/named tools/);
+  });
+});
+
+describe("interpretComplianceLlm", () => {
+  it("treats pass:true with praise reasons as a pass", () => {
+    const r = interpretComplianceLlm({
+      pass: true,
+      reasons: [
+        "Caption nails the dry, genuine tone",
+        "Photo prompt specifies a real cafe shot, not stock",
+      ],
+      reinforce_hint: "",
+    });
+    expect(r.pass).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it("treats pass:false with fail notes as a miss", () => {
+    const r = interpretComplianceLlm({
+      pass: false,
+      reasons: ["never named the two tools"],
+      reinforce_hint: "Name Cursor vs Claude with a concrete difference",
+    });
+    expect(r.pass).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/two tools/);
+    expect(r.reinforceHint).toMatch(/Cursor/);
   });
 });

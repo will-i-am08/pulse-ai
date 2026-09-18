@@ -53,6 +53,8 @@ const nextConfig = {
     // **/*.wasm catch-all backstops any other wasm asset in the dep store.
     '/api/webhooks/twilio': tracingIncludes,
     '/api/webhooks/linq': tracingIncludes,
+    // Lab inbound + after() kickoff drain render overlays with satori.
+    '/api/lab/message': tracingIncludes,
     // App routes that transitively pull imaging/satori (live-test: hb.wasm ENOENT
     // on /payment, /app/connections, /c/choose*). Force the wasm into those fns too.
     '/payment': tracingIncludes,

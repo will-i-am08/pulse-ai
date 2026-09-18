@@ -19,6 +19,7 @@ vi.mock("@pulse/shared", async (importOriginal) => {
     ...actual,
     query: vi.fn(async () => []),
     queryOne: vi.fn(async () => null),
+    smsConnectUrl: () => "https://app.example/c/test",
   };
 });
 
@@ -119,7 +120,7 @@ describe("kickOffOnboardingAfterPayment", () => {
     const msg = await kickOffOnboardingAfterPayment(brand.id);
 
     expect(msg.toLowerCase()).toMatch(/hi alex/);
-    expect(msg.toLowerCase()).toMatch(/thanks for jumping in/);
+    expect(msg.toLowerCase()).toMatch(/save my contact/);
     expect(msg.toLowerCase()).toMatch(/contact/);
     expect(msg.toLowerCase()).toMatch(/done/);
     expect(msg).not.toContain("https://app.example/c/test");
@@ -184,6 +185,8 @@ describe("handleAwaitingContact", () => {
     const msg = await handleAwaitingContact(brand, "Done");
     expect(msg.toLowerCase()).toMatch(/one tap/);
     expect(msg).toContain("https://app.example/c/test");
+    expect(msg.match(/One tap/gi)?.length).toBe(1);
+    expect(msg.toLowerCase()).toMatch(/skip/);
     const lastPayload = JSON.stringify(mockedQuery.mock.calls.at(-1)?.[1] ?? []);
     expect(lastPayload).toContain("awaiting_connect");
   });
@@ -256,8 +259,10 @@ describe("handleAwaitingConnect", () => {
 describe("welcomeContactMessage", () => {
   it("greets by name and asks to save the contact", () => {
     const msg = welcomeContactMessage(fakeBrand());
-    expect(msg).toMatch(/Hi Alex, it's Kip, thanks for jumping in!/);
-    expect(msg.toLowerCase()).toMatch(/add me to your contacts/);
-    expect(msg.toLowerCase()).toMatch(/message me done/);
+    expect(msg).toMatch(/Hi Alex, it's Kip/);
+    expect(msg.toLowerCase()).toMatch(/save my contact/);
+    expect(msg.toLowerCase()).toMatch(/reply done/);
+    expect(msg).not.toMatch(/iPhone/);
+    expect(msg).not.toMatch(/Android/);
   });
 });

@@ -8,10 +8,15 @@ import {
   HOLD_RE,
   looksLikeMetaDisconnect,
   looksLikeMetaDisconnectConfirm,
+  looksLikeConnectStatus,
   userAskedForContentWork,
   SCRATCH_OR_TWEAK_ASK_RE,
+  looksLikeCarouselCommand,
+  captionEditMissed,
 } from "../processInbound.js";
 import { looksLikeBoostRequest } from "../boost.js";
+import { looksLikeCalendarAsk } from "../agentTools.js";
+import { looksLikeGreeting } from "../classify.js";
 import {
   looksLikePhotoBackgroundAsk,
   photoBackgroundAskCoversBatch,
@@ -292,6 +297,26 @@ describe("processInbound SQL contracts", () => {
     const guard = src.slice(Math.max(0, wipeIndex - 700), wipeIndex);
     expect(guard).toMatch(/looksLikeMetaDisconnectConfirm/);
   });
+
+  it("discards a pending draft on a bare no before the classifier can approve it", () => {
+    expect(src).toMatch(/pending && message\.body && newMedia\.length === 0 && CANCEL_RE\.test\(message\.body\)/);
+    expect(src).toMatch(/Owner discarded the pending draft/);
+  });
+
+  it("stores our-booking-link-is and competitor intel even with a pending draft", () => {
+    expect(src).toMatch(/!pending \|\| storeOnFile/);
+    expect(src).toMatch(/booking\\s\+link\\s\+is/);
+    expect(src).not.toMatch(/!pending && looksLikeDestinationLinkIntent/);
+    expect(src).not.toMatch(/!pending && COMPETITOR_RE/);
+  });
+
+  it("asks for a clip on a bare make-a-reel instead of animating banked stills", () => {
+    const idx = src.indexOf('looksLikeMakeReelRequest(message.body) && newMedia.length === 0');
+    expect(idx).toBeGreaterThan(-1);
+    const slice = src.slice(idx, idx + 500);
+    expect(slice).toMatch(/Send me the video clip/);
+    expect(slice).not.toMatch(/pickFreshPhotos/);
+  });
 });
 
 // Finding 10 — "tweak it" must not trigger a full plan rebuild unprompted.
@@ -306,4 +331,75 @@ table("SCRATCH_OR_TWEAK_ASK_RE (Kip's last reply)", (s) => SCRATCH_OR_TWEAK_ASK_
     "Here's your post. Reply yes to approve, or tell me a tweak.",
     "I'll keep your posts spread across the week.",
   ],
+});
+
+table("looksLikeCalendarAsk", looksLikeCalendarAsk, {
+  must: [
+    "what's on my calendar this week?",
+    "Whats on my calendar",
+    "check my calendar",
+    "show me the schedule",
+    "this week's posts",
+    "what's coming up this week",
+  ],
+  mustNot: [
+    "make me a carousel this week",
+    "draft me 3 posts",
+    "can you promote our new winter menu this week",
+    "what's on my calendar and make a carousel",
+    "schedule this for Thursday",
+    "hey",
+  ],
+});
+
+table("looksLikeGreeting", looksLikeGreeting, {
+  must: ["hi", "Hey!", "hello", "thanks", "thanks so much", "how's it going", "morning"],
+  mustNot: ["hey can you post this", "thanks for the carousel", "draft me 3 posts", "yes"],
+});
+
+table("looksLikeConnectStatus", looksLikeConnectStatus, {
+  must: [
+    "what platforms am I posting to?",
+    "which platforms am I posting to",
+    "where am I posting",
+    "am I connected",
+    "what's connected",
+    "connection status",
+    "is instagram connected",
+  ],
+  mustNot: [
+    "connect instagram",
+    "draft me 3 posts",
+    "what platforms should I try next year",
+    "boost this",
+  ],
+});
+
+table("looksLikeCarouselCommand", looksLikeCarouselCommand, {
+  must: [
+    "make it a carousel",
+    "turn these into a carousel",
+    "bundle these into a carousel",
+    "bundle these into a carousel, cinematic, text over the top",
+    "as a carousel",
+    "carousel",
+  ],
+  mustNot: [
+    "carousel ideas for next week",
+    "what's a carousel",
+    "make a reel",
+    "put this on my story",
+  ],
+});
+
+describe("captionEditMissed", () => {
+  it("flags a shorter ask that didn't get shorter", () => {
+    const cap = "Morning brew at Lab Cafe — come say hi. Book now, link in bio.";
+    expect(captionEditMissed("shorter, drop the CTA", cap, cap)).toBe(true);
+  });
+
+  it("passes when the caption actually got shorter and lost the CTA", () => {
+    const before = "Morning brew at Lab Cafe — come say hi. Book now, link in bio.";
+    expect(captionEditMissed("shorter, drop the CTA", before, "Morning brew. Come say hi.")).toBe(false);
+  });
 });

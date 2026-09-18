@@ -4,6 +4,7 @@ import {
   brandVoiceProfileSchema,
   emptyBrandVoiceProfile,
   sanitizeChatText,
+  smsConnectUrl,
   type AccountType,
   type Brand,
   type OnboardingState,
@@ -11,10 +12,14 @@ import {
   type VisualProfile,
 } from "@pulse/shared";
 import { callLLM } from "./llm.js";
-import { seedPendingPlan, ONBOARDING_PLAN_ETA_MINUTES } from "./nichePlan.js";
-import { firstNameFromDisplayName, ownerFirstName } from "./persona.js";
-import { connectLinkMessage, isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
+import { seedPendingPlan } from "./nichePlan.js";
+import { brandTalkingIdentity, firstNameFromDisplayName, ownerFirstName } from "./persona.js";
+import { isMetaConnected, isMetaConnectPartial } from "./smsConnect.js";
 import { queueVoiceAnalysis } from "./voice/analyzeVoice.js";
+import { ensurePillars } from "./pillars.js";
+import { voiceRecapSms } from "./voice/recapGrammar.js";
+
+export { voiceRecapSms, formatDontForRecap, normalizeDontForRecap } from "./voice/recapGrammar.js";
 
 // Adaptive, LLM-driven onboarding — a real interview, not a fixed form. The
 // agent reads each answer, reacts, digs deeper, and decides its own next
@@ -60,12 +65,19 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
     });
     const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { niche?: string; exemplars?: string };
     const niche = parsed.niche?.trim();
-    if (niche) await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
-    // Seed niche look pack from niche + brand name (Kive-style studios for Kip).
+    if (niche) {
+      const facts = { ...(brand.facts ?? {}), differentiators: niche };
+      await query("update brands set facts = $1::jsonb where id = $2", [
+        JSON.stringify(facts),
+        brand.id,
+      ]);
+      await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
+    }
+    // Seed niche look pack from what they actually said — never the lab placeholder name.
     try {
       const { resolveLookPackFromNiche } = await import("./lookPacks/index.js");
       const { setBrandLookPack } = await import("./variants.js");
-      const pack = resolveLookPackFromNiche(`${niche ?? ""} ${brand.name}`);
+      const pack = resolveLookPackFromNiche(niche ?? "");
       if (pack.id !== "generic_faithful") {
         await setBrandLookPack(brand.id, pack.id);
       }
@@ -113,7 +125,10 @@ function interviewerSystem(
           "Through a natural back-and-forth, learn what you need to write posts that sound exactly like them: what they do, who they're for, their tone, must-dos and never-dos, examples they love, and their emoji/hashtag style.",
         ];
   return [
-    `You are Kip, "${brand.name}"'s (a ${kind}) own social media manager, getting set up. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
+    `${brandTalkingIdentity(brand)} Getting set up for a ${kind}. You run their socials end to end. Talk and act like a real social media manager on iMessage — warm, sharp, curious, never like a broken onboarding bot.`,
+    brand.facts?.lab
+      ? "LAB CHAT: Brand-new conversation. You have zero memory of any previous lab chat. Never refer to what was in here before, never compare this business to a previous one, never say that's different from what was in here. Never mention Lab Cafe, café, or coffee unless they said it. Never call anything a placeholder to the owner. Your FIRST question is simply what they actually do."
+      : "",
     websiteSummary ? `From their website you already know: ${websiteSummary}` : "",
     priorContent
       ? `From their connected socials / existing posts you already know:\n${priorContent}\nTreat this as prior context. Confirm or refine — do not re-ask things you already know well.`
@@ -125,6 +140,8 @@ function interviewerSystem(
     "You already introduced yourself earlier in this chat. Never re-introduce: no \"kip here\", no \"hey i'm kip\", no \"your new social media manager\". Jump straight into the setup beat.",
     "Make sure you learn their niche clearly, and ask for 1-2 accounts in their space they admire (so you can study what's working before building their plan).",
     "Ask about admired accounts AT MOST ONCE. If they say they're not sure, don't know, can't think of any, or dodge the question, accept that and move on — never re-ask for account examples.",
+    "Ask van vs crew / solo vs team AT MOST ONCE. If they already told you how they're set up, do not re-ask.",
+    "Ask a never-do / what they don't want said AT MOST ONCE. Skip it entirely once you hold niche, audience, and tone.",
     "HOW YOU TALK (absolute rules):",
     "- Sound like their social media manager texting from your phone, not a survey. Natural reactions first, then one clear next beat.",
     "- Your whole message contains AT MOST ONE question mark. One. If you catch yourself writing a second question, delete it and keep only the most important one. Two questions in one message is failure.",
@@ -143,8 +160,8 @@ function interviewerSystem(
     "- After 2 unsure answers (idk / not sure / can't think), do NOT dig further — send that brief immediately.",
     "- If they confirm the brief (yes / yeah / sounds good / done), wrap up immediately. Do not ask another discovery question.",
     type === "personal"
-      ? "- You are done when you hold: niche/vibe, tone, one never-do, content they like (or they've confirmed your brief). Then wrap up. Do not ask about customers, ads, or offers."
-      : "- You are done the moment you hold all six: niche, audience, angle, tone, one never-do, content they like — OR they've confirmed your brief. The instant you have them, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
+      ? "- You are done when you hold: niche/vibe, tone, and content they like (or they've confirmed your brief). Then wrap up. Never-do is optional. Do not ask about customers, ads, or offers."
+      : "- You are done the moment you hold niche, audience, angle, and tone — OR they've confirmed your brief. Never-do and admired accounts are nice-to-haves, not a reason to keep asking. The instant you have the core, wrap up. Do not ask one more question. Do not save anything for later. Extra turns actively make this worse.",
     "- Typical finish: 4 to 7 turns. Never pad to fill turns, never rush. Prefer a brief+confirm over a long interrogation.",
     `- Finish with a line that STARTS EXACTLY with "SETUP_COMPLETE:" then a short warm note (no "talk soon" / goodbye — we keep texting them next). If they said faceless, do NOT ask for photos of their face. Personal face-forward accounts can get a photo ask; business or faceless accounts are told their first ideas are coming.`,
   ]
@@ -465,9 +482,11 @@ function connectLinkIsFresh(answers: Record<string, string>): boolean {
 async function mintConnectLink(
   brand: Brand,
   prev: OnboardingState,
-): Promise<{ link: string; answers: Record<string, string> }> {
+): Promise<{ url: string; sms: string; answers: Record<string, string> }> {
   const answers: Record<string, string> = { ...(prev.answers ?? {}) };
-  const link = connectLinkMessage(brand, "meta");
+  const url = smsConnectUrl(brand.id, "meta");
+  const sms =
+    `One tap to connect Instagram + Facebook — I'll take it from there: ${url} (expires in 15 min). Reply skip if you don't have them yet.`;
   answers.connect_link_sent_at = new Date().toISOString();
   await saveState(brand.id, {
     ...prev,
@@ -477,20 +496,14 @@ async function mintConnectLink(
     transcript: prev.transcript ?? [],
     answers,
   });
-  return { link, answers };
+  return { url, sms, answers };
 }
 
 /** Welcome copy: contact card first — one-tap connect comes after they reply Done. */
 export function welcomeContactMessage(brand: Brand): string {
   const knownName = ownerFirstName(brand);
   const hi = knownName ? `Hi ${knownName}` : "Hi";
-  return (
-    `${hi}, it's Kip, thanks for jumping in!\n\n` +
-    `I sent my contact card — please add me to your contacts so I show up as Kip (not a random number). ` +
-    `On iPhone: tap the contact card / banner at the top and hit Add to Contacts. ` +
-    `On Android: open the contact card attachment and save it.\n\n` +
-    `Just message me Done when you've done that.`
-  );
+  return `${hi}, it's Kip. Save my contact so I show up as Kip, then reply done.`;
 }
 
 /** After contact is saved: one-tap Meta connect. */
@@ -517,16 +530,13 @@ export async function sendConnectLinkAfterContact(brandId: string): Promise<stri
     return beginOnboardingInterview(brand.id);
   }
 
-  const { link } = await mintConnectLink(brand, {
+  const { sms } = await mintConnectLink(brand, {
     ...prev,
     status: "awaiting_connect",
     type,
     answers,
   });
-  return (
-    `One tap to connect Instagram + Facebook — I'll take it from there:\n${link}\n\n` +
-    `(Link expires in 15 minutes. Reply skip if you don't have them yet.)`
-  );
+  return sms;
 }
 
 /** Handle inbound while waiting for the owner to save Kip's contact card. */
@@ -702,13 +712,13 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
             `Open the link I sent, choose the account, and tap Connect this account.`,
         );
       }
-      const { link } = await mintConnectLink(brand, prev);
+      const { url } = await mintConnectLink(brand, prev);
       return acknowledgeThenContinue(
         brand,
         text,
         `Oh — it looks like you didn't finish connecting properly. ` +
           `You signed into Meta, but still need to pick which Facebook Page + Instagram Kip should use. ` +
-          `Here's a fresh link — choose the account and tap Connect this account:\n\n${link}`,
+          `Here's a fresh link — choose the account and tap Connect this account:\n\n${url}`,
       );
     }
     // Never started / never completed — say that plainly (don't imply they "almost" finished).
@@ -731,13 +741,13 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
           `Or reply skip to keep going without them.`,
       );
     }
-    const { link } = await mintConnectLink(brand, { ...prev, answers });
+    const { url } = await mintConnectLink(brand, { ...prev, answers });
     return acknowledgeThenContinue(
       brand,
       text,
       `I still don't see Instagram + Facebook connected. ` +
         `Tap this link and finish all the way through (sign in → pick Page + Instagram → Connect this account), ` +
-        `or reply skip to continue without them:\n\n${link}`,
+        `or reply skip to continue without them:\n\n${url}`,
     );
   }
 
@@ -750,13 +760,8 @@ export async function handleAwaitingConnect(brand: Brand, body: string): Promise
         `or reply skip if you don't have them yet.`,
     );
   }
-  const { link } = await mintConnectLink(brand, prev);
-  return acknowledgeThenContinue(
-    brand,
-    text,
-    `All good — tap the link to connect Instagram + Facebook first (so I can learn from what you already post), ` +
-      `or reply skip if you don't have them yet.\n\n${link}`,
-  );
+  const { sms } = await mintConnectLink(brand, prev);
+  return acknowledgeThenContinue(brand, text, sms);
 }
 
 /**
@@ -982,6 +987,17 @@ export function looksLikeUnsureReply(body: string): boolean {
   );
 }
 
+/** Strong "we're good" — wrap even if the brief SMS hasn't landed yet. */
+export function looksLikeReadyToWrap(body: string): boolean {
+  const t = (body ?? "").trim();
+  if (!t) return false;
+  return (
+    /^(yeah that sounds right|that sounds right|sounds? (good|right)|wrap it|that'?s enough|that'?s it|sound right)\b/i.test(
+      t,
+    ) || /\b(wrap it up|that'?s enough, wrap)\b/i.test(t)
+  );
+}
+
 function countUnsureUserReplies(transcript: OnboardingTurnMsg[]): number {
   return transcript.filter((t) => t.role === "user" && looksLikeUnsureReply(t.content)).length;
 }
@@ -1007,6 +1023,28 @@ function alreadyAskedAdmiredAccounts(transcript: OnboardingTurnMsg[]): boolean {
   );
 }
 
+/** True when Kip already asked van vs crew / solo vs team. */
+function alreadyAskedStaffing(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(van|crew|just you|on your own|solo|with a (?:mate|team|crew)|one[- ](?:man|person)|how (?:do you|are you) (?:set up|staffed|run it)|run (?:this|it) (?:solo|alone|yourself))\b/i.test(
+        t.content,
+      ),
+  );
+}
+
+/** True when Kip already asked what they don't want said. */
+function alreadyAskedNeverDos(transcript: OnboardingTurnMsg[]): boolean {
+  return transcript.some(
+    (t) =>
+      t.role === "assistant" &&
+      /\b(don'?t want (?:said|posted|in (?:the )?captions?)|never say|never-do|hard no|off.?limits|what (?:shouldn'?t|not to) (?:say|post)|words you (?:hate|avoid)|keep out of (?:the )?captions?)\b/i.test(
+        t.content,
+      ),
+  );
+}
+
 export async function onboardingNext(
   brand: Brand,
   body: string,
@@ -1027,22 +1065,33 @@ export async function onboardingNext(
         "(You already asked about admired/example accounts earlier. Do NOT ask again — even if they said they don't know. Move on to something else you still need, or wrap up if you have enough.)",
     });
   }
-
-  const unsureCount = countUnsureUserReplies(transcript);
-  const briefSent = alreadySentBrief(transcript);
-  // They confirmed a brief — stop interviewing and wrap.
-  if (
-    briefSent &&
-    /^(y+|yes|yeah|yep|yup|correct|sounds? good|perfect|right|done|that's (it|right)|thats (it|right)|good)\b/i.test(
-      body.trim(),
-    )
-  ) {
+  if (alreadyAskedStaffing(transcript)) {
     messages.push({
       role: "user",
       content:
-        "(They just confirmed your brief. Do NOT ask another question. Wrap up NOW with SETUP_COMPLETE and a warm sign-off.)",
+        "(You already asked van vs crew / solo vs team. Do NOT ask again. Wrap up if you hold niche, audience, and tone.)",
     });
-  } else if (!briefSent && (unsureCount >= 2 || turns >= 5)) {
+  }
+  if (alreadyAskedNeverDos(transcript)) {
+    messages.push({
+      role: "user",
+      content:
+        "(You already asked a never-do / what they don't want said. Do NOT ask again. Wrap up now if you hold the core.)",
+    });
+  }
+
+  const unsureCount = countUnsureUserReplies(transcript);
+  const briefSent = alreadySentBrief(transcript);
+  const confirm =
+    /^(y+|yes|yeah|yep|yup|correct|sounds? good|perfect|right|done|that's (it|right)|thats (it|right)|good)\b/i.test(
+      body.trim(),
+    );
+  // They confirmed a brief, or they clearly want to stop interviewing.
+  if ((briefSent && confirm) || (turns >= 3 && looksLikeReadyToWrap(body))) {
+    transcript.push({ role: "assistant", content: "SETUP_COMPLETE:" });
+    await saveState(brand.id, { status: "wrapping_up", type, turns, transcript, answers });
+    return { reply: WRAP_ACK, complete: true };
+  } else if (!briefSent && (unsureCount >= 2 || turns >= 4)) {
     // Enough signal (or too many idks) — force a plain-English brief + single confirm.
     messages.push({
       role: "user",
@@ -1084,7 +1133,7 @@ export async function onboardingTurn(brand: Brand, body: string): Promise<{ repl
   const step = await onboardingNext(brand, body);
   if (!step.complete) return { reply: step.reply, done: false };
   const rundown = await finishOnboarding(brand.id);
-  return { reply: `${step.reply}\n\n${rundown.main}\n\n${rundown.afterthought}`, done: true };
+  return { reply: `${step.reply}\n\n${rundown.main}`, done: true };
 }
 
 /** Next step tailored to the account: personal brands send a photo, everyone else gets ideas first. */
@@ -1093,26 +1142,23 @@ function nextStepFor(type: AccountType, transcript: OnboardingTurnMsg[]): string
   if (type === "personal" && !faceless) {
     return "Send me a photo anytime and we'll get rolling.";
   }
-  return "Anything you want to add before I start, just say.";
+  return "If I missed something, just text me.";
 }
 
 /**
- * SMS messages delivered after WRAP_ACK once the voice compile finishes.
- * Kept as separate bubbles on purpose:
- *   1. main — voice recap + next step (no goodbye / "talk soon")
- *   2. afterthought — plan tease as a human "oh and one more thing" beat,
- *      including the concrete ETA promise in the SAME bubble
+ * SMS delivered after WRAP_ACK once the voice compile finishes.
+ * Voice recap + next step only (no goodbye / "talk soon"). Plan research is
+ * seeded silently — never an ETA tease, overrun, or auto-dumped plan SMS.
  */
 export type OnboardingRundown = {
   main: string;
-  afterthought: string;
 };
 
 /**
  * Heavy wrap-up: compile the voice profile, capture name/niche, seed the plan
- * research, and return the rundown as TWO SMS messages (main + afterthought).
- * Runs AFTER the instant WRAP_ACK. Does not text the parked LLM sign-off —
- * those often say "talk soon" right before we keep talking.
+ * research silently, and return the voice rundown SMS. Runs AFTER the instant
+ * WRAP_ACK. Does not text the parked LLM sign-off — those often say "talk soon"
+ * right before we keep talking.
  */
 export async function finishOnboarding(brandId: string): Promise<OnboardingRundown> {
   const brand = await queryOne<Brand>("select * from brands where id = $1", [brandId]);
@@ -1154,14 +1200,8 @@ export async function finishOnboarding(brandId: string): Promise<OnboardingRundo
     .then(({ seedOnboardingNicheExemplars }) => seedOnboardingNicheExemplars(brand.id))
     .catch(() => {});
 
-  const afterthought =
-    type === "personal"
-      ? `One more thing — I'm putting together a light niche plan and first carousel ideas for you. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`
-      : `One more thing — I'm studying your space to build a content plan and first carousel ideas. I'll text you in about ${ONBOARDING_PLAN_ETA_MINUTES} minutes.`;
-
   return {
     main: `${recap}\n\n${nextStepFor(type, transcript)}`,
-    afterthought,
   };
 }
 
@@ -1224,12 +1264,8 @@ async function compileProfile(
     [brand.id, voiceNotes || null],
   );
 
-  const tone = profile.tone.length ? profile.tone.slice(0, 3).join(", ") : "friendly and direct";
-  const avoid = profile.donts.length ? profile.donts.slice(0, 2).join("; ").toLowerCase() : null;
-  const avoidBit = avoid ? ` I'll steer clear of ${avoid}.` : "";
-  return `Here's how I'm reading your voice: ${tone}.${avoidBit} You can tweak any of this on your dashboard anytime.`;
+  return voiceRecapSms(profile.tone, profile.donts);
 }
-
 
 /** Soft-restart the interview for any brand: fresh transcript via startOnboarding. */
 export async function restartOnboarding(brandId: string): Promise<string> {
@@ -1312,6 +1348,69 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
     await query(`delete from messages where brand_id = $1`, [brandId]);
   }
 
+  // A queued draft_posts kickoff from the archived chat would drain into the
+  // new interview (lab messages schedule kickoff drain). Fail those jobs.
+  await query(
+    `update kip_kickoffs
+        set status = 'failed',
+            error = left(concat_ws('; ', nullif(error, ''), 'lab chat restart'), 500),
+            completed_at = now(),
+            updated_at = now()
+      where brand_id = $1
+        and status in ('queued', 'running')`,
+    [brandId],
+  );
+
+  // Pending / scheduled drafts belong to the archived chat. Leave them live
+  // and a calendar ask in the new interview recites yesterday's cafe posts.
+  await query(
+    `update posts
+        set status = 'rejected', updated_at = now()
+      where brand_id = $1
+        and status in ('pending_approval', 'draft', 'approved', 'scheduled')`,
+    [brandId],
+  );
+
+  // Parked content-plan research from the last chat would land mid-interview.
+  await query(
+    `update content_plans
+        set status = 'failed', updated_at = now()
+      where brand_id = $1
+        and status in ('pending', 'proposed', 'accepted')`,
+    [brandId],
+  );
+
+  // Previous chat's look, memory, and strategy must not leak into the new one.
+  await query(`delete from design_memory where brand_id = $1`, [brandId]);
+  await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
+  await query(`delete from research_snapshots where brand_id = $1`, [brandId]);
+  await query(`delete from pillars where brand_id = $1`, [brandId]);
+  await ensurePillars(brandId).catch(() => {});
+
+  // New chat, new interview — don't greet yesterday's owner, recap a previous
+  // voice, or keep a café look pack / niche from Lab Cafe.
+  const facts = { ...(brand.facts ?? {}) };
+  delete facts.owner_name;
+  delete facts.look_pack;
+  delete facts.differentiators;
+  delete facts.pending_destination_link;
+  delete facts.kip_preferences;
+  delete facts.kip_decisions;
+  delete facts.open_loops;
+  await query(
+    `update brands
+        set brand_voice_profile = $2::jsonb,
+            voice_guide_md = null,
+            facts = $3::jsonb,
+            visual = '{}'::jsonb,
+            icp = '{}'::jsonb,
+            pain_points = '{}'::jsonb,
+            positioning = '{}'::jsonb,
+            offers = '{}'::jsonb
+      where id = $1`,
+    [brandId, JSON.stringify(emptyBrandVoiceProfile()), JSON.stringify(facts)],
+  );
+
   const greeting = await restartOnboarding(brandId);
   return { greeting, archivedChatId };
 }
@@ -1344,14 +1443,26 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   await query(`delete from approval_log where brand_id = $1`, [brandId]);
   await query(`delete from posts where brand_id = $1`, [brandId]);
   await query(`delete from messages where brand_id = $1`, [brandId]);
+  await query(`delete from kip_kickoffs where brand_id = $1`, [brandId]);
   await query(
     `delete from media_blobs where media_id in (select id from media_assets where brand_id = $1)`,
     [brandId],
   );
   await query(`delete from media_assets where brand_id = $1`, [brandId]);
   await query(`delete from strategy_notes where brand_id = $1`, [brandId]);
+  await query(`delete from design_memory where brand_id = $1`, [brandId]);
+  await query(`delete from research_snapshots where brand_id = $1`, [brandId]);
+  await query(`delete from pillars where brand_id = $1`, [brandId]);
+  await ensurePillars(brandId).catch(() => {});
 
   const facts = { ...(brand.facts ?? {}), lab: true as const };
+  delete facts.owner_name;
+  delete facts.look_pack;
+  delete facts.differentiators;
+  delete facts.pending_destination_link;
+  delete facts.kip_preferences;
+  delete facts.kip_decisions;
+  delete facts.open_loops;
   await query(
     `update brands
         set onboarding_state = $2::jsonb,
@@ -1372,5 +1483,4 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
       JSON.stringify(facts),
     ],
   );
-  await query(`delete from design_memory where brand_id = $1`, [brandId]);
 }

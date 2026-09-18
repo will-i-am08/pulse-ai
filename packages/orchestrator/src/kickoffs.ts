@@ -1,6 +1,7 @@
 import {
   query,
   queryOne,
+  publicMediaUrl,
   type Brand,
   type KipKickoff,
   type KipKickoffKind,
@@ -28,7 +29,10 @@ import {
   withPreferredVisuals,
   type VisualMode,
 } from "./visualMode.js";
-import { mapWithConcurrency, DRAFT_CONCURRENCY } from "./concurrency.js";
+import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
+import { looksLikeMakeReelRequest } from "./aiVideo.js";
+import { ownerInboundAfter } from "./conversationContext.js";
+import { formatScheduledSlot } from "./smsTime.js";
 
 
 /**
@@ -63,6 +67,8 @@ export type KickoffDrainResult = {
   kickoffFailure?: string;
   /** Repeated-failure escalation for OPERATOR_PHONE (worker sends it). */
   operatorAlert?: string;
+  /** Skip this SMS when the owner already texted after this time. */
+  skipIfInboundAfter?: string | Date;
 };
 
 /** Optional per-draft delivery hook — SMS as soon as each draft is ready. */
@@ -72,6 +78,16 @@ export type KickoffDrainOpts = {
   deliver?: KickoffDeliver;
   /** Parallel draft slots (default DRAFT_CONCURRENCY). */
   concurrency?: number;
+  /**
+   * When set, only reclaim/claim kickoffs for this brand. Lab drain MUST pass
+   * this so a lab request cannot SMS a real brand (or vice versa).
+   */
+  brandId?: string;
+  /**
+   * Skip failure SMS if the owner texted after this timestamp (look-pick,
+   * a new ask). Still records the kickoff as failed.
+   */
+  interruptAfter?: string | Date;
 };
 
 const COMMIT_RE =
@@ -129,14 +145,29 @@ const NO_PHOTOS_RE =
  * "do something inspirational", bare format-menu replies ("a post" / "carousel").
  */
 const DRAFT_POSTS_RE =
-  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?(posts?|carr?ousels?|stories|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|stories|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|stories|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
+  /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?([\w'-]+\s+){0,4}(posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?([\w'-]+\s+){0,2}posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?|slides?|cards?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?|slides?|cards?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
 
-/** Owner said "with this photo" / "use this" — expects attached media, not generated art. */
+/**
+ * Owner said "with this photo" / "use this" — expects attached media, not generated art.
+ * Prefer `this` over bare `the image` so overlay edits ("no text on the image")
+ * do not look like a missing MMS.
+ */
 export const REFERS_TO_ATTACHED_MEDIA_RE =
-  /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\buse\s+th(is|ese)\b/i;
+  /\b((with|using|from)\s+)?this\s+(photo|pic|picture|image|shot|video)\b|\b(the\s+)?(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\bthe\s+(attached\s+)?(photo|pic|picture|image|shot|video)\s+(i\s+(just\s+)?sent|you\s+(just\s+)?(got|received)|attached)\b|\buse\s+th(is|ese)\b/i;
+
+/** "Generate the photo" is T2I, not a missing MMS of "the photo". */
+const GENERATED_MEDIA_ASK_RE =
+  /\b(generate|source|invent|create|make|ai[- ]?(generated|made|create)?)\s+(the\s+|a\s+|some\s+|me\s+)?(photo|pic|picture|image|shot|visual)s?\b/i;
+
+/** Overlay / caption edits about text on an image — not "I attached a photo". */
+const OVERLAY_TEXT_ON_IMAGE_RE =
+  /\b(no\s+)?text\s+on\s+(the\s+|this\s+)?(photo|pic|picture|image|shot)\b|\bon[- ]image\s+text\b|\b(remove|drop|clear|without)\s+(the\s+)?(text|words|caption)\s+on\b/i;
 
 export function refersToAttachedMedia(body: string | null | undefined): boolean {
-  return Boolean(body?.trim() && REFERS_TO_ATTACHED_MEDIA_RE.test(body));
+  if (!body?.trim()) return false;
+  if (GENERATED_MEDIA_ASK_RE.test(body)) return false;
+  if (OVERLAY_TEXT_ON_IMAGE_RE.test(body)) return false;
+  return REFERS_TO_ATTACHED_MEDIA_RE.test(body);
 }
 
 /** Creative "use this / inspirational" briefs (with or without an attached photo). */
@@ -165,7 +196,7 @@ export function looksLikeDraftPreviewOutbound(body: string | null | undefined): 
   // Low-confidence clarify reuses "Reply yes to approve" without ever showing a draft.
   if (/Not quite sure what you'?d like/i.test(body)) return false;
   return (
-    /Reply\s+["']yes["']\s+to\s+approve/i.test(body) ||
+    /Reply\s+["']?yes["']?\s+to\s+(approve|send it)/i.test(body) ||
     /\bDraft ready\b/i.test(body) ||
     /\bProposed for\b/i.test(body) ||
     /\bWant me to post it\b/i.test(body) ||
@@ -179,7 +210,7 @@ export function looksLikeDraftPreviewOutbound(body: string | null | undefined): 
  * ask to use their own shots — default to generating / sourcing photos.
  */
 const PHOTO_OR_CAROUSEL_DRAFT_RE =
-  /\b(carr?ousels?).{0,80}\b(photos?|pictures?|pics?|imagery|cinematic|stock|generated|text)\b|\b((cinematic|business|stock|generated)\s+)?(photos?|pictures?).{0,60}\b(carr?ousel|text (over|on|overlay|on top))\b|\b(generate|source|find|get)\s+(the\s+|some\s+|me\s+)?(photos?|pictures?|pics?|imagery|visuals?)\b/i;
+  /\b(carr?ousels?).{0,80}\b(photos?|pictures?|pics?|imagery|cinematic|stock|generated|text)\b|\b((cinematic|business|stock|generated)\s+)?(photos?|pictures?).{0,60}\b(carr?ousel|text (over|on|overlay|on top))\b|\b(generate|source|find|get)\s+(the\s+|a\s+|an\s+|some\s+|me\s+)?(photos?|pictures?|pics?|imagery|visuals?)\b/i;
 
 const TREND_RE =
   /\b(trend(ing)?|what'?s (hot|new)|newsjack|timely|in the news|cultural moment)\b/i;
@@ -188,12 +219,7 @@ const COMPETITOR_MOVE_RE =
   /\b(competitor|rival).{0,40}\b(posted|launched|running|doing|moved|dropped)\b|\bdraft .{0,30}\b(response|reply|counter)\b.{0,30}\b(competitor|rival)\b/i;
 
 function formatSlot(d: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
+  return formatScheduledSlot(d);
 }
 
 function clipCaption(caption: string | null | undefined, max = 140): string {
@@ -203,16 +229,40 @@ function clipCaption(caption: string | null | undefined, max = 140): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
+function draftOfferSms(
+  caption: string | null | undefined,
+  when: string,
+  prefix: string,
+  slideNote = "",
+): string {
+  return `${prefix}${slideNote} for ${when}:\n\n${clipCaption(caption, 180)}\n\nReply yes to send it, or tell me a change.`;
+}
+
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
 function inferDraftCount(t: string, wantsCarousel: boolean): number {
-  const explicit = /\b(\d+)\b/.exec(t);
-  if (explicit) {
-    const n = Number(explicit[1]);
-    if (Number.isFinite(n)) return Math.min(5, Math.max(1, n));
+  const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|photos?|pictures?|pics?`;
+  const qtyMatch = new RegExp(String.raw`\b(\d+)\s+([\w'-]+\s+){0,4}(?:${piece})\b`, "i").exec(t);
+  const singularMatch = new RegExp(
+    String.raw`\b(a|an|one|single)\s+(?!(?:few|couple|bunch)\b)([\w'-]+\s+){0,4}(?:${piece})\b`,
+    "i",
+  ).exec(t);
+  const bareDraftNum = /\b(?:draft|make|create|write)\s+(?:me\s+)?(\d+)\b/i.exec(t);
+  const clampCount = (n: number) => Math.min(5, Math.max(1, n));
+  // When both fire ("3 posts and a carousel" vs "a post about 2 carousels"),
+  // the earlier phrase in the ask wins.
+  if (qtyMatch && Number.isFinite(Number(qtyMatch[1]))) {
+    if (!singularMatch || qtyMatch.index <= singularMatch.index) {
+      return clampCount(Number(qtyMatch[1]));
+    }
+  }
+  if (bareDraftNum && !singularMatch && Number.isFinite(Number(bareDraftNum[1]))) {
+    return clampCount(Number(bareDraftNum[1]));
   }
   if (wantsCarousel) return 1;
-  if (/\b(a|an|one|single)\s+(post|carr?ousel)\b/i.test(t)) return 1;
-  if (/\b(post|carr?ousel)\s+(comparing|about|with|on|for)\b/i.test(t)) return 1;
+  // Singular article + optional modifiers + a creative-piece noun (not only "a post").
+  // Do not treat "a few/couple/bunch posts" as singular — those stay at the default 2.
+  if (singularMatch) return 1;
+  if (new RegExp(String.raw`\b(?:${piece})\s+(comparing|about|with|on|for)\b`, "i").test(t)) return 1;
   return 2;
 }
 
@@ -230,10 +280,30 @@ function draftPostsPayloadFromText(t: string): Record<string, unknown> {
   };
 }
 
+/**
+ * True when inbound SMS is known-slow content work (draft / images / first batch).
+ * Used by the gateway to send a filler only for those jobs — never calendar,
+ * questions, or small talk.
+ */
+export function looksLikeSlowSmsWork(body: string | null | undefined): boolean {
+  return looksLikeKickoffRequest(body);
+}
+
 /** Owner is asking Kip to go do content work (not just chat about it). */
+/**
+ * Bare "make a reel" (no posts/carousel in the same ask) is handled by the
+ * inbound reel path: ask for a clip. It must not enqueue photo feed drafts.
+ */
+export function isReelOnlyAsk(body: string | null | undefined): boolean {
+  const t = (body ?? "").trim();
+  if (!t || !looksLikeMakeReelRequest(t)) return false;
+  return !/\b(posts?|carr?ousels?)\b/i.test(t);
+}
+
 export function looksLikeKickoffRequest(body: string | null | undefined): boolean {
   if (!body?.trim()) return false;
   const t = body.trim();
+  if (isReelOnlyAsk(t)) return false;
   if (FIRST_BATCH_RE.test(t)) return true;
   if (NO_PHOTOS_RE.test(t) && (STOCK_OR_GENERATED_RE.test(t) || /\b(just|please|can you|could you)\b/i.test(t))) {
     return true;
@@ -243,6 +313,7 @@ export function looksLikeKickoffRequest(body: string | null | undefined): boolea
   if (looksLikeUseThisBrief(t)) return true;
   if (DRAFT_POSTS_RE.test(t)) return true;
   if (PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) return true;
+  if (GENERATED_MEDIA_ASK_RE.test(t)) return true;
   if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) return true;
   if (COMPETITOR_MOVE_RE.test(t)) return true;
   return false;
@@ -254,6 +325,7 @@ export function inferKickoffFromUserMessage(
 ): { kind: KipKickoffKind; payload: Record<string, unknown>; ackSms: string } | null {
   const t = body.trim();
   if (!t) return null;
+  if (isReelOnlyAsk(t)) return null;
 
   if (TREND_RE.test(t) && /\b(draft|make|post|carr?ousel)\b/i.test(t)) {
     return {
@@ -296,7 +368,8 @@ export function inferKickoffFromUserMessage(
     looksLikeFormatMenuReply(t) ||
     looksLikeUseThisBrief(t) ||
     DRAFT_POSTS_RE.test(t) ||
-    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)
+    PHOTO_OR_CAROUSEL_DRAFT_RE.test(t) ||
+    GENERATED_MEDIA_ASK_RE.test(t)
   ) {
     const payload = draftPostsPayloadFromText(t);
     // Bare "A post" / "carousel" menu replies → single piece of that format.
@@ -343,6 +416,9 @@ export function inferKickoffFromKipCommit(
   if (!COMMIT_RE.test(kipReply) || !COMMIT_WORK_RE.test(kipReply)) return null;
   // ...and the request has to come from the client, never from Kip's own reply.
   if (!clientAskedForContentWork(userMessage)) return null;
+  // Asking for a reel without a clip is not a feed-draft job. Kip saying
+  // "I'll draft the caption" after "make a reel" used to enqueue two photo posts.
+  if (isReelOnlyAsk(userMessage)) return null;
   const blob = `${userMessage ?? ""}\n${kipReply}`;
   if (!CONTENT_WORK_RE.test(blob) && !TREND_RE.test(blob) && !COMPETITOR_MOVE_RE.test(blob)) {
     return null;
@@ -601,10 +677,12 @@ async function markPostOffered(postId: string): Promise<void> {
 }
 
 /**
- * Running kickoffs older than this are treated as abandoned (serverless kill /
- * worker crash after claim). Must exceed worst-case legitimate photo batches.
+ * Running kickoffs older than this (with no heartbeat) are abandoned —
+ * serverless kill / worker crash after claim. Was 20m; that left owners on
+ * "Already on that…" after Vercel `after()` 60s kills mid photo-carousel.
+ * 5m still clears a healthy drain + heartbeat cadence (10s).
  */
-export const STALE_RUNNING_KICKOFF_MS = 20 * 60 * 1000;
+export const STALE_RUNNING_KICKOFF_MS = 5 * 60 * 1000;
 
 const STALE_FAIL_SMS =
   "That draft run got stuck on my side and I had to stop it — say the word and I'll retry.";
@@ -618,21 +696,36 @@ export async function reclaimStaleKickoffs(opts?: {
   now?: Date;
   staleMs?: number;
   deliver?: KickoffDeliver;
+  brandId?: string;
 }): Promise<KickoffDrainResult[]> {
   const staleMs = opts?.staleMs ?? STALE_RUNNING_KICKOFF_MS;
   const cutoff = new Date((opts?.now ?? new Date()).getTime() - staleMs).toISOString();
-  const rows = await query<KipKickoff>(
-    `update kip_kickoffs
-        set status = 'failed',
-            error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
-            completed_at = now(),
-            updated_at = now()
-      where status = 'running'
-        and started_at is not null
-        and greatest(started_at, updated_at) < $1::timestamptz
-      returning *`,
-    [cutoff],
-  );
+  const rows = opts?.brandId
+    ? await query<KipKickoff>(
+        `update kip_kickoffs
+            set status = 'failed',
+                error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
+                completed_at = now(),
+                updated_at = now()
+          where status = 'running'
+            and brand_id = $2
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning *`,
+        [cutoff, opts.brandId],
+      )
+    : await query<KipKickoff>(
+        `update kip_kickoffs
+            set status = 'failed',
+                error = left(concat_ws('; ', nullif(error, ''), 'stale: abandoned running kickoff'), 500),
+                completed_at = now(),
+                updated_at = now()
+          where status = 'running'
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning *`,
+        [cutoff],
+      );
   if (!rows.length) return [];
   console.warn("[kickoffs] reclaimed stale running kickoffs", {
     count: rows.length,
@@ -641,8 +734,9 @@ export async function reclaimStaleKickoffs(opts?: {
   const results: KickoffDrainResult[] = rows.map((r) => ({
     brandId: r.brand_id,
     sms: STALE_FAIL_SMS,
+    skipIfInboundAfter: r.created_at,
   }));
-  return deliverUnstreamed(results, opts?.deliver);
+  return deliverUnstreamed(results, opts);
 }
 
 async function draftGeneratedPiece(
@@ -717,6 +811,115 @@ function isDraftPiece(
   return Boolean(piece && typeof piece === "object" && "post" in piece && "kindLabel" in piece);
 }
 
+type GeneratedPiece = Awaited<ReturnType<typeof draftGeneratedPiece>>;
+type SlotOutcome = KickoffDrainResult | (KickoffDrainResult & { __qaOnly: true }) | null;
+type PendingDraft = { work: Promise<GeneratedPiece>; index: number };
+
+function isOfferedDraft(
+  r: SlotOutcome,
+): r is KickoffDrainResult {
+  return r != null && !("__qaOnly" in r && r.__qaOnly);
+}
+
+function qaOnlyDraft(
+  r: SlotOutcome,
+): r is KickoffDrainResult & { __qaOnly: true } {
+  return r != null && "__qaOnly" in r && Boolean(r.__qaOnly);
+}
+
+async function slotOutcomeFromPiece(
+  brand: Brand,
+  piece: GeneratedPiece,
+  makeResult: (piece: { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }) => KickoffDrainResult,
+  opts?: KickoffDrainOpts,
+): Promise<SlotOutcome> {
+  if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
+  if (!isDraftPiece(piece)) return null;
+  const result = makeResult(piece);
+  if (opts?.deliver) {
+    try {
+      await opts.deliver(result);
+      await markPostOffered(piece.post.id);
+    } catch (err) {
+      console.error("kickoff: deliver failed", err);
+    }
+  }
+  return result;
+}
+
+/** Await slot work that raced past the deadline so we never fail-SMS while it still writes. */
+async function awaitPendingDraftWork(
+  pending: PendingDraft[],
+  mapPiece: (piece: GeneratedPiece, index: number) => Promise<SlotOutcome>,
+  heartbeat?: () => Promise<void>,
+): Promise<SlotOutcome[]> {
+  if (pending.length === 0) return [];
+  return Promise.all(
+    pending.map(async ({ work, index }) => {
+      try {
+        const piece = await work;
+        return await mapPiece(piece, index);
+      } catch (err) {
+        console.error("kickoff: pending slot failed", err);
+        return null;
+      } finally {
+        await heartbeat?.();
+      }
+    }),
+  );
+}
+
+/** Last-resort: offer posts this drain already wrote even if the slot promise didn't map. */
+async function recoverRecentKickoffPosts(
+  brand: Brand,
+  since: Date,
+  opts: KickoffDrainOpts | undefined,
+  prefixFor: (n: number, count: number) => string,
+): Promise<KickoffDrainResult[]> {
+  const posts = await query<Post>(
+    `select * from posts
+      where brand_id = $1
+        and status in ('pending_approval', 'draft')
+        and created_at >= $2::timestamptz
+        and created_at > now() - interval '10 minutes'
+        and coalesce(cardinality(media_ids), 0) > 0
+        and coalesce(style_meta->>'variant_pick','') <> 'true'
+      order by created_at asc
+      limit 5`,
+    [brand.id, since.toISOString()],
+  );
+  if (!posts.length) return [];
+  const out: KickoffDrainResult[] = [];
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i]!;
+    const mediaIds = post.media_ids ?? [];
+    if (!mediaIds.length) continue;
+    const when = post.scheduled_at ? formatSlot(new Date(post.scheduled_at)) : "soon";
+    const slideN = mediaIds.length;
+    const slideNote =
+      (post.format === "carousel" || slideN > 1) && slideN > 1
+        ? ` (${slideN} slides — swipe)`
+        : "";
+    const mediaUrl = mediaIds[0] ? publicMediaUrl(mediaIds[0]!) : undefined;
+    const result: KickoffDrainResult = {
+      brandId: brand.id,
+      sms: draftOfferSms(post.caption, when, prefixFor(i + 1, posts.length), slideNote),
+      mediaUrl,
+      mediaUrls: mediaIds.map((id) => publicMediaUrl(id)),
+    };
+    if (opts?.deliver) {
+      try {
+        await opts.deliver(result);
+        await markPostOffered(post.id);
+      } catch (err) {
+        console.error("recoverRecentKickoffPosts: deliver failed", err);
+      }
+    }
+    out.push(result);
+  }
+  return out;
+}
+
 /** After hard Design QA failure, queue one more photo-carousel attempt (capped). */
 async function maybeEnqueueQaSelfHeal(
   brand: Brand,
@@ -754,12 +957,22 @@ async function maybeEnqueueQaSelfHeal(
 /** SMS results that never went through the mid-batch stream (total failure / early exit). */
 export async function deliverUnstreamed(
   results: KickoffDrainResult[],
-  deliver?: KickoffDrainOpts["deliver"],
+  deliverOrOpts?: KickoffDeliver | KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
-  if (!deliver) return results;
+  const opts: KickoffDrainOpts =
+    typeof deliverOrOpts === "function" ? { deliver: deliverOrOpts } : (deliverOrOpts ?? {});
+  if (!opts.deliver) return results;
   for (const r of results) {
+    const since = r.skipIfInboundAfter ?? opts.interruptAfter;
+    if (since) {
+      try {
+        if (await ownerInboundAfter(r.brandId, since)) continue;
+      } catch (err) {
+        console.error("kickoff: interrupt check failed", err);
+      }
+    }
     try {
-      await deliver(r);
+      await opts.deliver(r);
     } catch (err) {
       console.error("kickoff: deliver failed for unstreamed SMS", err);
     }
@@ -783,7 +996,7 @@ async function runFirstBatch(
           sms: "Tried to draft your first batch but you don't have pillars set yet — say \"rebuild my plan\" and I'll set those up first.",
         },
       ],
-      opts?.deliver,
+      opts,
     );
   }
   const visuals = resolveVisualMode(brand, payload);
@@ -791,6 +1004,31 @@ async function runFirstBatch(
   const kinds: TypedCarouselKind[] = ["tip", "steps", "before_after", "menu_offer"];
   const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
   const slots = Array.from({ length: count }, (_, i) => i);
+  const drainStarted = new Date();
+  const pending: PendingDraft[] = [];
+
+  const mapPiece = (piece: GeneratedPiece, i: number) =>
+    slotOutcomeFromPiece(
+      brand,
+      piece,
+      (p) => {
+        const when = p.post.scheduled_at ? formatSlot(new Date(p.post.scheduled_at)) : "soon";
+        const n = i + 1;
+        const slideN = p.mediaUrls?.length ?? (p.post.media_ids?.length ?? 0);
+        const slideNote =
+          p.kindLabel.includes("carousel") && slideN > 1 ? ` (${slideN} slides — swipe)` : "";
+        return {
+          brandId: brand.id,
+          sms:
+            n === 1
+              ? draftOfferSms(p.post.caption, when, `First batch, ${n}/${count}`, slideNote)
+              : draftOfferSms(p.post.caption, when, `Batch ${n}/${count}`, slideNote),
+          mediaUrl: p.mediaUrl,
+          mediaUrls: p.mediaUrls,
+        };
+      },
+      opts,
+    );
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     // One bad slot must not abort the batch. mapWithConcurrency is Promise.all
@@ -801,7 +1039,7 @@ async function runFirstBatch(
     try {
       const pillar = pillars[i % pillars.length]!;
       const kind = kinds[i % kinds.length]!;
-      const piece = await draftGeneratedPiece(
+      const work = draftGeneratedPiece(
         brand,
         pillar,
         "carousel",
@@ -810,40 +1048,13 @@ async function runFirstBatch(
         String(payload.topicHint ?? ""),
         { forceFresh: payload.forceFresh === true },
       );
-      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-      if (!isDraftPiece(piece)) return null;
-      const when = piece.post.scheduled_at
-        ? formatSlot(new Date(piece.post.scheduled_at))
-        : "soon";
-      const n = i + 1;
-      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-      const slideNote =
-        piece.kindLabel.includes("carousel") && slideN > 1
-          ? ` (${slideN} slides — swipe)`
-          : "";
-      const result: KickoffDrainResult = {
-        brandId: brand.id,
-        sms:
-          n === 1
-            ? `First batch, ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`
-            : `Batch ${n}/${count} — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-        mediaUrl: piece.mediaUrl,
-        mediaUrls: piece.mediaUrls,
-      };
-      if (opts?.deliver) {
-        try {
-          await opts.deliver(result);
-          // Stamp AFTER a successful send: this records when the draft was put in
-          // front of the client, which is how a bare "yes" resolves which draft it
-          // means. Slots are drafted concurrently, so created_at order does not
-          // match SMS delivery order — without this, "yes" to batch 1/3 approves
-          // whichever row happened to insert last.
-          await markPostOffered(piece.post.id);
-        } catch (err) {
-          console.error(`runFirstBatch: deliver failed for slot ${n}`, err);
-        }
+      const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
+      if (!raced.ok) {
+        pending.push({ work, index: i });
+        work.catch(() => {});
+        return null;
       }
-      return result;
+      return await mapPiece(raced.value, i);
     } catch (err) {
       console.error(`runFirstBatch: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
       return null;
@@ -853,14 +1064,26 @@ async function runFirstBatch(
     }
   });
 
-  const out = drafted.filter(
-    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
-  );
+  let outcomes: SlotOutcome[] = [...drafted];
+  let out = outcomes.filter(isOfferedDraft);
+  // Always await timed-out siblings — even when some slots already succeeded —
+  // so a late write cannot orphan a post that a later retry would duplicate.
+  if (pending.length > 0) {
+    const late = await awaitPendingDraftWork(pending, mapPiece, heartbeat);
+    outcomes = [...outcomes, ...late];
+    out = outcomes.filter(isOfferedDraft);
+  }
   if (!out.length) {
-    const qaFail = drafted.find(
-      (r): r is KickoffDrainResult & { __qaOnly: true } =>
-        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
-    );
+    let recovered: KickoffDrainResult[] = [];
+    try {
+      recovered = await recoverRecentKickoffPosts(brand, drainStarted, opts, (n, total) =>
+        n === 1 ? `First batch, ${n}/${total}` : `Batch ${n}/${total}`,
+      );
+    } catch (err) {
+      console.error("runFirstBatch: recoverRecentKickoffPosts failed", err);
+    }
+    if (recovered.length) return recovered;
+    const qaFail = outcomes.find(qaOnlyDraft);
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
@@ -881,7 +1104,7 @@ async function runFirstBatch(
                 "Hit a snag drafting that first batch — mind saying \"draft my first batch\" again in a minute?",
             ),
       ],
-      opts?.deliver,
+      opts,
     );
   }
   return out;
@@ -903,13 +1126,34 @@ async function runDraftPosts(
           sms: "Need pillars before I draft — say \"rebuild my plan\" and I'll set those up.",
         },
       ],
-      opts?.deliver,
+      opts,
     );
   }
   const visuals = resolveVisualMode(brand, payload);
   await rememberPreferredVisuals(brand, visuals);
   const concurrency = opts?.concurrency ?? DRAFT_CONCURRENCY;
   const slots = Array.from({ length: count }, (_, i) => i);
+  const drainStarted = new Date();
+  const pending: PendingDraft[] = [];
+
+  const mapPiece = (piece: GeneratedPiece, _i: number) =>
+    slotOutcomeFromPiece(
+      brand,
+      piece,
+      (p) => {
+        const when = p.post.scheduled_at ? formatSlot(new Date(p.post.scheduled_at)) : "soon";
+        const slideN = p.mediaUrls?.length ?? (p.post.media_ids?.length ?? 0);
+        const slideNote =
+          p.kindLabel.includes("carousel") && slideN > 1 ? ` (${slideN} slides — swipe)` : "";
+        return {
+          brandId: brand.id,
+          sms: draftOfferSms(p.post.caption, when, "Draft ready", slideNote),
+          mediaUrl: p.mediaUrl,
+          mediaUrls: p.mediaUrls,
+        };
+      },
+      opts,
+    );
 
   const drafted = await mapWithConcurrency(slots, concurrency, async (i) => {
     // See runFirstBatch: isolate the slot so one failure degrades the batch
@@ -920,7 +1164,7 @@ async function runDraftPosts(
       // "A post" may still be a carousel when preferCarousel/format says so — not banned.
       const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
       const prefer = forceCarousel ? "carousel" : "filler";
-      const piece = await draftGeneratedPiece(
+      const work = draftGeneratedPiece(
         brand,
         pillar,
         prefer,
@@ -929,33 +1173,13 @@ async function runDraftPosts(
         String(payload.topicHint ?? ""),
         { forceFresh: payload.forceFresh === true },
       );
-      if (isQaSmsFailure(piece)) return { brandId: brand.id, sms: piece.qaSms, __qaOnly: true as const };
-      if (!isDraftPiece(piece)) return null;
-      const when = piece.post.scheduled_at
-        ? formatSlot(new Date(piece.post.scheduled_at))
-        : "soon";
-      const slideN = piece.mediaUrls?.length ?? (piece.post.media_ids?.length ?? 0);
-      const slideNote =
-        piece.kindLabel.includes("carousel") && slideN > 1
-          ? ` (${slideN} slides — swipe)`
-          : "";
-      const result: KickoffDrainResult = {
-        brandId: brand.id,
-        sms: `Draft ready — ${piece.kindLabel}${slideNote} for ${pillar.name}:\n\n"${clipCaption(piece.post.caption)}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
-        mediaUrl: piece.mediaUrl,
-        mediaUrls: piece.mediaUrls,
-      };
-      if (opts?.deliver) {
-        try {
-          await opts.deliver(result);
-          // See runFirstBatch: records that this draft was offered, so a bare
-          // "yes" resolves to the draft the client was actually just shown.
-          await markPostOffered(piece.post.id);
-        } catch (err) {
-          console.error("runDraftPosts: deliver failed", err);
-        }
+      const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
+      if (!raced.ok) {
+        pending.push({ work, index: i });
+        work.catch(() => {});
+        return null;
       }
-      return result;
+      return await mapPiece(raced.value, i);
     } catch (err) {
       console.error(`runDraftPosts: slot ${i + 1}/${count} failed for brand ${brand.id}`, err);
       return null;
@@ -964,17 +1188,31 @@ async function runDraftPosts(
     }
   });
 
-  const out = drafted.filter(
-    (r): r is KickoffDrainResult => r != null && !("__qaOnly" in r && r.__qaOnly),
-  );
+  let outcomes: SlotOutcome[] = [...drafted];
+  let out = outcomes.filter(isOfferedDraft);
+  // See runFirstBatch: await every timed-out sibling even when `out` is non-empty.
+  if (pending.length > 0) {
+    const late = await awaitPendingDraftWork(pending, mapPiece, heartbeat);
+    outcomes = [...outcomes, ...late];
+    out = outcomes.filter(isOfferedDraft);
+  }
   if (!out.length) {
     // Must deliver here — unlike successful drafts, this path never streamed SMS mid-batch.
     // Otherwise Kip goes silent after an instant ack while the kickoff result still claims smsCount: 1.
     // Prefer Design QA fail SMS when the only (or all) photo carousel attempts failed QA.
-    const qaFail = drafted.find(
-      (r): r is KickoffDrainResult & { __qaOnly: true } =>
-        r != null && "__qaOnly" in r && Boolean(r.__qaOnly),
-    );
+    let recovered: KickoffDrainResult[] = [];
+    try {
+      recovered = await recoverRecentKickoffPosts(
+        brand,
+        drainStarted,
+        opts,
+        () => "Draft ready",
+      );
+    } catch (err) {
+      console.error("runDraftPosts: recoverRecentKickoffPosts failed", err);
+    }
+    if (recovered.length) return recovered;
+    const qaFail = outcomes.find(qaOnlyDraft);
     const selfHeal = qaFail ? await maybeEnqueueQaSelfHeal(brand, payload) : false;
     return deliverUnstreamed(
       [
@@ -992,7 +1230,7 @@ async function runDraftPosts(
               qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
             ),
       ],
-      opts?.deliver,
+      opts,
     );
   }
   return out;
@@ -1136,7 +1374,7 @@ async function runTrendOrCompetitorDraft(
   return [
     {
       brandId: brand.id,
-      sms: `${lead}\n\nI've drafted a response for you:\n\n"${clipCaption(caption)}"\n\nProposed for ${when}. Want me to post it? Reply "yes" to approve, or tell me a change.`,
+      sms: `${lead}\n\nI've drafted a response:\n\n${clipCaption(caption, 180)}\n\nProposed for ${when}. Reply yes to send it, or tell me a change.`,
       mediaUrl: drafted.mediaUrl,
     },
   ];
@@ -1149,6 +1387,10 @@ export async function processKickoff(
   const claimed = await claimKickoff(kickoffId);
   if (!claimed) return [];
   const brandId = claimed.brand_id;
+  const drainOpts: KickoffDrainOpts = {
+    ...opts,
+    interruptAfter: claimed.created_at ?? claimed.started_at ?? undefined,
+  };
 
   const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
     if (!opts?.deliver) return;
@@ -1163,6 +1405,7 @@ export async function processKickoff(
   // sit outside it, so a pool timeout / dropped connection escaped the whole
   // function: no failKickoff, no SMS, and a claimed row nobody owned until the
   // reaper came round.
+  const stopHeartbeat = setInterval(() => void heartbeatKickoff(kickoffId), 10_000);
   try {
     const brand = await queryOne<Brand>(`select * from brands where id = $1`, [brandId]);
     if (!brand) {
@@ -1180,10 +1423,10 @@ export async function processKickoff(
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
       case "first_batch":
-        results = await runFirstBatch(brand, payload, opts, heartbeat);
+        results = await runFirstBatch(brand, payload, drainOpts, heartbeat);
         break;
       case "draft_posts":
-        results = await runDraftPosts(brand, payload, opts, heartbeat);
+        results = await runDraftPosts(brand, payload, drainOpts, heartbeat);
         break;
       case "trend_draft":
       case "competitor_draft":
@@ -1216,9 +1459,15 @@ export async function processKickoff(
     const failResult: KickoffDrainResult = {
       brandId,
       sms: "That background task glitched on my side — say the word and I'll retry.",
+      skipIfInboundAfter: claimed.created_at ?? claimed.started_at ?? undefined,
     };
-    await deliverOnce(failResult);
+    const since = failResult.skipIfInboundAfter;
+    if (!since || !(await ownerInboundAfter(brandId, since))) {
+      await deliverOnce(failResult);
+    }
     return [failResult];
+  } finally {
+    clearInterval(stopHeartbeat);
   }
 }
 
@@ -1228,11 +1477,16 @@ export async function runKickoffDrain(
   opts?: KickoffDrainOpts,
 ): Promise<KickoffDrainResult[]> {
   const out: KickoffDrainResult[] = [];
-  out.push(...(await reclaimStaleKickoffs({ deliver: opts?.deliver })));
-  const rows = await query<KipKickoff>(
-    `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
-    [limit],
-  );
+  out.push(...(await reclaimStaleKickoffs({ deliver: opts?.deliver, brandId: opts?.brandId })));
+  const rows = opts?.brandId
+    ? await query<KipKickoff>(
+        `select * from kip_kickoffs where status = 'queued' and brand_id = $1 order by created_at asc limit $2`,
+        [opts.brandId, limit],
+      )
+    : await query<KipKickoff>(
+        `select * from kip_kickoffs where status = 'queued' order by created_at asc limit $1`,
+        [limit],
+      );
   for (const row of rows) {
     // One row must never abort the batch: processKickoff already handles its
     // own failures, but anything that escapes it (claim/terminal-write errors)

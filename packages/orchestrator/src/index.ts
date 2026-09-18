@@ -1,5 +1,5 @@
 export { processInbound } from "./processInbound.js";
-export type { InboundContext } from "./processInbound.js";
+export type { InboundContext, InboundResult } from "./processInbound.js";
 
 export { draftCaption } from "./draftCaption.js";
 export type { DraftCaptionResult } from "./draftCaption.js";
@@ -8,7 +8,17 @@ export { applyCorrection } from "./applyCorrection.js";
 
 export { seedBrandVoice } from "./seedBrandVoice.js";
 
-export { buildConversationContext } from "./conversationContext.js";
+export {
+  buildConversationContext,
+  loadRecentChatTurns,
+  normalizeChatTurns,
+  resolveConversationContextArgs,
+  ownerInboundAfter,
+  ownerMovedOnSinceWrapAck,
+  WRAP_ACK_PREFIX,
+} from "./conversationContext.js";
+export type { ChatTurn, BuildConversationContextOpts } from "./conversationContext.js";
+export { quickSocialReply, quickReengageReply } from "./socialReply.js";
 export { speakSMS, buildSpeakSystem, needsThink, humanizeChat, readOpenLoops } from "./speak/index.js";
 export type { SpeakMode, SpeakOptions, ThinkResult } from "./speak/index.js";
 
@@ -24,6 +34,7 @@ export {
   looksLikeSkipConnect,
   looksLikeDoneReply,
   looksLikeUnsureReply,
+  looksLikeReadyToWrap,
   craftHumanAck,
   replyAlreadyAcked,
   stripLeadingAck,
@@ -34,6 +45,9 @@ export {
   finishOnboarding,
   type OnboardingRundown,
   WRAP_ACK,
+  voiceRecapSms,
+  formatDontForRecap,
+  normalizeDontForRecap,
   restartOnboarding,
   archiveLabChatAndRestart,
   listLabChats,
@@ -53,7 +67,25 @@ export type { ConnectNudgeCandidate } from "./connectNudge.js";
 
 export type { LabChatSummary } from "./onboarding.js";
 
-export { ownerFirstName, firstNameFromDisplayName, personaLines, connectionSummary } from "./persona.js";
+export {
+  ownerFirstName,
+  firstNameFromDisplayName,
+  brandTalkingIdentity,
+  personaLines,
+  personaVoiceLines,
+  connectionSummary,
+  NEVER_INVENT_PROOF,
+} from "./persona.js";
+export {
+  appTz,
+  formatScheduledSlot,
+  formatWeekday,
+  formatLocalClock,
+  formatGoingOutWhen,
+  localClockPromptLine,
+  localYmd,
+  joinEnglish,
+} from "./smsTime.js";
 
 export {
   runVoiceAnalysis,
@@ -67,7 +99,29 @@ export type { TextStats } from "./voice/textStats.js";
 export { callLLM, callLLMWithTools, resolveModelPlan, stripMarkdown } from "./llm.js";
 export type { CallLLMOptions, CallLLMWithToolsOptions, LlmTier, ModelPlanStep, ModelPlanEnv } from "./llm.js";
 export { answerWithTools } from "./smartAnswer.js";
-export { KIP_AGENT_TOOLS, executeAgentTool, mergeKipMemoryFact, recordKipMemory } from "./agentTools.js";
+export { runGeneralAgent, generalAgentEligible } from "./runGeneralAgent.js";
+export type { RunGeneralAgentOpts, RunGeneralAgentResult } from "./runGeneralAgent.js";
+export { retrieveBrandContext, rankByKeywordOverlap } from "./retrieveContext.js";
+export type { BrandContextPack } from "./retrieveContext.js";
+export {
+  loadOfferedDraft,
+  formatOfferedDraftBlock,
+  offeredDraftView,
+  looksLikeMetaCaption,
+  captionEditMissed,
+  clearImageOverlay,
+  setImageOverlay,
+} from "./offeredDraft.js";
+export { agentIdentity, listsToolMenu } from "./agentIdentity.js";
+export {
+  KIP_AGENT_TOOLS,
+  executeAgentTool,
+  mergeKipMemoryFact,
+  recordKipMemory,
+  looksLikeCalendarAsk,
+  loadCalendarSms,
+  summarizeCalendar,
+} from "./agentTools.js";
 export type { AgentToolContext, KipMemoryBucket } from "./agentTools.js";
 export {
   kipMemoryPromptBlock,
@@ -83,6 +137,8 @@ export {
   classifyInbound,
   ruleBasedClassify,
   looksLikeAffirmation,
+  looksLikeGreeting,
+  GREETING_RE,
   InboundClassification,
 } from "./classify.js";
 export type { ClassifyResult } from "./classify.js";
@@ -167,9 +223,32 @@ export {
   brandPhotoStyleBits,
   gradePhotoBundle,
   generatePhotoImage,
+  generateHeadline,
+  formatOverlayHeadline,
+  overlaySafeInset,
+  OVERLAY_HEADLINE_MAX_WORDS,
+  OVERLAY_HEADLINE_MAX_CHARS,
+  inferOverlayTreatment,
+  resolveOverlayTreatment,
+  cycleOverlayPlacement,
+  cycleOverlayWrap,
+  splitOverlayStack,
+  overlayWordNodes,
+  DEFAULT_OVERLAY_TREATMENT,
+  OVERLAY_STYLE_CYCLE,
+  OVERLAY_WRAP_CYCLE,
 } from "./imaging.js";
 export {
+  overlayMasthead,
+  isNamelessCreative,
+  isFacelessBrand,
+  creativeBrandLabel,
+  creativeSceneConstraint,
+  isLabPlaceholderName,
+} from "./faceless.js";
+export {
   generatePhotoVariants,
+  buildVariantEditRequest,
   parkVariantPick,
   getPendingVariantPick,
   parseVariantChoice,
@@ -180,6 +259,7 @@ export {
   lookPackForBrand,
   setBrandLookPack,
   frameFeedImage,
+  imagesTooSimilar,
   VARIANT_COUNT,
 } from "./variants.js";
 export {
@@ -188,8 +268,10 @@ export {
   resolveLookPackFromNiche,
   parseLookChangeRequest,
   listLookPackSms,
+  PHOTO_EDIT_FAITHFUL_CORE,
+  PHOTO_EDIT_FAITHFUL_PROHIBITION,
 } from "./lookPacks/index.js";
-export type { LookPack, LookPackId } from "./lookPacks/index.js";
+export type { LookPack, LookPackId, LookFrameGravity } from "./lookPacks/index.js";
 export {
   createDemoSession,
   getDemoSession,
@@ -231,7 +313,7 @@ export {
   routeFeedPhoto,
 } from "./modelRouter.js";
 export type { ImageJob, ImageEngine, RouteDecision, CreativeQuality } from "./modelRouter.js";
-export { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY } from "./concurrency.js";
+export { mapWithConcurrency, withTimeout, raceTimeout, SLIDE_RENDER_CONCURRENCY, DRAFT_CONCURRENCY, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 export {
   createInteraction,
   claimInteraction,
@@ -299,7 +381,6 @@ export {
   researchNichePlanFallback,
   buildPlanWithFallback,
   buildOnboardingPlanSms,
-  planOverrunNudge,
   ONBOARDING_PLAN_ETA_MINUTES,
   PLAN_WEB_SEARCH_DEEP,
   PLAN_WEB_SEARCH_HYBRID,
@@ -313,6 +394,7 @@ export {
 } from "./nichePlan.js";
 export {
   competitorIntel,
+  looksLikeCompetitorAsk,
   extractCompetitorName,
   addCompetitorWatch,
   listCompetitorWatches,
@@ -332,6 +414,12 @@ export {
   persistCompetitorResearch,
 } from "./research.js";
 export type { ResearchFocus } from "./research.js";
+export {
+  gatherIdeaResearchBank,
+  ensureIdeaResearchBank,
+  scoutContentIdeas,
+} from "./ideaScout.js";
+export type { ScoutIdea, IdeaResearchBank, ScoutContentIdeasResult } from "./ideaScout.js";
 export {
   looksLikeStrategyRequest,
   getProposedStrategyBrief,
@@ -494,6 +582,7 @@ export {
 
 export {
   looksLikeKickoffRequest,
+  looksLikeSlowSmsWork,
   looksLikeUseThisBrief,
   looksLikeFormatMenuReply,
   looksLikeFormatMenuOutbound,

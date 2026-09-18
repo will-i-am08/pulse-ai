@@ -38,7 +38,7 @@ Pairs with [`META_APP_REVIEW.md`](META_APP_REVIEW.md), [`RUNBOOK.md`](RUNBOOK.md
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | Wave 3 | Direct Post |
 | `TIKTOK_AUDIT_PASSED` | Wave 3 live | Set `true` only after Content Posting audit |
 | `X_CLIENT_ID` / `THREADS_APP_ID` (+ secrets) | optional | Destinations behind `platformConfigured()` |
-| `STRIPE_SECRET_KEY` | to take payment | Live `sk_live_…` on Production; `sk_test_…` on Preview |
+| `STRIPE_SECRET_KEY` | to take payment | **Now:** `sk_test_…` from **Kip ai test** on Production + Preview. Later: `sk_live_…` from **Kip Ai** on Production only |
 | `STRIPE_WEBHOOK_SECRET` | to take payment | Signing secret for `POST /api/webhooks/billing` |
 | `STRIPE_PRICE_*` | optional | Pin specific Price IDs. Default: lookup keys `kip_pro_month` / `kip_pro_year` / `kip_max_month` / `kip_max_year` |
 | `PLAN_ENFORCEMENT` | no | Leave false until Pro vs Max feature locks ship |
@@ -144,19 +144,20 @@ if (!platformConfigured("linkedin" | "tiktok" | "x" | "threads") || !brand.<toke
 
 ---
 
-## Stripe (sandbox first, then live)
+## Stripe (Production is on Kip ai test)
 
-Operator walkthrough: [`STRIPE_SETUP.md`](STRIPE_SETUP.md).
+Operator walkthrough: [`STRIPE_SETUP.md`](STRIPE_SETUP.md). Checkout is shipped to Production, but charges stay Stripe **test mode** (`4242…`) until we flip to the live **Kip Ai** account.
 
-- [ ] **Now:** Vercel Preview + Development = `sk_test_` + preview `STRIPE_WEBHOOK_SECRET` from **Kip ai test** (not Production)
+- [ ] **Now:** Vercel Preview + Development + **Production** = `sk_test_` from **Kip ai test**
+- [ ] **Now:** Production `STRIPE_WEBHOOK_SECRET` = signing secret for `we_1UGxNsHVCUBRaxA2HwgnJRyB` (Preview uses a different `whsec_`)
 - [ ] **Now:** Customer Portal on Kip ai test — four Prices, cancel at period end
-- [ ] **Now:** Preview Checkout with `4242…` → webhook 2xx → onboarding SMS
+- [ ] **Now:** Production `/payment` shows the test-mode banner; Checkout with `4242…` → webhook 2xx → onboarding SMS
 - [ ] Later: AU Stripe **Kip Ai** live KYC + payouts
-- [ ] Later: re-enable production webhook; Production env = `sk_live_` + live webhook secret
+- [ ] Later: re-enable live webhook `we_1UFqcEHq2ejcSwebHfq1FdZz`; Production env = `sk_live_` + live webhook secret
 - [ ] Invoice settings: legal name + ABN; customer emails (receipts + failed payments) on
 - [ ] Do **not** enable Stripe Tax exclusive GST on top of list prices
 - [ ] `PLAN_ENFORCEMENT` remains false
-- [ ] One live $79 charge: webhook → `facts.payment.status=active` → **one** onboarding SMS → receipt email → portal cancel-at-period-end
+- [ ] When flipping live: one real $79 charge → webhook → `facts.payment.status=active` → **one** onboarding SMS → receipt email → portal cancel-at-period-end
 
 ### First-week refund playbook (manual)
 

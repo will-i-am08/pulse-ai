@@ -1,129 +1,380 @@
 /**
- * Bounded Anthropic client tools for Smart Kip Phase 2.
- * Read-mostly brand/calendar/posts + enqueue kickoffs + remember short facts.
+ * Bounded Anthropic client tools for Smart Kip.
+ * Calendar, analytics, scheduling, draft facade, escalate, remember.
  * Never publishes, never spends ads, never returns secrets/tokens.
  */
 
+import { z } from "zod";
 import {
   KipKickoffKind,
   brandVoiceProfileSchema,
   query,
+  queryOne,
+  Platform,
+  PostFormat,
   type Brand,
   type KipKickoffKind as KipKickoffKindT,
+  type Platform as PlatformT,
+  type Post,
+  type PostFormat as PostFormatT,
   type PostStatus,
 } from "@pulse/shared";
 import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
-import { enqueueKickoff } from "./kickoffs.js";
+import { enqueueKickoff, looksLikeKickoffRequest } from "./kickoffs.js";
 import {
   clampMemoryText,
   recordKipMemory,
   type KipMemoryBucket,
 } from "./kipMemory.js";
 import { connectionSummary } from "./persona.js";
+import { scheduleSlot } from "./scheduler.js";
+import { buildPerformanceAnalysis } from "./performanceDigest.js";
+import { draftCaption } from "./draftCaption.js";
+import { humanizeChat } from "./speak/humanizeChat.js";
+import { formatScheduledSlot, formatWeekday, joinEnglish, localYmd } from "./smsTime.js";
+import { draftPostFromPhoto, pickFreshPhoto } from "./library.js";
+import { draftStoryFromPhoto } from "./formats.js";
+import { ensurePillars } from "./pillars.js";
+import { queueUgcJob } from "./ugc/index.js";
+import { queueAiVideoJob } from "./aiVideo.js";
+import { scoutContentIdeas } from "./ideaScout.js";
+import {
+  clearImageOverlay,
+  formatOfferedDraftBlock,
+  loadOfferedDraft,
+  rejectOfferedDraft,
+  restyleOfferedImage,
+  reviseOfferedDraftCaption,
+  setImageOverlay,
+} from "./offeredDraft.js";
 
 export type AgentToolContext = {
   brand: Brand;
   sourceMessageId?: string | null;
+  mediaIds?: string[];
+  retrievedPack?: string;
+  notifyOperator?: (body: string) => Promise<boolean | void>;
+  operatorAlerts?: string[];
+  /** Last preview URL from a draft mutation tool (for MMS). */
+  lastMediaUrl?: { url?: string | null };
 };
 
 export type { KipMemoryBucket };
 export { clampMemoryText, mergeKipMemoryFact, recordKipMemory } from "./kipMemory.js";
 
-const RECENT_POST_STATUSES: PostStatus[] = [
-  "pending_approval",
-  "approved",
-  "scheduled",
-  "published",
-];
-
 const CALENDAR_STATUSES: PostStatus[] = ["pending_approval", "approved", "scheduled"];
+const SCHEDULABLE_STATUSES: PostStatus[] = ["pending_approval", "approved", "scheduled"];
 
-/** Anthropic tool definitions for the question tool loop. */
+const DRAFT_COPY_JOBS = [
+  "caption",
+  "post",
+  "first_batch",
+  "carousel",
+  "story",
+  "trend",
+  "competitor",
+  "from_library",
+  "ugc",
+  "reel",
+] as const;
+type DraftCopyJob = (typeof DRAFT_COPY_JOBS)[number];
+
+const ESCALATE_REASONS = [
+  "blocked",
+  "policy",
+  "spend",
+  "complaint",
+  "unclear",
+  "out_of_scope",
+] as const;
+
+const KICKOFF_NOTE = "Queued for drafting only — never auto-publishes. Owner still approves.";
+
+const schedulePostInputSchema = z
+  .object({
+    post_id: z
+      .string()
+      .optional()
+      .describe("Post UUID to schedule. Defaults to the latest pending/approved/scheduled post."),
+    when: z
+      .string()
+      .optional()
+      .describe("next_slot (default) or a future ISO 8601 datetime. Never publishes."),
+    platform: z
+      .enum(Platform)
+      .optional()
+      .describe("Destination platform (default instagram)."),
+  })
+  .strict();
+
+const pullAnalyticsInputSchema = z
+  .object({
+    days: z
+      .number()
+      .optional()
+      .describe("Unused — analysis already uses the last 30 published posts."),
+  })
+  .strict();
+
+const checkCalendarInputSchema = z
+  .object({
+    days: z.number().optional().describe("Horizon in days (default 10, min 7, max 14)."),
+  })
+  .strict();
+
+const draftCopyInputSchema = z
+  .object({
+    job: z.enum(DRAFT_COPY_JOBS).describe("Which content-engine job to run."),
+    brief: z.string().optional().describe("Optional brief or instructions."),
+    count: z.number().optional().describe("How many drafts to queue (job-dependent default)."),
+    format: z.enum(PostFormat).optional().describe("Post format hint."),
+    visuals: z
+      .enum(["photo", "designed", "stock", "generated"])
+      .optional()
+      .describe("Visual mode for queued drafts."),
+    media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
+    topic_hint: z.string().optional().describe("Topic hint for queued drafts."),
+  })
+  .strict();
+
+const escalateInputSchema = z
+  .object({
+    reason: z.enum(ESCALATE_REASONS).describe("Why Kip cannot proceed."),
+    summary: z.string().min(1).describe("Short summary of the situation for the operator."),
+  })
+  .strict();
+
+const rememberFactInputSchema = z
+  .object({
+    text: z.string().describe("Short preference or decision to remember."),
+    bucket: z
+      .enum(["kip_preferences", "kip_decisions"])
+      .optional()
+      .describe("Where to store it (default kip_preferences)."),
+  })
+  .strict();
+
+const scoutIdeasInputSchema = z
+  .object({
+    focus: z
+      .string()
+      .optional()
+      .describe("Optional topic, angle, or question to research for ideas."),
+    count: z.number().optional().describe("How many ideas (default 4, min 3, max 6)."),
+  })
+  .strict();
+
+const getOfferedDraftInputSchema = z.object({}).strict();
+
+const reviseCaptionInputSchema = z
+  .object({
+    instruction: z.string().min(1).describe("How to change the CAPTION (feed copy), not image overlay."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const setImageTextInputSchema = z
+  .object({
+    enabled: z.boolean().describe("false = strip overlay / restore clean source; true = burn headline on image."),
+    headline: z.string().optional().describe("Optional overlay headline when enabled is true."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const restyleImageInputSchema = z
+  .object({
+    instruction: z.string().min(1).describe("How to restyle the PHOTO (brighter, different vibe, etc.)."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+const regenerateCreativeInputSchema = z
+  .object({
+    brief: z.string().optional().describe("Optional new brief / topic for a fresh creative."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft (rejected first)."),
+  })
+  .strict();
+
+const rejectDraftInputSchema = z
+  .object({
+    note: z.string().optional().describe("Optional reason for the audit log."),
+    post_id: z.string().optional().describe("Defaults to the current offered pending draft."),
+  })
+  .strict();
+
+type ZodDef = {
+  typeName?: string;
+  innerType?: z.ZodTypeAny;
+  schema?: z.ZodTypeAny;
+  type?: z.ZodTypeAny;
+  values?: string[];
+  description?: string;
+  options?: z.ZodTypeAny[];
+};
+
+function defOf(schema: z.ZodTypeAny): ZodDef {
+  return schema._def as ZodDef;
+}
+
+function unwrapZod(schema: z.ZodTypeAny): { inner: z.ZodTypeAny; optional: boolean; description?: string } {
+  let optional = false;
+  let description: string | undefined;
+  let cur: z.ZodTypeAny = schema;
+  for (let i = 0; i < 8; i++) {
+    const d = defOf(cur);
+    description = description ?? cur.description ?? d.description;
+    const typeName = d.typeName;
+    if (typeName === "ZodOptional" || typeName === "ZodDefault" || typeName === "ZodNullable") {
+      optional = true;
+      cur = d.innerType ?? cur;
+      continue;
+    }
+    if (typeName === "ZodEffects" && d.schema) {
+      cur = d.schema;
+      continue;
+    }
+    break;
+  }
+  const innerDef = defOf(cur);
+  description = description ?? cur.description ?? innerDef.description;
+  return { inner: cur, optional, description };
+}
+
+function emitJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
+  const { inner, description } = unwrapZod(schema);
+  const d = defOf(inner);
+  const typeName = d.typeName;
+  let json: Record<string, unknown>;
+  switch (typeName) {
+    case "ZodString":
+      json = { type: "string" };
+      break;
+    case "ZodNumber":
+      json = { type: "number" };
+      break;
+    case "ZodBoolean":
+      json = { type: "boolean" };
+      break;
+    case "ZodEnum":
+      json = { type: "string", enum: d.values ?? [] };
+      break;
+    case "ZodArray":
+      json = { type: "array", items: d.type ? emitJsonSchema(d.type) : {} };
+      break;
+    case "ZodObject":
+      json = emitObjectSchema(inner as z.ZodObject<z.ZodRawShape>);
+      break;
+    default:
+      json = {};
+  }
+  if (description) json.description = description;
+  return json;
+}
+
+function emitObjectSchema(schema: z.ZodObject<z.ZodRawShape>): {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
+  additionalProperties: false;
+} {
+  const properties: Record<string, unknown> = {};
+  const required: string[] = [];
+  for (const [key, value] of Object.entries(schema.shape)) {
+    const { inner, optional, description } = unwrapZod(value as z.ZodTypeAny);
+    const json = emitJsonSchema(inner);
+    if (description && json.description == null) json.description = description;
+    properties[key] = json;
+    if (!optional) required.push(key);
+  }
+  return {
+    type: "object",
+    properties,
+    ...(required.length ? { required } : {}),
+    additionalProperties: false,
+  };
+}
+
+function toolDef(
+  name: string,
+  description: string,
+  schema: z.ZodObject<z.ZodRawShape>,
+): Anthropic.Tool {
+  return {
+    name,
+    description,
+    input_schema: emitObjectSchema(schema) as Anthropic.Tool["input_schema"],
+  };
+}
+
+/** Anthropic tool definitions for the question / general-agent tool loop. */
 export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
-  {
-    name: "get_brand_profile",
-    description:
-      "Fetch this brand's connection status, business facts, strategy context, and voice tone notes. Use before guessing about the business. Returns plain text/JSON — no secrets or tokens.",
-    input_schema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "get_recent_posts",
-    description:
-      "List recent posts for this brand (pending approval, approved, scheduled, or published). Includes status, caption excerpt, scheduled_at, published_at.",
-    input_schema: {
-      type: "object",
-      properties: {
-        limit: {
-          type: "number",
-          description: "Max posts to return (default 8, max 20).",
-        },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "get_calendar",
-    description:
-      "Summarize upcoming committed posts over the next N days (pending_approval / approved / scheduled with a scheduled_at). Notes days with nothing scheduled. Read-only — does not schedule or publish.",
-    input_schema: {
-      type: "object",
-      properties: {
-        days: {
-          type: "number",
-          description: "Horizon in days (default 10, min 7, max 14).",
-        },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "enqueue_kickoff",
-    description:
-      "Queue background draft work for Kip (first_batch, draft_posts, trend_draft, competitor_draft). Never publishes — drafts still need owner approval. Returns whether it queued or was already in flight.",
-    input_schema: {
-      type: "object",
-      properties: {
-        kind: {
-          type: "string",
-          enum: [...KipKickoffKind],
-          description: "Which kickoff job to enqueue.",
-        },
-        payload: {
-          type: "object",
-          description: "Optional job payload (count, topicHint, visuals, etc.).",
-        },
-      },
-      required: ["kind"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "remember_fact",
-    description:
-      "Store a short owner preference or decision on the brand for later turns. Keep text brief. Does not publish or change posts.",
-    input_schema: {
-      type: "object",
-      properties: {
-        text: {
-          type: "string",
-          description: "Short preference or decision to remember.",
-        },
-        bucket: {
-          type: "string",
-          enum: ["kip_preferences", "kip_decisions"],
-          description: "Where to store it (default kip_preferences).",
-        },
-      },
-      required: ["text"],
-      additionalProperties: false,
-    },
-  },
+  toolDef(
+    "schedule_post",
+    "Set scheduled_at for an existing draft (pending_approval / approved / scheduled). Never publishes. Does not change status to published.",
+    schedulePostInputSchema,
+  ),
+  toolDef(
+    "pull_analytics",
+    "Read-only performance analysis of recent published posts (last 30). Returns insight, recommendation, winners. Never spends ads.",
+    pullAnalyticsInputSchema,
+  ),
+  toolDef(
+    "draft_copy",
+    "Content-engine facade: draft a caption, queue posts/first batch/carousel/story/trend/competitor, pull from library, or queue UGC/reel. Never publishes — owner still approves.",
+    draftCopyInputSchema,
+  ),
+  toolDef(
+    "get_offered_draft",
+    "Read the pending draft currently in front of the owner (caption vs on-image text, media, format). Use before mutating a draft.",
+    getOfferedDraftInputSchema,
+  ),
+  toolDef(
+    "revise_caption",
+    "Rewrite ONLY the feed caption on the offered draft. Not for removing text burned onto the image — use set_image_text for that. Never publishes.",
+    reviseCaptionInputSchema,
+  ),
+  toolDef(
+    "set_image_text",
+    "Turn on/off text burned onto the IMAGE of the offered draft. enabled=false restores the clean source photo and clears the overlay; caption is unchanged. Never publishes.",
+    setImageTextInputSchema,
+  ),
+  toolDef(
+    "restyle_image",
+    "Re-edit the offered draft PHOTO from source (brighter, background, vibe). Re-applies overlay only if the draft already had wants_text. Never publishes.",
+    restyleImageInputSchema,
+  ),
+  toolDef(
+    "regenerate_creative",
+    "Scrap the offered draft and queue a fresh creative (draft_posts kickoff). Never publishes.",
+    regenerateCreativeInputSchema,
+  ),
+  toolDef(
+    "reject_draft",
+    "Discard the offered pending draft without publishing. Use when the owner wants it scrapped.",
+    rejectDraftInputSchema,
+  ),
+  toolDef(
+    "check_calendar",
+    "Read-only SMS rundown of upcoming committed posts over the next N days (pending_approval / approved / scheduled with a scheduled_at). Does not schedule or publish.",
+    checkCalendarInputSchema,
+  ),
+  toolDef(
+    "escalate_to_human",
+    "Flag a situation Kip cannot handle (blocked, policy, spend, complaint, unclear, out of scope). Stay in character in SMS — do not mention an operator or human backup.",
+    escalateInputSchema,
+  ),
+  toolDef(
+    "remember_fact",
+    "Store a short owner preference or decision on the brand for later turns. Keep text brief. Does not publish or change posts.",
+    rememberFactInputSchema,
+  ),
+  toolDef(
+    "scout_ideas",
+    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use when the owner asks for suggestions, ideas, or to look into topics. Prefer this over interviewing them. Does not draft or publish.",
+    scoutIdeasInputSchema,
+  ),
 ];
 
 export function isValidKickoffKind(kind: unknown): kind is KipKickoffKindT {
@@ -158,36 +409,37 @@ export function buildBrandProfilePayload(brand: Brand): Record<string, unknown> 
   };
 }
 
-type RecentPostRow = {
-  id: string;
-  status: PostStatus;
-  caption: string | null;
-  scheduled_at: string | null;
-  published_at: string | null;
-  format: string | null;
-  platform: string | null;
-};
-
-export function formatRecentPostsResult(rows: RecentPostRow[]): string {
-  if (!rows.length) {
-    return JSON.stringify({ posts: [], note: "No recent posts in those statuses." });
-  }
-  return JSON.stringify({
-    posts: rows.map((r) => ({
-      id: r.id,
-      status: r.status,
-      format: r.format,
-      platform: r.platform,
-      caption: captionExcerpt(r.caption),
-      scheduled_at: r.scheduled_at,
-      published_at: r.published_at,
-    })),
-  });
-}
-
 type CalendarRow = { id: string; status: PostStatus; scheduled_at: string; caption: string | null };
 
-/** Summarize committed upcoming posts and note empty days (read-only). */
+function calendarStatusLabel(status: PostStatus): string {
+  if (status === "pending_approval") return "awaiting approval";
+  return status.replace(/_/g, " ");
+}
+
+/**
+ * Conservative: owner is only asking what is already on the calendar.
+ * Kickoff / draft / ads compound asks fall through to the agent.
+ */
+export function looksLikeCalendarAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t)) return false;
+  if (/\b(promote|boost)\b/i.test(t)) return false;
+  if (/\b(and|also)\b/i.test(t) && /\b(draft|carousel|reel|make me|write me|first batch)\b/i.test(t)) {
+    return false;
+  }
+  return (
+    /\b(what(?:'?s|s| is)|anything)\b[\s\S]{0,48}\b(on (?:my |the )?(?:calendar|schedule)|coming up|scheduled)\b/i.test(
+      t,
+    ) ||
+    /\b(?:check|show|see) (?:me )?(?:my |the )?(?:calendar|schedule)\b/i.test(t) ||
+    /\bthis week'?s (?:posts?|calendar|schedule)\b/i.test(t) ||
+    /\b(?:my |the )?(?:content )?calendar\b/i.test(t) ||
+    /\bscheduled (?:this|for the) (?:week|weekend)\b/i.test(t)
+  );
+}
+
+/** Summarize committed upcoming posts as SMS prose (read-only). */
 export function summarizeCalendar(
   rows: CalendarRow[],
   days: number,
@@ -199,10 +451,12 @@ export function summarizeCalendar(
   end.setDate(end.getDate() + days);
 
   const byDay = new Map<string, CalendarRow[]>();
+  const dayDates: Date[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(start);
     d.setDate(d.getDate() + i);
-    byDay.set(d.toISOString().slice(0, 10), []);
+    dayDates.push(d);
+    byDay.set(localYmd(d), []);
   }
 
   const posts = rows
@@ -213,70 +467,54 @@ export function summarizeCalendar(
     .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
 
   for (const p of posts) {
-    const key = new Date(p.scheduled_at).toISOString().slice(0, 10);
+    const key = localYmd(new Date(p.scheduled_at));
     const list = byDay.get(key);
     if (list) list.push(p);
   }
 
-  const gaps: string[] = [];
-  for (const [day, list] of byDay) {
-    if (!list.length) gaps.push(day);
+  const horizon = days <= 7 ? "this week" : `the next ${days} days`;
+  if (posts.length === 0) {
+    return `Nothing on the calendar ${horizon} yet.`;
   }
 
-  return JSON.stringify({
-    days,
-    from: start.toISOString(),
-    to: end.toISOString(),
-    posts: posts.map((p) => ({
-      id: p.id,
-      status: p.status,
-      scheduled_at: p.scheduled_at,
-      caption: captionExcerpt(p.caption, 80),
-    })),
-    emptyDays: gaps,
-    note:
-      posts.length === 0
-        ? "Nothing committed with a scheduled_at in this window."
-        : gaps.length
-          ? `${gaps.length} day(s) with nothing scheduled.`
-          : "Every day in the window has at least one committed post.",
+  const shown = posts.slice(0, 4);
+  const extra = posts.length - shown.length;
+  const bits = shown.map((p) => {
+    const when = formatScheduledSlot(new Date(p.scheduled_at));
+    const cap = captionExcerpt(p.caption, 42);
+    return `${when}, ${cap} (${calendarStatusLabel(p.status)})`;
   });
+  let out = days <= 7 ? `This week: ${bits.join(". ")}.` : `Coming up: ${bits.join(". ")}.`;
+  if (extra > 0) {
+    out += ` Plus ${extra} more.`;
+  }
+
+  const emptyWeekdays = dayDates
+    .filter((d) => (byDay.get(localYmd(d)) ?? []).length === 0)
+    .map((d) => formatWeekday(d));
+  if (emptyWeekdays.length === 0) {
+    return out;
+  }
+  if (emptyWeekdays.length <= 3) {
+    const verb = emptyWeekdays.length === 1 ? "is" : "are";
+    out += ` ${joinEnglish(emptyWeekdays)} ${verb} open.`;
+  } else {
+    out += " Some days are still open.";
+  }
+  return out;
 }
 
-function asRecord(input: unknown): Record<string, unknown> {
-  return input && typeof input === "object" && !Array.isArray(input)
-    ? (input as Record<string, unknown>)
-    : {};
-}
-
-async function toolGetBrandProfile(ctx: AgentToolContext): Promise<string> {
-  return JSON.stringify(buildBrandProfilePayload(ctx.brand));
-}
-
-async function toolGetRecentPosts(ctx: AgentToolContext, input: unknown): Promise<string> {
-  const raw = asRecord(input).limit;
-  const limit = Math.min(20, Math.max(1, typeof raw === "number" && Number.isFinite(raw) ? Math.floor(raw) : 8));
-  const rows = await query<RecentPostRow>(
-    `select id, status, caption, scheduled_at, published_at, format, platform
-       from posts
-      where brand_id = $1
-        and status = any($2::text[])
-      order by coalesce(published_at, scheduled_at, updated_at) desc nulls last
-      limit $3`,
-    [ctx.brand.id, RECENT_POST_STATUSES, limit],
-  );
-  return formatRecentPostsResult(rows);
-}
-
-async function toolGetCalendar(ctx: AgentToolContext, input: unknown): Promise<string> {
-  const raw = asRecord(input).days;
-  const days =
-    typeof raw === "number" && Number.isFinite(raw)
-      ? Math.min(14, Math.max(7, Math.floor(raw)))
-      : 10;
-  const now = new Date();
+/** SQL + SMS rundown for the calendar fast path and check_calendar tool. */
+export async function loadCalendarSms(
+  brand: Brand,
+  days = 7,
+  now = new Date(),
+): Promise<string> {
+  const windowDays = Math.min(14, Math.max(7, Math.floor(days)));
   const end = new Date(now);
-  end.setDate(end.getDate() + days);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + windowDays);
+  const start = new Date(now);
   const rows = await query<CalendarRow>(
     `select id, status, scheduled_at, caption
        from posts
@@ -286,52 +524,535 @@ async function toolGetCalendar(ctx: AgentToolContext, input: unknown): Promise<s
         and scheduled_at >= $3
         and scheduled_at < $4
       order by scheduled_at asc`,
-    [ctx.brand.id, CALENDAR_STATUSES, now.toISOString(), end.toISOString()],
+    [brand.id, CALENDAR_STATUSES, start.toISOString(), end.toISOString()],
   );
-  return summarizeCalendar(rows, days, now);
+  return humanizeChat(summarizeCalendar(rows, windowDays, now));
 }
 
-async function toolEnqueueKickoff(ctx: AgentToolContext, input: unknown): Promise<string> {
-  const rec = asRecord(input);
-  if (!isValidKickoffKind(rec.kind)) {
-    return JSON.stringify({
-      ok: false,
-      error: `Invalid kind. Allowed: ${KipKickoffKind.join(", ")}`,
-    });
+function asRecord(input: unknown): Record<string, unknown> {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {};
+}
+
+function toolError(error: string, extra?: Record<string, unknown>): string {
+  return JSON.stringify({ ok: false, error, ...extra });
+}
+
+function parseToolInput<T>(schema: z.ZodType<T>, input: unknown): { ok: true; data: T } | { ok: false; error: string } {
+  const parsed = schema.safeParse(input ?? {});
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: issue?.message ?? "Invalid input" };
   }
-  const payload =
-    rec.payload && typeof rec.payload === "object" && !Array.isArray(rec.payload)
-      ? (rec.payload as Record<string, unknown>)
-      : {};
-  const result = await enqueueKickoff(ctx.brand, rec.kind, {
-    payload,
-    reason: "user_request",
-    sourceMessageId: ctx.sourceMessageId ?? null,
-  });
+  return { ok: true, data: parsed.data };
+}
+
+function isDraftCopyJob(value: unknown): value is DraftCopyJob {
+  return typeof value === "string" && (DRAFT_COPY_JOBS as readonly string[]).includes(value);
+}
+
+function asPlatform(value: unknown): PlatformT | null {
+  return typeof value === "string" && (Platform as readonly string[]).includes(value)
+    ? (value as PlatformT)
+    : null;
+}
+
+function asPostFormat(value: unknown): PostFormatT | null {
+  return typeof value === "string" && (PostFormat as readonly string[]).includes(value)
+    ? (value as PostFormatT)
+    : null;
+}
+
+function futureIsoDate(value: string | undefined): Date | null {
+  if (!value || value === "next_slot") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getTime() <= Date.now()) return null;
+  return d;
+}
+
+function positiveInt(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+function mediaIdsFrom(ctx: AgentToolContext, inputIds?: string[]): string[] {
+  const ids = [...(inputIds ?? []), ...(ctx.mediaIds ?? [])].filter(
+    (id): id is string => typeof id === "string" && id.length > 0,
+  );
+  return [...new Set(ids)];
+}
+
+type SchedulablePost = {
+  id: string;
+  status: PostStatus;
+  caption: string | null;
+  scheduled_at: string | null;
+  format: string | null;
+  platform: string | null;
+  pillar_id: string | null;
+};
+
+async function loadSchedulablePost(brandId: string, postId?: string): Promise<SchedulablePost | null> {
+  if (postId) {
+    return queryOne<SchedulablePost>(
+      `select id, status, caption, scheduled_at, format, platform, pillar_id
+         from posts
+        where brand_id = $1 and id = $2`,
+      [brandId, postId],
+    );
+  }
+  return queryOne<SchedulablePost>(
+    `select id, status, caption, scheduled_at, format, platform, pillar_id
+       from posts
+      where brand_id = $1
+        and status = any($2::text[])
+      order by coalesce(last_offered_at, scheduled_at, created_at) desc
+      limit 1`,
+    [brandId, SCHEDULABLE_STATUSES],
+  );
+}
+
+async function toolSchedulePost(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(schedulePostInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+
+  const post = await loadSchedulablePost(ctx.brand.id, parsed.data.post_id);
+  if (!post) {
+    return toolError(parsed.data.post_id ? "Post not found for this brand." : "No schedulable post found.");
+  }
+  if (!SCHEDULABLE_STATUSES.includes(post.status)) {
+    return toolError(`Cannot schedule a post with status ${post.status}.`);
+  }
+
+  const platform: PlatformT =
+    parsed.data.platform ?? asPlatform(post.platform) ?? "instagram";
+  const format = asPostFormat(post.format);
+
+  const when = futureIsoDate(parsed.data.when);
+  const slot =
+    when ??
+    (await scheduleSlot({
+      brandId: ctx.brand.id,
+      platform,
+      pillarId: post.pillar_id,
+      postsPerWeek: 0,
+      format,
+    }));
+
+  const sets = ["scheduled_at = $1"];
+  const params: unknown[] = [slot.toISOString()];
+  if (parsed.data.platform && parsed.data.platform !== post.platform) {
+    sets.push(`platform = $${params.length + 1}`);
+    params.push(parsed.data.platform);
+  }
+  params.push(post.id, ctx.brand.id, SCHEDULABLE_STATUSES);
+
+  await query(
+    `update posts
+        set ${sets.join(", ")}
+      where id = $${params.length - 2}
+        and brand_id = $${params.length - 1}
+        and status = any($${params.length}::text[])`,
+    params,
+  );
+
+  const needsApproval = post.status === "pending_approval";
   return JSON.stringify({
     ok: true,
-    alreadyQueued: result.alreadyQueued,
-    kickoffId: result.kickoff?.id ?? null,
-    kind: rec.kind,
-    ackSms: result.ackSms,
-    note: "Queued for drafting only — never auto-publishes. Owner still approves.",
+    postId: post.id,
+    scheduledAt: slot.toISOString(),
+    status: post.status,
+    note: needsApproval
+      ? "Scheduled time updated only — not published. Still needs owner approval."
+      : "Scheduled time updated only — not published.",
   });
+}
+
+async function toolPullAnalytics(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(pullAnalyticsInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  try {
+    const analysis = await buildPerformanceAnalysis(ctx.brand);
+    return JSON.stringify({
+      ok: true,
+      insight: analysis.insight,
+      recommendation: analysis.recommendation,
+      winners: analysis.winners,
+      enoughData: analysis.enoughData,
+      text: analysis.text,
+    });
+  } catch (err) {
+    return toolError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function toolCheckCalendar(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(checkCalendarInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const raw = parsed.data.days;
+  const days =
+    typeof raw === "number" && Number.isFinite(raw)
+      ? Math.min(14, Math.max(7, Math.floor(raw)))
+      : 10;
+  return loadCalendarSms(ctx.brand, days);
 }
 
 async function toolRememberFact(ctx: AgentToolContext, input: unknown): Promise<string> {
-  const rec = asRecord(input);
-  const text = typeof rec.text === "string" ? clampMemoryText(rec.text) : "";
+  const parsed = parseToolInput(rememberFactInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const text = clampMemoryText(parsed.data.text);
   if (!text) {
-    return JSON.stringify({ ok: false, error: "text is required and must be non-empty" });
+    return toolError("text is required and must be non-empty");
   }
   const bucket: KipMemoryBucket =
-    rec.bucket === "kip_decisions" ? "kip_decisions" : "kip_preferences";
+    parsed.data.bucket === "kip_decisions" ? "kip_decisions" : "kip_preferences";
   const merged = await recordKipMemory(ctx.brand, text, bucket);
   return JSON.stringify({
     ok: true,
     bucket,
     text,
     stored: (merged[bucket] ?? []).length,
+  });
+}
+
+async function toolEscalateToHuman(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(escalateInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const { reason, summary } = parsed.data;
+  console.log(
+    JSON.stringify({
+      event: "kip_escalate",
+      brandId: ctx.brand.id,
+      reason,
+      summary: summary.slice(0, 200),
+    }),
+  );
+  const alert = `Kip escalate: ${ctx.brand.name} [${reason}] ${summary.slice(0, 200)}`;
+  if (ctx.operatorAlerts) ctx.operatorAlerts.push(alert);
+  if (ctx.notifyOperator) {
+    try {
+      await ctx.notifyOperator(alert);
+    } catch {
+      /* swallow */
+    }
+  }
+  return JSON.stringify({
+    ok: true,
+    reason,
+    summary,
+    ownerAckHint: "I'll look into this and come back to you.",
+    note: "Do not mention an operator, agency, or human backup in SMS. Stay in character as Kip.",
+  });
+}
+
+async function queueDraftKickoff(
+  ctx: AgentToolContext,
+  job: DraftCopyJob,
+  kind: KipKickoffKindT,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const result = await enqueueKickoff(ctx.brand, kind, {
+    payload,
+    reason: "user_request",
+    sourceMessageId: ctx.sourceMessageId ?? null,
+  });
+  return JSON.stringify({
+    ok: true,
+    job,
+    kickoffId: result.kickoff?.id ?? null,
+    alreadyQueued: result.alreadyQueued,
+    ackSms: result.ackSms,
+    note: KICKOFF_NOTE,
+  });
+}
+
+function topicHintOf(brief?: string, topicHint?: string): string | undefined {
+  const t = (topicHint || brief || "").trim();
+  return t || undefined;
+}
+
+async function firstPillar(brandId: string) {
+  const pillars = await ensurePillars(brandId);
+  return pillars[0] ?? null;
+}
+
+async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const rec = asRecord(input);
+  if (!isDraftCopyJob(rec.job)) {
+    return toolError(rec.job == null ? "job is required" : `Unknown job: ${String(rec.job)}`, {
+      allowedJobs: [...DRAFT_COPY_JOBS],
+    });
+  }
+  const parsed = parseToolInput(draftCopyInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error, { allowedJobs: [...DRAFT_COPY_JOBS] });
+
+  const { job, brief, format, visuals, topic_hint } = parsed.data;
+  const count = parsed.data.count;
+  const ids = mediaIdsFrom(ctx, parsed.data.media_ids);
+  const hint = topicHintOf(brief, topic_hint);
+
+  switch (job) {
+    case "caption": {
+      const drafted = await draftCaption(ctx.brand.id, ids, {
+        hint: [ctx.retrievedPack, brief].filter(Boolean).join("\n"),
+      });
+      const caption = drafted.caption ?? "";
+      let postId: string | null = null;
+      try {
+        const slot = await scheduleSlot({
+          brandId: ctx.brand.id,
+          platform: "instagram",
+          pillarId: null,
+          postsPerWeek: 0,
+          format: format ?? "feed",
+        });
+        const row = await queryOne<{ id: string }>(
+          `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at, format)
+           values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4, $5)
+           returning id`,
+          [ctx.brand.id, caption, ids, slot.toISOString(), format ?? "feed"],
+        );
+        postId = row?.id ?? null;
+      } catch {
+        postId = null;
+      }
+      if (!caption && !postId) {
+        return toolError("Could not draft a caption.");
+      }
+      return JSON.stringify({
+        ok: true,
+        job,
+        postId,
+        captionExcerpt: captionExcerpt(caption),
+        ackSms: "Drafted a caption — still needs your approval. Nothing is published.",
+        note: "Draft only — never published. Owner still approves.",
+      });
+    }
+    case "post":
+      return queueDraftKickoff(ctx, job, "draft_posts", {
+        count: positiveInt(count, 1),
+        topicHint: hint,
+        format,
+        visuals,
+        preferCarousel: format === "carousel",
+      });
+    case "first_batch":
+      return queueDraftKickoff(ctx, job, "first_batch", {
+        count: positiveInt(count, 3),
+        visuals,
+        topicHint: hint,
+      });
+    case "carousel":
+      return queueDraftKickoff(ctx, job, "draft_posts", {
+        count: positiveInt(count, 1),
+        topicHint: hint,
+        format: "carousel",
+        visuals,
+        preferCarousel: true,
+      });
+    case "story": {
+      let photoId = ids[0];
+      if (!photoId) {
+        const fresh = await pickFreshPhoto(ctx.brand.id);
+        photoId = fresh?.id;
+      }
+      if (!photoId) {
+        return queueDraftKickoff(ctx, job, "draft_posts", {
+          count: positiveInt(count, 1),
+          topicHint: hint,
+          format: "story",
+          visuals,
+        });
+      }
+      const pillar = await firstPillar(ctx.brand.id);
+      if (!pillar) return toolError("No content pillars available.");
+      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, hint);
+      if (!drafted?.post) return toolError("Could not draft story.");
+      return JSON.stringify({
+        ok: true,
+        job,
+        postId: drafted.post.id,
+        captionExcerpt: captionExcerpt(drafted.post.caption),
+        ackSms: "Drafted a story — still needs your approval unless it was a candid auto-schedule. Nothing is published by this tool.",
+        note: "Draft only — this tool never sets status published.",
+      });
+    }
+    case "trend":
+      return queueDraftKickoff(ctx, job, "trend_draft", {
+        topicHint: hint,
+        visuals,
+      });
+    case "competitor":
+      return queueDraftKickoff(ctx, job, "competitor_draft", {
+        topicHint: hint,
+        visuals,
+      });
+    case "from_library": {
+      const photo = await pickFreshPhoto(ctx.brand.id);
+      if (!photo) return toolError("No unused library photos.");
+      const pillar = await firstPillar(ctx.brand.id);
+      if (!pillar) return toolError("No content pillars available.");
+      const drafted = await draftPostFromPhoto(
+        ctx.brand,
+        photo,
+        pillar,
+        brief?.trim() ? { hint: brief.trim() } : undefined,
+      );
+      if (!drafted?.post) return toolError("Could not draft from library photo.");
+      return JSON.stringify({
+        ok: true,
+        job,
+        postId: drafted.post.id,
+        captionExcerpt: captionExcerpt(drafted.post.caption),
+        ackSms: "Pulled one of your library photos into a draft — still needs your approval. Nothing is published.",
+        note: "Draft only — never published. Owner still approves.",
+      });
+    }
+    case "ugc": {
+      const result = await queueUgcJob(ctx.brand, hint || "UGC", ids);
+      if (!result.ok) {
+        return JSON.stringify({ ok: false, error: result.sms, ackSms: result.sms });
+      }
+      return JSON.stringify({
+        ok: true,
+        job,
+        ackSms: result.sms,
+        note: KICKOFF_NOTE,
+      });
+    }
+    case "reel": {
+      const result = await queueAiVideoJob(ctx.brand, hint || "", ids);
+      if (!result.ok) {
+        return JSON.stringify({ ok: false, error: result.sms, ackSms: result.sms });
+      }
+      return JSON.stringify({
+        ok: true,
+        job,
+        ackSms: result.sms,
+        note: KICKOFF_NOTE,
+      });
+    }
+  }
+}
+
+function rememberMediaUrl(ctx: AgentToolContext, mediaUrl?: string | null) {
+  if (ctx.lastMediaUrl && mediaUrl) ctx.lastMediaUrl.url = mediaUrl;
+}
+
+async function resolveOfferedPost(ctx: AgentToolContext, postId?: string) {
+  if (postId?.trim()) {
+    const row = await queryOne<Post>(
+      `select * from posts where id = $1 and brand_id = $2 and status = 'pending_approval'`,
+      [postId.trim(), ctx.brand.id],
+    );
+    if (!row) return null;
+    return row;
+  }
+  return loadOfferedDraft(ctx.brand.id);
+}
+
+async function toolGetOfferedDraft(ctx: AgentToolContext): Promise<string> {
+  const post = await loadOfferedDraft(ctx.brand.id);
+  if (!post) {
+    return JSON.stringify({
+      ok: true,
+      pending: false,
+      note: "No pending_approval draft in front of the owner right now.",
+    });
+  }
+  return JSON.stringify({
+    ok: true,
+    pending: true,
+    draft: formatOfferedDraftBlock(post),
+    postId: post.id,
+  });
+}
+
+async function toolReviseCaption(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(reviseCaptionInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to revise.");
+  const result = await reviseOfferedDraftCaption(ctx.brand, post, parsed.data.instruction);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolSetImageText(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(setImageTextInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to update.");
+  const result = parsed.data.enabled
+    ? await setImageOverlay(ctx.brand, post, parsed.data.headline)
+    : await clearImageOverlay(ctx.brand, post);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolRestyleImage(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(restyleImageInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to restyle.");
+  const result = await restyleOfferedImage(ctx.brand, post, parsed.data.instruction);
+  rememberMediaUrl(ctx, result.mediaUrl);
+  return JSON.stringify(result);
+}
+
+async function toolRegenerateCreative(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(regenerateCreativeInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (post) {
+    await rejectOfferedDraft(ctx.brand, post, "Owner asked to regenerate — rejecting prior draft");
+  }
+  const brief = (parsed.data.brief || "").trim();
+  const result = await enqueueKickoff(ctx.brand, "draft_posts", {
+    payload: {
+      count: 1,
+      topicHint: brief.slice(0, 400) || undefined,
+      forceFresh: true,
+    },
+    reason: "user_request",
+    sourceMessageId: ctx.sourceMessageId ?? null,
+  });
+  return JSON.stringify({
+    ok: true,
+    kickoffId: result.kickoff?.id ?? null,
+    alreadyQueued: result.alreadyQueued,
+    ackSms: result.ackSms ?? "On it — generating a fresh draft. I'll text when it's ready.",
+    note: KICKOFF_NOTE,
+  });
+}
+
+async function toolRejectDraft(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(rejectDraftInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const post = await resolveOfferedPost(ctx, parsed.data.post_id);
+  if (!post) return toolError("No pending draft to reject.");
+  const result = await rejectOfferedDraft(ctx.brand, post, parsed.data.note);
+  return JSON.stringify(result);
+}
+
+async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(scoutIdeasInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const result = await scoutContentIdeas(ctx.brand, {
+    focus: parsed.data.focus,
+    count: parsed.data.count,
+    retrievedPack: ctx.retrievedPack,
+  });
+  if (!result.ok) return toolError(result.error);
+  return JSON.stringify({
+    ok: true,
+    ideas: result.ideas,
+    note: result.note,
+    researchRefreshed: result.researchRefreshed,
+    ackHint:
+      "Text the owner a short rundown of these ideas (titles + why, lean on competitor/Ad Library angles when inspired_by is set). Offer to draft one they pick. Do not interview them for more intake first.",
   });
 }
 
@@ -345,23 +1066,36 @@ export async function executeAgentTool(
 ): Promise<string> {
   try {
     switch (name) {
-      case "get_brand_profile":
-        return await toolGetBrandProfile(ctx);
-      case "get_recent_posts":
-        return await toolGetRecentPosts(ctx, input);
-      case "get_calendar":
-        return await toolGetCalendar(ctx, input);
-      case "enqueue_kickoff":
-        return await toolEnqueueKickoff(ctx, input);
+      case "schedule_post":
+        return await toolSchedulePost(ctx, input);
+      case "pull_analytics":
+        return await toolPullAnalytics(ctx, input);
+      case "draft_copy":
+        return await toolDraftCopy(ctx, input);
+      case "get_offered_draft":
+        return await toolGetOfferedDraft(ctx);
+      case "revise_caption":
+        return await toolReviseCaption(ctx, input);
+      case "set_image_text":
+        return await toolSetImageText(ctx, input);
+      case "restyle_image":
+        return await toolRestyleImage(ctx, input);
+      case "regenerate_creative":
+        return await toolRegenerateCreative(ctx, input);
+      case "reject_draft":
+        return await toolRejectDraft(ctx, input);
+      case "check_calendar":
+        return await toolCheckCalendar(ctx, input);
+      case "escalate_to_human":
+        return await toolEscalateToHuman(ctx, input);
       case "remember_fact":
         return await toolRememberFact(ctx, input);
+      case "scout_ideas":
+        return await toolScoutIdeas(ctx, input);
       default:
-        return JSON.stringify({ ok: false, error: `Unknown tool: ${name}` });
+        return toolError(`Unknown tool: ${name}`);
     }
   } catch (err) {
-    return JSON.stringify({
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    return toolError(err instanceof Error ? err.message : String(err));
   }
 }

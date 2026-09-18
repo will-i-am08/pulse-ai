@@ -16,7 +16,7 @@ export interface ThinkResult {
   avoid: string[];
 }
 
-const HARD_CLASSIFICATIONS = new Set(["edit", "instruction", "question"]);
+const HARD_CLASSIFICATIONS = new Set(["edit", "instruction"]);
 
 const FRUSTRATION_RE =
   /\b(annoyed|annoying|frustrated|frustrating|wrong|hate|terrible|awful|useless|stupid|angry|pissed|fed up|not what i|that's not|that is not|stop|enough|seriously)\b/i;
