@@ -143,6 +143,32 @@ describe("FEED_PHOTO_NEGATIVE", () => {
     expect(FEED_PHOTO_NEGATIVE).toMatch(/laptop/i);
     expect(FEED_PHOTO_NEGATIVE).toMatch(/typography in image/i);
   });
+
+  it("Replicate fallback bakes realism + Avoid negatives into the prompt", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const imaging = readFileSync(join(here, "../imaging.ts"), "utf8");
+    const replicate = imaging.slice(
+      imaging.indexOf("async function generatePhotoImageViaReplicate"),
+      imaging.indexOf("export async function editImageForBrand"),
+    );
+    expect(replicate).toMatch(/FEED_PHOTO_REALISM_CUE/);
+    expect(replicate).toMatch(/FEED_PHOTO_NEGATIVE/);
+    expect(replicate).toMatch(/Avoid:/);
+    expect(replicate).toMatch(/prompt: hardened/);
+  });
+
+  it("photo carousel hard-fails AI-slop after full rebuild", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const formats = readFileSync(join(here, "../formats.ts"), "utf8");
+    expect(formats).toMatch(/AI-slop|photo looks AI/);
+    expect(formats).toMatch(/soft QA remainders after full rebuild/);
+  });
 });
 
 describe("extractJsonObject / draftFillerFields", () => {

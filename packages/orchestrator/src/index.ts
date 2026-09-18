@@ -550,6 +550,7 @@ export {
   buildPlatformCaptions,
   fitCaption,
   fitLinkedInProfessional,
+  linkedInCaptionPromptBlock,
   CAPTION_LIMITS,
   DEST_HINT,
 } from "./destinations.js";
@@ -635,6 +636,7 @@ export {
   DEFAULT_JOB_MIX,
   inferContentJob,
   formatBiasForJob,
+  isLinkedInPrimary,
   jobMixPromptBlock,
   pickUnderrepresentedJob,
   isContentJob,

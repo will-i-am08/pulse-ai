@@ -383,6 +383,17 @@ async function generatePhotoImageViaReplicate(
     return null;
   }
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
+  // Schnell has no negative_prompt — bake realism + anti-slop into the prompt.
+  let hardened = prompt;
+  try {
+    const { FEED_PHOTO_NEGATIVE, FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
+    const avoid = FEED_PHOTO_NEGATIVE.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 24).join(", ");
+    hardened = [prompt, FEED_PHOTO_REALISM_CUE, avoid ? `Avoid: ${avoid}` : ""]
+      .filter(Boolean)
+      .join(". ");
+  } catch {
+    /* presets optional */
+  }
   try {
     let body: any;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -390,7 +401,7 @@ async function generatePhotoImageViaReplicate(
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "wait" },
         body: JSON.stringify({
-          input: { prompt, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
+          input: { prompt: hardened, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
         }),
       });
       body = await res.json();

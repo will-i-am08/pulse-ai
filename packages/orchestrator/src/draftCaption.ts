@@ -15,6 +15,8 @@ import {
 } from "./humanizeCaption.js";
 import { facelessPromptLine, stripPersonalNames } from "./faceless.js";
 import { NEVER_INVENT_PROOF } from "./persona.js";
+import { extractPlatforms, linkedInCaptionPromptBlock } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 
 // Anthropic vision accepts these image types; anything else we skip as an image.
 const VISION_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
@@ -199,6 +201,8 @@ function heuristicProposedTime(notes: StrategyNote | null): string | null {
 export type DraftCaptionOpts = {
   /** Caption for an Instagram Reel (shorter, hookier). */
   asReel?: boolean;
+  /** Caption for LinkedIn (professional commentary). */
+  asLinkedIn?: boolean;
   /** Extra user hint (e.g. AI video prompt). */
   hint?: string;
   /** Jake-style content job; inferred from pillar when omitted. */
@@ -292,24 +296,34 @@ export async function draftCaption(
   }
 
   const hasVideo = videos.length > 0;
-  const asReel = Boolean(opts?.asReel) || (hasVideo && attached === 0);
+  const hintDests = extractPlatforms(opts?.hint ?? "");
+  const asLinkedIn =
+    Boolean(opts?.asLinkedIn) || isLinkedInPrimary(hintDests);
+  const asReel = !asLinkedIn && (Boolean(opts?.asReel) || (hasVideo && attached === 0));
 
   let instruction: string;
   if (videoFrames > 0) {
-    instruction = asReel
-      ? `These are sampled frames from the client's video. Write a short Instagram Reel caption about what you actually see — hook in the first line. No "I can't see the video".`
-      : `These are sampled frames from the client's video. Write an on-brand caption about what you actually see.`;
+    instruction = asLinkedIn
+      ? `These are sampled frames from the client's video. Write LinkedIn commentary about what you actually see — professional, concrete, no Reel hooks.`
+      : asReel
+        ? `These are sampled frames from the client's video. Write a short Instagram Reel caption about what you actually see — hook in the first line. No "I can't see the video".`
+        : `These are sampled frames from the client's video. Write an on-brand caption about what you actually see.`;
   } else if (attached > 0) {
-    instruction = asReel
-      ? `Write a short Instagram Reel caption for the attached photo${attached > 1 ? "s" : ""}. Hook first.`
-      : `Write an on-brand caption for the attached photo${attached > 1 ? "s" : ""}.${hasVideo ? " (There is also a video in this batch — frames unavailable.)" : ""}`;
+    instruction = asLinkedIn
+      ? `Write LinkedIn professional commentary for the attached photo${attached > 1 ? "s" : ""}. Concrete stake first; 2–4 short paragraphs.`
+      : asReel
+        ? `Write a short Instagram Reel caption for the attached photo${attached > 1 ? "s" : ""}. Hook first.`
+        : `Write an on-brand caption for the attached photo${attached > 1 ? "s" : ""}.${hasVideo ? " (There is also a video in this batch — frames unavailable.)" : ""}`;
   } else if (hasVideo) {
-    instruction =
-      "The client sent a video but frames couldn't be extracted. Draft a flexible on-brand Reel caption — keep it general, don't invent specific scenes.";
+    instruction = asLinkedIn
+      ? "The client sent a video but frames couldn't be extracted. Draft flexible LinkedIn commentary — keep it general, don't invent specific scenes."
+      : "The client sent a video but frames couldn't be extracted. Draft a flexible on-brand Reel caption — keep it general, don't invent specific scenes.";
   } else {
-    instruction = asReel
-      ? "Draft a short on-brand Instagram Reel caption."
-      : "Draft a generic on-brand caption.";
+    instruction = asLinkedIn
+      ? "Draft LinkedIn professional commentary — concrete stake, 2–4 short paragraphs."
+      : asReel
+        ? "Draft a short on-brand Instagram Reel caption."
+        : "Draft a generic on-brand caption.";
   }
   if (opts?.hint) instruction += ` Context: ${opts.hint.slice(0, 400)}`;
   content.push({ type: "text", text: instruction });
@@ -318,21 +332,23 @@ export async function draftCaption(
     opts?.contentJob ??
     inferContentJob(opts?.pillar ?? {});
   const captionJob = captionJobForFormat(asReel ? "reel" : "feed");
-  const craft = [
-    captionJobPrompt(captionJob),
-    asReel || captionJob === "B" ? hooksPromptBlock(job, 3) : "",
-    asReel
-      ? "This is a REEL — keep the caption punchy (1–3 short lines). Job A: do not re-hook if the video already hooked."
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const craft = asLinkedIn
+    ? linkedInCaptionPromptBlock()
+    : [
+        captionJobPrompt(captionJob),
+        asReel || captionJob === "B" ? hooksPromptBlock(job, 3) : "",
+        asReel
+          ? "This is a REEL — keep the caption punchy (1–3 short lines). Job A: do not re-hook if the video already hooked."
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
   const system = `${buildSystemPrompt(brand, notes)}\n${craft}`;
 
   const caption = await callLLM({
     system,
     messages: [{ role: "user", content }],
-    maxTokens: asReel ? 220 : 400,
+    maxTokens: asLinkedIn ? 700 : asReel ? 220 : 400,
     tier: "standard",
     task: "draft_caption",
   });

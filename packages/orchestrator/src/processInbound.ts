@@ -189,7 +189,9 @@ import {
   buildPlatformCaptions,
   selectedDestinations,
   shouldPublishImmediately,
+  extractPlatforms,
 } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 import {
   generatePhotoVariants,
   parkVariantPick,
@@ -1695,11 +1697,17 @@ async function routeInbound(
 
       // C6: caption + photo grade in parallel (independent LLM/vision steps).
       const captionHint = (message.body ?? "").trim();
+      const hintDests = extractPlatforms(captionHint);
       const [captionResult, editedId] = await Promise.all([
         draftCaption(
           brand.id,
           originalIds,
-          captionHint ? { hint: captionHint } : undefined,
+          captionHint
+            ? {
+                hint: captionHint,
+                asLinkedIn: isLinkedInPrimary(hintDests),
+              }
+            : undefined,
         ),
         firstPhoto
           ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)

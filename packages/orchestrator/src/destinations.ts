@@ -56,15 +56,36 @@ export function fitCaption(text: string, max: number): string {
 }
 
 /**
- * LinkedIn professional variant: same source, soft-trim runaway emoji runs,
- * then fit to 3000. Keeps the fuller line vs X/Threads.
+ * LinkedIn professional variant: soft-trim runaway emoji/hashtag spam, prefer
+ * paragraph breaks over one IG hook line, then fit to 3000.
  */
 export function fitLinkedInProfessional(text: string): string {
-  const softened = text
+  let softened = text
     .trim()
     .replace(/([!?]){3,}/g, "$1$1")
-    .replace(/([\p{Extended_Pictographic}\uFE0F]){6,}/gu, (m) => m.slice(0, 12));
+    .replace(/([\p{Extended_Pictographic}\uFE0F]){6,}/gu, (m) => m.slice(0, 4))
+    .replace(/(?:\s*#[\w]+){4,}/g, (m) => {
+      const tags = m.match(/#[\w]+/g) ?? [];
+      return tags.length ? ` ${tags.slice(0, 3).join(" ")}` : "";
+    });
+  // Promote single-block IG hooks into readable LI commentary when short.
+  if (!/\n/.test(softened) && softened.length > 160) {
+    const parts = softened.split(/(?<=[.!?])\s+/).filter(Boolean);
+    if (parts.length >= 3) {
+      softened = `${parts[0]} ${parts[1]}\n\n${parts.slice(2).join(" ")}`;
+    }
+  }
   return fitCaption(softened, 3000);
+}
+
+/** Prompt craft for LinkedIn-primary drafts (professional commentary, not Reel hooks). */
+export function linkedInCaptionPromptBlock(): string {
+  return [
+    "Platform: LinkedIn (professional commentary, not Instagram/Reels).",
+    "Caption: 2–4 short paragraphs (or 3–6 tight sentences). Lead with a concrete stake, insight, or observation — not a Reel hook, not 'wait for it', not emoji-led commands.",
+    "Be specific (named craft, number on file, neighbourhood, product). Light CTA at most. ≤2 emoji total. ≤3 hashtags, optional, at the end.",
+    "No scarcity/book-now energy unless the brief asks for a promo.",
+  ].join("\n");
 }
 
 export function fitFor(platform: PublishDestination, text: string): string {
