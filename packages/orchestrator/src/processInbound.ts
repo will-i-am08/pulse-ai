@@ -137,7 +137,7 @@ import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
-import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
+import { looksLikeCalendarAsk, loadCalendarSms, looksLikeIdeasAsk, loadIdeasSms, looksLikeBrandRecallAsk, loadBrandRecallSms } from "./agentTools.js";
 import { quickReengageReply, quickSocialReply } from "./socialReply.js";
 import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
@@ -1322,6 +1322,20 @@ async function routeInbound(
       catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         return { reply: `Couldn't check the calendar just now (${detail}). Try again in a bit.` };
+      }
+    }
+    if (looksLikeBrandRecallAsk(message.body)) {
+      try { return { reply: await loadBrandRecallSms(brand) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't pull brand memory just now (${detail}). Try again in a bit.` };
+      }
+    }
+    if (looksLikeIdeasAsk(message.body)) {
+      try { return { reply: await loadIdeasSms(brand, message.body) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't pull ideas just now (${detail}). Try again in a bit.` };
       }
     }
   }

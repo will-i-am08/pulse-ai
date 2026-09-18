@@ -170,5 +170,33 @@ describe("scoutContentIdeas", () => {
     const system = String(mockedLlm.mock.calls[0]![0].system);
     expect(system).toMatch(/Research bank/i);
     expect(system).toMatch(/Ad Library|hooks/i);
+    expect(system).toMatch(/Never ask clarifying niche questions/i);
+  });
+
+  it("falls back to concrete ideas when the LLM returns none", async () => {
+    mockedLlm.mockResolvedValueOnce(JSON.stringify({ ideas: [] }));
+    const out = await scoutContentIdeas(
+      { id: "brand-1", name: "Lab Cafe", facts: { lab: true } } as Brand,
+      { focus: "3 post ideas", count: 3 },
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.ideas.length).toBeGreaterThanOrEqual(3);
+    expect(out.ideas.every((i) => i.title && i.angle)).toBe(true);
+  });
+});
+
+describe("formatIdeasSms / fallbackContentIdeas", () => {
+  it("formats a rundown without interview questions", async () => {
+    const { formatIdeasSms, fallbackContentIdeas } = await import("../ideaScout.js");
+    const ideas = fallbackContentIdeas(
+      { id: "b1", name: "Lab Cafe", facts: { lab: true } } as Brand,
+      3,
+    );
+    const sms = formatIdeasSms(ideas, "Are you a specialty coffee spot?");
+    expect(sms).toMatch(/1\. /);
+    expect(sms).toMatch(/Want me to draft one/);
+    expect(sms).not.toMatch(/specialty coffee/);
+    expect(sms).not.toMatch(/Are you a/);
   });
 });

@@ -327,11 +327,15 @@ describe("processInbound general-agent insert", () => {
     );
     const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
     const calendarIdx = src.indexOf("looksLikeCalendarAsk(message.body)");
+    const ideasIdx = src.indexOf("looksLikeIdeasAsk(message.body)");
+    const recallIdx = src.indexOf("looksLikeBrandRecallAsk(message.body)");
     const greetingIdx = src.indexOf("looksLikeGreeting(message.body)");
     const agentIdx = src.indexOf("generalAgentEligible({");
     expect(digestIdx).toBeGreaterThan(-1);
     expect(calendarIdx).toBeGreaterThan(digestIdx);
-    expect(greetingIdx).toBeGreaterThan(calendarIdx);
+    expect(recallIdx).toBeGreaterThan(calendarIdx);
+    expect(ideasIdx).toBeGreaterThan(recallIdx);
+    expect(greetingIdx).toBeGreaterThan(ideasIdx);
     expect(agentIdx).toBeGreaterThan(greetingIdx);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);

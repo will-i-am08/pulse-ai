@@ -76,6 +76,9 @@ import {
   isValidKickoffKind,
   mergeKipMemoryFact,
   looksLikeCalendarAsk,
+  looksLikeIdeasAsk,
+  looksLikeBrandRecallAsk,
+  summarizeBrandRecall,
   summarizeCalendar,
 } from "../agentTools.js";
 
@@ -188,6 +191,38 @@ describe("helpers", () => {
     expect(looksLikeCalendarAsk("make me a carousel this week")).toBe(false);
     expect(looksLikeCalendarAsk("can you promote our new winter menu this week")).toBe(false);
     expect(looksLikeCalendarAsk("what's on my calendar and make a carousel")).toBe(false);
+  });
+
+  it("looksLikeIdeasAsk matches suggestion asks and ignores drafts", () => {
+    expect(looksLikeIdeasAsk("Give me 3 post ideas for this week")).toBe(true);
+    expect(looksLikeIdeasAsk("come up with some suggestions")).toBe(true);
+    expect(looksLikeIdeasAsk("what should I post")).toBe(true);
+    expect(looksLikeIdeasAsk("Draft a LinkedIn post about hiring")).toBe(false);
+    expect(looksLikeIdeasAsk("make me a carousel")).toBe(false);
+    expect(looksLikeIdeasAsk("what's on my calendar")).toBe(false);
+  });
+
+  it("looksLikeBrandRecallAsk matches memory asks", () => {
+    expect(looksLikeBrandRecallAsk("What do you know about my brand?")).toBe(true);
+    expect(looksLikeBrandRecallAsk("what's on file about me")).toBe(true);
+    expect(looksLikeBrandRecallAsk("Give me 3 post ideas")).toBe(false);
+    expect(looksLikeBrandRecallAsk("draft a post")).toBe(false);
+  });
+
+  it("summarizeBrandRecall lists prefs without an intake quiz", () => {
+    const sms = summarizeBrandRecall(
+      stubBrand({
+        name: "Lab Cafe",
+        facts: {
+          lab: true,
+          kip_preferences: [{ text: "Professional tone", atISO: "2026-01-01T00:00:00.000Z" }],
+        },
+      }),
+    );
+    expect(sms).toMatch(/Professional tone/i);
+    expect(sms).toMatch(/Niche: not locked yet/i);
+    expect(sms).not.toMatch(/are you a caf/i);
+    expect(sms).not.toMatch(/Want to fill me in/i);
   });
 });
 
