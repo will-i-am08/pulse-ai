@@ -55,7 +55,11 @@ export function isInterviewLoopScratch(text: string): boolean {
     /\bstay in .{0,60}lane\b/i.test(t) ||
     /\bowner'?s answer:\s*what (they'?re|are you)\b/i.test(t) ||
     /\bwhat(?:'s| is) (?:bugging|frustrating) (?:them|you|founders)\b/i.test(t) ||
-    /\bwhat (?:they'?re|are you) (?:working on|noticing)\b/i.test(t)
+    /\bwhat (?:they'?re|are you) (?:working on|noticing)\b/i.test(t) ||
+    /\bowner to share\b/i.test(t) ||
+    /\bwhat (?:they|you|the owner) (?:actually )?(?:do|sell|offer|run)\b/i.test(t) ||
+    /\b(?:learn|confirm|ask).{0,40}\b(?:niche|business type|what .+ (?:do|sell))\b/i.test(t) ||
+    /\bare (?:they|you) a (?:caf|coffee|roaster|restaurant)/i.test(t)
   );
 }
 

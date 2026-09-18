@@ -42,6 +42,27 @@ describe("agentIdentity", () => {
     expect(unnamed).not.toMatch(/\bSam\b/);
   });
 
+  it("never says owner of Lab Cafe for lab brands with empty niche", () => {
+    const prompt = agentIdentity(
+      stubBrand({ name: "Lab Cafe", facts: { lab: true, owner_name: "Sam" } }),
+    );
+    expect(prompt).not.toMatch(/owner of Lab Cafe/i);
+    expect(prompt).toMatch(/owner of this business/i);
+    expect(prompt).not.toMatch(/First question: what do they actually do/i);
+    expect(prompt).toMatch(/never fish|do not quiz|skip the challenge/i);
+  });
+
+  it("uses lab differentiators in who-you-serve when present", () => {
+    const prompt = agentIdentity(
+      stubBrand({
+        name: "Lab Cafe",
+        facts: { lab: true, differentiators: "emergency plumber", owner_name: "Sam" },
+      }),
+    );
+    expect(prompt).toMatch(/owner of emergency plumber/i);
+    expect(prompt).not.toMatch(/owner of Lab Cafe/i);
+  });
+
   it("requires draft_copy before SMS when the owner asked for content", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/tool-call draft_copy before/i);
