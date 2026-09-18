@@ -877,26 +877,38 @@ export function formatOverlayHeadline(text: string): string {
 export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
 export type OverlayStack = "single" | "stack";
 export type OverlayFace = "inter" | "anton";
+/** How words break across lines. Poster is the pilates one-word stack; pair/banner keep phrases together. */
+export type OverlayWrap = "banner" | "pair" | "poster";
 
 export type OverlayTreatment = {
   placement: OverlayPlacement;
   stack: OverlayStack;
   face: OverlayFace;
+  wrap?: OverlayWrap;
 };
 
-/** Default photo overlay: stacked Anton, smack in the middle — the pilates look. */
+/** Default photo overlay: stacked Anton, smack in the middle, two-line phrases. */
 export const DEFAULT_OVERLAY_TREATMENT: OverlayTreatment = {
   placement: "center",
   stack: "stack",
   face: "anton",
+  wrap: "pair",
 };
 
 /** Carousel / unsigned asks rotate through these so slides are not all one band. */
 export const OVERLAY_STYLE_CYCLE: OverlayPlacement[] = ["center", "top", "bottom"];
 
+/** Line-break recipes so every slide is not one-word-per-line. */
+export const OVERLAY_WRAP_CYCLE: OverlayWrap[] = ["pair", "banner", "poster"];
+
 export function cycleOverlayPlacement(slideIndex = 0): OverlayPlacement {
   const i = Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex)) : 0;
   return OVERLAY_STYLE_CYCLE[i % OVERLAY_STYLE_CYCLE.length]!;
+}
+
+export function cycleOverlayWrap(slideIndex = 0): OverlayWrap {
+  const i = Number.isFinite(slideIndex) ? Math.max(0, Math.floor(slideIndex)) : 0;
+  return OVERLAY_WRAP_CYCLE[i % OVERLAY_WRAP_CYCLE.length]!;
 }
 
 function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
@@ -938,19 +950,31 @@ export function inferOverlayTreatment(
   if (
     /\b(designed tip(?: slide)?|tip slide|text card(?: on (?:a |the )?photo)?|big stacked type|stacked type|stacked text|stacked headline)\b/i.test(
       text,
-    ) ||
+    )
+  ) {
+    return { placement: "center", stack: "stack", face: "anton", wrap: "poster" };
+  }
+
+  if (
     /\b(in the middle|smack bang|dead cent(?:er|re)|cent(?:er|re)(?:ed)? (?:text|type|headline|overlay))\b/i.test(
       text,
     )
   ) {
-    return { placement: "center", stack: "stack", face: "anton" };
+    return {
+      placement: "center",
+      stack: "stack",
+      face: "anton",
+      wrap: cycleOverlayWrap(opts?.slideIndex),
+    };
   }
+
+  const wrap = cycleOverlayWrap(opts?.slideIndex);
 
   if (
     /\b((?:bottom|lower|low)[\s-]?left)\b/i.test(text) &&
     !/\btext over the top\b/i.test(text)
   ) {
-    return { placement: "low_left", stack: "stack", face: faceDefault };
+    return { placement: "low_left", stack: "stack", face: faceDefault, wrap };
   }
 
   if (
@@ -959,7 +983,7 @@ export function inferOverlayTreatment(
     ) &&
     !/\btext over the top\b/i.test(text)
   ) {
-    return { placement: "top", stack: "stack", face: faceDefault };
+    return { placement: "top", stack: "stack", face: faceDefault, wrap };
   }
 
   if (
@@ -968,27 +992,48 @@ export function inferOverlayTreatment(
     ) &&
     !/\btext over the top\b/i.test(text)
   ) {
-    return { placement: "bottom", stack: "stack", face: faceDefault };
+    return { placement: "bottom", stack: "stack", face: faceDefault, wrap };
   }
 
-  // Corner/chip/cinematic/default: rotate center → top → bottom. Never a pill.
+  // Corner/chip/cinematic/default: rotate center → top → bottom and pair → banner → poster.
   return {
     placement: cycleOverlayPlacement(opts?.slideIndex),
     stack: "stack",
     face: faceDefault,
+    wrap,
   };
 }
 
 /**
- * Stack like the pilates tip slide: one word per line.
- * Intra-line gaps are what Satori smashes; a single word cannot collide.
- * Each word still goes through formatOverlayHeadline (5/28 + trailing-function rules).
+ * Break a headline into lines. Pair keeps 2–3 phrase-lines; banner is one line;
+ * poster is one word per line only for short titles (pilates). Word gaps on a
+ * line are handled by overlayWordNodes, not by isolating every word.
  */
-export function splitOverlayStack(text: string): string[] {
+export function splitOverlayStack(text: string, wrap: OverlayWrap = "pair"): string[] {
   const formatted = formatOverlayHeadline(text);
   const words = formatted.split(/\s+/).filter(Boolean);
   if (!words.length) return [];
-  return words.map((word) => formatOverlayHeadline(word)).filter(Boolean);
+  if (words.length === 1) return [formatted];
+
+  let mode = wrap;
+  if (mode === "poster" && words.length > 3) mode = "pair";
+  if (mode === "banner") return [formatted];
+  if (mode === "poster") {
+    return words.map((word) => formatOverlayHeadline(word)).filter(Boolean);
+  }
+
+  const lineCount = words.length >= 5 ? 3 : 2;
+  const lines: string[] = [];
+  const base = Math.floor(words.length / lineCount);
+  const extra = words.length % lineCount;
+  let i = 0;
+  for (let l = 0; l < lineCount; l++) {
+    const n = base + (l < extra ? 1 : 0);
+    const line = formatOverlayHeadline(words.slice(i, i + n).join(" "));
+    i += n;
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [formatted];
 }
 
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
@@ -1068,10 +1113,11 @@ export function resolveOverlayTreatment(
   visual?: VisualProfile | null,
 ): OverlayTreatment {
   if (opts?.treatment) {
+    const wrap = opts.treatment.wrap ?? cycleOverlayWrap(opts.slideIndex);
     if (opts.treatment.placement === "chip") {
-      return { ...opts.treatment, placement: "center", stack: "stack" };
+      return { ...opts.treatment, placement: "center", stack: "stack", wrap };
     }
-    return opts.treatment;
+    return { ...opts.treatment, wrap };
   }
   return inferOverlayTreatment(opts?.ask, visual, {
     ideaBlurb: Boolean(opts?.body),
@@ -1529,7 +1575,7 @@ export async function applyTextTile(
     const rawHeadline = stripPersonalNames(headline, brand);
     const safeHeadline =
       treatment.stack === "stack"
-        ? splitOverlayStack(rawHeadline).join("\n")
+        ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair").join("\n")
         : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;

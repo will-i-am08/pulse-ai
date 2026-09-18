@@ -222,10 +222,12 @@ export {
   inferOverlayTreatment,
   resolveOverlayTreatment,
   cycleOverlayPlacement,
+  cycleOverlayWrap,
   splitOverlayStack,
   overlayWordNodes,
   DEFAULT_OVERLAY_TREATMENT,
   OVERLAY_STYLE_CYCLE,
+  OVERLAY_WRAP_CYCLE,
 } from "./imaging.js";
 export {
   overlayMasthead,

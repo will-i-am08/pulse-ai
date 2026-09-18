@@ -6,12 +6,13 @@ import {
   inferOverlayTreatment,
   resolveOverlayTreatment,
   cycleOverlayPlacement,
+  cycleOverlayWrap,
   splitOverlayStack,
   overlayWordNodes,
   formatOverlayHeadline,
   DEFAULT_OVERLAY_TREATMENT,
   OVERLAY_STYLE_CYCLE,
-  OVERLAY_HEADLINE_MAX_WORDS,
+  OVERLAY_WRAP_CYCLE,
   OVERLAY_HEADLINE_MAX_CHARS,
 } from "../imaging.js";
 
@@ -26,85 +27,85 @@ describe("inferOverlayTreatment", () => {
   }> = [
     {
       ask: "designed tip slide on a photo",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "poster" },
     },
     {
       ask: "make a designed tip slide",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "poster" },
     },
     {
       ask: "text card on a photo",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "poster" },
     },
     {
       ask: "big stacked type",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "poster" },
     },
     {
       ask: "carousel with cinematic photos with text over the top",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "text over the top",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "small caption in the corner",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "put a chip caption on it",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "text in the middle",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "text at the top",
-      want: { placement: "top", stack: "stack", face: "anton" },
+      want: { placement: "top", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "bottom left caption",
-      want: { placement: "low_left", stack: "stack", face: "anton" },
+      want: { placement: "low_left", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "post this photo",
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Impact"] },
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Playfair Display"] },
-      want: { placement: "center", stack: "stack", face: "inter" },
+      want: { placement: "center", stack: "stack", face: "inter", wrap: "pair" },
     },
     {
       ask: "post this",
       visual: { fonts: ["Anton"] },
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "small caption in the corner",
       visual: { fonts: ["Impact"] },
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "carousel of cinematic cars",
       opts: { ideaBlurb: true },
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
     {
       ask: "cinematic carousel",
       opts: { mixedFonts: true },
-      want: { placement: "center", stack: "stack", face: "anton" },
+      want: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
     },
   ];
 
@@ -123,28 +124,33 @@ describe("inferOverlayTreatment", () => {
       placement: "center",
       stack: "stack",
       face: "anton",
+      wrap: "pair",
     });
   });
 
-  it("rotates unlocked asks through center, top, then bottom", () => {
-    expect(OVERLAY_STYLE_CYCLE).toEqual(["center", "top", "bottom"]);
+  it("rotates unlocked asks through center/top/bottom and pair/banner/poster", () => {
+    expect(OVERLAY_WRAP_CYCLE).toEqual(["pair", "banner", "poster"]);
     expect(cycleOverlayPlacement(0)).toBe("center");
     expect(cycleOverlayPlacement(1)).toBe("top");
     expect(cycleOverlayPlacement(2)).toBe("bottom");
-    expect(cycleOverlayPlacement(3)).toBe("center");
+    expect(cycleOverlayWrap(0)).toBe("pair");
+    expect(cycleOverlayWrap(1)).toBe("banner");
+    expect(cycleOverlayWrap(2)).toBe("poster");
     expect(inferOverlayTreatment("text over the top", {}, { slideIndex: 1 })).toEqual({
       placement: "top",
       stack: "stack",
       face: "anton",
+      wrap: "banner",
     });
     expect(inferOverlayTreatment("text over the top", {}, { slideIndex: 2 })).toEqual({
       placement: "bottom",
       stack: "stack",
       face: "anton",
+      wrap: "poster",
     });
     expect(
       inferOverlayTreatment("designed tip slide", {}, { slideIndex: 2 }),
-    ).toEqual({ placement: "center", stack: "stack", face: "anton" });
+    ).toEqual({ placement: "center", stack: "stack", face: "anton", wrap: "poster" });
   });
 });
 
@@ -158,7 +164,7 @@ describe("resolveOverlayTreatment", () => {
         },
         {},
       ),
-    ).toEqual({ placement: "center", stack: "stack", face: "inter" });
+    ).toEqual({ placement: "center", stack: "stack", face: "inter", wrap: "pair" });
   });
 
   it("treats idea body as Anton title in the middle", () => {
@@ -166,20 +172,21 @@ describe("resolveOverlayTreatment", () => {
       placement: "center",
       stack: "stack",
       face: "anton",
+      wrap: "pair",
     });
   });
 });
 
 describe("splitOverlayStack", () => {
-  it("puts each formatted word on its own line so Anton cannot smash", () => {
-    const lines = splitOverlayStack("floss the 40% your brush misses");
+  it("pairs a long headline into 2–3 phrase lines, not one word each", () => {
+    const lines = splitOverlayStack("floss the 40% your brush misses", "pair");
     expect(lines.length).toBeGreaterThanOrEqual(2);
-    expect(lines.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
+    expect(lines.length).toBeLessThanOrEqual(3);
     expect(lines.join(" ")).toContain("40%");
     expect(lines.join(" ")).not.toMatch(/(^|\s)40(\s|$)/);
+    expect(lines.some((line) => line.split(/\s+/).filter(Boolean).length >= 2)).toBe(true);
     for (const line of lines) {
       expect(line).toBe(formatOverlayHeadline(line));
-      expect(line.split(/\s+/).filter(Boolean)).toHaveLength(1);
       expect(line.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
     }
   });
@@ -188,18 +195,19 @@ describe("splitOverlayStack", () => {
     expect(splitOverlayStack("BREW")).toEqual(["BREW"]);
   });
 
-  it("returns one line per word for a short phrase", () => {
-    const lines = splitOverlayStack("brew better");
-    expect(lines).toEqual(["BREW", "BETTER"]);
+  it("keeps a short phrase on two lines when paired", () => {
+    expect(splitOverlayStack("brew better", "pair")).toEqual(["BREW", "BETTER"]);
   });
 
-  it("never leaves two words on the same stacked line", () => {
-    const lines = splitOverlayStack("FLOSS THE 40% YOUR BRUSH MISSES EVERY SINGLE TIME");
-    expect(lines.length).toBeGreaterThanOrEqual(2);
-    expect(lines.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_WORDS);
-    for (const line of lines) {
-      expect(line.split(/\s+/).filter(Boolean)).toHaveLength(1);
-    }
+  it("banner wrap stays on one line", () => {
+    const lines = splitOverlayStack("BREAD SLICED TO ORDER", "banner");
+    expect(lines).toEqual(["BREAD SLICED TO ORDER"]);
+  });
+
+  it("poster wrap is one word per line only for short titles", () => {
+    expect(splitOverlayStack("exhale the press", "poster")).toEqual(["EXHALE", "THE", "PRESS"]);
+    const long = splitOverlayStack("floss the 40% your brush misses", "poster");
+    expect(long.some((line) => line.split(/\s+/).filter(Boolean).length >= 2)).toBe(true);
   });
 });
 
@@ -234,6 +242,7 @@ describe("overlay treatment wiring", () => {
     );
     expect(applyTextTile).toMatch(/resolveOverlayTreatment\(/);
     expect(applyTextTile).toMatch(/splitOverlayStack\(/);
+    expect(applyTextTile).toMatch(/treatment\.wrap/);
     expect(applyTextTile).toMatch(/formatOverlayHeadline\(/);
   });
 
