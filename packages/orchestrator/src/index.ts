@@ -221,9 +221,11 @@ export {
   OVERLAY_HEADLINE_MAX_CHARS,
   inferOverlayTreatment,
   resolveOverlayTreatment,
+  cycleOverlayPlacement,
   splitOverlayStack,
   overlayWordNodes,
   DEFAULT_OVERLAY_TREATMENT,
+  OVERLAY_STYLE_CYCLE,
 } from "./imaging.js";
 export {
   overlayMasthead,
