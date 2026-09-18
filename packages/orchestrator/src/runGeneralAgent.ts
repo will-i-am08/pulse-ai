@@ -105,6 +105,7 @@ export async function runGeneralAgent(
   );
 
   let reply: string | undefined;
+  let draftedViaTool = false;
   try {
     const raw = await callLLMWithTools({
       system,
@@ -117,6 +118,7 @@ export async function runGeneralAgent(
       maxRounds: 4,
       toolExecutor: async (name, input) => {
         if (name === "remember_fact") remembered = true;
+        if (name === "draft_copy") draftedViaTool = true;
         return executeAgentTool(name, input, {
           brand,
           sourceMessageId,
@@ -135,7 +137,11 @@ export async function runGeneralAgent(
   }
 
   if (reply) {
-    await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
+    // draft_copy already enqueued the job — kip_commit must not queue a second
+    // first_batch/draft_posts just because the owner said "generated photo".
+    if (!draftedViaTool) {
+      await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
+    }
     scheduleOpenLoopsUpdate(brand, ownerMessage, reply);
   }
 

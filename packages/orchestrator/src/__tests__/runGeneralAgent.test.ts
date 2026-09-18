@@ -149,6 +149,22 @@ describe("runGeneralAgent", () => {
     );
   });
 
+  it("skips maybeEnqueueFromKipCommit when draft_copy already ran this turn", async () => {
+    mockedTools.mockImplementationOnce(async (arg: {
+      toolExecutor: (name: string, input: unknown) => Promise<string>;
+    }) => {
+      await arg.toolExecutor("draft_copy", { job: "post", topic_hint: "hiring barista" });
+      return "On it — drafting that LinkedIn post now.";
+    });
+    const brand = stubBrand();
+    await runGeneralAgent({
+      brand,
+      ownerMessage: "Draft a LinkedIn post about hiring a barista — photo please",
+      sourceMessageId: "msg-li",
+    });
+    expect(mockedCommit).not.toHaveBeenCalled();
+  });
+
   it("returns an in-character fallback and still tries the kickoff net when the tool loop throws", async () => {
     mockedTools.mockRejectedValueOnce(new Error("llm down"));
     const brand = stubBrand();

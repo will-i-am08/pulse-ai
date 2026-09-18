@@ -71,6 +71,19 @@ describe("lab chat restart", () => {
     expect(fn.indexOf("delete facts.owner_name")).toBeLessThan(fn.indexOf("restartOnboarding"));
   });
 
+  it("keeps onboarding done on New chat — no contact-card re-arm", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    const fn = src.slice(src.indexOf("export async function archiveLabChatAndRestart"));
+    expect(fn).toMatch(/wasDone/);
+    expect(fn).toMatch(/Fresh chat for/);
+    expect(fn).toMatch(/same setup, clean thread/);
+    // Contact welcome only via restartOnboarding for incomplete setups.
+    expect(fn.indexOf("wasDone")).toBeLessThan(fn.indexOf("restartOnboarding"));
+  });
+
   it("wraps on yeah-that-sounds-right without another discovery question", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
