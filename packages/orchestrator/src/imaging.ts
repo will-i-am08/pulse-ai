@@ -812,8 +812,46 @@ const OVERLAY_DANGLING_MODIFIERS = new Set([
   "NEXT",
   "LAST",
   "FIRST",
+  // Char-cap of a longer clause must not leave "WHAT FOUNDER OPS ACTUALLY".
+  "ACTUALLY",
+  "REALLY",
+  "LITERALLY",
+  "BASICALLY",
+  "ESSENTIALLY",
+  "SIMPLY",
+  "NEARLY",
+  "ALMOST",
+  "QUITE",
+  "RATHER",
+  "TRULY",
+  "ONLY",
+  "STILL",
 ]);
 
+/**
+ * Restore common contractions the LLM omitted (or that a crude strip ate).
+ * Only safe, high-signal overlays — not every WERE→WE'RE.
+ */
+const OVERLAY_CONTRACTION_REPAIRS: Array<[RegExp, string]> = [
+  [/\bWERE HIRING\b/g, "WE'RE HIRING"],
+  [/\bWERE OPEN\b/g, "WE'RE OPEN"],
+  [/\bWERE LIVE\b/g, "WE'RE LIVE"],
+  [/\bWERE BACK\b/g, "WE'RE BACK"],
+  [/\bITS TIME\b/g, "IT'S TIME"],
+  [/\bLETS\b/g, "LET'S"],
+  [/\bDONT\b/g, "DON'T"],
+  [/\bWONT\b/g, "WON'T"],
+  [/\bCANT\b/g, "CAN'T"],
+  [/\bYOURE\b/g, "YOU'RE"],
+  [/\bTHEYRE\b/g, "THEY'RE"],
+  [/\bIM\b/g, "I'M"],
+];
+
+function repairOverlayContractions(text: string): string {
+  let out = text;
+  for (const [re, to] of OVERLAY_CONTRACTION_REPAIRS) out = out.replace(re, to);
+  return out;
+}
 function isOverlayPossessive(word: string): boolean {
   return /[A-Z0-9]+'S$/i.test(word);
 }
@@ -854,7 +892,7 @@ function dropInteriorForCharFit(words: string[]): boolean {
   return false;
 }
 
-/** Clean overlay copy: keep % ° and possessive apostrophes; drop other punctuation. */
+/** Clean overlay copy: keep % ° and possessive/contraction apostrophes; drop other punctuation. */
 function cleanOverlayText(text: string): string {
   let s = text
     .replace(/[\u2018\u2019]/g, "'")
@@ -862,9 +900,10 @@ function cleanOverlayText(text: string): string {
     .replace(/[\u00BA]/g, "°")
     .replace(/"/g, "");
   s = s.replace(/[^a-zA-Z0-9%'°\s]/g, " ");
-  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S.
+  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S / WE'RE.
   s = s.replace(/(^|[^A-Za-z0-9])'+|'+(?![A-Za-z])/g, "$1");
-  return s.replace(/\s+/g, " ").trim().toUpperCase();
+  s = s.replace(/\s+/g, " ").trim().toUpperCase();
+  return repairOverlayContractions(s);
 }
 
 /** Drop interior fillers; keep the first and last tokens. */
@@ -885,15 +924,21 @@ export function formatOverlayHeadline(text: string): string {
     words = dropInteriorOverlayFillers(words);
   }
   words = words.slice(0, OVERLAY_HEADLINE_MAX_WORDS);
-  const trailStop = compressed ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
+  // Char-cap (e.g. dropping ACTUALLY) can leave auxiliaries like DOES — same
+  // trail set as word-compression, not the short-headline-safe function set.
+  let charCapped = false;
+  const trailStop = () =>
+    compressed || charCapped ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
   const stripTrail = () => {
-    popTrailingOverlayWords(words, trailStop);
+    const stop = trailStop();
+    popTrailingOverlayWords(words, stop);
     popTrailingOverlayModifiers(words);
-    popTrailingOverlayWords(words, trailStop);
+    popTrailingOverlayWords(words, stop);
   };
   const fitWords = () => {
     let joined = words.join(" ");
     while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
+      charCapped = true;
       if (!dropInteriorForCharFit(words)) words.pop();
       joined = words.join(" ");
     }
@@ -906,15 +951,17 @@ export function formatOverlayHeadline(text: string): string {
   stripTrail();
   out = words.join(" ");
   if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
+    charCapped = true;
     const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
     const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
     if (cutMidWord && sliced.length > 1) sliced.pop();
-    popTrailingOverlayWords(sliced, trailStop);
+    const stop = trailStop();
+    popTrailingOverlayWords(sliced, stop);
     popTrailingOverlayModifiers(sliced);
-    popTrailingOverlayWords(sliced, trailStop);
+    popTrailingOverlayWords(sliced, stop);
     out = sliced.join(" ");
   }
-  return out;
+  return repairOverlayContractions(out);
 }
 
 export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
@@ -1084,8 +1131,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and apostrophes in contractions and possessives (WE'RE, DON'T, 40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or), dangling adverb (actually/really), or dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and apostrophes in contractions and possessives (WE'RE, DON'T, 40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or), dangling adverb (actually/really), or dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",
@@ -1096,8 +1143,9 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
     ],
     maxTokens: 20,
   });
+  // Keep apostrophes (WE'RE / DOG'S). Only strip wrapping quotes and stray periods.
   const cleaned = stripPersonalNames(
-    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase(),
+    sanitizeChatText(out.replace(/[".]/g, "")).toUpperCase(),
     brand,
   );
   // Never fall back to the owner's personal brand name on faceless accounts.

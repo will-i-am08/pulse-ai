@@ -27,6 +27,20 @@ describe("formatOverlayHeadline", () => {
     expect(formatOverlayHeadline("\u2018Peak Season\u2019 \u2014 2024")).toBe("PEAK SEASON 2024");
   });
 
+  it("repairs WERE HIRING and keeps WE'RE contractions", () => {
+    expect(formatOverlayHeadline("WERE HIRING")).toBe("WE'RE HIRING");
+    expect(formatOverlayHeadline("we're hiring")).toBe("WE'RE HIRING");
+    expect(formatOverlayHeadline("DONT STOP")).toBe("DON'T STOP");
+  });
+
+  it("does not leave dangling ACTUALLY after a char-cap", () => {
+    const out = formatOverlayHeadline("WHAT FOUNDER OPS ACTUALLY DOES");
+    expect(out.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+    expect(out.split(/\s+/).at(-1)).not.toBe("ACTUALLY");
+    expect(out.split(/\s+/).at(-1)).not.toBe("DOES");
+    expect(out).toMatch(/FOUNDER OPS/);
+  });
+
   it("preserves an already-short line (uppercased)", () => {
     expect(formatOverlayHeadline("brew better")).toBe("BREW BETTER");
   });
@@ -219,6 +233,10 @@ describe("overlay headline wiring", () => {
     expect(generateHeadline).toMatch(/Never end on a function word/);
     expect(generateHeadline).toMatch(/standalone headline/);
     expect(generateHeadline).toMatch(/truncated sentence/);
+    expect(generateHeadline).toMatch(/WE'RE/);
+    // Must keep contraction apostrophes — strip quotes/periods only, not ["'.]
+    expect(generateHeadline).toMatch(/out\.replace\(\/\["\.\]\/g,\s*""\)/);
+    expect(generateHeadline).not.toMatch(/\["'\.\]/);
     expect(generateHeadline).not.toMatch(/4-12/);
 
     const applyTextTile = imaging.slice(
