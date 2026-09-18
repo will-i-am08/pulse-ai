@@ -6,9 +6,14 @@ export const runtime = 'nodejs';
 // burst sleep, the LLM call, then paced sends — a measured floor of ~7.4s before
 // the model is even counted. Vercel's default 10-15s cap kills the isolate
 // mid-turn, so the reply is never dispatched AND the queued kickoff drain never
-// runs, with nothing logged. Every other slow route here sets a ceiling
-// (lab/message=120, operator/kickoffs/drain=300); this is the client-facing one.
-export const maxDuration = 60;
+// runs, with nothing logged.
+//
+// Kickoff drains also run in Next `after()` on this same function budget.
+// Photo carousels (multiple fal gens + LLM + overlay) routinely exceed 60s —
+// the isolate then dies with the row left `running`, and the owner gets
+// "Already on that…" until the 5-min stale reaper. Match lab/operator (300)
+// so after() can finish; DRAFT_SLOT_TIMEOUT_MS is 75s and needs headroom.
+export const maxDuration = 300;
 
 import { NextResponse, after } from 'next/server';
 import { activeChannel, handleInbound } from '@pulse/gateway';
