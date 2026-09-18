@@ -134,6 +134,58 @@ describe("generateFillerPost photo mode", () => {
     expect(insertArgs?.[1]?.[3]).toEqual([expect.any(String)]);
     expect(insertArgs?.[1]?.[3]?.[0]).not.toBe("tiled-media-id");
   });
+
+  it("honors explicit destinations even when topicHint dropped LinkedIn", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage } = await import("../imaging.js");
+    const { callLLM } = await import("../llm.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(callLLM).mockImplementation(async (opts: { system?: string }) => {
+      const sys = String(opts?.system ?? "");
+      if (/ruthless brief-compliance|brief-compliance checker/i.test(sys)) {
+        return JSON.stringify({ pass: true, reasons: [], reinforce_hint: "" });
+      }
+      return JSON.stringify({
+        caption: "Hiring a barista who can pull consistent shots matters more than vibes.",
+        photo_prompt: "Barista steaming milk in a sunlit cafe, natural light",
+        card: "HIRE FOR SKILL NOT VIBES",
+      });
+    });
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-li",
+      caption: "Hiring a barista who can pull consistent shots matters more than vibes.",
+      media_ids: ["tiled-media-id"],
+      platform: "linkedin",
+    } as any);
+
+    try {
+      const out = await generateFillerPost(brand, pillar, {
+        visuals: "photo",
+        topicHint: "hiring barista",
+        destinations: ["linkedin"],
+      });
+      expect(out).not.toBeNull();
+      const draftCall = vi
+        .mocked(callLLM)
+        .mock.calls.find((c) => !/ruthless brief-compliance|brief-compliance checker/i.test(String(c[0]?.system ?? "")));
+      expect(String(draftCall?.[0]?.system ?? "")).toMatch(/LinkedIn/i);
+      const insertSql = String(vi.mocked(queryOne).mock.calls[0]?.[0] ?? "");
+      expect(insertSql).toMatch(/destinations/);
+      const insertArgs = vi.mocked(queryOne).mock.calls[0]?.[1] as unknown[];
+      expect(insertArgs?.[7]).toBe("linkedin");
+      expect(insertArgs?.[8]).toEqual(expect.arrayContaining(["linkedin"]));
+    } finally {
+      vi.mocked(callLLM).mockImplementation(async () =>
+        JSON.stringify({
+          caption: "A real caption about hiring",
+          photo_prompt: "Founder at a desk reviewing resumes, natural light",
+          card: "HIRE FOR SKILL NOT VIBES",
+        }),
+      );
+    }
+  });
 });
 
 describe("FEED_PHOTO_NEGATIVE", () => {

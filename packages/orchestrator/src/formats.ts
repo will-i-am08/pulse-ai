@@ -572,7 +572,7 @@ export function wantsResearchedIdeaSlides(topic: string | null | undefined): boo
 export async function generatePhotoTextCarousel(
   brand: Brand,
   pillar: Pillar,
-  opts?: { topicHint?: string | null; forceFresh?: boolean },
+  opts?: { topicHint?: string | null; forceFresh?: boolean; destinations?: string[] | null },
 ): Promise<
   | { ok: true; post: Post; mediaUrl: string; mediaUrls: string[] }
   | { ok: false; qaSms: string }
@@ -581,7 +581,13 @@ export async function generatePhotoTextCarousel(
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const forceFresh = opts?.forceFresh === true;
   const ideaMode = wantsResearchedIdeaSlides(topic);
-  const briefDests = extractPlatforms(topic);
+  // Prefer explicit kickoff destinations — agent briefs often drop "LinkedIn".
+  const briefDests = [
+    ...new Set([
+      ...(opts?.destinations ?? []).map((d) => String(d).toLowerCase()),
+      ...extractPlatforms(topic),
+    ]),
+  ];
   const linkedIn = isLinkedInPrimary(briefDests);
   const facelessLine = facelessPromptLine(brand) ?? "";
   const noFace = facelessPhotoConstraint(brand);

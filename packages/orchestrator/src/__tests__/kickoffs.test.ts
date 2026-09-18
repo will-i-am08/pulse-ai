@@ -201,6 +201,24 @@ describe("inferKickoffFromUserMessage", () => {
     expect(String(r?.ackSms ?? "")).toMatch(/photo carousel/i);
   });
 
+  it("stamps LinkedIn destinations + keeps LinkedIn in topicHint for LinkedIn draft asks", () => {
+    const brief = "Draft a LinkedIn post about hiring a barista this week";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/linkedin/i);
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/hiring a barista/i);
+  });
+
+  it("keeps LinkedIn destinations on LinkedIn carousel kickoffs", () => {
+    const brief = "Make a LinkedIn carousel with photo tips for cafe managers";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.preferCarousel).toBe(true);
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/linkedin/i);
+  });
+
 
   it("acks idea carousels as researched one-idea-per-slide drafts", () => {
     const brief =

@@ -33,6 +33,8 @@ import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
 import { ownerInboundAfter } from "./conversationContext.js";
 import { formatScheduledSlot } from "./smsTime.js";
+import { extractPlatforms } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 
 
 /**
@@ -271,12 +273,18 @@ function draftPostsPayloadFromText(t: string): Record<string, unknown> {
   const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
   const count = inferDraftCount(t, wantsCarousel);
   const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
+  const destinations = extractPlatforms(t);
+  let topicHint = t.slice(0, 280);
+  if (isLinkedInPrimary(destinations) && topicHint && !/\blinkedin\b/i.test(topicHint)) {
+    topicHint = `LinkedIn: ${topicHint}`.slice(0, 280);
+  }
   return {
     count,
     visuals,
-    topicHint: t.slice(0, 280),
+    topicHint,
     preferCarousel: wantsCarousel,
     format: wantsCarousel ? "carousel" : undefined,
+    ...(destinations.length ? { destinations } : {}),
   };
 }
 
@@ -739,6 +747,30 @@ export async function reclaimStaleKickoffs(opts?: {
   return deliverUnstreamed(results, opts);
 }
 
+/** Destinations from kickoff payload + any platforms still named in the brief. */
+function destinationsFromPayload(
+  payload: Record<string, unknown>,
+  topicHint?: string | null,
+): string[] {
+  const raw = payload.destinations;
+  const fromPayload = Array.isArray(raw)
+    ? raw.filter((d): d is string => typeof d === "string").map((d) => d.toLowerCase())
+    : [];
+  const fromHint = extractPlatforms(topicHint ?? String(payload.topicHint ?? payload.hint ?? ""));
+  return [...new Set([...fromPayload, ...fromHint])];
+}
+
+/** Keep LinkedIn in the brief when destinations say so but the agent shortened it. */
+function topicHintWithDestinations(hint: string | null | undefined, destinations: string[]): string {
+  let t = (hint ?? "").trim();
+  if (isLinkedInPrimary(destinations) && t && !/\blinkedin\b/i.test(t)) {
+    t = `LinkedIn: ${t}`.slice(0, 400);
+  } else if (isLinkedInPrimary(destinations) && !t) {
+    t = "LinkedIn post";
+  }
+  return t;
+}
+
 async function draftGeneratedPiece(
   brand: Brand,
   pillar: Pillar,
@@ -746,25 +778,29 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-  genOpts?: { forceFresh?: boolean },
+  genOpts?: { forceFresh?: boolean; destinations?: string[] | null },
 ): Promise<
   | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
   | { qaSms: string }
   | null
 > {
+  const destinations = genOpts?.destinations ?? [];
+  const hint = topicHintWithDestinations(topicHint, destinations);
   // Photo + carousel asks must become photo carousels — never a lone feed filler.
   if (prefer === "carousel" && visuals === "photo") {
     let photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
-      topicHint,
+      topicHint: hint,
       forceFresh: genOpts?.forceFresh,
+      destinations,
     });
     if (photoCarousel && photoCarousel.ok === false) {
       console.warn("draftGeneratedPiece: photo carousel QA fail — silent retry with fresher brief");
       photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
-        topicHint: topicHint
-          ? `${topicHint} (fresh unique cinematic frames, tighter overlays)`
+        topicHint: hint
+          ? `${hint} (fresh unique cinematic frames, tighter overlays)`
           : "fresh unique cinematic frames, tighter overlays",
         forceFresh: true,
+        destinations,
       });
     }
     if (photoCarousel && photoCarousel.ok === false) {
@@ -782,7 +818,11 @@ async function draftGeneratedPiece(
     return null;
   }
   if (visuals === "photo") {
-    const filler = await generateFillerPost(brand, pillar, { visuals: "photo", topicHint });
+    const filler = await generateFillerPost(brand, pillar, {
+      visuals: "photo",
+      topicHint: hint,
+      destinations,
+    });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
     return null;
   }
@@ -796,7 +836,11 @@ async function draftGeneratedPiece(
     const tip = await generateTipCarousel(brand, pillar);
     if (tip) return { post: tip.post, mediaUrl: tip.mediaUrl, kindLabel: "tip carousel" };
   }
-  const filler = await generateFillerPost(brand, pillar, { visuals: "designed", topicHint });
+  const filler = await generateFillerPost(brand, pillar, {
+    visuals: "designed",
+    topicHint: hint,
+    destinations,
+  });
   if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
 }
@@ -929,10 +973,12 @@ async function maybeEnqueueQaSelfHeal(
   if (!Number.isFinite(qaRetry) || qaRetry >= 1) return false;
   if (resolveVisualMode(brand, payload) !== "photo") return false;
   const baseHint = String(payload.topicHint ?? payload.hint ?? "").trim();
+  const destinations = destinationsFromPayload(payload, baseHint);
   const topicHint = (
     baseHint
-      ? `${baseHint} (fresh unique frames, new angles, tighter overlays)`
-      : "fresh unique cinematic frames, tighter overlays"
+      ? `${topicHintWithDestinations(baseHint, destinations)} (fresh unique frames, new angles, tighter overlays)`
+      : topicHintWithDestinations("", destinations) ||
+        "fresh unique cinematic frames, tighter overlays"
   ).slice(0, 400);
   try {
     await enqueueKickoff(brand, "draft_posts", {
@@ -943,6 +989,7 @@ async function maybeEnqueueQaSelfHeal(
         topicHint,
         forceFresh: true,
         qaRetryCount: qaRetry + 1,
+        ...(destinations.length ? { destinations } : {}),
       },
       reason: "system",
       ackSms: null,
@@ -1039,6 +1086,7 @@ async function runFirstBatch(
     try {
       const pillar = pillars[i % pillars.length]!;
       const kind = kinds[i % kinds.length]!;
+      const destinations = destinationsFromPayload(payload);
       const work = draftGeneratedPiece(
         brand,
         pillar,
@@ -1046,7 +1094,7 @@ async function runFirstBatch(
         kind,
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+        { forceFresh: payload.forceFresh === true, destinations },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
       if (!raced.ok) {
@@ -1164,6 +1212,7 @@ async function runDraftPosts(
       // "A post" may still be a carousel when preferCarousel/format says so — not banned.
       const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
       const prefer = forceCarousel ? "carousel" : "filler";
+      const destinations = destinationsFromPayload(payload);
       const work = draftGeneratedPiece(
         brand,
         pillar,
@@ -1171,7 +1220,7 @@ async function runDraftPosts(
         i % 2 === 0 ? "tip" : "steps",
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+        { forceFresh: payload.forceFresh === true, destinations },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
       if (!raced.ok) {
@@ -1299,6 +1348,7 @@ async function runTrendOrCompetitorDraft(
 
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
+  const destinations = destinationsFromPayload(payload);
   const drafted = await draftGeneratedPiece(
     brand,
     pillar,
@@ -1306,7 +1356,7 @@ async function runTrendOrCompetitorDraft(
     "tip",
     resolveVisualMode(brand, payload),
     String(payload.topicHint ?? payload.hint ?? ""),
-    { forceFresh: payload.forceFresh === true },
+    { forceFresh: payload.forceFresh === true, destinations },
   );
   if (isQaSmsFailure(drafted)) {
     const selfHeal = await maybeEnqueueQaSelfHeal(brand, payload);
