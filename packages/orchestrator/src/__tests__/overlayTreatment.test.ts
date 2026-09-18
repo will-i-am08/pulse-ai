@@ -6,6 +6,7 @@ import {
   inferOverlayTreatment,
   resolveOverlayTreatment,
   splitOverlayStack,
+  overlayWordNodes,
   formatOverlayHeadline,
   DEFAULT_OVERLAY_TREATMENT,
   OVERLAY_HEADLINE_MAX_WORDS,
@@ -40,11 +41,11 @@ describe("inferOverlayTreatment", () => {
     },
     {
       ask: "carousel with cinematic photos with text over the top",
-      want: { placement: "bottom", stack: "single", face: "inter" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
-      want: { placement: "bottom", stack: "single", face: "inter" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "small caption in the corner",
@@ -56,34 +57,34 @@ describe("inferOverlayTreatment", () => {
     },
     {
       ask: "text at the top",
-      want: { placement: "top", stack: "single", face: "inter" },
+      want: { placement: "top", stack: "stack", face: "anton" },
     },
     {
       ask: "bottom left caption",
-      want: { placement: "low_left", stack: "single", face: "inter" },
+      want: { placement: "low_left", stack: "stack", face: "anton" },
     },
     {
       ask: "",
-      want: { placement: "bottom", stack: "single", face: "inter" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "post this photo",
-      want: { placement: "bottom", stack: "single", face: "inter" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Impact"] },
-      want: { placement: "bottom", stack: "single", face: "anton" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "text over the top",
       visual: { fonts: ["Playfair Display"] },
-      want: { placement: "bottom", stack: "single", face: "inter" },
+      want: { placement: "bottom", stack: "stack", face: "inter" },
     },
     {
       ask: "post this",
       visual: { fonts: ["Anton"] },
-      want: { placement: "bottom", stack: "single", face: "anton" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "small caption in the corner",
@@ -93,12 +94,12 @@ describe("inferOverlayTreatment", () => {
     {
       ask: "carousel of cinematic cars",
       opts: { ideaBlurb: true },
-      want: { placement: "bottom", stack: "single", face: "anton" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
     {
       ask: "cinematic carousel",
       opts: { mixedFonts: true },
-      want: { placement: "bottom", stack: "single", face: "anton" },
+      want: { placement: "bottom", stack: "stack", face: "anton" },
     },
   ];
 
@@ -110,9 +111,14 @@ describe("inferOverlayTreatment", () => {
     }
   });
 
-  it("defaults to today's bottom Inter band when the owner says nothing", () => {
+  it("defaults to stacked Anton on the bottom band when the owner says nothing", () => {
     expect(inferOverlayTreatment(null)).toEqual(DEFAULT_OVERLAY_TREATMENT);
     expect(inferOverlayTreatment(undefined, {})).toEqual(DEFAULT_OVERLAY_TREATMENT);
+    expect(DEFAULT_OVERLAY_TREATMENT).toEqual({
+      placement: "bottom",
+      stack: "stack",
+      face: "anton",
+    });
   });
 });
 
@@ -132,7 +138,7 @@ describe("resolveOverlayTreatment", () => {
   it("treats idea body as Anton title on the default band", () => {
     expect(resolveOverlayTreatment({ body: "who pays and why now" }, {})).toEqual({
       placement: "bottom",
-      stack: "single",
+      stack: "stack",
       face: "anton",
     });
   });
@@ -174,6 +180,25 @@ describe("splitOverlayStack", () => {
   });
 });
 
+describe("overlayWordNodes", () => {
+  it("keeps each word as its own node so spaces cannot collapse", () => {
+    const nodes = overlayWordNodes("FORTY FIVE DAYS HANGING", 12);
+    expect(nodes).toHaveLength(4);
+    expect(nodes.map((n) => n.props.children)).toEqual([
+      "FORTY",
+      "FIVE",
+      "DAYS",
+      "HANGING",
+    ]);
+    expect(nodes[0]!.props.style).toMatchObject({ marginRight: 12 });
+    expect(nodes[3]!.props.style).toMatchObject({ marginRight: 0 });
+  });
+
+  it("does not emit an empty node for blank input", () => {
+    expect(overlayWordNodes("   ", 8)).toEqual([]);
+  });
+});
+
 describe("overlay treatment wiring", () => {
   it("applyTextTile infers a treatment and formats per line", () => {
     const imaging = readFileSync(join(here, "../imaging.ts"), "utf8");
@@ -192,9 +217,12 @@ describe("overlay treatment wiring", () => {
       imaging.indexOf("async function renderTile"),
       imaging.indexOf("export async function applyTextTile"),
     );
-    expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.04em" : "0\.06em"/);
+    expect(renderTile).toMatch(/letterSpacing: treatment\.placement === "chip" \? "0\.02em" : "0\.03em"/);
+    expect(renderTile).toMatch(/overlayWordNodes\(/);
     expect(renderTile).toMatch(/overlaySafeInset\(/);
     expect(renderTile).toMatch(/overlayBandStyle\(/);
+    expect(imaging).toMatch(/width \* 0\.42/);
+    expect(imaging).toMatch(/width \* 0\.022/);
     expect(renderTile).not.toMatch(/:\s*undefined/);
     expect(imaging).toMatch(/placement === "center"/);
     expect(imaging).toMatch(/placement === "chip"/);

@@ -884,11 +884,11 @@ export type OverlayTreatment = {
   face: OverlayFace;
 };
 
-/** Today's look: bottom band, one line, Inter. */
+/** Default photo overlay: bottom band, stacked Anton — same type as a tip slide. */
 export const DEFAULT_OVERLAY_TREATMENT: OverlayTreatment = {
   placement: "bottom",
-  stack: "single",
-  face: "inter",
+  stack: "stack",
+  face: "anton",
 };
 
 function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
@@ -905,8 +905,14 @@ function overlayFaceFromContext(
   opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
 ): OverlayFace {
   if (opts?.ideaBlurb || opts?.mixedFonts) return "anton";
-  // Site serif stays Inter in v1. Display/impact → Anton on the default band.
-  return overlayWantsDisplayFace(visual) ? "anton" : "inter";
+  // Serif stays Inter in v1. Everything else uses Anton — Inter-on-a-band
+  // looked thin and smashed next to a stacked Anton tip slide.
+  if (overlayWantsDisplayFace(visual)) return "anton";
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
+    return "inter";
+  }
+  return "anton";
 }
 
 /**
@@ -943,7 +949,7 @@ export function inferOverlayTreatment(
     /\b((?:bottom|lower|low)[\s-]?left)\b/i.test(text) &&
     !/\btext over the top\b/i.test(text)
   ) {
-    return { placement: "low_left", stack: "single", face: faceDefault };
+    return { placement: "low_left", stack: "stack", face: faceDefault };
   }
 
   if (
@@ -952,10 +958,10 @@ export function inferOverlayTreatment(
     ) &&
     !/\btext over the top\b/i.test(text)
   ) {
-    return { placement: "top", stack: "single", face: faceDefault };
+    return { placement: "top", stack: "stack", face: faceDefault };
   }
 
-  return { placement: "bottom", stack: "single", face: faceDefault };
+  return { placement: "bottom", stack: "stack", face: faceDefault };
 }
 
 /**
@@ -1061,6 +1067,24 @@ export function resolveOverlayTreatment(
   });
 }
 
+/** One flex child per word so Satori cannot collapse spaces under letter-spacing. */
+export function overlayWordNodes(
+  line: string,
+  gapPx: number,
+): Array<Record<string, unknown>> {
+  const words = line.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  return words.map((word, i) => ({
+    type: "div",
+    props: {
+      style: {
+        display: "flex",
+        marginRight: i === words.length - 1 ? 0 : gapPx,
+      },
+      children: word,
+    },
+  }));
+}
+
 function overlayBandStyle(
   placement: OverlayPlacement,
   width: number,
@@ -1115,16 +1139,16 @@ function overlayBandStyle(
   if (placement === "chip") {
     return {
       position: "absolute",
-      bottom: `${padY}px`,
-      left: `${pad}px`,
+      bottom: `${Math.round(height * 0.055)}px`,
+      left: `${Math.round(width * 0.055)}px`,
       display: "flex",
       flexDirection: "column",
       justifyContent: "center",
       alignItems: "flex-start",
-      maxWidth: `${Math.round(width * 0.62)}px`,
-      padding: `${Math.round(height * 0.018)}px ${Math.round(width * 0.036)}px`,
-      background: `${fade},0.88)`,
-      borderRadius: `${Math.round(width * 0.04)}px`,
+      maxWidth: `${Math.round(width * 0.42)}px`,
+      padding: `${Math.round(height * 0.01)}px ${Math.round(width * 0.018)}px`,
+      background: `${fade},0.9)`,
+      borderRadius: `${Math.round(width * 0.08)}px`,
     };
   }
   return {
@@ -1166,10 +1190,10 @@ async function renderTile(
   const baseSize = overlayFontSize(width, longestTitle, hasBody);
   const fontSize =
     treatment.placement === "chip"
-      ? Math.round(width * 0.032)
+      ? Math.round(width * 0.022)
       : treatment.placement === "center"
         ? Math.round(baseSize * 1.15)
-        : baseSize;
+        : Math.round(baseSize * 1.08);
   const bodySize = overlayBodyFontSize(width, body);
   const mastheadSize = Math.round(width * 0.036);
   const eyebrowSize = Math.round(width * 0.028);
@@ -1264,42 +1288,42 @@ async function renderTile(
       },
     });
   }
-  const titleLineNodes = stacked
-    ? titleLines.map((line, i) => ({
-        type: "div",
-        props: {
-          style: {
-            display: "flex",
-            width: "100%",
-            maxWidth: "100%",
-            justifyContent: titleJustify,
-            textAlign: titleAlign,
-            marginTop: i === 0 ? 0 : Math.round(height * 0.006),
-          },
-          children: line,
+  const wordGap = Math.max(6, Math.round(fontSize * 0.28));
+  const titleLineNodes = (stacked ? titleLines : [headline.replace(/\n/g, " ").trim()]).map(
+    (line, i) => ({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexWrap: "nowrap",
+          width: stacked ? "100%" : "auto",
+          maxWidth: "100%",
+          justifyContent: titleJustify,
+          textAlign: titleAlign,
+          marginTop: i === 0 ? 0 : Math.round(height * 0.008),
         },
-      }))
-    : headline;
+        children: overlayWordNodes(line, wordGap),
+      },
+    }),
+  );
   textStack.push({
     type: "div",
     props: {
       style: {
         display: "flex",
-        flexDirection: stacked ? "column" : "row",
-        flexWrap: stacked ? "nowrap" : "wrap",
+        flexDirection: "column",
+        flexWrap: "nowrap",
         width: "100%",
         maxWidth: "100%",
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        letterSpacing: treatment.placement === "chip" ? "0.04em" : "0.06em",
-        lineHeight: 1.18,
+        letterSpacing: treatment.placement === "chip" ? "0.02em" : "0.03em",
+        lineHeight: 1.05,
         textAlign: titleAlign,
         justifyContent: titleJustify,
         alignItems: leftAlign ? "flex-start" : "center",
         textTransform: hasBody ? "none" : "uppercase",
-        wordBreak: "break-word",
-        overflowWrap: "break-word",
       },
       children: titleLineNodes,
     },
