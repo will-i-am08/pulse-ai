@@ -11,7 +11,7 @@ import {
   type PostFormat,
 } from "@pulse/shared";
 import { draftCaption } from "./draftCaption.js";
-import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { inferContentJob, formatBiasForJob, isLinkedInPrimary } from "./contentJobs.js";
 import { humanizeCaption } from "./humanizeCaption.js";
 import {
   editImageForBrand,
@@ -46,6 +46,7 @@ import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
 import { callLLM } from "./llm.js";
 import { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
+import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
 import {
   composeAndStoreSlide,
   gatherDesignContext,
@@ -580,6 +581,8 @@ export async function generatePhotoTextCarousel(
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const forceFresh = opts?.forceFresh === true;
   const ideaMode = wantsResearchedIdeaSlides(topic);
+  const briefDests = extractPlatforms(topic);
+  const linkedIn = isLinkedInPrimary(briefDests);
   const facelessLine = facelessPromptLine(brand) ?? "";
   const noFace = facelessPhotoConstraint(brand);
   const visualDna = await gatherVisualDnaForBrand(brand);
@@ -591,11 +594,14 @@ export async function generatePhotoTextCarousel(
     /* creativePlan optional */
   }
   const system = [
-    `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    linkedIn
+      ? `You write a LinkedIn multi-image carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}). Not Instagram Stories or Reels.`
+      : `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
     creativeSceneConstraint(brand),
     visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    linkedIn ? linkedInCaptionPromptBlock() : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: each relevant overlay/caption must name specific options and state a concrete difference — category tips without named tools FAIL."
       : "",
@@ -603,8 +609,12 @@ export async function generatePhotoTextCarousel(
       ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
       : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
-      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
+      ? linkedIn
+        ? 'Output ONLY JSON: {"caption":"<LinkedIn commentary 2-4 short paragraphs ≤900 chars naming these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+        : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+      : linkedIn
+        ? 'Output ONLY JSON: {"caption":"<LinkedIn commentary 2-4 short paragraphs ≤900 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}'
+        : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
       ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
@@ -935,7 +945,7 @@ export async function generatePhotoTextCarousel(
       mode: "photo_overlay",
     });
     const hardFail = qa2.reasons.some((r) =>
-      /illegib|overflow|empty|recompose failed/i.test(r),
+      /illegib|overflow|empty|recompose failed|AI-slop|photo looks AI|generic/i.test(r),
     );
     if (!qa2.pass && hardFail) {
       return { ok: false, qaSms: designQaFailureSms(brand.name) };
@@ -953,27 +963,56 @@ export async function generatePhotoTextCarousel(
 
   // keep using finalMediaIds below; replace first assignment
   const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, "carousel");
+  const finalCaption = humanizeCaption(caption);
+  const dests = linkedIn ? (briefDests.length ? briefDests : ["linkedin"]) : [];
+  const captions = dests.length ? buildPlatformCaptions(finalCaption) : null;
   const post = await queryOne<Post>(
-    `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
-     values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5, $6::jsonb)
-     returning *`,
-    [
-      brand.id,
-      humanizeCaption(caption),
-      finalMediaIds,
-      pillar.id,
-      slot.toISOString(),
-      JSON.stringify({
-        generated: true,
-        wants_text: true,
-        photo_carousel: true,
-        researched_ideas: ideaMode,
-        slides: finalMediaIds.length,
-        topic_hint: topic || null,
-        faceless: isFacelessBrand(brand),
-        qa_recomposed: qaRecomposed,
-      }),
-    ],
+    linkedIn
+      ? `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta, destinations, captions)
+         values ($1, $2, $3::uuid[], 'carousel', $4, false, 'linkedin', 'pending_approval', $5, $6::jsonb, $7::text[], $8::jsonb)
+         returning *`
+      : `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
+         values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5, $6::jsonb)
+         returning *`,
+    linkedIn
+      ? [
+          brand.id,
+          finalCaption,
+          finalMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify({
+            generated: true,
+            wants_text: true,
+            photo_carousel: true,
+            researched_ideas: ideaMode,
+            slides: finalMediaIds.length,
+            topic_hint: topic || null,
+            faceless: isFacelessBrand(brand),
+            qa_recomposed: qaRecomposed,
+            linkedin_primary: true,
+            format_bias: "carousel",
+          }),
+          dests,
+          JSON.stringify(captions),
+        ]
+      : [
+          brand.id,
+          finalCaption,
+          finalMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify({
+            generated: true,
+            wants_text: true,
+            photo_carousel: true,
+            researched_ideas: ideaMode,
+            slides: finalMediaIds.length,
+            topic_hint: topic || null,
+            faceless: isFacelessBrand(brand),
+            qa_recomposed: qaRecomposed,
+          }),
+        ],
   );
   if (!post) return null;
   await query(
