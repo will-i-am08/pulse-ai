@@ -1,14 +1,13 @@
-import { query, queryOne } from "@pulse/shared";
+import { appTz, query, queryOne } from "@pulse/shared";
 
 // Time-aware re-engagement: read the clock off the last time we spoke and, once a
 // real gap has opened, re-orient the client instead of assuming seamless
 // continuity ("morning! we left a photo waiting your yes last night — pick it up,
-// or start fresh?"). Times use the process timezone (TZ env, Australia/Sydney by
+// or start fresh?"). Times use the resolved app timezone (Australia/Sydney by
 // default), standing in for the brand's timezone — same as the scheduler.
 
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_TZ = process.env.TZ || "Australia/Sydney";
 
 export type GapBucket = "seamless" | "today" | "yesterday" | "recent" | "long";
 export interface GapInfo {
@@ -41,7 +40,7 @@ function localDayDiff(a: Date, b: Date, tz: string): number {
  * Under 4h is "seamless" — carry on as if mid-conversation. Above that, the
  * phrasing adapts to the clock (this morning / last night / the other day / a while).
  */
-export function gapInfo(lastAt: Date | null, now: Date, tz: string = DEFAULT_TZ): GapInfo {
+export function gapInfo(lastAt: Date | null, now: Date, tz: string = appTz()): GapInfo {
   if (!lastAt) return { gapMs: Infinity, bucket: "long", phrase: "it's been a while" };
   const gapMs = now.getTime() - lastAt.getTime();
   if (gapMs < FOUR_HOURS_MS) return { gapMs, bucket: "seamless", phrase: "" };
@@ -65,7 +64,7 @@ export function gapInfo(lastAt: Date | null, now: Date, tz: string = DEFAULT_TZ)
  * so proactive nudges never fire in the middle of the night. `endHour` is
  * exclusive (19 → last OK hour is 18:xx).
  */
-export function isDaytime(now: Date, tz: string = DEFAULT_TZ, startHour = 8, endHour = 19): boolean {
+export function isDaytime(now: Date, tz: string = appTz(), startHour = 8, endHour = 19): boolean {
   const h = localHour(now, tz);
   return h >= startHour && h < endHour;
 }
