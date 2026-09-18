@@ -260,19 +260,25 @@ export async function runDesignQa(opts: {
       idea_specific?: boolean;
       fixHints?: unknown;
     };
-    const reasons = Array.isArray(parsed.reasons) ? parsed.reasons.map(String) : [];
-    if (parsed.legible === false) reasons.push("illegible type/contrast");
-    if (parsed.on_brand === false) reasons.push("off-brand tokens");
-    if (parsed.anti_clone === false) reasons.push("clone-like composition");
+    const modelReasons = Array.isArray(parsed.reasons) ? parsed.reasons.map(String) : [];
+    const flagFails: string[] = [];
+    if (parsed.legible === false) flagFails.push("illegible type/contrast");
+    if (parsed.on_brand === false) flagFails.push("off-brand tokens");
+    if (parsed.anti_clone === false) flagFails.push("clone-like composition");
     if (mode === "photo_overlay") {
-      if (parsed.photo_ok === false) reasons.push("photo looks AI-slop / generic");
-      if (parsed.idea_specific === false) reasons.push("idea copy too vague");
+      if (parsed.photo_ok === false) flagFails.push("photo looks AI-slop / generic");
+      if (parsed.idea_specific === false) flagFails.push("idea copy too vague");
     } else if (parsed.niche_ok === false) {
-      reasons.push("not niche-plausible");
+      flagFails.push("not niche-plausible");
     }
 
+    // Trust pass:true even when reasons are praise. Requiring an empty reasons
+    // list used to false-fail every draft the checker liked enough to explain.
+    const pass = parsed.pass === true && flagFails.length === 0;
+    const reasons = pass ? ["ok"] : [...new Set([...flagFails, ...modelReasons])];
+
     let fixHints = parseFixHints(parsed.fixHints);
-    if (!fixHints && reasons.length) {
+    if (!fixHints && !pass && reasons.length) {
       const joined = reasons.join(" ").toLowerCase();
       fixHints = {
         shortenOverlay: /illegib|overflow|clip|margin|too long/.test(joined),
@@ -280,8 +286,6 @@ export async function runDesignQa(opts: {
         reason: reasons[0],
       };
     }
-
-    const pass = Boolean(parsed.pass) && reasons.length === 0;
     return {
       pass,
       reasons: pass ? ["ok"] : [...new Set(reasons)],

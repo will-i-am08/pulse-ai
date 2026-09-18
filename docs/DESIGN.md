@@ -73,7 +73,7 @@ No brand orange, no purple gradient, no Facebook blue in Kip chrome (the demo `/
 
 ## Voice (when the mark is next to copy)
 
-Kip texts like a switched-on mate. Warm, sharp, owns the work, owns being an AI. No em dashes, no markdown, no lists in customer-facing messages. Full rules live in `packages/orchestrator/src/persona.ts` — design should not fight that voice with agency-speak or “we’re a platform” chrome.
+Kip texts like a switched-on mate. Warm, sharp, owns the work, owns being an AI. No em dashes, no markdown, no feature menus in customer-facing messages. A short rundown of days or posts is fine. Full rules live in `packages/orchestrator/src/persona.ts` — design should not fight that voice with agency-speak or “we’re a platform” chrome.
 
 ## Photography
 

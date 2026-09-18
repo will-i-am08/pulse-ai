@@ -230,10 +230,10 @@ export function destinationAck(
   const noun = dests.length === 1 ? "it" : "them";
   if (mockish) {
     lines.push(
-      `Reply "yes" to post ${noun}. ${names} will land on the fake feed and will not go live.`,
+      `Reply yes to post ${noun}. ${names} will land on the fake feed and will not go live.`,
     );
   } else {
-    lines.push(`Reply "yes" to approve, or tell me a change.`);
+    lines.push(`Reply yes to send it, or tell me a change.`);
   }
   return lines.join("\n").trim();
 }
@@ -292,7 +292,7 @@ export async function persistEditedCaptions(
  *
  * The status update is a CLAIM: `and status = 'pending_approval'` means only one
  * caller can win it. Without that predicate a second "yes" (or a dashboard
- * approve racing an SMS approve — the inbound burst window is 2800ms and this
+ * approve racing an SMS approve — the inbound burst window is ~1.2s and this
  * path does ~8 sequential round-trips before writing) re-ran the whole thing and
  * inserted a fresh approved sibling per extra destination every time, so
  * duplicate posts went live on X/Threads/LinkedIn/TikTok. `claimed: false` means
@@ -307,7 +307,12 @@ export async function approveSelectedDestinations(opts: {
   const { post, brand, actor, postNow } = opts;
   const dests = selectedDestinations(post);
   const slices = slicesForApproval(post);
-  const immediate = shouldPublishImmediately(dests, postNow);
+  const scheduledDue =
+    post.scheduled_at != null &&
+    Number.isFinite(new Date(post.scheduled_at).getTime()) &&
+    new Date(post.scheduled_at).getTime() <= Date.now() + 60_000;
+  // Past/due slots publish on the next tick — never keep yesterday's weekday on the row.
+  const immediate = shouldPublishImmediately(dests, postNow) || scheduledDue;
   const captions = captionsForPost(post);
   const scheduledAt = immediate ? new Date().toISOString() : post.scheduled_at;
 

@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
+  looksLikeCompleteSmsTurn,
   looksLikeProgressCheck,
+  outboundTypingPauseMs,
   shouldSendInstantTextAck,
+  shouldSendSlowWorkFiller,
+  shouldSkipInboundBurst,
   splitIntoBubbles,
 } from "./gateway.js";
 
@@ -27,6 +31,54 @@ describe("looksLikeProgressCheck", () => {
   });
 });
 
+describe("looksLikeCompleteSmsTurn", () => {
+  it("treats punctuated single-bubble asks as finished", () => {
+    expect(looksLikeCompleteSmsTurn("can you make it shorter?")).toBe(true);
+    expect(looksLikeCompleteSmsTurn("Make the caption punchier!")).toBe(true);
+    expect(looksLikeCompleteSmsTurn("Please schedule this for Friday.")).toBe(true);
+  });
+
+  it("keeps dangling fragments waiting for a follow-up", () => {
+    expect(looksLikeCompleteSmsTurn("draft me 3")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("and then")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("something about")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("wait...")).toBe(false);
+    expect(looksLikeCompleteSmsTurn("ok,")).toBe(false);
+  });
+});
+
+describe("shouldSkipInboundBurst", () => {
+  it("skips the coalesce sleep for complete short turns", () => {
+    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "thanks", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "Awesome", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "what's on my calendar this week?", hasMedia: false })).toBe(
+      true,
+    );
+    expect(shouldSkipInboundBurst({ text: "how's it going", hasMedia: false })).toBe(true);
+    expect(shouldSkipInboundBurst({ text: "can you make it shorter?", hasMedia: false })).toBe(true);
+  });
+
+  it("keeps the wait for split thoughts, MMS, and photo-referring text", () => {
+    expect(shouldSkipInboundBurst({ text: "draft me 3 posts", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: true })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "use this photo", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "", hasMedia: false })).toBe(false);
+  });
+});
+
+describe("outboundTypingPauseMs", () => {
+  it("keeps a short first bubble under 420ms", () => {
+    expect(outboundTypingPauseMs("Hey!".length, 0)).toBeLessThanOrEqual(420);
+    expect(outboundTypingPauseMs("Hey Bill!".length, 0)).toBeLessThan(420);
+  });
+
+  it("still paces a long first bubble", () => {
+    expect(outboundTypingPauseMs(120, 0)).toBeGreaterThan(600);
+    expect(outboundTypingPauseMs(120, 0)).toBeLessThanOrEqual(1600);
+  });
+});
+
 describe("shouldSendInstantTextAck", () => {
   it("never sends thin one-liner text acks (Makes sense / Got you)", () => {
     const done = { onboarding_state: { status: "done" as const } };
@@ -35,6 +87,26 @@ describe("shouldSendInstantTextAck", () => {
     expect(shouldSendInstantTextAck({ onboarding_state: { status: "none" } }, "hey")).toBe(false);
     expect(
       shouldSendInstantTextAck({ onboarding_state: { status: "in_progress" } }, "sounds good"),
+    ).toBe(false);
+  });
+});
+
+describe("shouldSendSlowWorkFiller", () => {
+  const base = { photoAckSent: false, textAckSent: false, hasTyping: false };
+  it("fires only for known-slow draft jobs on SMS", () => {
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "draft me 3 posts" })).toBe(true);
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "make me a carousel" })).toBe(true);
+  });
+  it("never fires for calendar, greetings, or when typing exists", () => {
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "what's on my calendar this week?" })).toBe(
+      false,
+    );
+    expect(shouldSendSlowWorkFiller({ ...base, inboundText: "hey" })).toBe(false);
+    expect(
+      shouldSendSlowWorkFiller({ ...base, hasTyping: true, inboundText: "draft me 3 posts" }),
+    ).toBe(false);
+    expect(
+      shouldSendSlowWorkFiller({ ...base, photoAckSent: true, inboundText: "draft me 3 posts" }),
     ).toBe(false);
   });
 });

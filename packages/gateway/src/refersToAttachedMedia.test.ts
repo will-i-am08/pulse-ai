@@ -15,6 +15,7 @@ describe("refersToAttachedMedia", () => {
 
   it("ignores plain creative asks without a photo reference", () => {
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
+    expect(refersToAttachedMedia("Generate the photo")).toBe(false);
     expect(refersToAttachedMedia("something inspirational")).toBe(false);
     expect(refersToAttachedMedia("thanks!")).toBe(false);
   });

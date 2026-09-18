@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@pulse/channel-lab": "workspace:*",
     "@pulse/channel-twilio": "workspace:*",
     "@pulse/orchestrator": "workspace:*",
     "@pulse/shared": "workspace:*"

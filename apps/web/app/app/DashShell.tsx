@@ -24,6 +24,7 @@ const USER_NAV: NavItem[] = [
 const ADMIN_NAV: NavItem[] = [
   { href: '/app/operator', label: 'Overview', match: (p) => p === '/app/operator' },
   { href: '/app/operator/users', label: 'Users', match: (p) => p.startsWith('/app/operator/users') },
+  { href: '/app/operator/qr', label: 'QR codes', match: (p) => p.startsWith('/app/operator/qr') },
   { href: '/lab', label: 'Lab', match: (p) => p === '/lab' || p.startsWith('/lab/') },
 ];
 

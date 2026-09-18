@@ -1,4 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   isBlockedHost,
   safePublicUrl,
@@ -80,7 +83,18 @@ describe("content plan + campaign SMS verbs", () => {
     expect(looksLikeContentPlanRequest("rebuild my month plan")).toBe(true);
     expect(looksLikeContentPlanRequest("Can you rerun the plan build")).toBe(true);
     expect(looksLikeContentPlanRequest("rerun my niche plan")).toBe(true);
+    expect(looksLikeContentPlanRequest("send me a content plan")).toBe(true);
     expect(looksLikeContentPlanRequest("post this photo")).toBe(false);
+    expect(looksLikeContentPlanRequest("got what I need")).toBe(false);
+  });
+
+  it("processInbound still routes an explicit plan ask to proposeContentPlanFromSms", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/const planAsk = looksLikeContentPlanRequest\(message\.body\)/);
+    expect(src).toMatch(/proposeContentPlanFromSms\(brand, message\.body\)/);
   });
 
   it("detects scratch/tweak confirms after a rebuild clarify", async () => {

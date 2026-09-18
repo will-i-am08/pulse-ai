@@ -5,6 +5,7 @@ import {
   captureMedia,
   startTypingKeeper,
   processInbound,
+  handleUnknownInbound,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -42,8 +43,14 @@ export async function runLinqInboundLoop(): Promise<void> {
     try {
       const brand = await resolveBrandByLinq(row.from_handle);
       if (!brand) {
-        logger.warn(`linq inbound: unknown sender ${row.from_handle}, failing ${row.id}`);
-        await query("update pending_inbound set status = 'failed' where id = $1", [row.id]).catch(() => {});
+        logger.warn(`linq inbound: unknown sender ${row.from_handle}, sending signup link`);
+        await handleUnknownInbound({
+          from: row.from_handle,
+          body: row.body ?? "",
+          providerMessageId: row.provider_message_id,
+          channel: linq,
+        });
+        await query("update pending_inbound set status = 'done' where id = $1", [row.id]).catch(() => {});
         continue;
       }
       const media = Array.isArray(row.media) ? row.media : [];
@@ -72,7 +79,7 @@ export async function runLinqInboundLoop(): Promise<void> {
         await linq
           .send({
             to: brand.client_phone,
-            body: "Got it, styling your photo and writing your caption, one sec ✨",
+            body: "Got it, writing a caption for this now.",
           })
           .catch(() => {});
       }

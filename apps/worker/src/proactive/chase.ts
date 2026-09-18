@@ -9,7 +9,7 @@ function chaseNudge(what: string): string {
     `Hey, ${what} has been sitting there. Ship it, tweak it, or scrap it?`,
     `${what} is still pending. "Yes" to post, tell me a change, or "no" to discard.`,
     `Just checking — ${what} ready to go, or want changes?`,
-    `Still on ${what}? Reply "yes" to approve, edit away, or "no" to delete.`,
+    `Still on ${what}? Reply yes to send it, tell me a change, or no to scrap it.`,
   ];
   return templates[Math.floor(Math.random() * templates.length)]!;
 }

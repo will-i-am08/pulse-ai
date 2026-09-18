@@ -21,6 +21,8 @@ import {
   generatePhotoImage,
   applyTextTile,
   brandPhotoStyleBits,
+  shouldOverlayHeadline,
+  formatOverlayHeadline,
 } from "./imaging.js";
 import {
   facelessPromptLine,
@@ -28,6 +30,8 @@ import {
   isFacelessBrand,
   overlayMasthead,
   stripPersonalNames,
+  creativeBrandLabel,
+  creativeSceneConstraint,
 } from "./faceless.js";
 import {
   looksLikeCityscapeBrief,
@@ -35,6 +39,7 @@ import {
   reinforceTopicHint,
   reviewBriefCompliance,
 } from "./briefCompliance.js";
+import { NEVER_INVENT_PROOF } from "./persona.js";
 import { visualReference } from "./library.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -147,6 +152,30 @@ export function weightsFromFormatMix(mix: string | null | undefined): Array<[Pos
   return entries.length ? entries : null;
 }
 
+/** Burn a shared headline onto carousel slides when the owner asked for text. */
+async function overlayCarouselIfAsked(
+  brand: Brand,
+  mediaIds: string[],
+  caption: string,
+  brief?: string,
+): Promise<string[]> {
+  if (!brief?.trim()) return mediaIds;
+  if (!shouldOverlayHeadline(brand, brief, { caption, format: "carousel" })) {
+    return mediaIds;
+  }
+  const headline = await generateHeadline(brand, caption);
+  const out: string[] = [];
+  for (let i = 0; i < mediaIds.length; i++) {
+    const id = mediaIds[i]!;
+    const tiled = await applyTextTile(brand, id, headline, {
+      ...(brief ? { ask: brief } : {}),
+      slideIndex: i,
+    });
+    out.push(tiled ?? id);
+  }
+  return out;
+}
+
 /** Turn the parked photos into ONE carousel post (consistent grade across slides). */
 export async function resolveAsCarousel(
   brand: Brand,
@@ -160,11 +189,12 @@ export async function resolveAsCarousel(
   }
 
   // C6: caption + shared grade in parallel where safe.
-  const [captionResult, mediaIds] = await Promise.all([
+  const [captionResult, gradedIds] = await Promise.all([
     draftCaption(brand.id, ids),
     gradePhotoBundle(brand, ids),
   ]);
   const caption = captionResult.caption;
+  const mediaIds = await overlayCarouselIfAsked(brand, gradedIds, caption);
 
   const pillars = await ensurePillars(brand.id);
   const pillar = await classifyPhotoPillar(brand, pillars, ids[0]!);
@@ -314,7 +344,7 @@ export async function classifyStoryTone(brand: Brand, text: string): Promise<"ca
   try {
     const verdict = await callLLM({
       system: [
-        `Classifying a Story for "${brand.name}". Is it a casual, behind-the-scenes CANDID, or SALESY (a price, discount, offer, guarantee, or a factual claim/promotion)?`,
+        `Classifying a Story for "${creativeBrandLabel(brand)}". Is it a casual, behind-the-scenes CANDID, or SALESY (a price, discount, offer, guarantee, or a factual claim/promotion)?`,
         'Answer with exactly one word: "candid" or "salesy". When unsure, answer "salesy".',
       ].join("\n"),
       messages: [{ role: "user", content: text.slice(0, 500) }],
@@ -333,17 +363,21 @@ export async function classifyStoryTone(brand: Brand, text: string): Promise<"ca
 export async function draftStoryOverlay(
   brand: Brand,
   mediaId: string,
+  brief?: string,
 ): Promise<{ overlay: string; cta?: string }> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   try {
     const raw = await callLLM({
       system: [
-        `Write STORY overlay copy for "${brand.name}" — Instagram Stories are ephemeral and vertical.`,
+        `Write STORY overlay copy for "${creativeBrandLabel(brand)}" — Instagram Stories are ephemeral and vertical.`,
         "Do NOT write a feed-length caption. Output ONLY JSON:",
-        '{"overlay":"<3-7 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
+        '{"overlay":"<max 5 punchy words>","cta":"<optional short CTA or empty>","sticker":"none|question|poll|link","question_prompt":"<if sticker=question, the question to ask>","sell":true|false}',
+        "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or). The overlay must be a complete standalone headline, never a truncated sentence or sliced clause.",
         "Prefer a question sticker when you want audience words for future hooks, or a soft sell CTA when an offer/booking link fits. Keep sell sparse.",
+        "If the owner named a moment, class, offer, or time (tonight's class, this weekend, happy hour), the overlay MUST include that — never ignore their brief.",
         facelessPromptLine(brand) ?? "",
         profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
+        NEVER_INVENT_PROOF,
         "No hashtags, no emoji spam, no quotes.",
       ]
         .filter(Boolean)
@@ -351,7 +385,9 @@ export async function draftStoryOverlay(
       messages: [
         {
           role: "user",
-          content: `Photo media id ${mediaId}. Write the story overlay now.`,
+          content: brief?.trim()
+            ? `Photo media id ${mediaId}. Owner brief: """${brief.trim()}""". Write the story overlay now.`
+            : `Photo media id ${mediaId}. Write the story overlay now.`,
         },
       ],
       maxTokens: 80,
@@ -360,7 +396,9 @@ export async function draftStoryOverlay(
       overlay?: string;
       cta?: string;
     };
-    const overlay = stripPersonalNames(humanizeCaption(String(parsed.overlay ?? "")), brand).slice(0, 48);
+    const overlay = formatOverlayHeadline(
+      stripPersonalNames(humanizeCaption(String(parsed.overlay ?? "")), brand),
+    );
     let cta = stripPersonalNames(humanizeCaption(String(parsed.cta ?? "")), brand).slice(0, 48);
     const sticker = String((parsed as { sticker?: string }).sticker ?? "none");
     const q = humanizeCaption(String((parsed as { question_prompt?: string }).question_prompt ?? "")).slice(0, 60);
@@ -370,7 +408,7 @@ export async function draftStoryOverlay(
     console.error("draftStoryOverlay failed", err);
   }
   const masthead = overlayMasthead(brand);
-  return { overlay: (masthead || "START HERE").slice(0, 24) };
+  return { overlay: formatOverlayHeadline(masthead || "START HERE") };
 }
 
 async function renderTypedSlides(
@@ -429,8 +467,9 @@ export async function generateTypedCarousel(
   };
 
   const system = [
-    `You write a ${kindGuide[kind]} for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    `You write a ${kindGuide[kind]} for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
+    NEVER_INVENT_PROOF,
     'Output ONLY JSON: {"caption":"<short feed caption>","slides":["<slide 1>","<slide 2>",...]}',
     "3 to 5 slides. Each slide is ONE short punchy line (max about 10 words). No emoji, no quotes, no dashes of any kind.",
     kind === "before_after" ? "Slide 2 should read as BEFORE; slide 3 as AFTER." : "",
@@ -552,8 +591,9 @@ export async function generatePhotoTextCarousel(
     /* creativePlan optional */
   }
   const system = [
-    `You write a swipeable Instagram carousel for "${brand.name}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
+    creativeSceneConstraint(brand),
     visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
     looksLikeComparisonBrief(topic)
@@ -563,15 +603,17 @@ export async function generatePhotoTextCarousel(
       ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
       : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title ≤8 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
-      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 8 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
+      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
       ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
+    "Never end an overlay on a function word (the/a/of/to/for/with/not/in/on/at/and/or). The overlay must be a complete standalone headline, never a truncated sentence or sliced clause.",
     "photo_prompt must match the owner brief visual (e.g. cinematic cars if they asked for cars) — never invent unrelated portraits or office scenes.",
     "photo_prompt must read like a real photographer brief: specific make/model or vehicle class if cars, real location/time of day, lens feel — never 'epic AI fantasy' or abstract CGI.",
     noFace || "People in frame are fine when the brief calls for them; otherwise prefer clear subject photography.",
     "No text/logos/watermarks in the photo itself — overlay is burned on afterward.",
+    NEVER_INVENT_PROOF,
     ideaMode ? "Use web search to ground ideas in real demand/trends; do not invent fake statistics." : "",
   ]
     .filter(Boolean)
@@ -628,10 +670,9 @@ export async function generatePhotoTextCarousel(
       caption = stripPersonalNames(sanitizeChatText(String(parsed.caption ?? "")), brand).trim();
       slides = (parsed.slides ?? [])
         .map((s) => ({
-          overlay: stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand)
-            .replace(/["']/g, "")
-            .trim()
-            .slice(0, ideaMode ? 64 : 64),
+          overlay: formatOverlayHeadline(
+            stripPersonalNames(sanitizeChatText(String(s.overlay ?? "")), brand),
+          ),
           photoPrompt: String(s.photo_prompt ?? s.photoPrompt ?? "").trim(),
           ideaBlurb: stripPersonalNames(
             sanitizeChatText(String(s.idea_blurb ?? s.ideaBlurb ?? "")),
@@ -714,7 +755,7 @@ export async function generatePhotoTextCarousel(
   if (forceFresh) {
     for (let i = 0; i < slides.length; i++) {
       slides[i]!.photoPrompt = mutatePhotoPrompt(slides[i]!.photoPrompt, 3, i);
-      slides[i]!.overlay = slides[i]!.overlay.slice(0, 40);
+      slides[i]!.overlay = formatOverlayHeadline(slides[i]!.overlay);
       if (slides[i]!.ideaBlurb) {
         slides[i]!.ideaBlurb = slides[i]!.ideaBlurb!.slice(0, 120);
       }
@@ -736,10 +777,15 @@ export async function generatePhotoTextCarousel(
         ? "hero composition, sharp subject, clean background, premium editorial still, photoreal not AI-slop"
         : "",
       noFace,
+      creativeSceneConstraint(brand),
     ]
       .filter(Boolean)
       .join(". ");
-    let img = await generatePhotoImage(prompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+    let img = await generatePhotoImage(prompt, "1:1", {
+      quality: photoQuality,
+      brief: topic || undefined,
+      brand,
+    });
     if (index === 0 && img && !opts?.strongerPhoto) {
       const retryPrompt = [
         slide.photoPrompt,
@@ -747,10 +793,15 @@ export async function generatePhotoTextCarousel(
         dnaBit,
         "hero composition, sharp subject, clean background, premium editorial still",
         noFace,
+        creativeSceneConstraint(brand),
       ]
         .filter(Boolean)
         .join(". ");
-      const retry = await generatePhotoImage(retryPrompt, "1:1", { quality: photoQuality, brief: topic || undefined });
+      const retry = await generatePhotoImage(retryPrompt, "1:1", {
+        quality: photoQuality,
+        brief: topic || undefined,
+        brand,
+      });
       if (retry) img = retry;
     }
     if (!img) return null;
@@ -766,7 +817,7 @@ export async function generatePhotoTextCarousel(
     let eyebrow: string | undefined = ideaMode ? "IDEA" : undefined;
     let overlay = slide.overlay;
     if (opts?.shortenOverlay) {
-      overlay = overlay.slice(0, 36);
+      overlay = formatOverlayHeadline(overlay);
       if (body) body = body.slice(0, 90);
       eyebrow = undefined;
     }
@@ -774,13 +825,17 @@ export async function generatePhotoTextCarousel(
       brand,
       mediaId,
       overlay,
-      ideaMode || body
-        ? {
-            body,
-            eyebrow,
-            mixedFonts: ideaMode || Boolean(body),
-          }
-        : undefined,
+      {
+        ...(ideaMode || body
+          ? {
+              body,
+              eyebrow,
+              mixedFonts: ideaMode || Boolean(body),
+            }
+          : {}),
+        ...(topic ? { ask: topic } : {}),
+        slideIndex: index,
+      },
     );
     return tiled ?? mediaId;
   }
@@ -829,7 +884,7 @@ export async function generatePhotoTextCarousel(
           slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, attempt, idx);
         }
         if (wantShorter || attempt >= 2) {
-          slide.overlay = slide.overlay.slice(0, attempt >= 3 ? 28 : 40);
+          slide.overlay = formatOverlayHeadline(slide.overlay);
           if (slide.ideaBlurb) {
             slide.ideaBlurb = slide.ideaBlurb.slice(0, attempt >= 3 ? 70 : 110);
           }
@@ -861,7 +916,7 @@ export async function generatePhotoTextCarousel(
     for (let idx = 0; idx < slides.length; idx++) {
       const slide = slides[idx]!;
       slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
-      slide.overlay = slide.overlay.slice(0, 32);
+      slide.overlay = formatOverlayHeadline(slide.overlay);
       if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
       const id = await renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true });
       if (!id) {
@@ -964,13 +1019,15 @@ export async function draftCarouselFromPhotos(
   brand: Brand,
   photoIds: string[],
   pillar: Pillar,
+  opts?: { brief?: string },
 ): Promise<{ post: Post; mediaUrl: string | null } | null> {
   if (photoIds.length < 2) return null;
-  const [captionResult, mediaIds] = await Promise.all([
+  const [captionResult, gradedIds] = await Promise.all([
     draftCaption(brand.id, photoIds),
     gradePhotoBundle(brand, photoIds),
   ]);
   const caption = captionResult.caption;
+  const mediaIds = await overlayCarouselIfAsked(brand, gradedIds, caption, opts?.brief);
   // Generated/bot-assembled value still respects autopilot for *photo* bundles,
   // but tip/typed generators above always force pending_approval.
   const autopilot = Boolean(pillar.autopilot);
@@ -1010,10 +1067,11 @@ export async function draftStoryFromPhoto(
   brand: Brand,
   photo: { id: string },
   pillar: Pillar,
+  brief?: string,
 ): Promise<{ post: Post; mediaUrl: string | null; auto: boolean } | null> {
   // Parallel: overlay copy + photo grade (C6).
   const [overlay, edited] = await Promise.all([
-    draftStoryOverlay(brand, photo.id),
+    draftStoryOverlay(brand, photo.id, brief),
     editImageForBrand(brand, photo.id).catch(() => null),
   ]);
   const tone = await classifyStoryTone(brand, `${overlay.overlay} ${overlay.cta ?? ""}`);

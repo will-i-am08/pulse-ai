@@ -1,6 +1,6 @@
 import { query, queryOne, brandVoiceProfileSchema, publicMediaUrl, sanitizeChatText, isPublishDestination, getServerEnv } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
-import { classifyInbound, type InboundClassification, looksLikeAffirmation } from "./classify.js";
+import { classifyInbound, type InboundClassification, looksLikeAffirmation, looksLikeGreeting } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
@@ -12,6 +12,8 @@ import {
   generateHeadline,
   applyTextTile,
 } from "./imaging.js";
+import { reviseOfferedCaption } from "./offeredDraft.js";
+export { captionEditMissed } from "./offeredDraft.js";
 import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -84,7 +86,7 @@ import {
 } from "./crmWebhook.js";
 import { previewUrlForPost } from "./mockup.js";
 import { repurposeUrl } from "./repurpose.js";
-import { competitorIntel, addCompetitorWatch, extractCompetitorName } from "./competitors.js";
+import { competitorIntel, addCompetitorWatch, extractCompetitorName, looksLikeCompetitorAsk } from "./competitors.js";
 import {
   getProposedPlan,
   applyNichePlan,
@@ -134,6 +136,10 @@ import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
+import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
+import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
+import { quickReengageReply, quickSocialReply } from "./socialReply.js";
+import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
   looksLikeDigestRequest,
@@ -179,7 +185,6 @@ import {
   persistDestinations,
   persistEditedCaptions,
   destinationAck,
-  DEST_HINT,
   approvalReply,
   approveSelectedDestinations,
   buildPlatformCaptions,
@@ -249,7 +254,12 @@ const CONNECT_LINKEDIN_RE =
 const CONNECT_TIKTOK_RE =
   /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_STATUS_RE =
-  /\b(what(?:'?s| is)|am i|are we)\b.{0,30}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b/i;
+  /\b(what(?:'?s| is)|am i|are we)\b.{0,40}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b|\b(?:what|which)\s+platforms?\b.{0,40}\b(?:am i|are we|are you)\b.{0,20}\b(?:posting|posted|on|connected)\b|\b(?:what|where)\s+(?:am i|are we)\s+posting\b|\bwhat platforms am i (?:on|using)\b/i;
+
+/** "what platforms am I posting to?" — answer from tokens, never the LLM. */
+export function looksLikeConnectStatus(body: string | null | undefined): boolean {
+  return Boolean(body && CONNECT_STATUS_RE.test(body));
+}
 /**
  * Wiping the Meta tokens needs a full OAuth re-auth to undo, so this must be an
  * unmistakable "disconnect my accounts". `remove` is ordinary edit vocabulary
@@ -333,11 +343,6 @@ async function maybeEnqueueFromKipCommitIfAsked(
   await maybeEnqueueFromKipCommit(brand, userMessage, kipReply, sourceMessageId);
 }
 
-// Competitor-intel intent: "what's X doing on ads/socials", "check out the
-// competition", "spy on [name]", "ad library". Routed to a web-search rundown.
-const COMPETITOR_RE =
-  /\b(competitors?|competition|rivals?|spy on|size up|scope out|ad library|keep an eye on)\b|\bwhat(?:'?s| is| are)\b[\w'&.\- ]{1,40}\b(?:running|advertising|posting|doing|promoting|up to)\b[\w'&.\- ]{0,25}\b(?:ad|ads|social|socials|insta|instagram|facebook|fb|tiktok)\b/i;
-
 // "Keep an eye on X" / "watch X" — also registers a weekly competitor watch.
 const WATCH_ADD_RE = /\b(keep (?:an eye|tabs) on|start watching|watch|monitor|track)\s+\S/i;
 
@@ -345,7 +350,11 @@ const WATCH_ADD_RE = /\b(keep (?:an eye|tabs) on|start watching|watch|monitor|tr
 const STORY_CMD_RE =
   /\b(?:(?:make|turn|put)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?stor(?:y|ies)|as\s+(?:a\s+)?stor(?:y|ies)|on\s+(?:my\s+)?stor(?:y|ies)|stor(?:y|ies)\s+this)\b|^\s*stor(?:y|ies)\s*[!.?]*$/i;
 const CAROUSEL_CMD_RE =
-  /\b(?:(?:make|turn)\s+(?:it|this|these|that)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
+  /\b(?:(?:make|turn|bundle)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?carousel|as\s+(?:a\s+)?carousel|into\s+(?:a\s+)?carousel|carousel\s+this|swipe\s+post)\b|^\s*carousel\s*[!.?]*$/i;
+
+export function looksLikeCarouselCommand(body: string | null | undefined): boolean {
+  return Boolean(body?.trim() && CAROUSEL_CMD_RE.test(body));
+}
 const SEPARATE_CMD_RE = /\b(separate|separately|individually|split (?:them|up)|different posts?)\b/i;
 const REEL_CMD_RE =
   /\b(?:(?:make|turn|put)\s+(?:it|this|these|that|them)?\s*(?:(?:in)?to\s+)?(?:a\s+)?reels?|as\s+(?:a\s+)?reels?|reels?\s+this)\b|^\s*reels?\s*[!.?]*$/i;
@@ -354,22 +363,6 @@ const REEL_CMD_RE =
 // photos are only pulled back out on request like this — never automatically.
 const REUSE_RE =
   /\b(re-?use|re-?post|repost|old (photo|pic|shot|one|image)|previous (photo|pic|post|one)|use (an?\s+|one\s+of\s+)?(old|previous|existing|earlier)|(from|one i sent) (before|last week|last month|the other (day|week))|from the archive|use something old)\b/i;
-
-// Pure greetings / pleasantries / small talk — the WHOLE message is just this,
-// nothing actionable trailing it (the `$` anchor keeps "hey can you post this"
-// out). These get a warm human reply, never the clarify fallback.
-const GREETING_RE =
-  /^\s*(?:hi+|hey+|hello+|yo+|hiya|heya|howdy|hallo|sup|wassup|g'?day|good\s*(?:morning|afternoon|evening|day)|morning|afternoon|evening|thanks?(?:\s*(?:you|a lot|so much|heaps|mate))?|thank\s*you|cheers|ta|nice\s*one|good\s*stuff|lol|haha+|how(?:'?s| is| are| ya| you)?\s*(?:it|things|you|ya|everything|life)?(?:\s*(?:going|doing|been))?)\b[\s!.?,]*$/i;
-
-/** Format a scheduled slot like "Tue 7:00pm" in the process/brand timezone. */
-function formatSlot(d: Date): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
-}
 
 /** The most recent autopilot post still sitting in a future slot (for HOLD). */
 async function getScheduledAutoPost(brandId: string): Promise<Post | null> {
@@ -468,28 +461,10 @@ async function updateMessageType(messageId: string, type: NonNullable<Message["t
 }
 
 async function reviseCaption(brand: Brand, currentCaption: string, instruction: string): Promise<string> {
-  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const system = [
-    `You are revising a social media caption for "${brand.name}" per the client's instruction.`,
-    "Output ONLY the revised caption text — no preamble, no surrounding quotes.",
-    profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
-    profile.banned_words.length ? `Never use: ${profile.banned_words.join(", ")}.` : "",
-    `Emoji policy: ${profile.emoji_policy}.`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const text = await callLLM({
-    system,
-    messages: [
-      {
-        role: "user",
-        content: `Current caption:\n"""${currentCaption}"""\n\nClient's edit instruction:\n"""${instruction}"""\n\nRewrite the caption.`,
-      },
-    ],
-    maxTokens: 400,
-  });
-  return text.trim();
+  const revised = await reviseOfferedCaption(brand, currentCaption, instruction);
+  if (revised.ok) return revised.caption;
+  // Classic edit path: keep prior caption rather than persisting a clarifying question.
+  return currentCaption;
 }
 
 async function answerQuestion(
@@ -497,12 +472,20 @@ async function answerQuestion(
   context: string,
   question: string,
   sourceMessageId?: string | null,
-): Promise<string> {
+): Promise<{ reply: string; operatorAlert?: string; mediaUrl?: string }> {
+  if (getServerEnv().KIP_GENERAL_AGENT) {
+    return runGeneralAgent({
+      brand,
+      ownerMessage: question,
+      sourceMessageId,
+      mediaIds: [],
+    });
+  }
   if (getServerEnv().KIP_TOOL_LOOP) {
-    return answerWithTools(brand, context, question, { sourceMessageId });
+    return { reply: await answerWithTools(brand, context, question, { sourceMessageId }) };
   }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  return speakSMS({
+  const reply = await speakSMS({
     brand,
     mode: "answer",
     modeLines: [
@@ -519,6 +502,7 @@ async function answerQuestion(
     webSearch: 4,
     classification: "question",
   });
+  return { reply };
 }
 
 /**
@@ -551,8 +535,10 @@ async function trySmartPlannerKickoff(
  * a feature menu and never says "I'm not sure what you want".
  */
 async function converse(brand: Brand, message: string): Promise<string> {
+  const quick = quickSocialReply(brand, message);
+  if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const context = await buildConversationContext(brand.id);
+  const context = await buildConversationContext(brand.id, { summarize: false });
   return speakSMS({
     brand,
     mode: "converse",
@@ -580,8 +566,10 @@ async function converse(brand: Brand, message: string): Promise<string> {
  * Never assumes seamless continuity, never recites a feature menu.
  */
 async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
+  const quick = quickReengageReply(brand, message, phrase, actionable);
+  if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
-  const context = await buildConversationContext(brand.id);
+  const context = await buildConversationContext(brand.id, { summarize: false });
   // A named event in the owner's world that just passed and we've not asked
   // about is the warmest possible re-open ("how'd the Emily Calder shoot go?").
   const now = Date.now();
@@ -611,17 +599,19 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
     ownerMessage: message,
     context,
     maxTokens: 500,
-    think: true,
+    think: false,
   });
 }
 
-type InboundResult = {
+export type InboundResult = {
   reply: string;
   postId?: string;
   mediaUrl?: string;
   /** All carousel slide previews — an SMS may attach several. */
   mediaUrls?: string[];
   finishOnboardingBrandId?: string;
+  /** Operator-only escalate body. Never included in owner SMS. */
+  operatorAlert?: string;
 };
 
 /**
@@ -666,12 +656,17 @@ async function routeInbound(
     if (!step.complete) return { reply: step.reply };
     return { reply: WRAP_ACK, finishOnboardingBrandId: brand.id };
   }
-  // Wrap-up compiling in the background: don't start over — ack and hold the line.
+  // Wrap-up compiling in the background: don't start over. If they already
+  // asked for a draft, hold quietly — don't start a new interview on top.
   if (brand.onboarding_state?.status === "wrapping_up") {
+    const wrapBody = message.body ?? "";
+    if (looksLikeKickoffRequest(wrapBody) || DRAFT_FILLER_RE.test(wrapBody) || looksLikeMakeReelRequest(wrapBody)) {
+      return { reply: "Got it — finishing your voice first, then I'll draft that." };
+    }
     return {
       reply: acknowledgeThenContinue(
         brand,
-        message.body ?? "",
+        wrapBody,
         "Still putting your voice together — nearly there.",
       ),
     };
@@ -689,11 +684,18 @@ async function routeInbound(
   }
 
   // Owner asks to find / set / use a booking link (or put a link on a post).
-  // Gated on `!pending`: with a draft awaiting approval, "add a link in the
-  // caption" is an edit to that draft, not a booking-link setup flow.
-  if (message.body && newMedia.length === 0 && !pending && looksLikeDestinationLinkIntent(message.body)) {
+  // "Add a link in the caption" while a draft is pending is an edit. "Our
+  // booking link is …" is storing a fact and must not rewrite that draft.
+  if (message.body && newMedia.length === 0 && looksLikeDestinationLinkIntent(message.body)) {
+    const storeOnFile =
+      /\b(our|my|the)\s+booking\s+link\s+is\b/i.test(message.body) ||
+      /\b(update|change|set)\s+(our|my|the)\s+booking\s+link\b/i.test(message.body) ||
+      /\bwhat('s| is)\s+(our|my|the)\s+booking\s+link\b/i.test(message.body);
+    if (!pending || storeOnFile) {
     const explicit = extractUrlFromMessage(message.body);
-    if (explicit && /\b(set|update|change|use)\b/i.test(message.body)) {
+    if (explicit) {
+      // A URL in a booking-link text is the link they want on file — "our
+      // booking link is https://calendly.com/…" must not crawl a missing website.
       // Still confirm before saving — never silently overwrite booking_link.
       await query(
         `update brands set facts = jsonb_set(coalesce(facts, '{}'::jsonb), '{pending_destination_link}', $1::jsonb, true), updated_at = now() where id = $2`,
@@ -721,6 +723,7 @@ async function routeInbound(
     return {
       reply: `Using ${ensured.url} as your booking link. Send a photo (or ask me to make a post) and I'll add the platform-safe CTA.`,
     };
+    }
   }
 
   // Hold-window kill switch: "HOLD" / "stop" pulls a scheduled autopilot post
@@ -744,7 +747,7 @@ async function routeInbound(
         [auto.id, brand.id, brand.approver, "Held by client via HOLD"],
       );
       return {
-        reply: `Held, it won't go out. Reply "yes" to post it after all, or tell me what to change.`,
+        reply: `Held, it won't go out. Reply yes to post it after all, or tell me what to change.`,
         postId: auto.id,
       };
     }
@@ -781,7 +784,7 @@ async function routeInbound(
           if (res) {
             const when = res.post.scheduled_at ? formatSlot(new Date(res.post.scheduled_at)) : "soon";
             return {
-              reply: `Bundled into a carousel ✨\n\n"${res.post.caption}"\n\n${res.post.media_ids.length} slides · proposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+              reply: `Bundled into a carousel.\n\n${res.post.caption}\n\n${res.post.media_ids.length} slides, proposed for ${when}. Reply yes to send it, or tell me a change.`,
               postId: res.post.id,
               mediaUrl: res.mediaUrl ?? undefined,
             };
@@ -789,7 +792,7 @@ async function routeInbound(
           return { reply: "I tried to bundle those into a carousel but hit a snag. Mind sending them again?" };
         }
         const n = await resolveAsSeparate(brand, parked);
-        return { reply: `Done, drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve. Reply "yes" to the first, or tell me a change.` };
+        return { reply: `Done, drafted ${n} separate post${n === 1 ? "" : "s"} for you to approve. Reply yes to the first, or tell me a change.` };
       }
     }
   }
@@ -864,7 +867,9 @@ async function routeInbound(
         let headline: string | undefined;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         const captions = buildPlatformCaptions(caption);
@@ -882,12 +887,28 @@ async function routeInbound(
         });
         const replyImageUrl = await previewUrlForPost(brand, post, finalId);
         return {
-          reply: `Locked in look ${vChoice.kind === "original" ? "original" : vChoice.index + 1} ✨\n\n"${caption}"\n\n${pillar?.name ?? "Feed"} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.\n\n${DEST_HINT}`,
+          reply: `Locked in look ${vChoice.kind === "original" ? "original" : vChoice.index + 1}.\n\n${caption}\n\nProposed for ${formatSlot(slot)}. Reply yes to send it, tell me a change, or no to scrap it.`,
           postId: post.id,
           mediaUrl: replyImageUrl,
         };
       }
     }
+  }
+
+  // A bare "no" / "scrap it" with a pending draft is discard. CANCEL_RE used to
+  // run only when !pending (boost/ads cancel), so "no" fell through to the
+  // classifier — which sometimes labelled it approval and published the draft.
+  if (pending && message.body && newMedia.length === 0 && CANCEL_RE.test(message.body)) {
+    await query(
+      `update posts set status = 'rejected', updated_at = now() where id = $1 and brand_id = $2`,
+      [pending.id, brand.id],
+    );
+    await query(
+      `insert into approval_log (post_id, brand_id, action, actor, note)
+       values ($1, $2, 'rejected', $3, $4)`,
+      [pending.id, brand.id, brand.approver, "Owner discarded the pending draft"],
+    ).catch(() => {});
+    return { reply: 'Scrapped that one. Send a photo or tell me what to make next.', postId: pending.id };
   }
 
   // Strategy brief accept / revise / cancel (before plan — strategy feeds the plan).
@@ -1024,13 +1045,13 @@ async function routeInbound(
     newMedia.length === 0 &&
     pending &&
     (STORY_CMD_RE.test(message.body) ||
-      CAROUSEL_CMD_RE.test(message.body) ||
+      looksLikeCarouselCommand(message.body) ||
       REEL_CMD_RE.test(message.body) ||
       looksLikeMakeReelRequest(message.body))
   ) {
     if (STORY_CMD_RE.test(message.body)) {
       await query("update posts set format = 'story' where id = $1 and brand_id = $2", [pending.id, brand.id]);
-      return { reply: `Done, switched it to a story. Reply "yes" to approve.`, postId: pending.id };
+      return { reply: `Done, switched it to a story. Reply yes to send it.`, postId: pending.id };
     }
     if (REEL_CMD_RE.test(message.body) || looksLikeMakeReelRequest(message.body)) {
       const sourceIds = pending.source_media_ids?.length
@@ -1056,7 +1077,7 @@ async function routeInbound(
               ? formatSlot(new Date(reel.post.scheduled_at))
               : "soon";
             return {
-              reply: `Turned it into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve.`,
+              reply: `Turned it into a Reel.\n\n${reel.post.caption}\n\nProposed for ${when}. Reply yes to send it.`,
               postId: reel.post.id,
               mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
             };
@@ -1069,14 +1090,14 @@ async function routeInbound(
         brand.id,
       ]);
       return {
-        reply: `Done, marked it as a Reel. Reply "yes" to approve.`,
+        reply: `Done, marked it as a Reel. Reply yes to send it.`,
         postId: pending.id,
       };
     }
     // carousel needs at least two images
     if (pending.media_ids.length >= 2) {
       await query("update posts set format = 'carousel' where id = $1 and brand_id = $2", [pending.id, brand.id]);
-      return { reply: `Done, made it a carousel (${pending.media_ids.length} slides). Reply "yes" to approve.`, postId: pending.id };
+      return { reply: `Done, made it a carousel (${pending.media_ids.length} slides). Reply yes to send it.`, postId: pending.id };
     }
     return { reply: "A carousel needs a few photos — send me a couple more and I'll bundle them into one." };
   }
@@ -1212,7 +1233,7 @@ async function routeInbound(
 
   // SMS deep-link connects / disconnect / status (no pending draft required).
   if (message.body && newMedia.length === 0 && !pending) {
-    if (CONNECT_STATUS_RE.test(message.body)) {
+    if (looksLikeConnectStatus(message.body)) {
       return { reply: metaConnectStatusMessage(brand) };
     }
     // Step two of the disconnect: only a staged request, confirmed in words,
@@ -1259,7 +1280,7 @@ async function routeInbound(
       brand.features = { ...(brand.features ?? {}), ads: true };
       await logAdApproval({ brandId: brand.id, action: "enable_ads", note: "SMS enable ads", after: { ads: true } });
       const next = brand.ad_account_id ? adsFeatureStatusLine(brand) : connectLinkMessage(brand, "ads");
-      return { reply: `Ads are on. I'll always confirm before spending.\n\n${next}` };
+      return { reply: brand.ad_account_id ? `Ads are on. I'll always confirm before spending.\n\n${next}` : next };
     }
     if (adsToggle === "disable") {
       await setBrandFeatures(brand.id, { ads: false });
@@ -1299,17 +1320,25 @@ async function routeInbound(
         return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
       }
     }
+    if (looksLikeCalendarAsk(message.body)) {
+      try { return { reply: await loadCalendarSms(brand) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't check the calendar just now (${detail}). Try again in a bit.` };
+      }
+    }
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
-  // with no photo — just gets a warm human reply. This runs before classification
-  // so a friendly hello never trips the clarify fallback. It fires even when a
-  // draft is pending: a greeting is never an approval, so GREETING_RE only matches
-  // unambiguous pleasantries (never "yes"/"ok"), and the pending draft is left as-is.
+  // with no photo — just gets a warm human reply. This runs before the general
+  // agent so a friendly hello never pays retrieve + a 4-round tool loop. It fires
+  // even when a draft is pending: a greeting is never an approval, so
+  // looksLikeGreeting only matches unambiguous pleasantries (never "yes"/"ok"),
+  // and the pending draft is left as-is.
   if (
     message.body &&
     newMedia.length === 0 &&
-    (GREETING_RE.test(message.body) || looksLikeAffirmation(message.body))
+    (looksLikeGreeting(message.body) || looksLikeAffirmation(message.body))
   ) {
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
@@ -1319,6 +1348,28 @@ async function routeInbound(
       await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
       return { reply: chat };
     }
+  }
+
+  // General agent (flagged, off by default): after hard gates (onboarding, dest
+  // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
+  // connect/disconnect, ads/digest/calendar) and greetings. Owns draft create
+  // and pending-draft mutation via tools. Attached media and high-confidence
+  // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
+  if (
+    generalAgentEligible({
+      flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
+      hasMedia: newMedia.length > 0,
+      hasPending: pending != null,
+      ownerMessage: message.body ?? "",
+    })
+  ) {
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage: message.body ?? "",
+      sourceMessageId: message.id,
+      mediaIds: [],
+    });
+    return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
   }
 
   const draftedReply = !pending ? await latestDraftedInteraction(brand.id) : null;
@@ -1426,7 +1477,7 @@ async function routeInbound(
             ? formatSlot(new Date(fromLib.post.scheduled_at))
             : "soon";
           return {
-            reply: `Got your photo — drafted this for ${pillar.name}:\n\n"${fromLib.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+            reply: `Got your photo — drafted this:\n\n${fromLib.post.caption}\n\nProposed for ${when}. Reply yes to send it, or tell me a change.`,
             postId: fromLib.post.id,
             mediaUrl: fromLib.mediaUrl ?? undefined,
           };
@@ -1465,7 +1516,7 @@ async function routeInbound(
 
   // Competitor intel — "what's [rival] doing on ads/socials?" → web-search rundown.
   // Runs before the classifier switch since it can read as a question or an instruction.
-  if (message.body && newMedia.length === 0 && !pending && COMPETITOR_RE.test(message.body)) {
+  if (message.body && newMedia.length === 0 && looksLikeCompetitorAsk(message.body)) {
     // "Keep an eye on X" also registers a weekly watch, then gives the first rundown.
     if (WATCH_ADD_RE.test(message.body)) {
       const name = extractCompetitorName(message.body);
@@ -1474,10 +1525,10 @@ async function routeInbound(
         const rundown = await competitorIntel(brand, message.body);
         const tail =
           status === "added"
-            ? `\n\n📌 Watching ${name} now. I'll flag what changes each week.`
+            ? `\n\nWatching ${name} now. I'll flag what changes each week.`
             : status === "exists"
-              ? `\n\n📌 Already keeping an eye on ${name}. Here's the latest.`
-              : `\n\n📌 (I watch up to 3 competitors and you're at the cap. Tell me who to drop if you'd like ${name} in.)`;
+              ? `\n\nAlready keeping an eye on ${name}. Here's the latest.`
+              : `\n\nI watch up to 3 competitors and you're at the cap. Tell me who to drop if you'd like ${name} in.`;
         return { reply: `${rundown}${tail}` };
       }
     }
@@ -1490,7 +1541,7 @@ async function routeInbound(
       const videos = newMedia.filter((m) => m.kind === "video");
       const body = message.body ?? "";
       const cmdStory = STORY_CMD_RE.test(body);
-      const cmdCarousel = CAROUSEL_CMD_RE.test(body);
+      const cmdCarousel = looksLikeCarouselCommand(body);
       const cmdSeparate = SEPARATE_CMD_RE.test(body);
       const cmdReel = REEL_CMD_RE.test(body) || looksLikeMakeReelRequest(body);
 
@@ -1518,7 +1569,7 @@ async function routeInbound(
           ? formatSlot(new Date(drafted.post.scheduled_at))
           : "soon";
         return {
-          reply: `Here's your Reel 🎬\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+          reply: `Here's your Reel.\n\n${drafted.post.caption}\n\nProposed for ${when}. Reply yes to send it, or tell me a change.`,
           postId: drafted.post.id,
           mediaUrl: drafted.coverUrl ?? drafted.mediaUrl ?? undefined,
         };
@@ -1539,7 +1590,7 @@ async function routeInbound(
               ? formatSlot(new Date(reel.post.scheduled_at))
               : "soon";
             return {
-              reply: `Turned ${photos.length === 1 ? "it" : "them"} into a Reel 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+              reply: `Turned ${photos.length === 1 ? "it" : "them"} into a Reel.\n\n${reel.post.caption}\n\nProposed for ${when}. Reply yes to send it, or tell me a change.`,
               postId: reel.post.id,
               mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
             };
@@ -1547,7 +1598,7 @@ async function routeInbound(
           const fromLib = await draftPostFromPhoto(brand, photos[0]!, pillar);
           if (fromLib) {
             return {
-              reply: `${videoEditFallbackSms(brand.name)}\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve.`,
+              reply: `${videoEditFallbackSms(brand.name)}\n\n${fromLib.post.caption}\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply yes to send it.`,
               postId: fromLib.post.id,
               mediaUrl: fromLib.mediaUrl ?? undefined,
             };
@@ -1563,7 +1614,7 @@ async function routeInbound(
         for (const p of photos.slice(0, 5)) {
           const pillar = (await classifyPhotoPillar(brand, pillars, p.id)) ?? pillars[0];
           if (!pillar) continue;
-          const s = await draftStoryFromPhoto(brand, p, pillar);
+          const s = await draftStoryFromPhoto(brand, p, pillar, message.body ?? undefined);
           if (s) results.push(s);
         }
         if (results.length) {
@@ -1572,8 +1623,8 @@ async function routeInbound(
           const n = results.length;
           const noun = n === 1 ? "story" : `${n} stories`;
           const reply = auto
-            ? `Popped ${n === 1 ? "it" : "them"} on your story ✨ (casual, so I went ahead. Reply "HOLD" to pull ${n === 1 ? "it" : "them"}).`
-            : `Here's your ${noun}:\n\n"${first.post.caption}"\n\nReply "yes" to put ${n === 1 ? "it" : "them"} on your story, or tell me a change.`;
+            ? `Popped ${n === 1 ? "it" : "them"} on your story (casual, so I went ahead. Reply HOLD to pull ${n === 1 ? "it" : "them"}).`
+            : `Here's your ${noun}:\n\n${first.post.caption}\n\nReply yes to put ${n === 1 ? "it" : "them"} on your story, or tell me a change.`;
           return { reply, postId: first.post.id, mediaUrl: first.mediaUrl ?? undefined };
         }
       }
@@ -1582,11 +1633,15 @@ async function routeInbound(
       if (photos.length >= 2 && cmdCarousel) {
         const pillars = await ensurePillars(brand.id);
         const pillar = (await classifyPhotoPillar(brand, pillars, photos[0]!.id)) ?? pillars[0];
-        const res = pillar ? await draftCarouselFromPhotos(brand, photos.map((m) => m.id), pillar) : null;
+        const res = pillar
+          ? await draftCarouselFromPhotos(brand, photos.map((m) => m.id), pillar, {
+              brief: message.body ?? undefined,
+            })
+          : null;
         if (res) {
           const when = res.post.scheduled_at ? formatSlot(new Date(res.post.scheduled_at)) : "soon";
           return {
-            reply: `Bundled into a carousel ✨\n\n"${res.post.caption}"\n\n${res.post.media_ids.length} slides · proposed for ${when}. Reply "yes" to approve, or tell me a change.`,
+            reply: `Bundled into a carousel.\n\n${res.post.caption}\n\n${res.post.media_ids.length} slides, proposed for ${when}. Reply yes to send it, or tell me a change.`,
             postId: res.post.id,
             mediaUrl: res.mediaUrl ?? undefined,
           };
@@ -1690,7 +1745,9 @@ async function routeInbound(
         let finalId = editedId ?? firstPhoto.id;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         if (finalId !== firstPhoto.id) {
@@ -1779,7 +1836,7 @@ async function routeInbound(
            values ($1, $2, 'approved', 'system-autopilot', $3)`,
           [post.id, brand.id, "Auto-scheduled (pillar on autopilot)"],
         );
-        const styledLine = styledUrl ? "Styled and scheduled ✨" : "Scheduled:";
+        const styledLine = styledUrl ? "Styled and scheduled." : "Scheduled:";
         return {
           reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · going out ${formatSlot(slot)}. Reply "HOLD" to stop it, or tell me a change.`,
           postId: post.id,
@@ -1787,7 +1844,7 @@ async function routeInbound(
         };
       }
 
-      const styledLine = styledUrl ? "Here's your post. I styled the photo too ✨" : "Here's your post:";
+      const styledLine = styledUrl ? "Here's your post. I styled the photo too." : "Here's your post:";
       if (inboundDests && inboundDests.length > 0) {
         return {
           reply: `${welcomeBack}${styledLine}\n\n${destinationAck(inboundDests, captions, caption)}\n\n${pillar?.name} · proposed for ${formatSlot(slot)}`,
@@ -1796,7 +1853,7 @@ async function routeInbound(
         };
       }
       return {
-        reply: `${welcomeBack}${styledLine}\n\n"${caption}"\n\n${pillar?.name} · proposed for ${formatSlot(slot)}\n\nReply "yes" to approve, tell me what to change, or "no" to discard.\n\n${DEST_HINT}`,
+        reply: `${welcomeBack}${styledLine}\n\n${caption}\n\nProposed for ${formatSlot(slot)}. Reply yes to send it, tell me a change, or no to scrap it.`,
         postId: post.id,
         mediaUrl: replyImageUrl,
       };
@@ -1891,7 +1948,9 @@ async function routeInbound(
         const meta = pending.style_meta ?? {};
         if (meta.wants_text) {
           const headline = meta.headline ?? (await generateHeadline(brand, pending.caption ?? ""));
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         const newMediaIds = [finalId, ...pending.media_ids.slice(1)];
@@ -1911,7 +1970,7 @@ async function routeInbound(
           finalId,
         );
         return {
-          reply: 'Here\'s the updated image ✨. Reply "yes" to approve, or tell me another change.',
+          reply: 'Here\'s the updated image. Reply yes to send it, or tell me another change.',
           postId: pending.id,
           mediaUrl,
         };
@@ -1965,6 +2024,14 @@ async function routeInbound(
       const before = pending.caption ?? "";
       const after = await reviseCaption(brand, before, message.body ?? "");
 
+      if (after.trim() === before.trim()) {
+        return {
+          reply:
+            "Want that change on the image text, or the caption under it? Say \"remove the text on the image\" or tell me how to rewrite the caption.",
+          postId: pending.id,
+        };
+      }
+
       // Records the correction + folds the delta into brand_voice_profile.notes.
       await applyCorrection(brand.id, pending.id, before, after);
 
@@ -2005,7 +2072,7 @@ async function routeInbound(
         dests.length > 0 &&
         dests.some((d) => d === "x" || d === "threads" || d === "linkedin" || d === "tiktok")
           ? destinationAck(dests, captions, after, "Updated")
-          : `Updated:\n\n"${after}"\n\nReply "yes" to approve.`;
+          : `Updated:\n\n${after}\n\nReply yes to send it.`;
 
       return {
         reply,
@@ -2018,7 +2085,7 @@ async function routeInbound(
       if (!pending) {
         // Casual "awesome"/"great" with nothing to approve — chat back, don't
         // announce an empty approval queue they never asked about.
-        if (looksLikeAffirmation(message.body ?? "") || GREETING_RE.test(message.body ?? "")) {
+        if (looksLikeAffirmation(message.body ?? "") || looksLikeGreeting(message.body ?? "")) {
           return { reply: await converse(brand, message.body ?? "") };
         }
         return { reply: "There's nothing pending approval right now." };
@@ -2053,18 +2120,20 @@ async function routeInbound(
       const when = immediate
         ? ", going out now"
         : pending.scheduled_at
-          ? `, going out ${formatSlot(new Date(pending.scheduled_at))}`
+          ? `, going out ${formatGoingOutWhen(pending.scheduled_at)}`
           : "";
       return { reply: approvalReply(dests, when), postId: pending.id };
     }
 
     case "question": {
       const context = await buildConversationContext(brand.id);
-      const answer = await answerQuestion(brand, context, message.body ?? "", message.id);
-      // Gated variant: Kip must not queue drafts off its own small talk — the
-      // CLIENT's words have to carry the request.
-      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, answer, message.id);
-      return { reply: answer };
+      const out = await answerQuestion(brand, context, message.body ?? "", message.id);
+      // runGeneralAgent already runs maybeEnqueueFromKipCommit. The speak/tool-loop
+      // paths still need the client-gated safety net.
+      if (!getServerEnv().KIP_GENERAL_AGENT) {
+        await maybeEnqueueFromKipCommitIfAsked(brand, message.body, out.reply, message.id);
+      }
+      return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
     }
 
     case "instruction":
@@ -2114,34 +2183,12 @@ async function routeInbound(
         return { reply: queued.sms };
       }
 
-      // "Make a reel" with no media → use fresh banked photos or ask for a clip.
+      // "Make a reel" with no clip attached — ask for the video. Don't raid
+      // the photo bank and try to animate stills; that turns into a failed
+      // motion job plus a static draft.
       if (message.body && looksLikeMakeReelRequest(message.body) && newMedia.length === 0) {
-        const pillars = await ensurePillars(brand.id);
-        const pillar = (await recentlyPingedPillar(brand.id)) ?? pillars[0];
-        const photos = pillar ? await pickFreshPhotos(brand.id, 3) : [];
-        if (pillar && photos.length >= 1) {
-          const reel = await draftReelFromStills(
-            brand,
-            photos.map((p) => p.id),
-            pillar,
-          );
-          if (reel.ok) {
-            const when = reel.post.scheduled_at
-              ? formatSlot(new Date(reel.post.scheduled_at))
-              : "soon";
-            return {
-              reply: `Made a Reel from your photos 🎬\n\n"${reel.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, or send a video clip for a native Reel.`,
-              postId: reel.post.id,
-              mediaUrl: reel.coverUrl ?? reel.mediaUrl ?? undefined,
-            };
-          }
-          return {
-            reply: `${videoEditFallbackSms(brand.name)} Or send a video clip and I'll draft a Reel from that.`,
-          };
-        }
         return {
-          reply:
-            'Send me a video clip (or a few photos) and say "make a reel" — or "generate a video …" for AI video.',
+          reply: "Send me the video clip and I'll draft the Reel from that.",
         };
       }
 
@@ -2158,7 +2205,7 @@ async function routeInbound(
           const fromLib = await draftPostFromPhoto(brand, photo, target);
           if (fromLib) {
             return {
-              reply: `Pulled one of your older photos back out for a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+              reply: `Pulled one of your older photos back out.\n\n${fromLib.post.caption}\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply yes to send it, or tell me a change.`,
               postId: fromLib.post.id,
               mediaUrl: fromLib.mediaUrl ?? undefined,
             };
@@ -2184,7 +2231,7 @@ async function routeInbound(
             const fromLib = await draftPostFromPhoto(brand, banked, target);
             if (fromLib) {
               return {
-                reply: `Pulled one of your photos into a ${target.name} post ✨\n\n"${fromLib.post.caption}"\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+                reply: `Pulled one of your photos into a draft.\n\n${fromLib.post.caption}\n\nProposed for ${formatSlot(new Date(fromLib.post.scheduled_at!))}. Reply yes to send it, or tell me a change.`,
                 postId: fromLib.post.id,
                 mediaUrl: fromLib.mediaUrl ?? undefined,
               };
@@ -2193,7 +2240,7 @@ async function routeInbound(
           const filler = await generateFillerPost(brand, target);
           if (filler) {
             return {
-              reply: `Here's a ${target.name} post I drafted ✨\n\n"${filler.post.caption}"\n\nProposed for ${formatSlot(new Date(filler.post.scheduled_at!))}. Reply "yes" to approve, or tell me what to change.`,
+              reply: `Here's a draft.\n\n${filler.post.caption}\n\nProposed for ${formatSlot(new Date(filler.post.scheduled_at!))}. Reply yes to send it, or tell me a change.`,
               postId: filler.post.id,
               mediaUrl: filler.mediaUrl,
             };

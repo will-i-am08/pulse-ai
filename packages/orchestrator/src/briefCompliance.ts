@@ -133,6 +133,7 @@ export async function reviewBriefCompliance(
         "Decide if the draft DELIVERS the owner's ask — not whether it's nicely written.",
         "Comparing X means naming/contrasting specific options with a real difference, not vaguely mentioning the category.",
         "Background/visual asks in the brief must show up in photo prompts.",
+        "pass is the decision. reasons may praise a pass or explain a miss — never flip pass to false just because you listed why it worked.",
         'Output ONLY JSON: {"pass":true|false,"reasons":["..."],"reinforce_hint":"<one imperative sentence to fix the next attempt, empty if pass>"}',
       ].join("\n"),
       messages: [
@@ -159,24 +160,49 @@ export async function reviewBriefCompliance(
       reinforce_hint?: unknown;
       reinforceHint?: unknown;
     };
-    const reasons = Array.isArray(parsed.reasons)
-      ? parsed.reasons.map((r) => String(r)).filter(Boolean)
-      : heuristic.reasons;
-    const reinforceHint = String(parsed.reinforce_hint ?? parsed.reinforceHint ?? heuristic.reinforceHint ?? "").trim();
-    const pass = Boolean(parsed.pass) && reasons.length === 0;
-    if (pass) return { pass: true, reasons: [], reinforceHint: "" };
-    return {
-      pass: false,
-      reasons: reasons.length ? reasons : heuristic.reasons.length ? heuristic.reasons : ["draft does not satisfy the owner brief"],
-      reinforceHint:
-        reinforceHint ||
-        heuristic.reinforceHint ||
-        "Redo the draft so it fully satisfies every part of the owner brief",
-    };
+    return interpretComplianceLlm(parsed, heuristic);
   } catch (err) {
     console.error("reviewBriefCompliance: LLM failed, using heuristic", err);
     return heuristic;
   }
+}
+
+/**
+ * Interpret the compliance LLM JSON.
+ *
+ * The checker often returns `pass: true` WITH praise in `reasons` (why it
+ * passed). Treating any non-empty reasons list as a miss discarded every
+ * Lab Cafe filler: JSON was valid, the review loved the draft, then
+ * generateFillerPost retried twice and wrote nothing.
+ */
+export function interpretComplianceLlm(
+  parsed: {
+    pass?: boolean;
+    reasons?: unknown;
+    reinforce_hint?: unknown;
+    reinforceHint?: unknown;
+  },
+  fallback: BriefComplianceResult = {
+    pass: false,
+    reasons: ["draft does not satisfy the owner brief"],
+    reinforceHint: "Redo the draft so it fully satisfies every part of the owner brief",
+  },
+): BriefComplianceResult {
+  const reasons = Array.isArray(parsed.reasons)
+    ? parsed.reasons.map((r) => String(r)).filter(Boolean)
+    : fallback.reasons;
+  const reinforceHint = String(parsed.reinforce_hint ?? parsed.reinforceHint ?? fallback.reinforceHint ?? "").trim();
+  if (parsed.pass === true) {
+    return { pass: true, reasons: [], reinforceHint: "" };
+  }
+  return {
+    pass: false,
+    reasons: reasons.length ? reasons : fallback.reasons.length ? fallback.reasons : ["draft does not satisfy the owner brief"],
+    reinforceHint:
+      reinforceHint ||
+      fallback.reinforceHint ||
+      "Redo the draft so it fully satisfies every part of the owner brief",
+  };
 }
 
 /** Merge reinforce hint into a topicHint for a regeneration pass. */

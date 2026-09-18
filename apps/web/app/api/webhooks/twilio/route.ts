@@ -2,13 +2,17 @@
 // verification and the gateway/orchestrator pipeline it hands off to use
 // Node-only APIs (crypto, etc.), which the Edge runtime doesn't support.
 export const runtime = 'nodejs';
-// `handleInbound` runs the full turn inline: an unconditional ~2.8s human-pacing
-// burst sleep, the LLM call, then paced sends — a measured floor of ~7.4s before
-// the model is even counted. Vercel's default 10-15s cap kills the isolate
-// mid-turn, so the reply is never dispatched AND the queued kickoff drain never
-// runs, with nothing logged. Every other slow route here sets a ceiling
-// (lab/message=120, operator/kickoffs/drain=300); this is the client-facing one.
-export const maxDuration = 60;
+// `handleInbound` runs the full turn inline: optional ~1.2s coalesce sleep
+// (skipped for complete short turns), the LLM call, then paced sends. Vercel's
+// default 10-15s cap can still kill slow LLM turns mid-flight, so the reply is
+// never dispatched AND the queued kickoff drain never runs, with nothing logged.
+//
+// Kickoff drains also run in Next `after()` on this same function budget.
+// Photo carousels (multiple fal gens + LLM + overlay) routinely exceed 60s —
+// the isolate then dies with the row left `running`, and the owner gets
+// "Already on that…" until the 5-min stale reaper. Match lab/operator (300)
+// so after() can finish; DRAFT_SLOT_TIMEOUT_MS is 75s and needs headroom.
+export const maxDuration = 300;
 
 import { NextResponse, after } from 'next/server';
 import { activeChannel, handleInbound } from '@pulse/gateway';
@@ -43,8 +47,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const inbound = channel.parseInbound(params);
     // Fire the full inbound pipeline (persist, capture media, hand off to the
-    // orchestrator). handleInbound never throws for an unknown sender — it
-    // logs and returns brandId:null — but we still guard the call in case of
+    // orchestrator). handleInbound never throws — unknown senders get a
+    // signup-link reply and return brandId:null — but we still guard the call in case of
     // an unexpected downstream failure, since Twilio must get a fast, cheap
     // response regardless.
     // `defer` hands follow-up work (the onboarding plan SMS) to Next's after()

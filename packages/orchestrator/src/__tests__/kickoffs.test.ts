@@ -9,9 +9,10 @@ vi.mock("@pulse/shared", async (importOriginal) => {
   };
 });
 
-import { query } from "@pulse/shared";
+import { query, queryOne } from "@pulse/shared";
 import {
   looksLikeKickoffRequest,
+  looksLikeSlowSmsWork,
   refersToAttachedMedia,
   looksLikeUseThisBrief,
   looksLikeFormatMenuReply,
@@ -26,6 +27,7 @@ import {
 } from "../kickoffs.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
+const mockedQueryOne = queryOne as unknown as ReturnType<typeof vi.fn>;
 
 describe("looksLikeKickoffRequest", () => {
   it("catches first-batch / stock / no-photos asks", () => {
@@ -38,6 +40,17 @@ describe("looksLikeKickoffRequest", () => {
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
   });
 
+  it("does not treat a bare reel ask as a photo-feed kickoff", () => {
+    expect(looksLikeKickoffRequest("make a reel")).toBe(false);
+    expect(inferKickoffFromUserMessage("make a reel")).toBeNull();
+    expect(
+      inferKickoffFromKipCommit(
+        "make a reel",
+        "I've got you down for a reel, but I need the video clip first. Send me the video and I'll draft the caption.",
+      ),
+    ).toBeNull();
+  });
+
   it("treats carousel/photo asks without client media as kickoffs (generate/stock)", () => {
     expect(
       looksLikeKickoffRequest(
@@ -46,11 +59,31 @@ describe("looksLikeKickoffRequest", () => {
     ).toBe(true);
     expect(looksLikeKickoffRequest("make me a carousel")).toBe(true);
     expect(looksLikeKickoffRequest("Generate the photos")).toBe(true);
+    expect(
+      looksLikeKickoffRequest(
+        "Make me a feed post about a safety switch check this week. Generate the photo.",
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeKickoffRequest(
+        "Generate a photo of the vitamin shelf and put a small caption in the corner.",
+      ),
+    ).toBe(true);
+    expect(inferKickoffFromUserMessage("Generate a photo of the vitamin shelf")?.kind).toBe(
+      "draft_posts",
+    );
   });
 
   it("ignores plain chat", () => {
     expect(looksLikeKickoffRequest("thanks!")).toBe(false);
     expect(looksLikeKickoffRequest("what do you think of carousels?")).toBe(false);
+  });
+
+  it("looksLikeSlowSmsWork matches kickoffs only", () => {
+    expect(looksLikeSlowSmsWork("draft me 3 posts")).toBe(true);
+    expect(looksLikeSlowSmsWork("make me a carousel")).toBe(true);
+    expect(looksLikeSlowSmsWork("what's on my calendar this week?")).toBe(false);
+    expect(looksLikeSlowSmsWork("hey")).toBe(false);
   });
 
 
@@ -77,6 +110,13 @@ describe("looksLikeKickoffRequest", () => {
     expect(refersToAttachedMedia("use this")).toBe(true);
     expect(refersToAttachedMedia("use these")).toBe(true);
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
+    expect(refersToAttachedMedia("Generate the photo")).toBe(false);
+    expect(
+      refersToAttachedMedia(
+        "Make me a feed post about a safety switch check this week. Generate the photo.",
+      ),
+    ).toBe(false);
+    expect(refersToAttachedMedia("Post a good morning post with this photo")).toBe(true);
   });
 
   it("treats use-this / inspirational briefs and bare format-menu replies as kickoffs", () => {
@@ -111,6 +151,11 @@ describe("format-menu outbound gating", () => {
     expect(
       looksLikeDraftPreviewOutbound(
         'Draft ready — photo post for Tips:\n\n"Hello"\n\nProposed for Tue 7:00pm. Reply "yes" to approve, or tell me a change.',
+      ),
+    ).toBe(true);
+    expect(
+      looksLikeDraftPreviewOutbound(
+        "Draft ready for Tue 7:00pm:\n\nHello from the counter.\n\nReply yes to send it, or tell me a change.",
       ),
     ).toBe(true);
     expect(
@@ -220,6 +265,65 @@ describe("inferKickoffFromUserMessage", () => {
     expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
     expect(Number(r?.payload.count)).toBeGreaterThanOrEqual(1);
   });
+
+  it("singular generate-a-photo asks enqueue one post", () => {
+    const briefs = [
+      "Generate a photo of the frames wall and put a small caption in the corner.",
+      "Generate a photo of the vitamin shelf and put a small caption in the corner.",
+      "Generate a picture of the pastry case with a small caption in the corner.",
+    ];
+    for (const brief of briefs) {
+      expect(looksLikeKickoffRequest(brief), brief).toBe(true);
+      const r = inferKickoffFromUserMessage(brief);
+      expect(r?.kind, brief).toBe("draft_posts");
+      expect(r?.payload.count, brief).toBe(1);
+    }
+  });
+
+  it("singular designed tip-slide asks enqueue one post", () => {
+    const briefs = [
+      "Make me a designed tip slide about warm-up sets, short text overlay on a photo. Generate the photo.",
+      "Make me a designed tip slide about flossing, short text overlay on a photo. Generate the photo.",
+      "Make me a designed tip slide about warm-up sets, short text overlay on a photo.",
+    ];
+    for (const brief of briefs) {
+      expect(looksLikeKickoffRequest(brief), brief).toBe(true);
+      const r = inferKickoffFromUserMessage(brief);
+      expect(r?.kind, brief).toBe("draft_posts");
+      expect(r?.payload.count, brief).toBe(1);
+      expect(String(r?.ackSms ?? ""), brief).toMatch(/that post/i);
+    }
+  });
+
+  it("singular slide asks stay count 1 even when the topic contains a number", () => {
+    const brief =
+      "Make me a designed tip slide about 4 warm-up compounds, short text overlay on a photo. Generate the photo.";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+  });
+
+  it("quantity hedges still default to two drafts", () => {
+    const some = inferKickoffFromUserMessage("draft me some posts");
+    expect(some?.kind).toBe("draft_posts");
+    expect(some?.payload.count).toBe(2);
+
+    const few = inferKickoffFromUserMessage("draft me a few posts");
+    expect(few?.kind).toBe("draft_posts");
+    expect(few?.payload.count).toBe(2);
+
+    const fewAsk = "a few posts";
+    if (looksLikeKickoffRequest(fewAsk)) {
+      const bareFew = inferKickoffFromUserMessage(fewAsk);
+      expect(bareFew?.kind).toBe("draft_posts");
+      expect(bareFew?.payload.count).toBe(2);
+    }
+  });
+
+  it("explicit piece counts still win over the default", () => {
+    expect(inferKickoffFromUserMessage("draft me 3 posts")?.payload.count).toBe(3);
+    expect(inferKickoffFromUserMessage("make me 3 designed tip slides")?.payload.count).toBe(3);
+  });
 });
 
 describe("inferKickoffFromKipCommit", () => {
@@ -267,6 +371,20 @@ describe("deliverUnstreamed", () => {
     const results = [{ brandId: "b1", sms: "Need pillars before I draft." }];
     await expect(deliverUnstreamed(results)).resolves.toEqual(results);
   });
+
+  it("skips failure SMS when the owner already texted", async () => {
+    mockedQueryOne.mockResolvedValueOnce({ id: "m1" });
+    const deliver = vi.fn(async () => {});
+    const results = [
+      {
+        brandId: "b1",
+        sms: "Couldn't finish those drafts just then — try again in a moment?",
+        skipIfInboundAfter: new Date().toISOString(),
+      },
+    ];
+    await deliverUnstreamed(results, deliver);
+    expect(deliver).not.toHaveBeenCalled();
+  });
 });
 
 describe("reclaimStaleKickoffs", () => {
@@ -307,6 +425,14 @@ describe("reclaimStaleKickoffs", () => {
     await expect(reclaimStaleKickoffs({ deliver })).resolves.toEqual([]);
     expect(deliver).not.toHaveBeenCalled();
   });
+
+  it("scopes the reclaim UPDATE when brandId is set", async () => {
+    mockedQuery.mockResolvedValueOnce([]);
+    await reclaimStaleKickoffs({ brandId: "lab-brand" });
+    const [sql, params] = mockedQuery.mock.calls[0]!;
+    expect(String(sql)).toMatch(/brand_id = \$2/);
+    expect(params).toEqual(expect.arrayContaining(["lab-brand"]));
+  });
 });
 
 describe("runKickoffDrain", () => {
@@ -333,5 +459,17 @@ describe("runKickoffDrain", () => {
     expect(String(mockedQuery.mock.calls[1]![0])).toMatch(/status = 'queued'/);
     expect(out.some((r) => r.brandId === "b-stale")).toBe(true);
     expect(deliver).toHaveBeenCalled();
+  });
+
+  it("scopes reclaim + queued select when brandId is set", async () => {
+    mockedQuery.mockResolvedValueOnce([]);
+    mockedQuery.mockResolvedValueOnce([]);
+    await runKickoffDrain(2, { brandId: "lab-brand" });
+    const reclaimSql = String(mockedQuery.mock.calls[0]![0]);
+    const queuedSql = String(mockedQuery.mock.calls[1]![0]);
+    expect(reclaimSql).toMatch(/brand_id = \$2/);
+    expect(mockedQuery.mock.calls[0]![1]).toEqual(expect.arrayContaining(["lab-brand"]));
+    expect(queuedSql).toMatch(/brand_id = \$1/);
+    expect(mockedQuery.mock.calls[1]![1]).toEqual(["lab-brand", 2]);
   });
 });

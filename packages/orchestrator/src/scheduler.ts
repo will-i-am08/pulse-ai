@@ -2,8 +2,8 @@ import { query, schedulePinSchema, type Platform, type PostFormat, type Schedule
 
 // Smart scheduler: slot a post into the next good time window that respects the
 // autopilot guardrails. Times are computed in the process's local timezone
-// (TZ from env — Australia/Sydney by default), which stands in for the brand's
-// timezone for now.
+// (TZ / PULSE_APP_TZ — Australia/Sydney via resolveAppTz). Intl clock helpers
+// always go through appTz() so Vercel `TZ=:UTC` cannot crash the turn.
 //
 // Variation by default: the window order is shuffled per day and each candidate
 // gets a random minute, so repeated weekly cadences don't land at the exact

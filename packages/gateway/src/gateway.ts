@@ -5,10 +5,10 @@ import {
   craftHumanAck,
   stripLeadingAck,
   looksLikeAffirmation,
+  looksLikeGreeting,
+  looksLikeCalendarAsk,
   looksLikePhotoBackgroundAsk,
-  buildOnboardingPlanSms,
-  planOverrunNudge,
-  ONBOARDING_PLAN_ETA_MINUTES,
+  looksLikeSlowSmsWork,
   refersToAttachedMedia,
 } from "@pulse/orchestrator";
 import {
@@ -27,9 +27,16 @@ import {
   type MessageChannel,
 } from "@pulse/shared";
 import { createTwilioChannel } from "@pulse/channel-twilio";
+import { createLabChannel } from "@pulse/channel-lab";
 import { createLinqChannel } from "./linq-channel.js";
 import { withBackoff } from "./backoff.js";
 import { claimContactCardSent, needsContactCard, releaseContactCardSent } from "./contactCardSent.js";
+import { handleUnknownInbound } from "./smsLead.js";
+import {
+  classifyInboundFailure,
+  inboundFailureOwnerSms,
+  shouldSendGlitchSms,
+} from "./inboundFailure.js";
 
 let channelSingleton: MessageChannel | null = null;
 let channelOverride: MessageChannel | null = null;
@@ -42,7 +49,7 @@ export interface TypingKeeper {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Quiet window so rapid SMS from one owner become a single turn. */
-const INBOUND_BURST_MS = 2800;
+const INBOUND_BURST_MS = 1200;
 
 /**
  * Extra wait when the owner says "with this photo" but this webhook has no media.
@@ -53,6 +60,51 @@ const PHOTO_ARRIVAL_POLL_MS = 700;
 
 /** Re-export — single source of truth lives in @pulse/orchestrator. */
 export { refersToAttachedMedia };
+
+/**
+ * Fake-typing delay before an outbound bubble. Kept short — the burst wait and
+ * LLM already spent wall clock; long fake typing stacked on top felt like lag.
+ */
+export function outboundTypingPauseMs(partLength: number, partIndex: number): number {
+  if (partIndex === 0 && partLength < 120) {
+    return Math.min(160 + partLength * 8, 420);
+  }
+  return Math.min(500 + partLength * 18, partIndex === 0 ? 1600 : 900);
+}
+
+/**
+ * Finished single-bubble asks (end with ? / ! / .) — skip coalesce. Keep the
+ * wait for dangling fragments ("draft me 3", "and then…") that often get a
+ * follow-up SMS a beat later.
+ */
+export function looksLikeCompleteSmsTurn(text: string): boolean {
+  const t = (text ?? "").trim();
+  if (!t || t.length > 320) return false;
+  if (/[,;:]\s*$/.test(t)) return false;
+  if (/\b(and|or|but|with|for|about|of|to|the|a|an)\s*$/i.test(t)) return false;
+  if (/\.\.\.\s*$|…\s*$/.test(t)) return false;
+  if (/[?!]$/.test(t)) return true;
+  if (/\.$/.test(t) && /\s/.test(t) && t.length >= 16) return true;
+  return false;
+}
+
+/**
+ * Whole-turn hi / thanks / calendar / progress / complete ask — skip the
+ * coalesce sleep. Keep the wait for split thoughts, MMS, and "with this photo".
+ */
+export function shouldSkipInboundBurst(opts: { text: string; hasMedia: boolean }): boolean {
+  if (opts.hasMedia) return false;
+  const t = (opts.text ?? "").trim();
+  if (!t) return false;
+  if (refersToAttachedMedia(t)) return false;
+  return (
+    looksLikeGreeting(t) ||
+    looksLikeAffirmation(t) ||
+    looksLikeCalendarAsk(t) ||
+    looksLikeProgressCheck(t) ||
+    looksLikeCompleteSmsTurn(t)
+  );
+}
 
 /** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */
 export function looksLikeProgressCheck(text: string): boolean {
@@ -70,6 +122,24 @@ export function looksLikeProgressCheck(text: string): boolean {
   );
 }
 
+/**
+ * Filler SMS ("Still on this — one sec…") only when we already know the job is
+ * slow content work, there is no photo/text ack, and the channel has no typing
+ * indicator. Never for calendar / questions / small talk.
+ */
+export function shouldSendSlowWorkFiller(opts: {
+  photoAckSent: boolean;
+  textAckSent: boolean;
+  hasTyping: boolean;
+  inboundText: string;
+}): boolean {
+  return (
+    !opts.photoAckSent &&
+    !opts.textAckSent &&
+    !opts.hasTyping &&
+    looksLikeSlowSmsWork(opts.inboundText)
+  );
+}
 /**
  * Instant plain-text acks ("Makes sense, Bill." / "Got you, Bill.") are OFF.
  * They read as robotic one-liners before the real reply. Photo acks still fire
@@ -272,16 +342,12 @@ export async function captureMedia(
         onRetry: (err, attempt) => console.warn(`captureMedia: fetchMedia retry ${attempt} for ${item.url}`, err),
       });
 
-      // Bytes FIRST, row second. storage_path is the row's own id, which is
-      // also the putMedia key — so inserting the row before the blob exists
-      // leaves a permanently-404ing orphan when putMedia fails (broken
-      // dashboard thumbnails, Meta publishes that can't fetch image_url).
-      // An orphan blob with no row is harmless by comparison.
+      // media_blobs.media_id references media_assets(id), so the asset row
+      // must exist before putMedia. Every other writer (fillers, imaging,
+      // formats) already does this; bytes-first 23503s and the inbound photo
+      // is dropped. If the blob write fails, delete the asset so we don't
+      // leave a 404 thumbnail.
       const mediaId = randomUUID();
-      await withBackoff(() => putMedia(mediaId, bytes, contentType), {
-        onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
-      });
-
       const row = await queryOne<MediaAsset>(
         `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
          values ($1, $2, $3, $4, $5, $6)
@@ -291,6 +357,14 @@ export async function captureMedia(
       if (!row) {
         console.error(`captureMedia: failed to insert media_assets row for ${mediaId}`);
         continue;
+      }
+      try {
+        await withBackoff(() => putMedia(mediaId, bytes, contentType), {
+          onRetry: (err, attempt) => console.warn(`captureMedia: putMedia retry ${attempt} for ${mediaId}`, err),
+        });
+      } catch (err) {
+        await query(`delete from media_assets where id = $1`, [mediaId]).catch(() => undefined);
+        throw err;
       }
 
       captured.push(row);
@@ -304,6 +378,31 @@ export async function captureMedia(
   return captured;
 }
 
+const PUBLIC_MEDIA_UUID =
+  /\/api\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+/** Pull stored media UUIDs from public `/api/media/{id}` URLs (skip vCards). */
+export function mediaIdsFromPublicUrls(urls?: string[]): string[] {
+  if (!urls?.length) return [];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    if (!raw || /\.vcf(\?|$)/i.test(raw)) continue;
+    let path = raw;
+    try {
+      path = new URL(raw).pathname;
+    } catch {
+      /* relative or already a path */
+    }
+    const m = path.match(PUBLIC_MEDIA_UUID) ?? raw.match(PUBLIC_MEDIA_UUID);
+    if (!m) continue;
+    const id = m[1]!.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
 
 /**
  * Send an outbound message via the active channel and log it as an outbound Message row.
@@ -322,7 +421,10 @@ export async function sendToBrand(
     console.error(`sendToBrand: brand ${brandId} not found`);
     return false;
   }
-  const channel = opts?.channel ?? activeChannel();
+  const labBrand = brand.facts?.lab === true;
+  // Lab Cafe is a fake number — never hand it to Twilio/Linq. LabChannel
+  // still logs outbound rows so /lab can poll them.
+  const channel = opts?.channel ?? (labBrand ? createLabChannel() : activeChannel());
   // Twilio, Linq, and lab all address the owner by phone (E.164).
   const to = brand.client_phone;
   if (!to) {
@@ -362,8 +464,9 @@ export async function sendToBrand(
     }
     if (pace) {
       // Typing pause before each bubble: longer for longer texts (capped),
-      // plus a breath between consecutive bubbles.
-      const typingPause = Math.min(700 + part.length * 25, i === 0 ? 2500 : 1200);
+      // plus a breath between consecutive bubbles. Short first bubbles
+      // ("Hey!") should not wait a full second of fake typing.
+      const typingPause = outboundTypingPauseMs(part.length, i);
       await sleep(typingPause + (i > 0 ? 600 : 0));
     }
     let providerMessageId: string;
@@ -384,10 +487,11 @@ export async function sendToBrand(
     }
 
     try {
+      const partMediaIds = i === parts.length - 1 ? mediaIdsFromPublicUrls(mediaUrls) : [];
       await query(
-        `insert into messages (brand_id, direction, channel, body, provider_message_sid)
-       values ($1, $2, $3, $4, $5)`,
-        [brandId, "outbound", channel.name, part, providerMessageId],
+        `insert into messages (brand_id, direction, channel, body, media_ids, provider_message_sid)
+       values ($1, $2, $3, $4, $5::uuid[], $6)`,
+        [brandId, "outbound", channel.name, part, partMediaIds, providerMessageId],
       );
     } catch (err) {
       console.error(`sendToBrand: message sent (sid ${providerMessageId}) but failed to log outbound row`, err);
@@ -431,22 +535,16 @@ export async function sendToOperator(
 /**
  * Handle a normalised inbound message end-to-end: route to brand, persist,
  * capture media, and hand off to the orchestrator. Never throws —
- * an unknown sender or any internal failure is logged and results in a null
- * response rather than a crash.
+ * an unknown sender gets a signup-link reply (no brand created) and any
+ * internal failure is logged and results in a null response rather than a crash.
  */
 export type HandleInboundOpts = {
   channel?: MessageChannel;
   resolveBrand?: (from: string) => Promise<Brand | null>;
   /**
-   * Schedule follow-up work that must outlive the HTTP response (the onboarding
-   * plan SMS). On Vercel the isolate is frozen the moment the webhook returns
-   * 204, so a bare `void (async () => ...)()` here silently never runs — the
-   * same trap `scheduleKickoffDrain` documents. Serverless callers MUST pass
-   * `defer: (task) => after(task)` from `next/server`; the gateway is
-   * platform-agnostic and cannot import Next itself.
-   *
-   * Default reproduces the old detached behaviour so non-serverless callers
-   * (worker, tests, lab) are unchanged.
+   * Optional scheduler for work that must outlive the HTTP response.
+   * Serverless callers may still pass `defer: (task) => after(task)`.
+   * Wrap no longer queues a plan SMS here — research stays silent.
    */
   defer?: (task: () => Promise<void>) => void;
 };
@@ -480,7 +578,7 @@ async function waitForSiblingMedia(
 ): Promise<MediaAsset[]> {
   const deadline = Date.now() + budgetMs;
   while (Date.now() < deadline) {
-    await sleep(PHOTO_ARRIVAL_POLL_MS);
+    // Check first — media may already be on a sibling when we enter.
     const row = await queryOne<{ media_ids: string[] | null }>(
       `select media_ids from messages
        where brand_id = $1
@@ -494,6 +592,9 @@ async function waitForSiblingMedia(
     );
     const ids = row?.media_ids?.filter(Boolean) ?? [];
     if (ids.length > 0) return loadMediaAssets(ids);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(PHOTO_ARRIVAL_POLL_MS, remaining));
   }
   return [];
 }
@@ -508,11 +609,6 @@ export async function handleInbound(
   // its stand-in). Never let typing break the pipeline.
   const channel = opts?.channel ?? activeChannel();
   const resolve = opts?.resolveBrand ?? resolveBrand;
-  const defer =
-    opts?.defer ??
-    ((task: () => Promise<void>) => {
-      void task().catch((err) => console.error("handleInbound: deferred task failed", err));
-    });
   let keeper: TypingKeeper | null = null;
 
   // sendToBrand returns false on silent failure (Twilio 21610 STOP / 21614 /
@@ -545,8 +641,20 @@ export async function handleInbound(
     }
     const brand = await resolve(inbound.from);
     if (!brand) {
-      console.warn(`handleInbound: unknown sender ${inbound.from}, dropping inbound message`);
-      return { brandId: null, messageId: null, delivered: null };
+      try {
+        const result = await handleUnknownInbound({
+          from: inbound.from,
+          body: inbound.body ?? "",
+          providerMessageId: inbound.providerMessageId,
+          channel,
+        });
+        const delivered =
+          result.kind === "skipped" || result.kind === "opt_out" ? null : result.replied;
+        return { brandId: null, messageId: null, delivered };
+      } catch (err) {
+        console.error(`handleInbound: unknown-sender reply failed for ${inbound.from}`, err);
+        return { brandId: null, messageId: null, delivered: false };
+      }
     }
 
     // Idempotency: a provider (Twilio/Linq retry) can redeliver the same message.
@@ -641,7 +749,7 @@ export async function handleInbound(
       if (!priorInBurst) {
         await sendToBrand(
           brand.id,
-          "Got it — styling your photo and writing the caption now, one sec ✨",
+          "Got it, writing a caption for this now.",
           undefined,
           { pace: false, channel },
         ).catch(() => {});
@@ -687,7 +795,7 @@ export async function handleInbound(
         photoAckSent = true;
         await sendToBrand(
           brand.id,
-          "Got it — styling your photo and writing the caption now, one sec ✨",
+          "Got it, writing a caption for this now.",
           undefined,
           { pace: false, channel },
         ).catch(() => {});
@@ -735,9 +843,12 @@ export async function handleInbound(
     // Media participates too: iOS dispatches three photos as three separate
     // MMS, so a media-only burst must become ONE turn over three photos rather
     // than three turns (and three imaging jobs) against the same brand.
-    if (inboundText || newMedia.length > 0) {
+    if (
+      (inboundText || newMedia.length > 0) &&
+      !shouldSkipInboundBurst({ text: inboundText, hasMedia: newMedia.length > 0 })
+    ) {
       // The lookback MUST equal the sleep. When it was longer (BURST_MS + 500)
-      // a message landing in the 2800-3300ms seam was both already answered by
+      // a message landing in the post-sleep seam was both already answered by
       // its own turn AND pulled into the next one, so the orchestrator
       // re-answered it — a confused double reply. `id desc` breaks ties on
       // identical created_at, so two simultaneous rows agree on one winner
@@ -793,18 +904,24 @@ export async function handleInbound(
     }
 
     // Slow-work safety net for channels WITHOUT a native typing indicator
-    // (plain SMS): if we're still thinking after a few seconds, say so.
-    // Skipped when we already sent an instant ack, and when native typing
-    // covers liveness.
+    // (plain SMS): only for known-slow draft/image/first-batch jobs.
     let slowTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      if (!photoAckSent && !textAckSent && typeof channel.sendTyping !== "function") {
+      const slowWorkText = (messageForProcess.body ?? inboundText ?? "").trim();
+      if (
+        shouldSendSlowWorkFiller({
+          photoAckSent,
+          textAckSent,
+          hasTyping: typeof channel.sendTyping === "function",
+          inboundText: slowWorkText,
+        })
+      ) {
         slowTimer = setTimeout(() => {
           sendToBrand(brand.id, "Still on this — one sec…", undefined, { pace: false, channel }).catch(() => {});
         }, 4500);
         (slowTimer as unknown as { unref?: () => void }).unref?.();
       }
-      const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId } = await processInbound({
+      const { reply, mediaUrl, mediaUrls, finishOnboardingBrandId, operatorAlert } = await processInbound({
         brand,
         message: messageForProcess,
         newMedia: mediaForProcess,
@@ -822,36 +939,19 @@ export async function handleInbound(
           await deliver(brand.id, "", attach);
         }
       }
+      if (typeof operatorAlert === "string" && operatorAlert.trim()) {
+        await sendToOperator(operatorAlert).catch((err) => {
+          console.error(`handleInbound: operatorAlert failed for brand ${brand.id}`, err);
+        });
+      }
       // Onboarding just completed: the ack is already with the owner. Now do
-      // the slow compile and deliver the rundown as a second message.
+      // the slow compile and deliver the voice rundown. Plan research is
+      // seeded silently — SMS the plan only if they explicitly ask later.
       if (finishOnboardingBrandId) {
         const brandId = finishOnboardingBrandId;
         try {
           const rundown = await finishOnboarding(brandId);
-          // Main voice recap first (no goodbye), then the plan afterthought as its own SMS.
           await deliver(brandId, rundown.main, undefined, { pace: false });
-          await new Promise((r) => setTimeout(r, 900));
-          await deliver(brandId, rundown.afterthought, undefined, { pace: false });
-
-          // Kick the plan immediately so the concrete ETA is real — don't wait on the 30s worker tick.
-          // Routed through `defer` so serverless callers can keep the isolate
-          // alive (Next's after()); a bare detached promise here was frozen on
-          // webhook return and the plan SMS never went out.
-          defer(async () => {
-            try {
-              const sms = await buildOnboardingPlanSms(brandId);
-              if (sms) {
-                await deliver(brandId, sms, undefined, { pace: false });
-                return;
-              }
-              // Research overran — nudge with another concrete ETA, worker will retry.
-              await deliver(brandId, planOverrunNudge(ONBOARDING_PLAN_ETA_MINUTES), undefined, {
-                pace: false,
-              });
-            } catch (err) {
-              console.error(`handleInbound: onboarding plan follow-up failed for brand ${brandId}`, err);
-            }
-          });
         } catch (err) {
           console.error(`handleInbound: finishOnboarding failed for brand ${brandId}`, err);
           await sendToBrand(
@@ -867,12 +967,24 @@ export async function handleInbound(
       // webhook return and left kickoffs stuck in `running` forever.
     } catch (err) {
       // Orchestrator failures must not lose the persisted inbound message — and
-      // the client should never be left with silence.
-      console.error(`handleInbound: processInbound failed for brand ${brand.id}, message ${message.id}`, err);
-      try {
-        await sendToBrand(brand.id, "Ah — that one glitched on my side. Mind sending it again?", undefined, { channel });
-      } catch {
-        /* best-effort: the send itself may also be down */
+      // the client should never be left with silence. Classify so sticky config
+      // bugs (e.g. Invalid time zone :UTC) do not ask the owner to resend forever.
+      const failureClass = classifyInboundFailure(err);
+      console.error(
+        `handleInbound: processInbound failed for brand ${brand.id}, message ${message.id} class=${failureClass}`,
+        err,
+      );
+      if (shouldSendGlitchSms(brand.id)) {
+        const sms = inboundFailureOwnerSms(failureClass);
+        try {
+          await sendToBrand(brand.id, sms, undefined, { channel });
+        } catch {
+          /* best-effort: the send itself may also be down */
+        }
+      } else {
+        console.warn(
+          `handleInbound: suppressed duplicate glitch SMS for brand ${brand.id} (cooldown)`,
+        );
       }
     } finally {
       if (slowTimer) clearTimeout(slowTimer);

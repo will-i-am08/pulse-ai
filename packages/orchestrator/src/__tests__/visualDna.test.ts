@@ -141,4 +141,31 @@ describe("gatherVisualDna", () => {
     expect(dna.promptBlock).toMatch(/FACELESS|Faceless/i);
     expect(dna.promptBlock).toMatch(/linen texture/i);
   });
+
+  it("lab electrician DNA names the trade and drops leftover café look", async () => {
+    const brand = fakeBrand({
+      name: "Lab Cafe",
+      facts: { lab: true, differentiators: "emergency electrician" },
+      visual: {
+        colors: ["#111111"],
+        fonts: ["Inter"],
+        aesthetic: "warm café",
+        photo_treatment: "espresso steam",
+      },
+      brand_voice_profile: {
+        photo_style: {
+          overall_aesthetic: "coffee shop warmth",
+          lighting: "window latte light",
+          common_subjects: ["pastries"],
+        },
+      },
+    } as Partial<Brand>);
+    vi.mocked(gatherDesignContext).mockResolvedValueOnce(fakeCtx(brand));
+    const dna = await gatherVisualDna(brand);
+    expect(dna.promptBlock).toMatch(/electrician/i);
+    expect(dna.promptBlock).not.toMatch(/Brand: Lab Cafe/i);
+    expect(dna.promptBlock).not.toMatch(/warm café/i);
+    expect(dna.promptBlock).not.toMatch(/espresso steam/i);
+    expect(dna.promptBlock).toMatch(/Never depict a café/i);
+  });
 });

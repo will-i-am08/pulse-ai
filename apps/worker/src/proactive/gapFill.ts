@@ -149,8 +149,8 @@ export async function runGapFillLoop(): Promise<void> {
           : "soon";
         const topic = pillar.name.toLowerCase();
         const lead = auto
-          ? `We were a bit light on ${topic}, so I put together a ${kind} and scheduled it for ${when} ✨ Reply "HOLD" to stop it, or tell me a change.`
-          : `We were a bit light on ${topic}, so I put together a ${kind}:\n\n"${drafted.post.caption}"\n\nProposed for ${when}. Reply "yes" to approve, tell me a change, or "no" to bin it.`;
+          ? `We were a bit light on ${topic}, so I put together a ${kind} and scheduled it for ${when}. Reply HOLD to stop it, or tell me a change.`
+          : `We were a bit light on ${topic}, so I put together a ${kind}:\n\n${drafted.post.caption}\n\nProposed for ${when}. Reply yes to send it, tell me a change, or no to bin it.`;
         await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
         await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
         break;
