@@ -672,10 +672,12 @@ async function markPostOffered(postId: string): Promise<void> {
 }
 
 /**
- * Running kickoffs older than this are treated as abandoned (serverless kill /
- * worker crash after claim). Must exceed worst-case legitimate photo batches.
+ * Running kickoffs older than this (with no heartbeat) are abandoned —
+ * serverless kill / worker crash after claim. Was 20m; that left owners on
+ * "Already on that…" after Vercel `after()` 60s kills mid photo-carousel.
+ * 5m still clears a healthy drain + heartbeat cadence (10s).
  */
-export const STALE_RUNNING_KICKOFF_MS = 20 * 60 * 1000;
+export const STALE_RUNNING_KICKOFF_MS = 5 * 60 * 1000;
 
 const STALE_FAIL_SMS =
   "That draft run got stuck on my side and I had to stop it — say the word and I'll retry.";
