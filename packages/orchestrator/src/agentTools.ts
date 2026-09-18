@@ -41,7 +41,8 @@ import { draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
 import { queueUgcJob } from "./ugc/index.js";
 import { queueAiVideoJob } from "./aiVideo.js";
-import { scoutContentIdeas } from "./ideaScout.js";
+import { scoutContentIdeas, formatIdeasSms } from "./ideaScout.js";
+import { readKipPreferences } from "./kipMemory.js";
 import {
   clearImageOverlay,
   formatOfferedDraftBlock,
@@ -451,6 +452,105 @@ export function looksLikeCalendarAsk(body: string | null | undefined): boolean {
     /\b(?:my |the )?(?:content )?calendar\b/i.test(t) ||
     /\bscheduled (?:this|for the) (?:week|weekend)\b/i.test(t)
   );
+}
+
+/**
+ * Owner wants content ideas / suggestions — not a draft yet.
+ * Fast-path to scout_ideas so Kip never interviews for niche first.
+ */
+export function looksLikeIdeasAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t)) return false;
+  if (looksLikeCalendarAsk(t)) return false;
+  // Draft/make a specific asset → not an ideas ask.
+  if (
+    /\b(draft|write|make|create|generate|schedule)\b/i.test(t) &&
+    /\b(post|carousel|reel|story|caption|batch)\b/i.test(t) &&
+    !/\bideas?\b/i.test(t)
+  ) {
+    return false;
+  }
+  return (
+    /\b(give me|send me|need|want|got any|come up with|suggest|brainstorm|hit me with)\b[\s\S]{0,48}\b(ideas?|suggestions?)\b/i.test(
+      t,
+    ) ||
+    /\b\d+\s+(post\s+)?ideas?\b/i.test(t) ||
+    /\b(post|content)\s+ideas?\b/i.test(t) ||
+    /\bwhat should i post\b/i.test(t) ||
+    /\bideas? for (this|the) week\b/i.test(t) ||
+    /\blook into\b[\s\S]{0,48}\b(ideas?|topics?|angles?)\b/i.test(t)
+  );
+}
+
+/** Owner asking what Kip already knows about the brand — answer from memory, no intake quiz. */
+export function looksLikeBrandRecallAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t) || looksLikeIdeasAsk(t)) return false;
+  return (
+    /\bwhat do you (know|remember) about (my |the )?brand\b/i.test(t) ||
+    /\bwhat(?:'?s| have you) (got|on file|stored) (on|about|for) (me|my brand|us)\b/i.test(t) ||
+    /\btell me what you know\b/i.test(t) ||
+    /\bwhat(?:'?s| is) on file (about|for) (me|my brand)\b/i.test(t) ||
+    /\bremind me what you(?:'?ve| have) (got|saved|stored)\b/i.test(t)
+  );
+}
+
+function countFromIdeasAsk(body: string): number {
+  const m = body.match(/\b([1-6])\s+(?:post\s+)?ideas?\b/i);
+  if (m) return Number(m[1]);
+  return 3;
+}
+
+/** Scout + SMS rundown for the ideas fast path. */
+export async function loadIdeasSms(brand: Brand, ownerMessage: string): Promise<string> {
+  const count = countFromIdeasAsk(ownerMessage);
+  const result = await scoutContentIdeas(brand, {
+    focus: ownerMessage.slice(0, 400),
+    count,
+  });
+  if (!result.ok) {
+    return humanizeChat(
+      "Hit a snag pulling research — say go and I'll retry with fresh angles.",
+    );
+  }
+  return humanizeChat(formatIdeasSms(result.ideas, result.note));
+}
+
+/** Memory rundown for brand-recall fast path — no niche intake questions. */
+export function summarizeBrandRecall(brand: Brand): string {
+  const lab = brand.facts?.lab === true;
+  const niche =
+    typeof brand.facts?.differentiators === "string" ? brand.facts.differentiators.trim() : "";
+  const prefs = readKipPreferences(brand.facts).map((p) => p.text).filter(Boolean);
+  const bits: string[] = ["Here's what I've got on file for you:"];
+
+  if (niche) {
+    bits.push(`Niche: ${niche}.`);
+  } else if (lab) {
+    bits.push("Niche: not locked yet.");
+  } else if (brand.name?.trim()) {
+    bits.push(`Brand: ${brand.name.trim()}.`);
+  }
+
+  if (prefs.length) {
+    bits.push(`Preferences: ${prefs.slice(0, 6).join("; ")}.`);
+  } else {
+    bits.push("Preferences: none stored yet.");
+  }
+
+  const ctx = brandContextForPrompt(brand).trim();
+  if (ctx) {
+    bits.push(`Strategy notes are on file.`);
+  }
+
+  bits.push("That's the solid stuff I'm holding — say a one-liner about what you do if you want it locked in.");
+  return bits.join(" ");
+}
+
+export async function loadBrandRecallSms(brand: Brand): Promise<string> {
+  return humanizeChat(summarizeBrandRecall(brand));
 }
 
 /** Summarize committed upcoming posts as SMS prose (read-only). */
@@ -1100,8 +1200,9 @@ async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<st
     ideas: result.ideas,
     note: result.note,
     researchRefreshed: result.researchRefreshed,
+    smsDraft: formatIdeasSms(result.ideas, result.note),
     ackHint:
-      "Text the owner a short rundown of these ideas (titles + why, lean on competitor/Ad Library angles when inspired_by is set). Offer to draft one they pick. Do not interview them for more intake first.",
+      "Text the owner the smsDraft rundown (or the same titles + angles). Offer to draft one they pick. Do not interview them for more intake first.",
   });
 }
 

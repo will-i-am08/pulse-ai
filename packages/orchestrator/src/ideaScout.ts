@@ -5,6 +5,7 @@
  */
 
 import type { Brand, ResearchFindings, ResearchSnapshot } from "@pulse/shared";
+import { brandContextForPrompt } from "./brandContext.js";
 import { listCompetitorWatches } from "./competitors.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { brandTalkingIdentity, personaVoiceLines } from "./persona.js";
@@ -123,6 +124,93 @@ function resolveScoutFocus(focus: string, watchNames: string[]): ResearchFocus {
   return "all";
 }
 
+/** Brand signals the scout can lean on when competitor research is thin. */
+export function brandGroundingForIdeas(brand: Brand): string {
+  const lines: string[] = [];
+  const lab = brand.facts?.lab === true;
+  const niche =
+    typeof brand.facts?.differentiators === "string" ? brand.facts.differentiators.trim() : "";
+  if (niche) {
+    lines.push(`Niche / differentiators on file: ${niche}`);
+  } else if (!lab && brand.name?.trim()) {
+    lines.push(`Business name: ${brand.name.trim()}`);
+  } else if (lab) {
+    lines.push(
+      "Lab chat: niche not locked yet — still deliver concrete post directions from prefs and general local-business craft. Do not ask what kind of business they are.",
+    );
+  }
+  if (brand.website?.trim()) lines.push(`Website: ${brand.website.trim()}`);
+  const prefs = brand.facts?.kip_preferences?.slice(-6) ?? [];
+  if (prefs.length) {
+    lines.push(`Owner preferences: ${prefs.map((p) => p.text).filter(Boolean).join("; ")}`);
+  }
+  const ctx = brandContextForPrompt(brand).trim();
+  if (ctx) lines.push(`Strategy context:\n${ctx.slice(0, 800)}`);
+  return lines.join("\n").trim();
+}
+
+/** Deterministic ideas when research + LLM yield nothing — never interview. */
+export function fallbackContentIdeas(brand: Brand, count: number): ScoutIdea[] {
+  const niche =
+    typeof brand.facts?.differentiators === "string" ? brand.facts.differentiators.trim() : "";
+  const lab = brand.facts?.lab === true;
+  const label = niche || (!lab ? brand.name?.trim() : "") || "your business";
+  const pool: ScoutIdea[] = [
+    {
+      title: "Craft close-up",
+      angle: `A photo-led feed post that shows the work behind ${label} — one specific detail, not a vague vibe shot`,
+      format: "feed",
+      why: "Gives people a reason to care without inventing a fake win",
+    },
+    {
+      title: "This week invite",
+      angle: `A short LinkedIn-friendly note on who ${label} is for and one clear next step (DM / book / drop in)`,
+      format: "feed",
+      why: "Turns awareness into a simple action",
+    },
+    {
+      title: "Myth vs reality carousel",
+      angle: `3 slides that correct a common misconception in your lane — slide 1 myth, slide 2 what actually matters, slide 3 how you handle it`,
+      format: "carousel",
+      why: "Carousels teach fast and travel well when niche memory is thin",
+    },
+    {
+      title: "Owner POV",
+      angle: `A first-person take on one decision you made for ${label} this month and what you'd tell a peer`,
+      format: "feed",
+      why: "Sounds human and stays on-brand without competitor research",
+    },
+    {
+      title: "Proof without fluff",
+      angle: `Show a real process moment (prep, setup, aftercare) with a caption that names the craft, not invented awards`,
+      format: "feed",
+      why: "Builds trust when the proof bank is empty",
+    },
+    {
+      title: "Soft hiring / help ask",
+      angle: `If growth is on your mind: a professional open role or "who should we meet" post with clear requirements`,
+      format: "feed",
+      why: "Useful anytime — swap the role once niche is locked",
+    },
+  ];
+  return pool.slice(0, Math.min(6, Math.max(3, count)));
+}
+
+/** SMS rundown from scout ideas — no intake questions. */
+export function formatIdeasSms(ideas: ScoutIdea[], note?: string): string {
+  const bits = ideas.slice(0, 4).map((idea, i) => {
+    const fmt = idea.format && idea.format !== "feed" ? ` (${idea.format})` : "";
+    return `${i + 1}. ${idea.title}${fmt} — ${idea.angle}`;
+  });
+  let out = bits.join(" ");
+  const caveat = (note ?? "").trim();
+  if (caveat && !/[?？]/.test(caveat) && !/\b(are you|tell me|what(?:'?s| is) your)\b/i.test(caveat)) {
+    out += ` ${caveat}`;
+  }
+  out += " Want me to draft one of these?";
+  return out;
+}
+
 /**
  * Ensure we have a usable research bank, refreshing via runDeepResearch when thin
  * or when the owner clearly asked to look into competitors / the niche.
@@ -190,6 +278,7 @@ function parseIdeasJson(raw: string, count: number): { ideas: ScoutIdea[]; note?
 /**
  * Scout concrete post ideas grounded in competitor / niche research already on file
  * (refreshing that research when thin). Does not draft or publish.
+ * Always returns ideas when possible — never an interview prompt.
  */
 export async function scoutContentIdeas(
   brand: Brand,
@@ -197,6 +286,7 @@ export async function scoutContentIdeas(
 ): Promise<ScoutContentIdeasResult> {
   const count = Math.min(6, Math.max(3, Math.floor(opts.count ?? 4)));
   const focus = (opts.focus ?? "").trim().slice(0, 400);
+  const grounding = brandGroundingForIdeas(brand);
 
   try {
     const { bank, refreshed } = await ensureIdeaResearchBank(brand, focus);
@@ -206,9 +296,11 @@ export async function scoutContentIdeas(
       "Turn competitor / niche research into concrete social content ideas for this owner.",
       "Lean hard on the research bank: competitor hooks, Ad Library angles, organic themes, pain language, outlier angles. Do not invent fake ads or reviews.",
       "Prefer angles that one-up or answer what rivals are doing — not copycat clones.",
-      `Return ONLY JSON: {"ideas":[{"title":"<short>","angle":"<1 line>","format":"feed|carousel|reel|story","why":"<one SMS line why it fits their niche>","inspired_by":"<optional: which competitor hook / ad angle / theme>"}],"note":"<optional 1-line niche caveat>"}`,
+      "If the research bank is thin: still return concrete ideas from brand grounding / prefs. Never ask clarifying niche questions. Never put a question in note.",
+      `Return ONLY JSON: {"ideas":[{"title":"<short>","angle":"<1 line>","format":"feed|carousel|reel|story","why":"<one SMS line why it fits their niche>","inspired_by":"<optional: which competitor hook / ad angle / theme>"}],"note":"<optional 1-line niche caveat, never a question>"}`,
       `Exactly ${count} ideas.`,
       `Research bank:\n${bank.text.slice(0, 3500)}`,
+      grounding ? `Brand grounding:\n${grounding.slice(0, 1200)}` : "",
       opts.retrievedPack ? `Brand context:\n${opts.retrievedPack.slice(0, 1500)}` : "",
     ]
       .filter(Boolean)
@@ -233,17 +325,28 @@ export async function scoutContentIdeas(
     });
 
     const { ideas, note } = parseIdeasJson(raw, count);
-    if (ideas.length === 0) {
-      return { ok: false, error: "Research returned no usable ideas." };
-    }
+    const finalIdeas = ideas.length > 0 ? ideas : fallbackContentIdeas(brand, count);
+    const safeNote =
+      note && !/[?？]/.test(note) && !/\b(are you|tell me|what(?:'?s| is) your)\b/i.test(note)
+        ? note
+        : bank.thin
+          ? "Research bank is still thin — these are solid starter directions."
+          : undefined;
     return {
       ok: true,
-      ideas,
-      note,
+      ideas: finalIdeas,
+      note: safeNote,
       researchRefreshed: refreshed,
       bankChars: bank.text.length,
     };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } catch {
+    // Soft-fail into usable ideas so the owner never gets an intake quiz.
+    return {
+      ok: true,
+      ideas: fallbackContentIdeas(brand, count),
+      note: "Hit a snag on research — here are solid starter directions anyway.",
+      researchRefreshed: false,
+      bankChars: 0,
+    };
   }
 }
