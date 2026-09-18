@@ -874,6 +874,112 @@ export function formatOverlayHeadline(text: string): string {
   return out;
 }
 
+export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
+export type OverlayStack = "single" | "stack";
+export type OverlayFace = "inter" | "anton";
+
+export type OverlayTreatment = {
+  placement: OverlayPlacement;
+  stack: OverlayStack;
+  face: OverlayFace;
+};
+
+/** Today's look: bottom band, one line, Inter. */
+export const DEFAULT_OVERLAY_TREATMENT: OverlayTreatment = {
+  placement: "bottom",
+  stack: "single",
+  face: "inter",
+};
+
+function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
+  const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
+  // Same priority as resolveBrandPalette: serif wins, so "Playfair Display" stays Inter in v1.
+  if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
+    return false;
+  }
+  return fonts.some((f) => /anton|impact|bebas|display|condensed|oswald|archivo black/.test(f));
+}
+
+function overlayFaceFromContext(
+  visual?: VisualProfile | null,
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
+): OverlayFace {
+  if (opts?.ideaBlurb || opts?.mixedFonts) return "anton";
+  // Site serif stays Inter in v1. Display/impact → Anton on the default band.
+  return overlayWantsDisplayFace(visual) ? "anton" : "inter";
+}
+
+/**
+ * Deterministic overlay recipe from the owner's ask + site fonts.
+ * No extra LLM. Explicit clean-photo asks are gated by shouldOverlayHeadline.
+ */
+export function inferOverlayTreatment(
+  ask: string | null | undefined,
+  visual?: VisualProfile | null,
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
+): OverlayTreatment {
+  const text = (ask ?? "").replace(/\s+/g, " ").trim();
+  const faceDefault = overlayFaceFromContext(visual, opts);
+
+  if (
+    /\b(small caption|tiny caption|corner caption|caption in the corner|in the corner|as a chip|chip caption|caption chip)\b/i.test(
+      text,
+    ) ||
+    (/\bchip\b/i.test(text) && /\b(caption|overlay|text|small)\b/i.test(text)) ||
+    (/\bcorner\b/i.test(text) && /\b(caption|overlay|text|small)\b/i.test(text))
+  ) {
+    return { placement: "chip", stack: "single", face: "inter" };
+  }
+
+  if (
+    /\b(designed tip(?: slide)?|tip slide|text card(?: on (?:a |the )?photo)?|big stacked type|stacked type|stacked text|stacked headline)\b/i.test(
+      text,
+    )
+  ) {
+    return { placement: "center", stack: "stack", face: "anton" };
+  }
+
+  if (
+    /\b((?:bottom|lower|low)[\s-]?left)\b/i.test(text) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "low_left", stack: "single", face: faceDefault };
+  }
+
+  if (
+    /\b(at the top|headline at the top|text at the top|top of the (?:photo|image|pic|picture))\b/i.test(
+      text,
+    ) &&
+    !/\btext over the top\b/i.test(text)
+  ) {
+    return { placement: "top", stack: "single", face: faceDefault };
+  }
+
+  return { placement: "bottom", stack: "single", face: faceDefault };
+}
+
+/**
+ * Split a headline into 2–3 word-boundary lines. Each line still goes through
+ * formatOverlayHeadline (5/28 + trailing-function rules).
+ */
+export function splitOverlayStack(text: string): string[] {
+  const formatted = formatOverlayHeadline(text);
+  const words = formatted.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return formatted ? [formatted] : [];
+  const lineCount = words.length >= 5 ? 3 : 2;
+  const lines: string[] = [];
+  const base = Math.floor(words.length / lineCount);
+  const extra = words.length % lineCount;
+  let i = 0;
+  for (let l = 0; l < lineCount; l++) {
+    const n = base + (l < extra ? 1 : 0);
+    const line = formatOverlayHeadline(words.slice(i, i + n).join(" "));
+    i += n;
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [formatted];
+}
+
 /** Write a short punchy ALL-CAPS overlay headline from the post caption. */
 export async function generateHeadline(brand: Brand, caption: string): Promise<string> {
   const nameless = isNamelessCreative(brand);
@@ -938,7 +1044,101 @@ export type TextTileOptions = {
   eyebrow?: string;
   /** Force mixed display+body fonts (idea carousels). */
   mixedFonts?: boolean;
+  /** Owner ask used to infer placement/stack/face when treatment is omitted. */
+  ask?: string;
+  /** Explicit recipe; wins over ask inference. */
+  treatment?: OverlayTreatment;
 };
+
+export function resolveOverlayTreatment(
+  opts?: TextTileOptions | null,
+  visual?: VisualProfile | null,
+): OverlayTreatment {
+  if (opts?.treatment) return opts.treatment;
+  return inferOverlayTreatment(opts?.ask, visual, {
+    ideaBlurb: Boolean(opts?.body),
+    mixedFonts: opts?.mixedFonts,
+  });
+}
+
+function overlayBandStyle(
+  placement: OverlayPlacement,
+  width: number,
+  height: number,
+  pad: number,
+  padY: number,
+  scrim: { r: number; g: number; b: number },
+): Record<string, unknown> {
+  const fade = `rgba(${scrim.r},${scrim.g},${scrim.b}`;
+  if (placement === "top") {
+    return {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: `${width}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-start",
+      padding: `${padY}px ${pad}px ${Math.round(pad * 1.35)}px ${pad}px`,
+      background: `linear-gradient(to bottom, ${fade},0.9) 0%, ${fade},0.72) 55%, ${fade},0) 100%)`,
+    };
+  }
+  if (placement === "center") {
+    return {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: `${width}px`,
+      height: `${height}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: `${Math.round(height * 0.18)}px ${pad}px`,
+      background: `linear-gradient(to bottom, ${fade},0.25) 0%, ${fade},0.55) 40%, ${fade},0.55) 60%, ${fade},0.25) 100%)`,
+    };
+  }
+  if (placement === "low_left") {
+    return {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      width: `${Math.round(width * 0.72)}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "flex-end",
+      alignItems: "flex-start",
+      padding: `${Math.round(pad * 1.1)}px ${pad}px ${padY}px ${pad}px`,
+      background: `linear-gradient(to right, ${fade},0.82) 0%, ${fade},0.45) 70%, ${fade},0) 100%)`,
+    };
+  }
+  if (placement === "chip") {
+    return {
+      position: "absolute",
+      bottom: `${padY}px`,
+      left: `${pad}px`,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "flex-start",
+      maxWidth: `${Math.round(width * 0.62)}px`,
+      padding: `${Math.round(height * 0.018)}px ${Math.round(width * 0.036)}px`,
+      background: `${fade},0.88)`,
+      borderRadius: `${Math.round(width * 0.04)}px`,
+    };
+  }
+  return {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: `${width}px`,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: `${Math.round(pad * 1.35)}px ${pad}px ${padY}px ${pad}px`,
+    background: `linear-gradient(to top, ${fade},0.9) 0%, ${fade},0.72) 55%, ${fade},0) 100%)`,
+  };
+}
 
 async function renderTile(
   imgBytes: Uint8Array,
@@ -948,6 +1148,7 @@ async function renderTile(
   opts?: TextTileOptions,
 ): Promise<Buffer> {
   const palette = resolveBrandPalette(visual);
+  const treatment = resolveOverlayTreatment(opts, visual);
   const meta = await sharp(Buffer.from(imgBytes)).metadata();
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1350;
@@ -956,10 +1157,19 @@ async function renderTile(
   const body = (opts?.body ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
   const eyebrow = (opts?.eyebrow ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
   const hasBody = Boolean(body);
-  // Idea slides: Anton title + Inter body so type isn't one flat weight.
-  const titleFont = opts?.mixedFonts || hasBody ? "Anton" : palette.displayFont;
-  const detailFont = opts?.mixedFonts || hasBody ? "Inter" : palette.bodyFont;
-  const fontSize = overlayFontSize(width, headline, hasBody);
+  const titleLines = headline.split("\n").map((l) => l.trim()).filter(Boolean);
+  const stacked = titleLines.length > 1;
+  const longestTitle = titleLines.reduce((a, l) => (l.length > a.length ? l : a), headline);
+  const titleFont = treatment.face === "anton" ? "Anton" : "Inter";
+  const detailFont = "Inter";
+  const leftAlign = treatment.placement === "chip" || treatment.placement === "low_left";
+  const baseSize = overlayFontSize(width, longestTitle, hasBody);
+  const fontSize =
+    treatment.placement === "chip"
+      ? Math.round(width * 0.032)
+      : treatment.placement === "center"
+        ? Math.round(baseSize * 1.15)
+        : baseSize;
   const bodySize = overlayBodyFontSize(width, body);
   const mastheadSize = Math.round(width * 0.036);
   const eyebrowSize = Math.round(width * 0.028);
@@ -967,6 +1177,8 @@ async function renderTile(
   const padY = Math.round(height * 0.045);
   const scrim = hexToRgb(palette.bgFrom);
   const showMasthead = Boolean(masthead?.trim());
+  const titleAlign = leftAlign ? "left" : "center";
+  const titleJustify = leftAlign ? "flex-start" : "center";
 
   const children: Array<Record<string, unknown>> = [
     {
@@ -1045,31 +1257,51 @@ async function renderTile(
           letterSpacing: "0.14em",
           textTransform: "uppercase",
           lineHeight: 1.2,
+          textAlign: titleAlign,
+          justifyContent: titleJustify,
         },
         children: eyebrow,
       },
     });
   }
+  const titleLineNodes = stacked
+    ? titleLines.map((line, i) => ({
+        type: "div",
+        props: {
+          style: {
+            display: "flex",
+            width: "100%",
+            maxWidth: "100%",
+            justifyContent: titleJustify,
+            textAlign: titleAlign,
+            marginTop: i === 0 ? 0 : Math.round(height * 0.006),
+          },
+          children: line,
+        },
+      }))
+    : headline;
   textStack.push({
     type: "div",
     props: {
       style: {
         display: "flex",
-        flexWrap: "wrap",
+        flexDirection: stacked ? "column" : "row",
+        flexWrap: stacked ? "nowrap" : "wrap",
         width: "100%",
         maxWidth: "100%",
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        letterSpacing: "0.06em",
+        letterSpacing: treatment.placement === "chip" ? "0.04em" : "0.06em",
         lineHeight: 1.18,
-        textAlign: "center",
-        justifyContent: "center",
+        textAlign: titleAlign,
+        justifyContent: titleJustify,
+        alignItems: stacked ? (leftAlign ? "flex-start" : "center") : undefined,
         textTransform: hasBody ? "none" : "uppercase",
         wordBreak: "break-word",
         overflowWrap: "break-word",
       },
-      children: headline,
+      children: titleLineNodes,
     },
   });
   if (hasBody) {
@@ -1088,6 +1320,8 @@ async function renderTile(
           fontWeight: 400,
           lineHeight: 1.28,
           letterSpacing: "0.01em",
+          textAlign: titleAlign,
+          justifyContent: titleJustify,
           wordBreak: "break-word",
           overflowWrap: "break-word",
           opacity: 0.92,
@@ -1100,18 +1334,7 @@ async function renderTile(
   children.push({
     type: "div",
     props: {
-      style: {
-        position: "absolute",
-        bottom: 0,
-        left: 0,
-        width: `${width}px`,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-        // Pad only — children use width 100% of the content box (do NOT also subtract pad).
-        padding: `${Math.round(pad * 1.35)}px ${pad}px ${padY}px ${pad}px`,
-        background: `linear-gradient(to top, rgba(${scrim.r},${scrim.g},${scrim.b},0.9) 0%, rgba(${scrim.r},${scrim.g},${scrim.b},0.72) 55%, rgba(${scrim.r},${scrim.g},${scrim.b},0) 100%)`,
-      },
+      style: overlayBandStyle(treatment.placement, width, height, pad, padY, scrim),
       children: textStack,
     },
   });
@@ -1255,13 +1478,19 @@ export async function applyTextTile(
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const safeHeadline = formatOverlayHeadline(stripPersonalNames(headline, brand));
+    const treatment = resolveOverlayTreatment(opts, brand.visual);
+    const rawHeadline = stripPersonalNames(headline, brand);
+    const safeHeadline =
+      treatment.stack === "stack"
+        ? splitOverlayStack(rawHeadline).join("\n")
+        : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
     const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual, {
       ...opts,
       body: safeBody,
       eyebrow: safeEyebrow,
+      treatment,
     });
     const newId = randomUUID();
     await query(

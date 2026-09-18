@@ -899,7 +899,9 @@ async function routeInbound(
         let headline: string | undefined;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         const captions = buildPlatformCaptions(caption);
@@ -1775,7 +1777,9 @@ async function routeInbound(
         let finalId = editedId ?? firstPhoto.id;
         if (wantsText) {
           headline = await generateHeadline(brand, caption);
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         if (finalId !== firstPhoto.id) {
@@ -1976,7 +1980,9 @@ async function routeInbound(
         const meta = pending.style_meta ?? {};
         if (meta.wants_text) {
           const headline = meta.headline ?? (await generateHeadline(brand, pending.caption ?? ""));
-          const tiledId = await applyTextTile(brand, finalId, headline);
+          const tiledId = await applyTextTile(brand, finalId, headline, {
+            ask: message.body ?? undefined,
+          });
           if (tiledId) finalId = tiledId;
         }
         const newMediaIds = [finalId, ...pending.media_ids.slice(1)];
