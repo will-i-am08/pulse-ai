@@ -151,6 +151,7 @@ export async function generateFillerPost(
 
 
   let mediaId: string = randomUUID();
+  const sourceMediaId = mediaId;
   let photoHeadline: string | undefined;
   try {
     let img: Buffer | null = null;
@@ -181,6 +182,7 @@ export async function generateFillerPost(
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
 
     // Burn headline onto generated photos (models stay text-free).
+    // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto) {
       photoHeadline =
         (card && card.replace(/["']/g, "").trim()) ||
@@ -214,11 +216,20 @@ export async function generateFillerPost(
       ? { wants_text: true, ...(photoHeadline ? { headline: photoHeadline } : {}) }
       : {}),
   };
+  const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(
-    `insert into posts (brand_id, caption, media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
-     values ($1, $2, $3::uuid[], $4, false, $6::jsonb, 'instagram', 'pending_approval', $5)
+    `insert into posts (brand_id, caption, media_ids, source_media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
+     values ($1, $2, $3::uuid[], $4::uuid[], $5, false, $7::jsonb, 'instagram', 'pending_approval', $6)
      returning *`,
-    [brand.id, caption, [mediaId], pillar.id, slot.toISOString(), JSON.stringify(styleMeta)],
+    [
+      brand.id,
+      caption,
+      [mediaId],
+      sourceMediaIds,
+      pillar.id,
+      slot.toISOString(),
+      JSON.stringify(styleMeta),
+    ],
   );
   if (!post) return null;
 

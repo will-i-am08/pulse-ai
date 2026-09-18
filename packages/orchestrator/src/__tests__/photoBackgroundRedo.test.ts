@@ -125,11 +125,14 @@ describe("generateFillerPost photo mode", () => {
     expect(generateHeadline).not.toHaveBeenCalled();
 
     const insertArgs = vi.mocked(queryOne).mock.calls[0];
-    const styleJson = String(insertArgs?.[1]?.[5] ?? "");
+    const styleJson = String(insertArgs?.[1]?.[6] ?? "");
     const meta = JSON.parse(styleJson);
     expect(meta.wants_text).toBe(true);
     expect(meta.headline).toBe("HIRE FOR SKILL NOT VIBES");
     expect(insertArgs?.[1]?.[2]).toEqual(["tiled-media-id"]);
+    // Clean photo id is preserved so set_image_text(false) can restore it.
+    expect(insertArgs?.[1]?.[3]).toEqual([expect.any(String)]);
+    expect(insertArgs?.[1]?.[3]?.[0]).not.toBe("tiled-media-id");
   });
 });
 
