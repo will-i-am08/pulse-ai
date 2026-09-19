@@ -198,6 +198,7 @@ describe("helpers", () => {
     expect(looksLikeIdeasAsk("come up with some suggestions")).toBe(true);
     expect(looksLikeIdeasAsk("what should I post")).toBe(true);
     expect(looksLikeIdeasAsk("Draft a LinkedIn post about hiring")).toBe(false);
+    expect(looksLikeIdeasAsk("Draft something in my lane")).toBe(false);
     expect(looksLikeIdeasAsk("make me a carousel")).toBe(false);
     expect(looksLikeIdeasAsk("what's on my calendar")).toBe(false);
   });

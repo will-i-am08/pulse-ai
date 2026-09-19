@@ -1380,10 +1380,19 @@ async function routeInbound(
     };
   }
 
+  // Deterministic kickoff before the general agent — "Draft something in my lane"
+  // must enqueue draft_posts, not fall into scout_ideas via the LLM tool loop.
+  if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
+    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+    if (planned) return planned;
+    const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
+    if (kicked?.ackSms) return { reply: kicked.ackSms };
+  }
+
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads/digest/calendar) and greetings. Owns draft create
-  // and pending-draft mutation via tools. Attached media and high-confidence
+  // connect/disconnect, ads/digest/calendar), greetings, and kickoff. Owns draft
+  // create and pending-draft mutation via tools. Attached media and high-confidence
   // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
   if (
     generalAgentEligible({

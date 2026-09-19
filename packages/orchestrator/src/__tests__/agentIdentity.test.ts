@@ -75,7 +75,8 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/reel with no clip/i);
     expect(prompt).toMatch(/Brand recall:/i);
     expect(prompt).toMatch(/never\/don't content bans/i);
-    expect(prompt).toMatch(/do not end with an intake question/i);
+    expect(prompt).toMatch(/never scout_ideas for a draft ask/i);
+    expect(prompt).toMatch(/exact overlay headline/i);
     expect(prompt).not.toMatch(/✨/);
   });
 
