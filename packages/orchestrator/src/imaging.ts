@@ -929,9 +929,9 @@ export function extractExactOverlayHeadline(ask: string | null | undefined): str
   if (!t) return null;
 
   const patterns: RegExp[] = [
-    /\bexact(?:ly)?\s+overlay\s+headline(?:\s+burned\s+on(?:\s+the)?\s+image)?\s*:\s*["']?(.+?)["']?\s*$/i,
-    /\b(?:overlay\s+)?headline\s+(?:exactly\s+)?(?:burned\s+on(?:\s+the)?\s+image\s*)?:\s*["']?(.+?)["']?\s*$/i,
-    /\b(?:with|burn)\s+(?:this\s+)?exact\s+overlay(?:\s+headline)?\s*:\s*["']?(.+?)["']?\s*$/i,
+    /\bexact(?:ly)?\s+overlay\s+headline(?:\s+burned\s+on(?:\s+the)?\s+image)?\s*:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
+    /\b(?:overlay\s+)?headline\s+(?:exactly\s+)?(?:burned\s+on(?:\s+the)?\s+image\s*)?:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
+    /\b(?:with|burn)\s+(?:this\s+)?exact\s+overlay(?:\s+headline)?\s*:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
     /\b(?:saying|titled|title)\s*:\s*["']([^"']{2,80})["']/i,
     /\b(?:saying|titled)\s+["']([^"']{2,80})["']/i,
     /\bexact(?:ly)?\s+(?:overlay\s+)?(?:headline|text)\s+["']([^"']{2,80})["']/i,
