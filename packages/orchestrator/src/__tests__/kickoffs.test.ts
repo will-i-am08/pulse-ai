@@ -39,6 +39,8 @@ describe("looksLikeKickoffRequest", () => {
       ),
     ).toBe(true);
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
+    expect(looksLikeKickoffRequest("Draft something in my lane")).toBe(true);
+    expect(looksLikeKickoffRequest("Draft something in my lane.")).toBe(true);
   });
 
   it("does not treat a bare reel ask as a photo-feed kickoff", () => {

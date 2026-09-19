@@ -917,6 +917,48 @@ function cleanOverlayText(text: string): string {
   return repairOverlayContractions(s);
 }
 
+/**
+ * Owner named an exact overlay to burn — pull it out of the brief so fillers
+ * do not invent a shorter substitute (LAB-004).
+ *
+ * Matches: "exact overlay headline …: WHAT FOUNDER OPS ACTUALLY DOES",
+ * quoted forms, and "saying/titled …" forms.
+ */
+export function extractExactOverlayHeadline(ask: string | null | undefined): string | null {
+  const t = (ask ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+
+  const patterns: RegExp[] = [
+    /\bexact(?:ly)?\s+overlay\s+headline(?:\s+burned\s+on(?:\s+the)?\s+image)?\s*:\s*["']?(.+?)["']?\s*$/i,
+    /\b(?:overlay\s+)?headline\s+(?:exactly\s+)?(?:burned\s+on(?:\s+the)?\s+image\s*)?:\s*["']?(.+?)["']?\s*$/i,
+    /\b(?:with|burn)\s+(?:this\s+)?exact\s+overlay(?:\s+headline)?\s*:\s*["']?(.+?)["']?\s*$/i,
+    /\b(?:saying|titled|title)\s*:\s*["']([^"']{2,80})["']/i,
+    /\b(?:saying|titled)\s+["']([^"']{2,80})["']/i,
+    /\bexact(?:ly)?\s+(?:overlay\s+)?(?:headline|text)\s+["']([^"']{2,80})["']/i,
+    /\boverlay(?:\s+headline|\s+text)?\s+["']([^"']{2,80})["']/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(t);
+    const raw = m?.[1]?.trim();
+    if (!raw) continue;
+    const cleaned = cleanOverlayText(raw);
+    const words = cleaned.split(" ").filter(Boolean);
+    if (words.length < 1 || words.length > 12) continue;
+    if (cleaned.length < 2 || cleaned.length > 72) continue;
+    // Reject if we accidentally captured instruction fluff.
+    if (/\b(BURNED|CAROUSEL|GRAPHIC|IMAGE|PLEASE|MAKE)\b/.test(cleaned) && words.length <= 3) {
+      continue;
+    }
+    return cleaned;
+  }
+  return null;
+}
+
+/** Clean + uppercase only — no 5-word / 28-char smash for owner-exact overlays. */
+export function formatExactOverlayHeadline(text: string): string {
+  return cleanOverlayText(text);
+}
+
 /** Drop interior fillers; keep the first and last tokens. */
 function dropInteriorOverlayFillers(words: string[]): string[] {
   if (words.length <= 2) return words;
@@ -1109,8 +1151,35 @@ export function inferOverlayTreatment(
  * Break a headline into lines. Pair keeps 2–3 phrase-lines; banner is one line;
  * poster is one word per line only for short titles (pilates). Word gaps on a
  * line are handled by overlayWordNodes, not by isolating every word.
+ * When `exact` is true, skip the 5-word/28-char smash and wrap so each line
+ * still fits the crop (owner-named overlays like WHAT FOUNDER OPS ACTUALLY DOES).
  */
-export function splitOverlayStack(text: string, wrap: OverlayWrap = "pair"): string[] {
+export function splitOverlayStack(
+  text: string,
+  wrap: OverlayWrap = "pair",
+  opts?: { exact?: boolean },
+): string[] {
+  if (opts?.exact) {
+    const cleaned = formatExactOverlayHeadline(text);
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    if (words.length === 1) return [cleaned];
+    // Pack words onto lines that stay within the char budget.
+    const lines: string[] = [];
+    let cur: string[] = [];
+    for (const w of words) {
+      const trial = [...cur, w].join(" ");
+      if (cur.length && trial.length > OVERLAY_HEADLINE_MAX_CHARS) {
+        lines.push(cur.join(" "));
+        cur = [w];
+      } else {
+        cur.push(w);
+      }
+    }
+    if (cur.length) lines.push(cur.join(" "));
+    return lines.length ? lines : [cleaned];
+  }
+
   const formatted = formatOverlayHeadline(text);
   const words = formatted.split(/\s+/).filter(Boolean);
   if (!words.length) return [];
@@ -1208,6 +1277,8 @@ export type TextTileOptions = {
   treatment?: OverlayTreatment;
   /** Carousel slide index — rotates center / top / bottom when the ask is unlocked. */
   slideIndex?: number;
+  /** Owner named this headline exactly — skip 5-word/28-char smash. */
+  exact?: boolean;
 };
 
 export function resolveOverlayTreatment(
@@ -1675,8 +1746,16 @@ export async function applyTextTile(
   try {
     const treatment = resolveOverlayTreatment(opts, brand.visual);
     const rawHeadline = stripPersonalNames(headline, brand);
-    const safeHeadline =
-      treatment.stack === "stack"
+    const exactFromAsk = extractExactOverlayHeadline(opts?.ask);
+    const exact =
+      Boolean(opts?.exact) ||
+      (exactFromAsk != null &&
+        formatExactOverlayHeadline(rawHeadline) === exactFromAsk);
+    const safeHeadline = exact
+      ? treatment.stack === "stack"
+        ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair", { exact: true }).join("\n")
+        : formatExactOverlayHeadline(rawHeadline)
+      : treatment.stack === "stack"
         ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair").join("\n")
         : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;

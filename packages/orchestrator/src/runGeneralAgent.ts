@@ -13,7 +13,7 @@ import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
 import { looksLikeApproval } from "./classify.js";
 import { loadRecentChatTurns } from "./conversationContext.js";
-import { maybeEnqueueFromKipCommit } from "./kickoffs.js";
+import { looksLikeKickoffRequest, maybeEnqueueFromKipCommit } from "./kickoffs.js";
 import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
@@ -52,6 +52,7 @@ export function generalAgentFallbackSms(ownerMessage: string | null | undefined)
  * Pending drafts are allowed — the agent mutates them via tools.
  * High-confidence approval ("yes") stays on the hard-gate router.
  * Attached media stays on the photo/video pipeline.
+ * Fresh kickoff-shaped asks stay on the classic enqueue path (not scout_ideas).
  */
 export function generalAgentEligible(opts: {
   flag: boolean;
@@ -62,6 +63,9 @@ export function generalAgentEligible(opts: {
   if (!opts.flag || opts.hasMedia) return false;
   const t = (opts.ownerMessage ?? "").trim();
   if (opts.hasPending && looksLikeApproval(t)) return false;
+  // Without a pending draft, creative kickoffs must not enter the tool loop —
+  // "Draft something in my lane" is draft_posts, not scout_ideas.
+  if (!opts.hasPending && looksLikeKickoffRequest(t)) return false;
   return true;
 }
 

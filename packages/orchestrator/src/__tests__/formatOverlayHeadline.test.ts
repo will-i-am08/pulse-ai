@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   formatOverlayHeadline,
+  extractExactOverlayHeadline,
+  formatExactOverlayHeadline,
+  splitOverlayStack,
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
@@ -39,6 +42,29 @@ describe("formatOverlayHeadline", () => {
     expect(out.split(/\s+/).at(-1)).not.toBe("ACTUALLY");
     expect(out.split(/\s+/).at(-1)).not.toBe("DOES");
     expect(out).toMatch(/FOUNDER OPS/);
+  });
+
+  it("extractExactOverlayHeadline pulls owner-named overlays from briefs", () => {
+    expect(
+      extractExactOverlayHeadline(
+        "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+      ),
+    ).toBe("WHAT FOUNDER OPS ACTUALLY DOES");
+    expect(
+      extractExactOverlayHeadline(
+        "Make a square graphic for a barista hiring post with this exact overlay headline burned on the image: WE'RE HIRING BARISTAS",
+      ),
+    ).toBe("WE'RE HIRING BARISTAS");
+    expect(extractExactOverlayHeadline("Draft a hiring post about craft")).toBeNull();
+  });
+
+  it("formatExactOverlayHeadline preserves full owner text without the 28-char smash", () => {
+    const exact = "WHAT FOUNDER OPS ACTUALLY DOES";
+    expect(formatExactOverlayHeadline(exact)).toBe(exact);
+    expect(formatExactOverlayHeadline(exact).length).toBeGreaterThan(OVERLAY_HEADLINE_MAX_CHARS);
+    const lines = splitOverlayStack(exact, "pair", { exact: true });
+    expect(lines.join(" ")).toBe(exact);
+    expect(lines.every((l) => l.length <= OVERLAY_HEADLINE_MAX_CHARS)).toBe(true);
   });
 
   it("preserves an already-short line (uppercased)", () => {
@@ -265,7 +291,9 @@ describe("overlay headline wiring", () => {
     expect(fillers).not.toMatch(/4-12 word overlay/);
     expect(fillers).toMatch(/standalone headline/);
     expect(fillers).toMatch(/truncated sentence/);
-    expect(fillers).toMatch(/wantPhoto\s*\n\s*\? formatOverlayHeadline\(/);
+    expect(fillers).toMatch(/extractExactOverlayHeadline/);
+    expect(fillers).toMatch(/formatExactOverlayHeadline/);
+    expect(fillers).toMatch(/exactOverlay/);
   });
 
   it("formats overlay titles max 5 words and does not headline idea_blurb", () => {

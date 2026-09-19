@@ -290,7 +290,7 @@ describe("generalAgentEligible", () => {
     ).toBe(false);
   });
 
-  it("is true when the flag is on with no media — including kickoff-shaped asks", () => {
+  it("is true when the flag is on with no media — but kickoff asks stay classic", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: false })).toBe(true);
     expect(
       generalAgentEligible({
@@ -307,7 +307,16 @@ describe("generalAgentEligible", () => {
         hasPending: false,
         ownerMessage: "draft me 3 posts",
       }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "Draft something in my lane",
+      }),
+    ).toBe(false);
+    // Reel-only asks are not kickoffs — agent may still handle them.
     expect(
       generalAgentEligible({
         flag: true,
@@ -320,7 +329,7 @@ describe("generalAgentEligible", () => {
 });
 
 describe("processInbound general-agent insert", () => {
-  it("sits after digest and calendar, after greetings", () => {
+  it("sits after digest and calendar, after greetings, after kickoff", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
@@ -330,13 +339,18 @@ describe("processInbound general-agent insert", () => {
     const ideasIdx = src.indexOf("looksLikeIdeasAsk(message.body)");
     const recallIdx = src.indexOf("looksLikeBrandRecallAsk(message.body)");
     const greetingIdx = src.indexOf("looksLikeGreeting(message.body)");
+    // First kickoff intercept (before general agent), not the later classic fallback.
+    const kickoffBeforeAgent = src.indexOf(
+      "Deterministic kickoff before the general agent",
+    );
     const agentIdx = src.indexOf("generalAgentEligible({");
     expect(digestIdx).toBeGreaterThan(-1);
     expect(calendarIdx).toBeGreaterThan(digestIdx);
     expect(recallIdx).toBeGreaterThan(calendarIdx);
     expect(ideasIdx).toBeGreaterThan(recallIdx);
     expect(greetingIdx).toBeGreaterThan(ideasIdx);
-    expect(agentIdx).toBeGreaterThan(greetingIdx);
+    expect(kickoffBeforeAgent).toBeGreaterThan(greetingIdx);
+    expect(agentIdx).toBeGreaterThan(kickoffBeforeAgent);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);

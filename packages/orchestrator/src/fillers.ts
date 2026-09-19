@@ -7,6 +7,8 @@ import {
   generateHeadline,
   applyTextTile,
   formatOverlayHeadline,
+  extractExactOverlayHeadline,
+  formatExactOverlayHeadline,
 } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -39,6 +41,7 @@ export async function generateFillerPost(
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
+  const exactOverlay = extractExactOverlayHeadline(topic);
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
@@ -72,6 +75,9 @@ export async function generateFillerPost(
     "Prefer a concrete angle from a real detail already on file (proof-bank number, named product, neighbourhood, the actual room or tool in the brief) — not a generic tip.",
     "If that proof bank is empty, write about the craft, the product, the room, or the neighbourhood. Never invent a regular, a testimonial, a made-up order, a specific job, a fault found today, or a this-week client win. Caption and overlay card must not claim an incident that is not in facts. Never ask the owner for more details. Never refuse. Output JSON only — no questions, no preamble.",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    exactOverlay
+      ? `EXACT overlay headline required on the image (use this verbatim as "card", do not invent a shorter substitute): ${exactOverlay}`
+      : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: caption + card must name at least TWO specific options and state a concrete difference (e.g. Cursor vs Claude Code). Category-level tips without named tools FAIL."
       : "",
@@ -136,9 +142,11 @@ export async function generateFillerPost(
         return null;
       }
       caption = stripPersonalNames(drafted.caption, brand);
-      card = wantPhoto
-        ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
-        : stripPersonalNames(drafted.card, brand);
+      card = exactOverlay
+        ? formatExactOverlayHeadline(exactOverlay)
+        : wantPhoto
+          ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
+          : stripPersonalNames(drafted.card, brand);
       photoPrompt = drafted.photoPrompt;
       if (!topic) break;
       const compliance = await reviewBriefCompliance({
@@ -200,13 +208,18 @@ export async function generateFillerPost(
     // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto) {
       photoHeadline =
+        (exactOverlay && formatExactOverlayHeadline(exactOverlay)) ||
         (card && card.replace(/["']/g, "").trim()) ||
         (await generateHeadline(brand, caption));
       const tiledId = await applyTextTile(
         brand,
         mediaId,
         photoHeadline,
-        topic ? { ask: topic } : undefined,
+        topic
+          ? { ask: topic, exact: Boolean(exactOverlay) }
+          : exactOverlay
+            ? { exact: true }
+            : undefined,
       );
       if (tiledId) mediaId = tiledId;
     }

@@ -1,4 +1,5 @@
 import { callLLM } from "./llm.js";
+import { extractExactOverlayHeadline } from "./imaging.js";
 
 /**
  * Post-draft brief compliance — did we actually deliver what the owner asked?
@@ -85,6 +86,19 @@ export function heuristicBriefCompliance(input: BriefComplianceInput): BriefComp
       reasons.push("brief asks for cityscape/skyline background but prompts/copy omit it");
       reinforces.push(
         "Background MUST be a cinematic cityscape / skyline (night or dusk urban lights) — not an office, desk, or abstract gradient",
+      );
+    }
+  }
+
+  const exactOverlay = extractExactOverlayHeadline(brief);
+  if (exactOverlay) {
+    const overlayBlob = (input.overlays ?? []).join(" ").toUpperCase().replace(/\s+/g, " ");
+    const needed = exactOverlay.split(" ").filter(Boolean);
+    const allPresent = needed.length > 0 && needed.every((w) => overlayBlob.includes(w));
+    if (!allPresent) {
+      reasons.push(`brief requires exact overlay "${exactOverlay}" but drafts used something else`);
+      reinforces.push(
+        `Burn this EXACT overlay headline on the image (verbatim): ${exactOverlay} — do not invent a shorter substitute`,
       );
     }
   }
