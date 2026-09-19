@@ -25,6 +25,7 @@ import {
   STALE_RUNNING_KICKOFF_MS,
   runKickoffDrain,
   zeroDraftOwnerSms,
+  textWantsCarousel,
 } from "../kickoffs.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
@@ -41,6 +42,24 @@ describe("looksLikeKickoffRequest", () => {
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
     expect(looksLikeKickoffRequest("Draft something in my lane")).toBe(true);
     expect(looksLikeKickoffRequest("Draft something in my lane.")).toBe(true);
+  });
+
+  it("textWantsCarousel ignores not-a-carousel / square graphic asks", () => {
+    expect(
+      textWantsCarousel(
+        "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+      ),
+    ).toBe(false);
+    expect(textWantsCarousel("Make a LinkedIn carousel with photo tips")).toBe(true);
+    expect(textWantsCarousel("Draft a single square graphic about hiring")).toBe(false);
+    expect(textWantsCarousel("make me a carousel")).toBe(true);
+    const r = inferKickoffFromUserMessage(
+      "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+    );
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.preferCarousel).toBe(false);
+    expect(r?.payload.format).toBeUndefined();
+    expect(String(r?.ackSms ?? "")).not.toMatch(/carousel/i);
   });
 
   it("does not treat a bare reel ask as a photo-feed kickoff", () => {

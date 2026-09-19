@@ -31,6 +31,7 @@ import {
 } from "./visualMode.js";
 import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
+import { textWantsCarousel } from "./carouselIntent.js";
 import { ownerInboundAfter } from "./conversationContext.js";
 import { formatScheduledSlot } from "./smsTime.js";
 import { extractPlatforms } from "./destinations.js";
@@ -240,6 +241,12 @@ function draftOfferSms(
   return `${prefix}${slideNote} for ${when}:\n\n${clipCaption(caption, 180)}\n\nReply yes to send it, or tell me a change.`;
 }
 
+/**
+ * True when the owner wants a carousel — not when they say "not a carousel"
+ * / "single square graphic" (LAB-004).
+ */
+export { textWantsCarousel } from "./carouselIntent.js";
+
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
 export function inferDraftCount(t: string, wantsCarousel: boolean): number {
   const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|photos?|pictures?|pics?`;
@@ -279,7 +286,7 @@ function wantsFirstBatchKickoff(t: string): boolean {
   }
   if (!(STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))) return false;
   // "Draft a LinkedIn post … generated photo" is draft_posts, not a 3-pack.
-  const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+  const wantsCarousel = textWantsCarousel(t);
   if (
     (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) &&
     inferDraftCount(t, wantsCarousel) === 1
@@ -291,7 +298,7 @@ function wantsFirstBatchKickoff(t: string): boolean {
 
 /** Shared draft_posts payload so user-ask and Kip-commit paths keep the brief. */
 function draftPostsPayloadFromText(t: string): Record<string, unknown> {
-  const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+  const wantsCarousel = textWantsCarousel(t);
   const count = inferDraftCount(t, wantsCarousel);
   const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
   const destinations = extractPlatforms(t);
@@ -399,7 +406,7 @@ export function inferKickoffFromUserMessage(
     const payload = draftPostsPayloadFromText(t);
     // Bare "A post" / "carousel" menu replies → single piece of that format.
     if (looksLikeFormatMenuReply(t)) {
-      const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+      const wantsCarousel = textWantsCarousel(t);
       payload.count = 1;
       payload.preferCarousel = wantsCarousel;
       payload.format = wantsCarousel ? "carousel" : undefined;
@@ -1212,7 +1219,7 @@ async function runDraftPosts(
   const wantsCarousel =
     payload.preferCarousel === true ||
     payload.format === "carousel" ||
-    /\bcarr?ousels?\b/i.test(topicForCount);
+    textWantsCarousel(topicForCount);
   const inferredCount = topicForCount
     ? inferDraftCount(topicForCount, wantsCarousel)
     : 1;
