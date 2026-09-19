@@ -524,7 +524,8 @@ export function summarizeBrandRecall(brand: Brand): string {
   const niche =
     typeof brand.facts?.differentiators === "string" ? brand.facts.differentiators.trim() : "";
   const prefs = readKipPreferences(brand.facts).map((p) => p.text).filter(Boolean);
-  const bits: string[] = ["Here's what I've got on file for you:"];
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const bits: string[] = ["Here's what I've got on file:"];
 
   if (niche) {
     bits.push(`Niche: ${niche}.`);
@@ -534,18 +535,22 @@ export function summarizeBrandRecall(brand: Brand): string {
     bits.push(`Brand: ${brand.name.trim()}.`);
   }
 
-  if (prefs.length) {
-    bits.push(`Preferences: ${prefs.slice(0, 6).join("; ")}.`);
+  const prefBits: string[] = [];
+  if (profile.tone.length) prefBits.push(`${profile.tone.join("/")} tone`);
+  for (const p of prefs.slice(0, 5)) prefBits.push(p);
+  if (profile.donts.length) {
+    prefBits.push(`don't: ${profile.donts.slice(0, 3).join(", ")}`);
+  }
+  if (prefBits.length) {
+    bits.push(`Preferences: ${prefBits.join("; ")}.`);
   } else {
     bits.push("Preferences: none stored yet.");
   }
 
   const ctx = brandContextForPrompt(brand).trim();
-  if (ctx) {
-    bits.push(`Strategy notes are on file.`);
-  }
+  if (ctx) bits.push("Strategy notes are on file.");
 
-  bits.push("That's the solid stuff I'm holding — say a one-liner about what you do if you want it locked in.");
+  bits.push("That's the solid stuff I'm holding.");
   return bits.join(" ");
 }
 
