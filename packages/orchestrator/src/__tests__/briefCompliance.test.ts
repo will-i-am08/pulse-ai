@@ -73,6 +73,29 @@ describe("heuristicBriefCompliance", () => {
     expect(r.pass).toBe(true);
   });
 
+  it("fails when exact overlay is missing from overlays", () => {
+    const brief =
+      "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES";
+    const miss = heuristicBriefCompliance({
+      brief,
+      caption: "Founder ops clears the path.",
+      overlays: ["SYSTEMS HUSTLE"],
+      photoPrompts: ["Desk with notebooks"],
+      surface: "feed",
+    });
+    expect(miss.pass).toBe(false);
+    expect(miss.reasons.join(" ")).toMatch(/exact overlay/i);
+
+    const hit = heuristicBriefCompliance({
+      brief,
+      caption: "Founder ops clears the path.",
+      overlays: ["WHAT FOUNDER OPS ACTUALLY DOES"],
+      photoPrompts: ["Desk with notebooks"],
+      surface: "feed",
+    });
+    expect(hit.pass).toBe(true);
+  });
+
   it("reinforceTopicHint appends compliance fix once", () => {
     const next = reinforceTopicHint(BRIEF, "MUST compare two named tools");
     expect(next).toMatch(/COMPLIANCE FIX/);
