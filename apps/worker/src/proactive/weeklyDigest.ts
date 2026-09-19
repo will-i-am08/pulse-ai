@@ -1,5 +1,5 @@
 import { query, type Brand } from "@pulse/shared";
-import { readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
+import { readEngagementProfile, shouldRunProactive, recordProactiveSend } from "@pulse/orchestrator";
 import { sendToBrand, isDaytime, buildPerformanceDigest } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -40,6 +40,8 @@ export async function runWeeklyDigestLoop(): Promise<void> {
 
       const text = await buildPerformanceDigest(brand);
       await sendToBrand(brand.id, text);
+      // Ledger it so the engagement learner can read report engagement.
+      await recordProactiveSend(brand.id, "report");
     } catch (err) {
       logger.error(`weekly digest failed for brand ${brand.id}`, {
         error: err instanceof Error ? err.message : String(err),

@@ -17,6 +17,8 @@ export interface CheckinDeps {
   isDaytime: (now: Date) => boolean;
   sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
+  /** Optional: ledger the send for the engagement learner. */
+  recordSend?: (brandId: string) => Promise<void>;
   now: () => Date;
 }
 
@@ -47,6 +49,7 @@ export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: 
     : "Anything to send me this week?";
   await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);
+  await deps.recordSend?.(brand.id);
 }
 
 export async function getLastInboundAt(brandId: string): Promise<string | null> {

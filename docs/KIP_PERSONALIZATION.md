@@ -207,6 +207,10 @@ Absent `engagement_profile` ⇒ `readEngagementProfile` returns `balanced/friend
 
 **Outcome:** Kip adjusts proactivity from real behaviour — conservatively, defaulting quiet-ish and earning the right to be chattier.
 
+> **Status (built):** `engagementLearn.ts` — pure `computeChannelSignals` (reply-within-24h vs. no-reply-after-48h → ±1 per channel), `updateAffinity` (EMA 0.7 old / 0.3 new, clamped), `decideDialChange` (down needs ≥2 disliked channels, up caps at balanced, owner_set never touched, one step per run), and `learnEngagementForBrand` (fetch + optional persist via `jsonb_set`). Daily worker loop `proactive/engagementLearn.ts`, gated by `KIP_ENGAGEMENT_LEARN` = `off | log | on` (log-only computes + logs without writing). Check-in and weekly-digest now call `recordProactiveSend` (channels `checkin` / `report`), so with event-followup the learner has 2–3 channels to read. Tests: engine + loop, all green.
+>
+> **Rollout:** run `KIP_ENGAGEMENT_LEARN=log` for ~a week, eyeball the "would apply" logs, then flip to `on`.
+
 ### 4.1 Signals
 
 From data we already have + the `proactive_sends` table (§2.4):

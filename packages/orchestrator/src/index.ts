@@ -561,6 +561,15 @@ export {
   looksLikeEngagementPref,
   updateEngagementFromMessage,
 } from "./engagementProfile.js";
+export {
+  computeChannelSignals,
+  updateAffinity,
+  decideDialChange,
+  planEngagementLearn,
+  fetchLearnInputs,
+  learnEngagementForBrand,
+} from "./engagementLearn.js";
+export type { LearnPlan, ProactiveSendRow } from "./engagementLearn.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";
 export type { MockupInput } from "./mockup.js";
 export {
