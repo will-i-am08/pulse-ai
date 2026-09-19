@@ -209,20 +209,23 @@ describe("helpers", () => {
     expect(looksLikeBrandRecallAsk("draft a post")).toBe(false);
   });
 
-  it("summarizeBrandRecall lists prefs without an intake quiz", () => {
+  it("summarizeBrandRecall lists prefs/voice without an intake quiz", () => {
     const sms = summarizeBrandRecall(
       stubBrand({
         name: "Lab Cafe",
         facts: {
           lab: true,
-          kip_preferences: [{ text: "Professional tone", atISO: "2026-01-01T00:00:00.000Z" }],
+          kip_preferences: [{ text: "Generated photos", atISO: "2026-01-01T00:00:00.000Z" }],
         },
+        brand_voice_profile: { tone: ["professional", "upbeat"] },
       }),
     );
-    expect(sms).toMatch(/Professional tone/i);
+    expect(sms).toMatch(/Generated photos/i);
+    expect(sms).toMatch(/professional/i);
     expect(sms).toMatch(/Niche: not locked yet/i);
     expect(sms).not.toMatch(/are you a caf/i);
     expect(sms).not.toMatch(/Want to fill me in/i);
+    expect(sms).not.toMatch(/one-liner about what you do/i);
   });
 });
 

@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Brand, ResearchSnapshot } from "@pulse/shared";
+import { query } from "@pulse/shared";
+
+vi.mock("@pulse/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@pulse/shared")>();
+  return {
+    ...actual,
+    query: vi.fn(async () => []),
+  };
+});
 
 vi.mock("../research.js", () => ({
   listRecentSnapshots: vi.fn(async () => []),
@@ -51,12 +60,15 @@ import {
   ensureIdeaResearchBank,
   gatherIdeaResearchBank,
   scoutContentIdeas,
+  formatIdeasSms,
+  fallbackContentIdeas,
 } from "../ideaScout.js";
 
 const mockedSnaps = listRecentSnapshots as unknown as ReturnType<typeof vi.fn>;
 const mockedWatches = listCompetitorWatches as unknown as ReturnType<typeof vi.fn>;
 const mockedDeep = runDeepResearch as unknown as ReturnType<typeof vi.fn>;
 const mockedLlm = callLLM as unknown as ReturnType<typeof vi.fn>;
+const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
 
 function stubBrand(): Brand {
   return { id: "brand-1", name: "Bill Calder", facts: { owner_name: "bill" } } as Brand;
@@ -155,6 +167,8 @@ describe("scoutContentIdeas", () => {
     mockedWatches.mockReset();
     mockedDeep.mockReset();
     mockedLlm.mockClear();
+    mockedQuery.mockReset();
+    mockedQuery.mockResolvedValue([]);
     mockedSnaps.mockResolvedValue([snap()]);
     mockedWatches.mockResolvedValue([]);
     mockedDeep.mockResolvedValue({ reply: "ok", snapshotId: "snap-1" });
@@ -175,6 +189,9 @@ describe("scoutContentIdeas", () => {
 
   it("falls back to concrete ideas when the LLM returns none", async () => {
     mockedLlm.mockResolvedValueOnce(JSON.stringify({ ideas: [] }));
+    mockedQuery.mockResolvedValueOnce([
+      { caption: "We're looking for a barista to join our team with espresso craft." },
+    ]);
     const out = await scoutContentIdeas(
       { id: "brand-1", name: "Lab Cafe", facts: { lab: true } } as Brand,
       { focus: "3 post ideas", count: 3 },
@@ -183,20 +200,25 @@ describe("scoutContentIdeas", () => {
     if (!out.ok) return;
     expect(out.ideas.length).toBeGreaterThanOrEqual(3);
     expect(out.ideas.every((i) => i.title && i.angle)).toBe(true);
+    expect(out.ideas[0]?.angle).toMatch(/barista|espresso|craft/i);
+    expect(out.note).toBeUndefined();
   });
 });
 
 describe("formatIdeasSms / fallbackContentIdeas", () => {
-  it("formats a rundown without interview questions", async () => {
-    const { formatIdeasSms, fallbackContentIdeas } = await import("../ideaScout.js");
+  it("formats a short rundown without interview questions or thin-bank caveats", () => {
     const ideas = fallbackContentIdeas(
       { id: "b1", name: "Lab Cafe", facts: { lab: true } } as Brand,
       3,
+      ["We're looking for a barista to join our team"],
     );
-    const sms = formatIdeasSms(ideas, "Are you a specialty coffee spot?");
+    const sms = formatIdeasSms(ideas, "Research bank is still thin — these are solid starter directions.");
     expect(sms).toMatch(/1\. /);
     expect(sms).toMatch(/Want me to draft one/);
+    expect(sms.length).toBeLessThan(360);
     expect(sms).not.toMatch(/specialty coffee/);
     expect(sms).not.toMatch(/Are you a/);
+    expect(sms).not.toMatch(/Research bank is still thin/);
+    expect(sms).not.toMatch(/your business/i);
   });
 });
