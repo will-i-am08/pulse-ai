@@ -6,6 +6,7 @@
 
 import type { Brand } from "@pulse/shared";
 import { wantsResearchedIdeaSlides } from "./formats.js";
+import { textWantsCarousel } from "./carouselIntent.js";
 import {
   inferVisualModeFromText,
   resolveVisualMode,
@@ -28,9 +29,6 @@ export type CreativePlan = {
   quality: CreativeQuality;
   preferCarousel: boolean;
 };
-
-const CAROUSEL_ASK_RE =
-  /\b(carr?ousels?|swipe(?:able)?|slides?|multi[- ]?photos?)\b/i;
 
 const PREMIUM_QUALITY_RE =
   /\b(premium|best|high[- ]?end|cinematic|editorial|luxury)\b/i;
@@ -74,7 +72,8 @@ export function planFromOwnerText(
   const visuals = inferVisualModeFromText(raw);
   // Prefer carousel when they asked for one (or researched idea slides).
   // "A post" alone does not forbid carousel — feed is just the default elsewhere.
-  const preferCarousel = ideaMode || CAROUSEL_ASK_RE.test(raw);
+  // "Not a carousel" / square graphic must stay feed (LAB-004).
+  const preferCarousel = ideaMode || textWantsCarousel(raw);
   const quality = inferQuality(raw, ideaMode);
 
   return {

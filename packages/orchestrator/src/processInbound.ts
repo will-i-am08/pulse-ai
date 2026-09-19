@@ -105,6 +105,7 @@ import {
   looksLikeFormatMenuOutbound,
   looksLikeDraftPreviewOutbound,
   inferDraftCount,
+  textWantsCarousel,
 } from "./kickoffs.js";
 import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
@@ -525,7 +526,7 @@ async function trySmartPlannerKickoff(
     payload: {
       plan,
       topicHint: body.slice(0, 280),
-      count: inferDraftCount(body, /\bcarr?ousels?\b/i.test(body)),
+      count: inferDraftCount(body, textWantsCarousel(body)),
       ...((() => {
         const destinations = extractPlatforms(body);
         return destinations.length ? { destinations } : {};
