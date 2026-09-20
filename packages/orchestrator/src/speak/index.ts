@@ -21,6 +21,7 @@ import {
   type ThinkResult,
 } from "./think.js";
 import { openLoopsPromptBlock, readOpenLoops, scheduleOpenLoopsUpdate } from "./openLoops.js";
+import { scheduleEventCapture } from "../eventMemory.js";
 
 export type { SpeakMode, ThinkResult };
 export { needsThink, humanizeChat, readOpenLoops, scheduleOpenLoopsUpdate };
@@ -142,6 +143,9 @@ export async function speakSMS(opts: SpeakOptions): Promise<string> {
 
   if (opts.updateOpenLoops !== false) {
     scheduleOpenLoopsUpdate(opts.brand, opts.ownerMessage ?? null, out);
+    // Capture named real-world events from the owner's message off the same
+    // turn (gated by a cheap signal inside; never blocks the reply).
+    scheduleEventCapture(opts.brand, opts.ownerMessage ?? null);
   }
 
   return out;

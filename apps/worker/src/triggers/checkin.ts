@@ -1,6 +1,7 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import type { Actionable } from "@pulse/gateway";
+import { readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
 import { logger } from "../lib/logger.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,6 +17,8 @@ export interface CheckinDeps {
   isDaytime: (now: Date) => boolean;
   sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
+  /** Optional: ledger the send for the engagement learner. */
+  recordSend?: (brandId: string) => Promise<void>;
   now: () => Date;
 }
 
@@ -27,6 +30,10 @@ export interface CheckinDeps {
  *    instead of the generic "anything to send me?".
  */
 export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: CheckinDeps): Promise<void> {
+  if (!shouldRunProactive("checkin", readEngagementProfile(brand))) {
+    logger.info(`skip checkin for brand ${brand.id}: engagement set to quiet`);
+    return; // no markSent — owner may re-enable, and this stays cheap
+  }
   if (!deps.isDaytime(deps.now())) {
     logger.info(`skip checkin for brand ${brand.id}: outside daytime hours`);
     return; // no markSent — retry when it's a sociable hour
@@ -42,6 +49,7 @@ export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: 
     : "Anything to send me this week?";
   await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);
+  await deps.recordSend?.(brand.id);
 }
 
 export async function getLastInboundAt(brandId: string): Promise<string | null> {

@@ -830,6 +830,50 @@ export interface LinkFulfillment {
   external_message_id?: string | null;
 }
 
+// ─── Episodic events — named things in the OWNER's world Kip follows up on ─
+//
+// Not Kip's own to-dos (those live in open_loops). These are the shoots,
+// launches, trips and milestones the owner mentions in passing, so Kip can
+// recall them ("how'd the Emily Calder shoot go?") like a manager who listens.
+export const kipEventSchema = z.object({
+  id: z.string(),
+  summary: z.string(),                 // "photoshoot for Emily Calder"
+  entity: z.string().default(""),      // proper-noun anchor: "Emily Calder"
+  kind: z
+    .enum(["shoot", "launch", "event", "meeting", "trip", "deadline", "personal", "other"])
+    .default("other"),
+  when_iso: z.string().nullable().default(null), // resolved date/time if given, else null
+  when_text: z.string().default(""),   // raw phrase the owner used ("this Friday")
+  created_at: z.string(),
+  followed_up_at: z.string().nullable().default(null), // set once Kip has asked
+  status: z.enum(["upcoming", "passed", "closed"]).default("upcoming"),
+});
+export type KipEvent = z.infer<typeof kipEventSchema>;
+
+// ─── Engagement profile — how proactive / warm / frequent Kip is per owner ─
+//
+// The answer to "personalisation that varies user to user." Some owners want a
+// daily morning report; others mute the second Kip check-ins twice unprompted.
+// Every field defaults to today's behaviour, so an absent profile is a no-op —
+// Phase 2 stays inert until an owner (or the Phase 3 learner) moves a dial.
+export const engagementProfileSchema = z
+  .object({
+    proactivity: z.enum(["quiet", "balanced", "high"]).default("balanced"),
+    warmth: z.enum(["crisp", "friendly", "matey"]).default("friendly"),
+    report: z
+      .object({
+        cadence: z.enum(["off", "daily", "weekly"]).default("weekly"),
+        hour_local: z.number().int().min(0).max(23).default(8),
+      })
+      .default({}),
+    // Learned per-channel engagement (Phase 3). -1..+1. Owner never sets this.
+    affinity: z.record(z.string(), z.number()).default({}),
+    source: z.enum(["default", "owner_set", "learned"]).default("default"),
+    updated_at: z.string().default(""),
+  })
+  .default({});
+export type EngagementProfile = z.infer<typeof engagementProfileSchema>;
+
 export interface BusinessFacts {
   /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
   lab?: boolean;
@@ -882,6 +926,10 @@ export interface BusinessFacts {
   kip_preferences?: Array<{ text: string; atISO: string }>;
   /** Short decisions Kip remembered from owner SMS (tool loop). Keep entries brief. */
   kip_decisions?: Array<{ text: string; atISO: string }>;
+  /** Named events in the owner's world Kip recalls + follows up on. Cap 30. */
+  kip_events?: KipEvent[];
+  /** How proactive / warm / frequent Kip should be for THIS owner. */
+  engagement_profile?: EngagementProfile;
 }
 
 /**

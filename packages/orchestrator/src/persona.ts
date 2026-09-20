@@ -1,6 +1,8 @@
 import type { Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { kipMemoryPromptBlock } from "./kipMemory.js";
+import { eventsPromptBlock } from "./eventMemory.js";
+import { readEngagementProfile, engagementToneLines } from "./engagementProfile.js";
 import { metaConnectStatusMessage } from "./smsConnect.js";
 
 // The one self-contained persona, shared by every client-facing prompt so it
@@ -90,6 +92,9 @@ export function personaLines(brand: Brand): string[] {
   }
   const memory = kipMemoryPromptBlock(brand.facts);
   if (memory) lines.push(memory);
+  const events = eventsPromptBlock(brand.facts);
+  if (events) lines.push(events);
+  lines.push(...engagementToneLines(readEngagementProfile(brand)));
   return lines;
 }
 
