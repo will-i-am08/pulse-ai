@@ -61,7 +61,7 @@ import {
   storyLinkCta,
 } from "./destinationLinks.js";
 import type { LinkOffer } from "@pulse/shared";
-import { ensureDesignQa, runDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
+import { ensureDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
 import { routeImageJob } from "./modelRouter.js";
 
 /** Brand visual DNA for photo prompts — prefer ./visualDna.js when present. */
@@ -801,6 +801,9 @@ export async function generatePhotoTextCarousel(
       quality: photoQuality,
       brief: topic || undefined,
       brand,
+      // Nano only — cascading to flux_dev after an empty nano result ate the
+      // remaining Lab after() budget (LAB-005-carousel 300s kill).
+      stillIds: ["nano_banana"],
     });
     // Skip automatic slide-0 double-render on the first pass — Lab's after()
     // budget is 300s and sequential fal×2 on slide 0 alone burned the wall
@@ -862,7 +865,9 @@ export async function generatePhotoTextCarousel(
     slideTexts,
     layoutKey: "photo_overlay",
     mode: "photo_overlay",
-    maxRecomposes: 3,
+    // Lab after() is 300s; three recompose rounds + full rebuild regularly
+    // exceeded it even with parallel slides. One recompose + soft-ship is enough.
+    maxRecomposes: 1,
     recompose: async (_suggest, fixHints?: DesignQaFixHints, attempt = 1) => {
       const reasonsJoined = (fixHints?.reason ?? "").toLowerCase();
       const wantStrongerPhoto =
@@ -914,52 +919,22 @@ export async function generatePhotoTextCarousel(
   let qaRecomposed = qa.recomposed;
 
   if (!qa.qa.pass) {
-    // Final full-rebuild self-heal before we ever apologise.
-    console.warn(
-      "generatePhotoTextCarousel: QA still failing after recomposes — full rebuild",
-      qa.qa.reasons,
-    );
-    for (let idx = 0; idx < slides.length; idx++) {
-      const slide = slides[idx]!;
-      slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
-      slide.overlay = formatOverlayHeadline(slide.overlay);
-      if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
-    }
-    const rebuiltRaw = await mapWithConcurrency(
-      slides,
-      SLIDE_RENDER_CONCURRENCY,
-      async (slide, idx) =>
-        renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true }),
-    );
-    if (rebuiltRaw.some((id) => !id)) {
-      return { ok: false, qaSms: designQaFailureSms(brand.name) };
-    }
-    const rebuiltIds = rebuiltRaw as string[];
-    const finalTexts = slides.map((s) =>
-      [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
-    );
-    const qa2 = await runDesignQa({
-      brand,
-      mediaIds: rebuiltIds,
-      slideTexts: finalTexts,
-      layoutKey: "photo_overlay",
-      mode: "photo_overlay",
-    });
-    const hardFail = qa2.reasons.some((r) =>
+    const hardFail = qa.qa.reasons.some((r) =>
       /illegib|overflow|empty|recompose failed|AI-slop|photo looks AI|generic/i.test(r),
     );
-    if (!qa2.pass && hardFail) {
+    // Skip the full multi-slide rebuild — it regularly blew Lab's 300s isolate.
+    // Soft-ship non-hard remainders; only hard fails apologise.
+    if (hardFail) {
+      console.warn(
+        "generatePhotoTextCarousel: hard QA fail after recompose — not rebuilding",
+        qa.qa.reasons,
+      );
       return { ok: false, qaSms: designQaFailureSms(brand.name) };
     }
-    if (!qa2.pass) {
-      console.warn(
-        "generatePhotoTextCarousel: soft QA remainders after full rebuild — shipping",
-        qa2.reasons,
-      );
-    }
-    qa = { qa: qa2, recomposed: true, mediaIds: rebuiltIds, attempts: (qa.attempts ?? 0) + 1 };
-    finalMediaIds = rebuiltIds;
-    qaRecomposed = true;
+    console.warn(
+      "generatePhotoTextCarousel: soft QA remainders after recompose — shipping",
+      qa.qa.reasons,
+    );
   }
 
   // keep using finalMediaIds below; replace first assignment

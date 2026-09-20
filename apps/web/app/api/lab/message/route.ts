@@ -50,7 +50,9 @@ export async function POST(request: NextRequest) {
     { channel, resolveBrand },
   );
 
-  scheduleLabKickoffDrain(brand.id, channel, "lab");
+  scheduleLabKickoffDrain(brand.id, channel, "lab", {
+    cookieHeader: request.headers.get("cookie") ?? undefined,
+  });
 
   return NextResponse.json({
     brandId: result.brandId,
