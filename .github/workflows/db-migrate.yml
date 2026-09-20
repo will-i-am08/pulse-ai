@@ -1,14 +1,12 @@
 name: DB migrate (prod)
 
-# Vercel deploys `main` but does NOT run DB migrations, so shipping code that
-# needs a new column/table before applying its migration takes prod down (this
-# bit us via #64: a missing `users.deleted_at` 500'd every login). This job
-# applies db/migrations/*.sql to the prod Neon DB on every push to main. The
-# migrate script is idempotent (IF NOT EXISTS / drop-guarded constraints), so
-# re-running on code-only merges is a safe, fast no-op.
+# Prefer migrations on the Vercel production build (apps/web → migrate-prod.mjs):
+# DATABASE_URL is already present there. This Actions job remains as a belt-and-
+# suspenders path when the repo secret is configured.
 #
-# Requires a repo secret DATABASE_URL (Settings → Secrets and variables →
-# Actions) — the same prod connection string used locally to migrate.
+# Requires repo secret DATABASE_URL (Settings → Secrets and variables → Actions)
+# for this job to apply migrations. When unset, the job exits successfully and
+# relies on the Vercel production build instead (avoids a permanent red check).
 
 on:
   push:
@@ -43,7 +41,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::DATABASE_URL secret is not set. Add it in Settings → Secrets and variables → Actions, then re-run this workflow."
-            exit 1
+            echo "::notice::DATABASE_URL Actions secret is not set — skipping this job. Prod migrations run on the Vercel production build (scripts/migrate-prod.mjs)."
+            echo "To also migrate from Actions, add DATABASE_URL under Settings → Secrets and variables → Actions."
+            exit 0
           fi
           pnpm exec tsx scripts/migrate.ts
