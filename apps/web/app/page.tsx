@@ -63,6 +63,7 @@ export default function LandingPage() {
           <a href="#about">About</a>
           <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
+          <a href="/try">Demo</a>
           <Link className={styles.navLogin} href="/login">
             Login
           </Link>
@@ -192,6 +193,12 @@ export default function LandingPage() {
           <div className={`${styles.demoStage} ${styles.reveal} ${styles.revealD2}`}>
             <ThreadDemo />
           </div>
+          <div className={`${styles.demoCta} ${styles.reveal} ${styles.revealD3}`}>
+            <a className={styles.pill} href="/try">
+              Try the live demo →
+            </a>
+            <p className={styles.demoCtaNote}>Drag a photo into Kip and watch it post. No sign-up.</p>
+          </div>
         </div>
       </section>
 
@@ -266,27 +273,9 @@ export default function LandingPage() {
             </article>
           </div>
 
-          <p className={styles.srOnly}>Instagram · Facebook · X · Threads</p>
-          <div className={`${styles.channels} ${styles.reveal}`} aria-label="Destinations">
-            <div className={styles.channel}>
-              <IgIcon className={styles.brandGlyph} />
-              <span>Instagram</span>
-            </div>
-            <div className={styles.channel}>
-              <FbIcon className={styles.brandGlyph} />
-              <span>Facebook</span>
-            </div>
-            <div className={styles.channel}>
-              <XIcon className={styles.brandGlyph} />
-              <span>X</span>
-            </div>
-            <div className={styles.channel}>
-              <ThreadsIcon className={styles.brandGlyph} />
-              <span>Threads</span>
-            </div>
-          </div>
           <p className={`${styles.destNote} ${styles.reveal} ${styles.revealD1}`}>
-            Organic social. That’s the niche. Kip intends to be first in it.
+            Organic social — Instagram, Facebook, X and Threads. That’s the niche. Kip intends to be
+            first in it.
           </p>
 
           <div className={`${styles.productFrame} ${styles.withSketch} ${styles.reveal} ${styles.revealD2}`}>
@@ -398,8 +387,8 @@ export default function LandingPage() {
             </figure>
             <figure className={`${styles.quote} ${styles.reveal} ${styles.revealD2}`}>
               <blockquote>
-                “Same voice on Instagram and Threads without me becoming a content intern. I make the
-                work. Kip ships it.”
+                “I post from my phone between shoots now. It still sounds like me, and I haven’t opened
+                a scheduler in weeks.”
               </blockquote>
               <figcaption>
                 <span className={styles.quoteName}>Jordan K.</span>
