@@ -91,6 +91,8 @@ export type KickoffDrainOpts = {
    * a new ask). Still records the kickoff as failed.
    */
   interruptAfter?: string | Date;
+  /** When set, skip SMS if this kickoff was cancelled/superseded mid-drain. */
+  kickoffId?: string;
 };
 
 const COMMIT_RE =
@@ -489,6 +491,90 @@ async function rememberPreferredVisuals(brand: Brand, mode: VisualMode): Promise
   brand.visual = visual;
 }
 
+/** Stable brief fingerprint — same ask → "Already on that"; new ask → supersede. */
+export function kickoffBriefKey(payload: Record<string, unknown> | null | undefined): string {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const topic = String(p.topicHint ?? p.hint ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 280);
+  const dests = Array.isArray(p.destinations)
+    ? [...p.destinations].map((d) => String(d).toLowerCase()).sort().join(",")
+    : "";
+  return [
+    topic,
+    String(p.count ?? ""),
+    String(p.format ?? ""),
+    String(p.preferCarousel ?? ""),
+    String(p.visuals ?? ""),
+    dests,
+  ].join("|");
+}
+
+function briefsDiffer(
+  existing: Record<string, unknown> | null | undefined,
+  next: Record<string, unknown>,
+): boolean {
+  return kickoffBriefKey(existing) !== kickoffBriefKey(next);
+}
+
+/** Free the brand+kind unique slot so a newer owner ask can enqueue. */
+export async function cancelActiveKickoffs(
+  brandId: string,
+  kind: KipKickoffKind,
+  note = "superseded by newer owner ask",
+): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `update kip_kickoffs
+        set status = 'cancelled',
+            error = left($3, 500),
+            completed_at = now(),
+            updated_at = now()
+      where brand_id = $1 and kind = $2 and status in ('queued', 'running')
+      returning id`,
+    [brandId, kind, note],
+  );
+  return rows.length;
+}
+
+export async function kickoffStillRunning(id: string): Promise<boolean> {
+  try {
+    const row = await queryOne<{ status: string }>(
+      `select status from kip_kickoffs where id = $1`,
+      [id],
+    );
+    // Unknown/missing row → keep going (don't drop SMS on a lookup flake).
+    if (!row?.status) return true;
+    return row.status === "running";
+  } catch (err) {
+    console.error(`kickoffStillRunning: lookup failed for ${id}`, err);
+    return true;
+  }
+}
+
+class KickoffAbortedError extends Error {
+  constructor(id: string) {
+    super(`kickoff ${id} superseded`);
+    this.name = "KickoffAbortedError";
+  }
+}
+
+async function insertKickoffRow(
+  brandId: string,
+  kind: KipKickoffKind,
+  payload: Record<string, unknown>,
+  reason: KipKickoffReason,
+  sourceMessageId: string | null | undefined,
+): Promise<KipKickoff | null> {
+  return queryOne<KipKickoff>(
+    `insert into kip_kickoffs (brand_id, kind, status, payload, reason, source_message_id)
+     values ($1, $2, 'queued', $3::jsonb, $4, $5)
+     returning *`,
+    [brandId, kind, JSON.stringify(payload), reason, sourceMessageId ?? null],
+  );
+}
+
 export async function enqueueKickoff(
   brand: Brand,
   kind: KipKickoffKind,
@@ -512,38 +598,78 @@ export async function enqueueKickoff(
     await rememberPreferredVisuals(brand, mode);
   }
   const reason = opts?.reason ?? "system";
+  const ackFor = (kickoff: KipKickoff | null, alreadyQueued: boolean): KickoffEnqueueResult => ({
+    kickoff,
+    alreadyQueued,
+    ackSms: alreadyQueued
+      ? "Already on that — I'll text you when the drafts are ready to approve."
+      : (opts?.ackSms ?? defaultAckSms(kind, payload)),
+  });
+
   try {
-    const kickoff = await queryOne<KipKickoff>(
-      `insert into kip_kickoffs (brand_id, kind, status, payload, reason, source_message_id)
-       values ($1, $2, 'queued', $3::jsonb, $4, $5)
-       returning *`,
-      [
-        brand.id,
-        kind,
-        JSON.stringify(payload),
-        reason,
-        opts?.sourceMessageId ?? null,
-      ],
+    const kickoff = await insertKickoffRow(
+      brand.id,
+      kind,
+      payload,
+      reason,
+      opts?.sourceMessageId,
     );
-    return {
-      kickoff,
-      alreadyQueued: false,
-      ackSms:
-        opts?.ackSms ??
-        defaultAckSms(kind, payload),
-    };
+    return ackFor(kickoff, false);
   } catch (err) {
     // Unique active (brand, kind) → already in flight.
     const msg = err instanceof Error ? err.message : String(err);
-    if (/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(msg)) {
-      return {
-        kickoff: null,
-        alreadyQueued: true,
-        ackSms:
-          "Already on that — I'll text you when the drafts are ready to approve.",
-      };
+    if (!/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(msg)) {
+      throw err;
     }
-    throw err;
+
+    const existing = await queryOne<KipKickoff>(
+      `select * from kip_kickoffs
+        where brand_id = $1 and kind = $2 and status in ('queued', 'running')
+        order by created_at desc limit 1`,
+      [brand.id, kind],
+    );
+    const existingPayload =
+      existing?.payload && typeof existing.payload === "object"
+        ? (existing.payload as Record<string, unknown>)
+        : null;
+    const canSupersede =
+      (reason === "user_request" || reason === "kip_commit") &&
+      Boolean(existing) &&
+      briefsDiffer(existingPayload, payload);
+
+    if (!canSupersede) {
+      return ackFor(null, true);
+    }
+
+    const cancelled = await cancelActiveKickoffs(
+      brand.id,
+      kind,
+      `superseded by newer ${reason}`,
+    );
+    console.warn("[kickoffs] superseded active kickoff for new brief", {
+      brandId: brand.id,
+      kind,
+      cancelled,
+      priorTopic: String(existingPayload?.topicHint ?? "").slice(0, 80),
+      nextTopic: String(payload.topicHint ?? "").slice(0, 80),
+    });
+
+    try {
+      const kickoff = await insertKickoffRow(
+        brand.id,
+        kind,
+        payload,
+        reason,
+        opts?.sourceMessageId,
+      );
+      return ackFor(kickoff, false);
+    } catch (retryErr) {
+      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      if (/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(retryMsg)) {
+        return ackFor(null, true);
+      }
+      throw retryErr;
+    }
   }
 }
 
@@ -1061,6 +1187,12 @@ export async function deliverUnstreamed(
     typeof deliverOrOpts === "function" ? { deliver: deliverOrOpts } : (deliverOrOpts ?? {});
   if (!opts.deliver) return results;
   for (const r of results) {
+    if (opts.kickoffId && !(await kickoffStillRunning(opts.kickoffId))) {
+      console.warn("[kickoffs] skip deliver — kickoff no longer running", {
+        kickoffId: opts.kickoffId,
+      });
+      continue;
+    }
     const since = r.skipIfInboundAfter ?? opts.interruptAfter;
     if (since) {
       try {
@@ -1502,10 +1634,15 @@ export async function processKickoff(
   const drainOpts: KickoffDrainOpts = {
     ...opts,
     interruptAfter: claimed.created_at ?? claimed.started_at ?? undefined,
+    kickoffId,
   };
 
   const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
     if (!opts?.deliver) return;
+    if (!(await kickoffStillRunning(kickoffId))) {
+      console.warn("[kickoffs] skip deliverOnce — kickoff no longer running", { kickoffId });
+      return;
+    }
     try {
       await opts.deliver(result);
     } catch (err) {
@@ -1530,7 +1667,12 @@ export async function processKickoff(
         ? (claimed.payload as Record<string, unknown>)
         : {};
 
-    const heartbeat = (): Promise<void> => heartbeatKickoff(kickoffId);
+    const heartbeat = async (): Promise<void> => {
+      await heartbeatKickoff(kickoffId);
+      if (!(await kickoffStillRunning(kickoffId))) {
+        throw new KickoffAbortedError(kickoffId);
+      }
+    };
 
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
@@ -1554,6 +1696,10 @@ export async function processKickoff(
     // A run that drafted nothing already SMS'd the client an apology; recording
     // it `done` with smsCount: 1 made "drafted nothing" indistinguishable from
     // "drafted 3 posts" and hid a brand whose image provider is dead.
+    if (!(await kickoffStillRunning(kickoffId))) {
+      console.warn("[kickoffs] processKickoff exiting — superseded mid-drain", { kickoffId });
+      return [];
+    }
     const failure = results.find((r) => r.kickoffFailure);
     if (failure) {
       await failKickoff(kickoffId, failure.kickoffFailure!);
@@ -1565,6 +1711,10 @@ export async function processKickoff(
     });
     return results;
   } catch (err) {
+    if (err instanceof KickoffAbortedError || (err instanceof Error && err.name === "KickoffAbortedError")) {
+      console.warn("[kickoffs] aborted mid-drain (superseded)", { kickoffId });
+      return [];
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`processKickoff: ${kickoffId} failed`, err);
     await failKickoff(kickoffId, message);

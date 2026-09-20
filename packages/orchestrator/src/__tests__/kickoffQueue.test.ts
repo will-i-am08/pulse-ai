@@ -102,6 +102,10 @@ function primeClaimAndBrand(kind = "first_batch", payload: Record<string, unknow
     if (/update kip_kickoffs/.test(sql) && /status = 'queued'/.test(sql)) {
       return { id: "k1", brand_id: BRAND.id, kind, status: "running", payload };
     }
+    // Mid-drain cancel check — still ours unless a supersede test says otherwise.
+    if (/select status from kip_kickoffs/.test(sql)) {
+      return { status: "running" };
+    }
     if (/from brands/.test(sql)) return BRAND;
     return null;
   });
@@ -338,6 +342,7 @@ describe("errors after the claim never orphan the row", () => {
           payload: { count: 1, visuals: "photo" },
         };
       }
+      if (/select status from kip_kickoffs/.test(sql)) return { status: "running" };
       if (/from brands/.test(sql)) return BRAND;
       return null;
     });
