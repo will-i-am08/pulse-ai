@@ -3,9 +3,17 @@ import type { Post } from "@pulse/shared";
 import {
   captionEditMissed,
   formatOfferedDraftBlock,
+  instructionLooksLikeOverlayStrip,
   looksLikeMetaCaption,
   offeredDraftView,
 } from "../offeredDraft.js";
+import {
+  messageWantsNoText,
+  messageWantsStripPendingOverlay,
+} from "../imaging.js";
+import { isInterviewLoopScratch, readOpenLoops } from "../speak/openLoops.js";
+import { generalAgentFallbackSms } from "../runGeneralAgent.js";
+import type { Brand } from "@pulse/shared";
 
 function stubPost(over: Partial<Post> = {}): Post {
   return {
@@ -62,9 +70,69 @@ describe("looksLikeMetaCaption", () => {
   });
 });
 
+describe("instructionLooksLikeOverlayStrip", () => {
+  it("detects remove-text-on-image asks", () => {
+    expect(instructionLooksLikeOverlayStrip("Remove the text")).toBe(true);
+    expect(instructionLooksLikeOverlayStrip("I mean no text on the image")).toBe(true);
+    expect(instructionLooksLikeOverlayStrip("make the caption shorter")).toBe(false);
+  });
+});
+
+describe("messageWantsStripPendingOverlay", () => {
+  it("strips pending overlay asks but not new no-text briefs", () => {
+    expect(messageWantsStripPendingOverlay("Remove the text")).toBe(true);
+    expect(messageWantsStripPendingOverlay("no text on the image")).toBe(true);
+    expect(messageWantsNoText("No text just good looking bread")).toBe(true);
+    expect(messageWantsStripPendingOverlay("No text just good looking bread")).toBe(false);
+  });
+});
+
 describe("captionEditMissed", () => {
   it("flags ignored shorter asks", () => {
     const cap = "A long caption that should get shorter when asked.";
     expect(captionEditMissed("shorter, drop the CTA", cap, cap)).toBe(true);
+  });
+});
+
+describe("isInterviewLoopScratch", () => {
+  it("drops discovery / lane-ban scratch that poisons replies", () => {
+    expect(isInterviewLoopScratch("discovery questions before suggesting direction")).toBe(true);
+    expect(isInterviewLoopScratch("stay in founder/AI/hiring/cold email lane")).toBe(true);
+    expect(isInterviewLoopScratch("owner's answer: what they're working on right now")).toBe(true);
+    expect(isInterviewLoopScratch("visual posts with minimal/no text overlay")).toBe(false);
+  });
+
+  it("drops niche-intake waiting_on phrases", () => {
+    expect(isInterviewLoopScratch("owner to share what their business does")).toBe(true);
+    expect(isInterviewLoopScratch("what they actually do / niche")).toBe(true);
+    expect(isInterviewLoopScratch("are they a café or roastery")).toBe(true);
+  });
+
+  it("readOpenLoops filters toxic prefs and waiting_on", () => {
+    const loops = readOpenLoops({
+      facts: {
+        open_loops: {
+          waiting_on: [
+            "owner's answer: what's bugging them",
+            "yes on the Porsche draft",
+            "owner to share niche",
+          ],
+          prefs: ["stay in founder lane", "casual voice"],
+          promised: ["deliver carousel drafts"],
+          energy: "upbeat",
+        },
+      },
+    } as Brand);
+    expect(loops.waiting_on).toEqual(["yes on the Porsche draft"]);
+    expect(loops.prefs).toEqual(["casual voice"]);
+    expect(loops.promised).toContain("deliver carousel drafts");
+  });
+});
+
+describe("generalAgentFallbackSms", () => {
+  it("asks to resend only for media-shaped asks", () => {
+    expect(generalAgentFallbackSms("here's the photo again")).toMatch(/sending it again/i);
+    expect(generalAgentFallbackSms("draft a carousel about bread")).toMatch(/snag|retry/i);
+    expect(generalAgentFallbackSms("come up with some suggestions")).not.toMatch(/sending it again/i);
   });
 });

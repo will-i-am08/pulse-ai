@@ -2,6 +2,7 @@ import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import { getGraphAdapter } from "@pulse/graph";
 import { sendToBrand, mostRecentActionable, isDaytime } from "@pulse/gateway";
+import { recordProactiveSend } from "@pulse/orchestrator";
 import { logger } from "../lib/logger.js";
 import { isTriggerDue } from "./scheduleCheck.js";
 import { runCheckin, getLastInboundAt } from "./checkin.js";
@@ -63,6 +64,7 @@ export async function runTriggerLoop(now: () => Date = () => new Date()): Promis
             isDaytime,
             sendToBrand,
             markSent,
+            recordSend: (brandId) => recordProactiveSend(brandId, "checkin", trigger.id),
             now,
           });
           break;

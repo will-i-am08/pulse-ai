@@ -12,7 +12,7 @@ export const LANDING_FAQS: Faq[] = [
   },
   {
     q: 'Which platforms does Kip post to?',
-    a: 'Instagram, Facebook, X, and Threads. Organic only. No paid ads, no media buying.',
+    a: 'Instagram, Facebook, X, and Threads for organic posting. Paid ads are optional on Max, using your own ad account — Kip does not run media buying on Pro.',
   },
   {
     q: 'Will the captions sound like me?',
@@ -36,6 +36,6 @@ export const LANDING_FAQS: Faq[] = [
   },
   {
     q: 'Is Kip a full social media manager?',
-    a: 'Kip runs organic posting, captions, calendar, nudges, and recaps. It doesn’t do on-site shoots, paid ads, or strategy decks. You send the photos.',
+    a: 'Kip runs organic posting, captions, calendar, nudges, and recaps. Paid ads are an optional Max add-on on your ad account. It doesn’t do on-site shoots or strategy decks. You send the photos.',
   },
 ];

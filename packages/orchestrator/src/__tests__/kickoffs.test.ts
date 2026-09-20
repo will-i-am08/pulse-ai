@@ -24,6 +24,8 @@ import {
   reclaimStaleKickoffs,
   STALE_RUNNING_KICKOFF_MS,
   runKickoffDrain,
+  zeroDraftOwnerSms,
+  textWantsCarousel,
 } from "../kickoffs.js";
 
 const mockedQuery = query as unknown as ReturnType<typeof vi.fn>;
@@ -38,6 +40,26 @@ describe("looksLikeKickoffRequest", () => {
       ),
     ).toBe(true);
     expect(looksLikeKickoffRequest("draft me 3 posts")).toBe(true);
+    expect(looksLikeKickoffRequest("Draft something in my lane")).toBe(true);
+    expect(looksLikeKickoffRequest("Draft something in my lane.")).toBe(true);
+  });
+
+  it("textWantsCarousel ignores not-a-carousel / square graphic asks", () => {
+    expect(
+      textWantsCarousel(
+        "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+      ),
+    ).toBe(false);
+    expect(textWantsCarousel("Make a LinkedIn carousel with photo tips")).toBe(true);
+    expect(textWantsCarousel("Draft a single square graphic about hiring")).toBe(false);
+    expect(textWantsCarousel("make me a carousel")).toBe(true);
+    const r = inferKickoffFromUserMessage(
+      "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+    );
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.preferCarousel).toBe(false);
+    expect(r?.payload.format).toBeUndefined();
+    expect(String(r?.ackSms ?? "")).not.toMatch(/carousel/i);
   });
 
   it("does not treat a bare reel ask as a photo-feed kickoff", () => {
@@ -109,8 +131,10 @@ describe("looksLikeKickoffRequest", () => {
     expect(refersToAttachedMedia("Use this a do something inspirational")).toBe(true);
     expect(refersToAttachedMedia("use this")).toBe(true);
     expect(refersToAttachedMedia("use these")).toBe(true);
+    expect(refersToAttachedMedia("Could you use the photo I sent you?")).toBe(true);
     expect(refersToAttachedMedia("make me a post about hiring")).toBe(false);
     expect(refersToAttachedMedia("Generate the photo")).toBe(false);
+    expect(refersToAttachedMedia("I mean no text on the image")).toBe(false);
     expect(
       refersToAttachedMedia(
         "Make me a feed post about a safety switch check this week. Generate the photo.",
@@ -180,6 +204,16 @@ describe("inferKickoffFromUserMessage", () => {
     expect(r?.payload.visuals).toBe("generated");
   });
 
+  it("does not treat a singular generated-photo post ask as first_batch", () => {
+    const brief =
+      "Draft a LinkedIn post about hiring a barista. Professional tone. Use generated photo visuals.";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.count).toBe(1);
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(r?.payload.visuals).toMatch(/generated|photo/);
+  });
+
   it("defaults draft posts to photo visuals", () => {
     const r = inferKickoffFromUserMessage("draft me 2 posts");
     expect(r?.kind).toBe("draft_posts");
@@ -197,6 +231,24 @@ describe("inferKickoffFromUserMessage", () => {
     expect(r?.payload.count).toBe(1);
     expect(r?.payload.topicHint).toBe(brief.slice(0, 280));
     expect(String(r?.ackSms ?? "")).toMatch(/photo carousel/i);
+  });
+
+  it("stamps LinkedIn destinations + keeps LinkedIn in topicHint for LinkedIn draft asks", () => {
+    const brief = "Draft a LinkedIn post about hiring a barista this week";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/linkedin/i);
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/hiring a barista/i);
+  });
+
+  it("keeps LinkedIn destinations on LinkedIn carousel kickoffs", () => {
+    const brief = "Make a LinkedIn carousel with photo tips for cafe managers";
+    const r = inferKickoffFromUserMessage(brief);
+    expect(r?.kind).toBe("draft_posts");
+    expect(r?.payload.preferCarousel).toBe(true);
+    expect(r?.payload.destinations).toEqual(expect.arrayContaining(["linkedin"]));
+    expect(String(r?.payload.topicHint ?? "")).toMatch(/linkedin/i);
   });
 
 
@@ -471,5 +523,21 @@ describe("runKickoffDrain", () => {
     expect(mockedQuery.mock.calls[0]![1]).toEqual(expect.arrayContaining(["lab-brand"]));
     expect(queuedSql).toMatch(/brand_id = \$1/);
     expect(mockedQuery.mock.calls[1]![1]).toEqual(["lab-brand", 2]);
+  });
+});
+
+describe("zeroDraftOwnerSms", () => {
+  it("points designed LinkedIn failures at a photo retry", () => {
+    const sms = zeroDraftOwnerSms({
+      visuals: "designed",
+      destinations: ["linkedin"],
+      topicHint: "hiring barista",
+    });
+    expect(sms).toMatch(/LinkedIn/i);
+    expect(sms).toMatch(/photo please/i);
+  });
+
+  it("keeps a short retry for ordinary photo zero-drafts", () => {
+    expect(zeroDraftOwnerSms({ visuals: "photo" })).toMatch(/try again/i);
   });
 });

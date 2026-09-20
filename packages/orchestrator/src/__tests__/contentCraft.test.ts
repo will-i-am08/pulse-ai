@@ -5,6 +5,7 @@ import {
   formatBiasForJob,
   pickUnderrepresentedJob,
   isContentJob,
+  isLinkedInPrimary,
 } from "../contentJobs.js";
 import {
   pickHookFormulas,
@@ -44,6 +45,22 @@ describe("contentJobs", () => {
     expect(formatBiasForJob("opinion", { needDiscovery: true })).toBe("reel");
     expect(formatBiasForJob("offer")).toBe("carousel");
     expect(formatBiasForJob("teach", { needDiscovery: false })).toBe("carousel");
+  });
+
+  it("never biases LinkedIn-primary briefs to story or reel", () => {
+    expect(formatBiasForJob("story", { destinations: ["linkedin"] })).toBe("feed");
+    expect(formatBiasForJob("proof", { destinations: ["linkedin"] })).toBe("carousel");
+    expect(formatBiasForJob("teach", { destinations: ["linkedin"] })).toBe("carousel");
+    expect(formatBiasForJob("opinion", { destinations: ["linkedin"] })).toBe("feed");
+    // IG + LinkedIn together keeps discovery bias
+    expect(formatBiasForJob("story", { destinations: ["instagram", "linkedin"] })).toBe("reel");
+  });
+
+  it("detects LinkedIn-primary destination lists", () => {
+    expect(isLinkedInPrimary(["linkedin"])).toBe(true);
+    expect(isLinkedInPrimary(["linkedin", "x"])).toBe(true);
+    expect(isLinkedInPrimary(["instagram", "linkedin"])).toBe(false);
+    expect(isLinkedInPrimary([])).toBe(false);
   });
 
   it("picks underrepresented jobs favoring opinion/story gaps", () => {

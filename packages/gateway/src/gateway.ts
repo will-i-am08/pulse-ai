@@ -58,6 +58,12 @@ const INBOUND_BURST_MS = 1200;
 const PHOTO_ARRIVAL_WAIT_MS = 4500;
 const PHOTO_ARRIVAL_POLL_MS = 700;
 
+/**
+ * After sibling wait fails, re-poll Twilio's Message Media subresource once.
+ * NumMedia=0 webhooks sometimes populate a beat later on the same SID.
+ */
+const MEDIA_SID_RETRY_MS = 1500;
+
 /** Re-export — single source of truth lives in @pulse/orchestrator. */
 export { refersToAttachedMedia };
 
@@ -323,6 +329,20 @@ export async function resolveBrandByPhone(from: string): Promise<Brand | null> {
 
 function inferMediaKind(contentType: string): MediaKind {
   return contentType.toLowerCase().startsWith("video/") ? "video" : "photo";
+}
+
+/** Best-effort Twilio Message Media recovery when the webhook omitted NumMedia/MediaUrl*. */
+async function recoverMessageMedia(
+  channel: MessageChannel,
+  providerMessageId: string | null | undefined,
+): Promise<InboundMedia[]> {
+  if (!providerMessageId || typeof channel.listMessageMedia !== "function") return [];
+  try {
+    return await channel.listMessageMedia(providerMessageId);
+  } catch (err) {
+    console.warn(`handleInbound: listMessageMedia failed for ${providerMessageId}`, err);
+    return [];
+  }
 }
 
 /** Download provider media and store its bytes via putMedia (Postgres media_blobs). */
@@ -673,27 +693,35 @@ export async function handleInbound(
 
     // Webhook sometimes arrives with NumMedia=0 even when Twilio has attachments —
     // recover via the Message Media subresource before we give up on the photo.
+    const webhookMediaCount = inbound.media?.length ?? 0;
     let inboundMedia = inbound.media ?? [];
-    if (
-      inboundMedia.length === 0 &&
-      inbound.providerMessageId &&
-      typeof channel.listMessageMedia === "function"
-    ) {
-      try {
-        const recovered = await channel.listMessageMedia(inbound.providerMessageId);
-        if (recovered.length > 0) {
-          console.warn(
-            `handleInbound: recovered ${recovered.length} media via listMessageMedia for ${inbound.providerMessageId}`,
-          );
-          inboundMedia = recovered;
-        }
-      } catch (err) {
-        console.warn(`handleInbound: listMessageMedia failed for ${inbound.providerMessageId}`, err);
+    let recoveredMediaCount = 0;
+    if (inboundMedia.length === 0 && inbound.providerMessageId) {
+      const recovered = await recoverMessageMedia(channel, inbound.providerMessageId);
+      if (recovered.length > 0) {
+        console.warn(
+          `handleInbound: recovered ${recovered.length} media via listMessageMedia for ${inbound.providerMessageId}`,
+        );
+        inboundMedia = recovered;
+        recoveredMediaCount = recovered.length;
       }
     }
 
     let newMedia = await captureMedia(brand.id, channel, inboundMedia);
-    const mediaDownloadFailed = inboundMedia.length > 0 && newMedia.length === 0;
+    let mediaDownloadFailed = inboundMedia.length > 0 && newMedia.length === 0;
+
+    console.info(
+      JSON.stringify({
+        event: "inbound_media",
+        brandId: brand.id,
+        messageSid: inbound.providerMessageId ?? null,
+        webhookMedia: webhookMediaCount,
+        recoveredMedia: recoveredMediaCount,
+        capturedMedia: newMedia.length,
+        downloadFailed: mediaDownloadFailed,
+        bodyRefersToMedia: refersToAttachedMedia((inbound.body ?? "").trim()),
+      }),
+    );
 
     let message: Message;
     try {
@@ -799,8 +827,42 @@ export async function handleInbound(
           undefined,
           { pace: false, channel },
         ).catch(() => {});
+      } else if (inbound.providerMessageId) {
+        // Same-SID late attach: Twilio sometimes populates Media after NumMedia=0.
+        await sleep(MEDIA_SID_RETRY_MS);
+        const retried = await recoverMessageMedia(channel, inbound.providerMessageId);
+        if (retried.length > 0) {
+          const captured = await captureMedia(brand.id, channel, retried);
+          console.info(
+            JSON.stringify({
+              event: "inbound_media_sid_retry",
+              brandId: brand.id,
+              messageSid: inbound.providerMessageId,
+              recoveredMedia: retried.length,
+              capturedMedia: captured.length,
+            }),
+          );
+          if (captured.length > 0) {
+            newMedia = captured;
+            mediaDownloadFailed = false;
+            await query(`update messages set media_ids = $1::uuid[] where id = $2`, [
+              newMedia.map((m) => m.id),
+              message.id,
+            ]).catch(() => {});
+            message = { ...message, media_ids: newMedia.map((m) => m.id) };
+            photoAckSent = true;
+            await sendToBrand(
+              brand.id,
+              "Got it, writing a caption for this now.",
+              undefined,
+              { pace: false, channel },
+            ).catch(() => {});
+          } else {
+            mediaDownloadFailed = true;
+          }
+        }
       }
-      // No sibling — fall through to processInbound, which tries a recent banked
+      // Still nothing — fall through to processInbound, which tries a recent banked
       // client photo then asks to resend if nothing is on file.
     }
 

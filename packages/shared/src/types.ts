@@ -747,15 +747,56 @@ export interface BrandPlanFacts {
   selected_at?: string;
 }
 
+export type BrandPaymentStatus =
+  | "incomplete"
+  | "submitted"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "unpaid"
+  | "none";
+
+export type BrandPaymentDiscountDuration = "once" | "forever" | "repeating";
+
+/** Snapshot of an operator-applied Stripe coupon. */
+export interface BrandPaymentDiscount {
+  percent_off?: number;
+  amount_off_cents?: number;
+  coupon_id?: string;
+  duration?: BrandPaymentDiscountDuration;
+  duration_in_months?: number;
+  applied_at?: string;
+  applied_by?: string;
+}
+
+/** Last operator billing action (refund / comp / plan / discount). */
+export interface BrandOperatorBillingAction {
+  action: "comp" | "uncomp" | "discount" | "refund" | "plan_change";
+  at: string;
+  by?: string;
+  note?: string;
+}
+
 /**
- * Payment UI / future billing markers on the brand.
- * Not a paywall — must not block /app or product features until Stripe.
+ * Payment / Stripe markers on the brand.
+ * Access gating uses {@link import("./billing.js").hasPaidAccess} — not this type alone.
  */
 export interface BrandPaymentFacts {
-  /** Set when the owner submits the payment UI (Stripe not connected yet). */
+  /** Set when Checkout completes or a pre-Stripe demo submit happened. */
   submitted_at?: string;
-  /** Display-only status until a real processor is plugged in. */
-  status?: "submitted" | "active" | "none";
+  status?: BrandPaymentStatus;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  stripe_price_id?: string;
+  current_period_end?: string;
+  cancel_at_period_end?: boolean;
+  /** Operator-granted free access. Survives canceled Stripe subscriptions. */
+  complimentary?: boolean;
+  complimentary_reason?: string;
+  complimentary_at?: string;
+  complimentary_by?: string;
+  discount?: BrandPaymentDiscount | null;
+  last_operator_action?: BrandOperatorBillingAction;
 }
 
 /** Owner must SMS-confirm a discovered booking/destination URL before Kip saves or uses it. */
@@ -789,6 +830,50 @@ export interface LinkFulfillment {
   external_message_id?: string | null;
 }
 
+// ─── Episodic events — named things in the OWNER's world Kip follows up on ─
+//
+// Not Kip's own to-dos (those live in open_loops). These are the shoots,
+// launches, trips and milestones the owner mentions in passing, so Kip can
+// recall them ("how'd the Emily Calder shoot go?") like a manager who listens.
+export const kipEventSchema = z.object({
+  id: z.string(),
+  summary: z.string(),                 // "photoshoot for Emily Calder"
+  entity: z.string().default(""),      // proper-noun anchor: "Emily Calder"
+  kind: z
+    .enum(["shoot", "launch", "event", "meeting", "trip", "deadline", "personal", "other"])
+    .default("other"),
+  when_iso: z.string().nullable().default(null), // resolved date/time if given, else null
+  when_text: z.string().default(""),   // raw phrase the owner used ("this Friday")
+  created_at: z.string(),
+  followed_up_at: z.string().nullable().default(null), // set once Kip has asked
+  status: z.enum(["upcoming", "passed", "closed"]).default("upcoming"),
+});
+export type KipEvent = z.infer<typeof kipEventSchema>;
+
+// ─── Engagement profile — how proactive / warm / frequent Kip is per owner ─
+//
+// The answer to "personalisation that varies user to user." Some owners want a
+// daily morning report; others mute the second Kip check-ins twice unprompted.
+// Every field defaults to today's behaviour, so an absent profile is a no-op —
+// Phase 2 stays inert until an owner (or the Phase 3 learner) moves a dial.
+export const engagementProfileSchema = z
+  .object({
+    proactivity: z.enum(["quiet", "balanced", "high"]).default("balanced"),
+    warmth: z.enum(["crisp", "friendly", "matey"]).default("friendly"),
+    report: z
+      .object({
+        cadence: z.enum(["off", "daily", "weekly"]).default("weekly"),
+        hour_local: z.number().int().min(0).max(23).default(8),
+      })
+      .default({}),
+    // Learned per-channel engagement (Phase 3). -1..+1. Owner never sets this.
+    affinity: z.record(z.string(), z.number()).default({}),
+    source: z.enum(["default", "owner_set", "learned"]).default("default"),
+    updated_at: z.string().default(""),
+  })
+  .default({});
+export type EngagementProfile = z.infer<typeof engagementProfileSchema>;
+
 export interface BusinessFacts {
   /** When true, this brand is a Twilio-free lab sandbox — never expose in live product UIs. */
   lab?: boolean;
@@ -814,9 +899,9 @@ export interface BusinessFacts {
   creative_refresh?: { last_at?: string; week_key?: string };
   /** Preference chosen on signup / pricing before checkout (may differ from `plan`). */
   plan_preference?: BrandPlanFacts;
-  /** Confirmed plan after payment UI submit. */
+  /** Confirmed plan after Checkout (or operator plan change). */
   plan?: BrandPlanFacts;
-  /** Payment UI / future billing markers — never used to block /app access. */
+  /** Stripe / complimentary billing markers. */
   payment?: BrandPaymentFacts;
   /** How this brand arrived (QR/SMS funnel, etc.). */
   acquisition?: {
@@ -841,6 +926,10 @@ export interface BusinessFacts {
   kip_preferences?: Array<{ text: string; atISO: string }>;
   /** Short decisions Kip remembered from owner SMS (tool loop). Keep entries brief. */
   kip_decisions?: Array<{ text: string; atISO: string }>;
+  /** Named events in the owner's world Kip recalls + follows up on. Cap 30. */
+  kip_events?: KipEvent[];
+  /** How proactive / warm / frequent Kip should be for THIS owner. */
+  engagement_profile?: EngagementProfile;
 }
 
 /**

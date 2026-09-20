@@ -62,7 +62,7 @@ export function PricingPlans() {
       </div>
 
       <p className={`${styles.priceNote} ${styles.reveal}`}>
-        Prices in AUD. Cancel anytime. Annual billed up front
+        Prices in AUD, inc. GST. Cancel anytime. Annual billed up front
         {annual ? ' · shown as monthly equivalent' : ''}.
       </p>
       <div className={`${styles.riskRow} ${styles.reveal}`}>

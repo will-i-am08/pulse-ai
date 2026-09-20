@@ -7,13 +7,15 @@ import {
   generateHeadline,
   applyTextTile,
   formatOverlayHeadline,
+  extractExactOverlayHeadline,
+  formatExactOverlayHeadline,
 } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
 import { brandContextForPrompt } from "./brandContext.js";
 import { visualReference } from "./library.js";
 import { resolveVisualMode, type VisualMode } from "./visualMode.js";
-import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { inferContentJob, formatBiasForJob, isLinkedInPrimary } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
 import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames, creativeBrandLabel, creativeSceneConstraint } from "./faceless.js";
@@ -24,6 +26,7 @@ import {
   reinforceTopicHint,
   reviewBriefCompliance,
 } from "./briefCompliance.js";
+import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
@@ -34,10 +37,11 @@ import {
 export async function generateFillerPost(
   brand: Brand,
   pillar: Pillar,
-  opts?: { visuals?: VisualMode; topicHint?: string | null },
+  opts?: { visuals?: VisualMode; topicHint?: string | null; destinations?: string[] | null },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
+  const exactOverlay = extractExactOverlayHeadline(topic);
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
@@ -47,20 +51,33 @@ export async function generateFillerPost(
     description: pillar.description,
     content_job: (pillar as { content_job?: string }).content_job,
   });
-  const formatHint = formatBiasForJob(job);
-  const captionJob = captionJobForFormat(formatHint);
+  // Prefer explicit kickoff destinations — agent briefs often drop "LinkedIn".
+  const briefDests = [
+    ...new Set([
+      ...(opts?.destinations ?? []).map((d) => String(d).toLowerCase()),
+      ...extractPlatforms(topic),
+    ]),
+  ];
+  const linkedIn = isLinkedInPrimary(briefDests);
+  const formatHint = formatBiasForJob(job, { destinations: briefDests });
+  const captionJob = linkedIn ? "B" : captionJobForFormat(formatHint);
   const facelessLine = facelessPromptLine(brand);
   const noFace = facelessPhotoConstraint(brand);
   const trade = creativeBrandLabel(brand);
   const scene = creativeSceneConstraint(brand);
   const system = [
-    `You write a short social post for "${trade}" in the "${pillar.name}" content pillar (${pillar.description}).`,
+    linkedIn
+      ? `You write a LinkedIn post for "${trade}" in the "${pillar.name}" content pillar (${pillar.description}).`
+      : `You write a short social post for "${trade}" in the "${pillar.name}" content pillar (${pillar.description}).`,
     `Content job for this slot: ${job}. Preferred format bias: ${formatHint}.`,
-    captionJobPrompt(captionJob),
-    hooksPromptBlock(job, 2),
+    linkedIn ? linkedInCaptionPromptBlock() : captionJobPrompt(captionJob),
+    linkedIn ? "" : hooksPromptBlock(job, 2),
     "Prefer a concrete angle from a real detail already on file (proof-bank number, named product, neighbourhood, the actual room or tool in the brief) — not a generic tip.",
     "If that proof bank is empty, write about the craft, the product, the room, or the neighbourhood. Never invent a regular, a testimonial, a made-up order, a specific job, a fault found today, or a this-week client win. Caption and overlay card must not claim an incident that is not in facts. Never ask the owner for more details. Never refuse. Output JSON only — no questions, no preamble.",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    exactOverlay
+      ? `EXACT overlay headline required on the image (use this verbatim as "card", do not invent a shorter substitute): ${exactOverlay}`
+      : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: caption + card must name at least TWO specific options and state a concrete difference (e.g. Cursor vs Claude Code). Category-level tips without named tools FAIL."
       : "",
@@ -74,14 +91,18 @@ export async function generateFillerPost(
     NEVER_INVENT_PROOF,
     "No scarcity, book-now, filling-up-fast, or SALE energy unless the owner brief explicitly asks for a promo.",
     wantPhoto
-      ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
-      : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
+      ? linkedIn
+        ? 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
+        : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
+      : linkedIn
+        ? 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","card":"<4-12 word line for a text card>"}'
+        : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
     wantPhoto
       ? "The card overlay must be a complete standalone headline, never a truncated sentence or sliced clause."
       : "",
     wantPhoto
       ? [
-          "Keep caption short — long captions get truncated and break JSON parsing.",
+          linkedIn ? "Caption can be fuller LinkedIn commentary — still keep JSON valid." : "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption — and honour any background the owner named.",
           noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
@@ -121,9 +142,11 @@ export async function generateFillerPost(
         return null;
       }
       caption = stripPersonalNames(drafted.caption, brand);
-      card = wantPhoto
-        ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
-        : stripPersonalNames(drafted.card, brand);
+      card = exactOverlay
+        ? formatExactOverlayHeadline(exactOverlay)
+        : wantPhoto
+          ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
+          : stripPersonalNames(drafted.card, brand);
       photoPrompt = drafted.photoPrompt;
       if (!topic) break;
       const compliance = await reviewBriefCompliance({
@@ -185,13 +208,18 @@ export async function generateFillerPost(
     // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto) {
       photoHeadline =
+        (exactOverlay && formatExactOverlayHeadline(exactOverlay)) ||
         (card && card.replace(/["']/g, "").trim()) ||
         (await generateHeadline(brand, caption));
       const tiledId = await applyTextTile(
         brand,
         mediaId,
         photoHeadline,
-        topic ? { ask: topic } : undefined,
+        topic
+          ? { ask: topic, exact: Boolean(exactOverlay) }
+          : exactOverlay
+            ? { exact: true }
+            : undefined,
       );
       if (tiledId) mediaId = tiledId;
     }
@@ -202,34 +230,55 @@ export async function generateFillerPost(
 
   const slot = await scheduleSlot({
     brandId: brand.id,
-    platform: "instagram",
+    platform: linkedIn ? "linkedin" : "instagram",
     pillarId: pillar.id,
     postsPerWeek: pillar.posts_per_week,
     format: formatHint === "story" ? "feed" : formatHint === "reel" ? "reel" : formatHint === "carousel" ? "carousel" : "feed",
   });
   caption = humanizeCaption(caption);
+  const dests = linkedIn ? briefDests.length ? briefDests : ["linkedin"] : [];
+  const captions = dests.length ? buildPlatformCaptions(caption) : null;
   const styleMeta = {
     content_job: job,
     format_bias: formatHint,
     generated: true,
+    ...(linkedIn ? { linkedin_primary: true } : {}),
     ...(wantPhoto
       ? { wants_text: true, ...(photoHeadline ? { headline: photoHeadline } : {}) }
       : {}),
   };
   const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(
-    `insert into posts (brand_id, caption, media_ids, source_media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
-     values ($1, $2, $3::uuid[], $4::uuid[], $5, false, $7::jsonb, 'instagram', 'pending_approval', $6)
-     returning *`,
-    [
-      brand.id,
-      caption,
-      [mediaId],
-      sourceMediaIds,
-      pillar.id,
-      slot.toISOString(),
-      JSON.stringify(styleMeta),
-    ],
+    linkedIn
+      ? `insert into posts (brand_id, caption, media_ids, source_media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at, destinations, captions, format)
+         values ($1, $2, $3::uuid[], $4::uuid[], $5, false, $7::jsonb, $8, 'pending_approval', $6, $9::text[], $10::jsonb, $11)
+         returning *`
+      : `insert into posts (brand_id, caption, media_ids, source_media_ids, pillar_id, is_auto, style_meta, platform, status, scheduled_at)
+         values ($1, $2, $3::uuid[], $4::uuid[], $5, false, $7::jsonb, 'instagram', 'pending_approval', $6)
+         returning *`,
+    linkedIn
+      ? [
+          brand.id,
+          caption,
+          [mediaId],
+          sourceMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify(styleMeta),
+          "linkedin",
+          dests,
+          JSON.stringify(captions),
+          formatHint === "carousel" ? "carousel" : "feed",
+        ]
+      : [
+          brand.id,
+          caption,
+          [mediaId],
+          sourceMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify(styleMeta),
+        ],
   );
   if (!post) return null;
 

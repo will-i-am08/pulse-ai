@@ -76,6 +76,9 @@ import {
   isValidKickoffKind,
   mergeKipMemoryFact,
   looksLikeCalendarAsk,
+  looksLikeIdeasAsk,
+  looksLikeBrandRecallAsk,
+  summarizeBrandRecall,
   summarizeCalendar,
 } from "../agentTools.js";
 
@@ -112,6 +115,7 @@ describe("KIP_AGENT_TOOLS", () => {
       "restyle_image",
       "revise_caption",
       "schedule_post",
+      "scout_ideas",
       "set_image_text",
     ]);
     for (const t of KIP_AGENT_TOOLS) {
@@ -188,6 +192,42 @@ describe("helpers", () => {
     expect(looksLikeCalendarAsk("can you promote our new winter menu this week")).toBe(false);
     expect(looksLikeCalendarAsk("what's on my calendar and make a carousel")).toBe(false);
   });
+
+  it("looksLikeIdeasAsk matches suggestion asks and ignores drafts", () => {
+    expect(looksLikeIdeasAsk("Give me 3 post ideas for this week")).toBe(true);
+    expect(looksLikeIdeasAsk("come up with some suggestions")).toBe(true);
+    expect(looksLikeIdeasAsk("what should I post")).toBe(true);
+    expect(looksLikeIdeasAsk("Draft a LinkedIn post about hiring")).toBe(false);
+    expect(looksLikeIdeasAsk("Draft something in my lane")).toBe(false);
+    expect(looksLikeIdeasAsk("make me a carousel")).toBe(false);
+    expect(looksLikeIdeasAsk("what's on my calendar")).toBe(false);
+  });
+
+  it("looksLikeBrandRecallAsk matches memory asks", () => {
+    expect(looksLikeBrandRecallAsk("What do you know about my brand?")).toBe(true);
+    expect(looksLikeBrandRecallAsk("what's on file about me")).toBe(true);
+    expect(looksLikeBrandRecallAsk("Give me 3 post ideas")).toBe(false);
+    expect(looksLikeBrandRecallAsk("draft a post")).toBe(false);
+  });
+
+  it("summarizeBrandRecall lists prefs/voice without an intake quiz", () => {
+    const sms = summarizeBrandRecall(
+      stubBrand({
+        name: "Lab Cafe",
+        facts: {
+          lab: true,
+          kip_preferences: [{ text: "Generated photos", atISO: "2026-01-01T00:00:00.000Z" }],
+        },
+        brand_voice_profile: { tone: ["professional", "upbeat"] },
+      }),
+    );
+    expect(sms).toMatch(/Generated photos/i);
+    expect(sms).toMatch(/professional/i);
+    expect(sms).toMatch(/Niche: not locked yet/i);
+    expect(sms).not.toMatch(/are you a caf/i);
+    expect(sms).not.toMatch(/Want to fill me in/i);
+    expect(sms).not.toMatch(/one-liner about what you do/i);
+  });
 });
 
 describe("executeAgentTool", () => {
@@ -262,6 +302,51 @@ describe("executeAgentTool", () => {
         payload: expect.objectContaining({
           count: 1,
           topicHint: "weekend special",
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy preserves LinkedIn from owner SMS when the model shortens the brief", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "post", count: 1, topic_hint: "hiring barista", visuals: "photo" },
+      {
+        brand: stubBrand(),
+        sourceMessageId: "msg-li",
+        ownerMessage: "Draft a LinkedIn post about hiring a barista — professional tone",
+      },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(true);
+    expect(mockedEnqueue).toHaveBeenCalledTimes(1);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          topicHint: "LinkedIn: hiring barista",
+          destinations: expect.arrayContaining(["linkedin"]),
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy carousel keeps LinkedIn destinations for photo carousels", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "carousel", count: 1, topic_hint: "3 tip slides on latte art", visuals: "photo" },
+      {
+        brand: stubBrand(),
+        ownerMessage: "Make a LinkedIn carousel about latte art tips",
+      },
+    );
+    expect(JSON.parse(raw).ok).toBe(true);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          preferCarousel: true,
+          format: "carousel",
+          destinations: expect.arrayContaining(["linkedin"]),
+          topicHint: expect.stringMatching(/^LinkedIn:/i),
         }),
       }),
     );

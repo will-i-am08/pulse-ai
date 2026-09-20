@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   formatOverlayHeadline,
+  extractExactOverlayHeadline,
+  formatExactOverlayHeadline,
+  splitOverlayStack,
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
@@ -25,6 +28,43 @@ describe("formatOverlayHeadline", () => {
   it("strips wrapping quotes but keeps possessives", () => {
     expect(formatOverlayHeadline(`"Hello, world's best!"`)).toBe("HELLO WORLD'S BEST");
     expect(formatOverlayHeadline("\u2018Peak Season\u2019 \u2014 2024")).toBe("PEAK SEASON 2024");
+  });
+
+  it("repairs WERE HIRING and keeps WE'RE contractions", () => {
+    expect(formatOverlayHeadline("WERE HIRING")).toBe("WE'RE HIRING");
+    expect(formatOverlayHeadline("we're hiring")).toBe("WE'RE HIRING");
+    expect(formatOverlayHeadline("DONT STOP")).toBe("DON'T STOP");
+  });
+
+  it("does not leave dangling ACTUALLY after a char-cap", () => {
+    const out = formatOverlayHeadline("WHAT FOUNDER OPS ACTUALLY DOES");
+    expect(out.length).toBeLessThanOrEqual(OVERLAY_HEADLINE_MAX_CHARS);
+    expect(out.split(/\s+/).at(-1)).not.toBe("ACTUALLY");
+    expect(out.split(/\s+/).at(-1)).not.toBe("DOES");
+    expect(out).toMatch(/FOUNDER OPS/);
+  });
+
+  it("extractExactOverlayHeadline pulls owner-named overlays from briefs", () => {
+    expect(
+      extractExactOverlayHeadline(
+        "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+      ),
+    ).toBe("WHAT FOUNDER OPS ACTUALLY DOES");
+    expect(
+      extractExactOverlayHeadline(
+        "Make a square graphic for a barista hiring post with this exact overlay headline burned on the image: WE'RE HIRING BARISTAS",
+      ),
+    ).toBe("WE'RE HIRING BARISTAS");
+    expect(extractExactOverlayHeadline("Draft a hiring post about craft")).toBeNull();
+  });
+
+  it("formatExactOverlayHeadline preserves full owner text without the 28-char smash", () => {
+    const exact = "WHAT FOUNDER OPS ACTUALLY DOES";
+    expect(formatExactOverlayHeadline(exact)).toBe(exact);
+    expect(formatExactOverlayHeadline(exact).length).toBeGreaterThan(OVERLAY_HEADLINE_MAX_CHARS);
+    const lines = splitOverlayStack(exact, "pair", { exact: true });
+    expect(lines.join(" ")).toBe(exact);
+    expect(lines.every((l) => l.length <= OVERLAY_HEADLINE_MAX_CHARS)).toBe(true);
   });
 
   it("preserves an already-short line (uppercased)", () => {
@@ -219,6 +259,10 @@ describe("overlay headline wiring", () => {
     expect(generateHeadline).toMatch(/Never end on a function word/);
     expect(generateHeadline).toMatch(/standalone headline/);
     expect(generateHeadline).toMatch(/truncated sentence/);
+    expect(generateHeadline).toMatch(/WE'RE/);
+    // Must keep contraction apostrophes — strip quotes/periods only, not ["'.]
+    expect(generateHeadline).toMatch(/out\.replace\(\/\["\.\]\/g,\s*""\)/);
+    expect(generateHeadline).not.toMatch(/\["'\.\]/);
     expect(generateHeadline).not.toMatch(/4-12/);
 
     const applyTextTile = imaging.slice(
@@ -247,7 +291,9 @@ describe("overlay headline wiring", () => {
     expect(fillers).not.toMatch(/4-12 word overlay/);
     expect(fillers).toMatch(/standalone headline/);
     expect(fillers).toMatch(/truncated sentence/);
-    expect(fillers).toMatch(/wantPhoto\s*\n\s*\? formatOverlayHeadline\(/);
+    expect(fillers).toMatch(/extractExactOverlayHeadline/);
+    expect(fillers).toMatch(/formatExactOverlayHeadline/);
+    expect(fillers).toMatch(/exactOverlay/);
   });
 
   it("formats overlay titles max 5 words and does not headline idea_blurb", () => {

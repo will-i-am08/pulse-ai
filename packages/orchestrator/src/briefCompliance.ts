@@ -1,4 +1,5 @@
 import { callLLM } from "./llm.js";
+import { extractExactOverlayHeadline } from "./imaging.js";
 
 /**
  * Post-draft brief compliance — did we actually deliver what the owner asked?
@@ -89,6 +90,19 @@ export function heuristicBriefCompliance(input: BriefComplianceInput): BriefComp
     }
   }
 
+  const exactOverlay = extractExactOverlayHeadline(brief);
+  if (exactOverlay) {
+    const overlayBlob = (input.overlays ?? []).join(" ").toUpperCase().replace(/\s+/g, " ");
+    const needed = exactOverlay.split(" ").filter(Boolean);
+    const allPresent = needed.length > 0 && needed.every((w) => overlayBlob.includes(w));
+    if (!allPresent) {
+      reasons.push(`brief requires exact overlay "${exactOverlay}" but drafts used something else`);
+      reinforces.push(
+        `Burn this EXACT overlay headline on the image (verbatim): ${exactOverlay} — do not invent a shorter substitute`,
+      );
+    }
+  }
+
   // "A post" can be a feed card OR a carousel — don't hard-fail format.
   // Compliance is about whether the CONTENT matches the brief.
 
@@ -122,8 +136,23 @@ export async function reviewBriefCompliance(
 
   const heuristic = heuristicBriefCompliance(input);
   // Hard heuristic fails are enough to reject without an LLM round-trip.
-  if (!heuristic.pass && heuristic.reasons.some((r) => /comparison|cityscape|carousel|drifted/i.test(r))) {
+  if (
+    !heuristic.pass &&
+    heuristic.reasons.some((r) => /comparison|cityscape|carousel|drifted|exact overlay/i.test(r))
+  ) {
     return heuristic;
+  }
+
+  // Owner-named exact overlay is already in overlays[] (fillers force it).
+  // Skip the compliance LLM — it invents unverifiable "confirm burn on the
+  // final graphic" misses and zero-drafts LAB-004 even when the card is right.
+  const exactOverlay = extractExactOverlayHeadline(brief);
+  if (exactOverlay && heuristic.pass) {
+    const overlayBlob = (input.overlays ?? []).join(" ").toUpperCase().replace(/\s+/g, " ");
+    const needed = exactOverlay.split(" ").filter(Boolean);
+    if (needed.length > 0 && needed.every((w) => overlayBlob.includes(w))) {
+      return { pass: true, reasons: [], reinforceHint: "" };
+    }
   }
 
   try {
@@ -133,6 +162,7 @@ export async function reviewBriefCompliance(
         "Decide if the draft DELIVERS the owner's ask — not whether it's nicely written.",
         "Comparing X means naming/contrasting specific options with a real difference, not vaguely mentioning the category.",
         "Background/visual asks in the brief must show up in photo prompts.",
+        "Overlays listed in the input ARE the burned-in headlines that will be applied after image gen — if they match an exact overlay ask, that constraint is already satisfied. Do not fail for lacking visual confirmation of a burn that has not rendered yet.",
         "pass is the decision. reasons may praise a pass or explain a miss — never flip pass to false just because you listed why it worked.",
         'Output ONLY JSON: {"pass":true|false,"reasons":["..."],"reinforce_hint":"<one imperative sentence to fix the next attempt, empty if pass>"}',
       ].join("\n"),

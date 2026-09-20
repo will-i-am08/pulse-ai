@@ -40,13 +40,40 @@ export function inferContentJob(input: {
 }
 
 /**
+ * True when the brief/destinations are LinkedIn-first (no IG/TikTok/FB co-target).
+ * LinkedIn has no Stories/Reels — callers must not apply IG discovery bias.
+ */
+export function isLinkedInPrimary(
+  destinations?: ReadonlyArray<string> | null,
+): boolean {
+  const dests = (destinations ?? []).map((d) => String(d).toLowerCase());
+  if (!dests.includes("linkedin")) return false;
+  const igFamily = dests.some((d) => d === "instagram" || d === "tiktok" || d === "facebook");
+  if (igFamily) return false;
+  return dests[0] === "linkedin" || dests.every((d) => d === "linkedin" || d === "x" || d === "threads");
+}
+
+/**
  * Format bias by job + goal.
  * Discovery / non-follower reach → Reels. Depth / saves / offer → carousel. Story job → story-friendly.
+ * LinkedIn-primary briefs never get story/reel — feed or carousel only.
  */
 export function formatBiasForJob(
   job: ContentJob,
-  opts?: { needDiscovery?: boolean },
+  opts?: { needDiscovery?: boolean; destinations?: ReadonlyArray<string> | null },
 ): PostFormat {
+  if (isLinkedInPrimary(opts?.destinations)) {
+    switch (job) {
+      case "offer":
+      case "teach":
+      case "proof":
+        return "carousel";
+      case "opinion":
+      case "story":
+      default:
+        return "feed";
+    }
+  }
   const discovery = opts?.needDiscovery !== false;
   switch (job) {
     case "proof":

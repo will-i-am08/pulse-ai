@@ -26,6 +26,14 @@ describe("planFromOwnerText", () => {
     expect(car.surface).toBe("designed_carousel");
   });
 
+  it("honours not-a-carousel / square graphic as feed", () => {
+    const plan = planFromOwnerText(
+      "Make one square graphic (not a carousel) with this exact overlay headline burned on the image: WHAT FOUNDER OPS ACTUALLY DOES",
+    );
+    expect(plan.preferCarousel).toBe(false);
+    expect(plan.surface).toBe("photo_feed");
+  });
+
   it("honours premium and draft quality keywords", () => {
     expect(planFromOwnerText("luxury editorial feed post").quality).toBe("premium");
     expect(planFromOwnerText("quick rough draft of a post").quality).toBe("draft");

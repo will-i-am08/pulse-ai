@@ -16,6 +16,7 @@ import {
   CAPTION_LIMITS,
   buildPlatformCaptions,
   fitLinkedInProfessional,
+  linkedInCaptionPromptBlock,
   parseDestinationChoice,
   extractPlatforms,
   slicesForApproval,
@@ -158,6 +159,16 @@ describe("Phase H caption variants", () => {
     expect(caps.linkedin!.length).toBeLessThanOrEqual(3000);
     expect(caps.tiktok!.length).toBeLessThanOrEqual(2200);
     expect(fitLinkedInProfessional("Wow!!! 😀😀😀😀😀😀😀 more")).not.toMatch(/!!!/);
+  });
+
+  it("softens LinkedIn emoji spam and keeps professional prompt craft", () => {
+    const block = linkedInCaptionPromptBlock();
+    expect(block).toMatch(/LinkedIn/);
+    expect(block).toMatch(/paragraph/);
+    expect(block).toMatch(/not a Reel hook/i);
+    expect(block).not.toMatch(/Job A/);
+    const soft = fitLinkedInProfessional("Wow!!! 😀😀😀😀😀😀😀😀 more text here");
+    expect((soft.match(/[\p{Extended_Pictographic}]/gu) ?? []).length).toBeLessThanOrEqual(4);
   });
 });
 

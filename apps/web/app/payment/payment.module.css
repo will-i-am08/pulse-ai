@@ -87,6 +87,21 @@
   }
 }
 
+.testMode {
+  background: color-mix(in srgb, #b45309 14%, transparent);
+  color: #9a3412;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .testMode {
+    color: #fdba74;
+  }
+}
+
 .sectionLabel {
   font-size: 13px;
   font-weight: 500;

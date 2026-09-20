@@ -13,6 +13,8 @@ const ERRORS: Record<string, string> = {
   failed: 'Something went wrong. Please try again.',
   phoneinuse:
     'That mobile number is already linked to a Kip account. Log in with it instead — or text Kip from that number if you need help.',
+  unavailable:
+    'This Preview deploy can’t reach the database. In Vercel, enable DATABASE_URL for Preview (same value as Production) and Redeploy.',
 };
 
 export default async function SignupPage({

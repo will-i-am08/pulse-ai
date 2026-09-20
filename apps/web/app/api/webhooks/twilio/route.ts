@@ -46,6 +46,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const inbound = channel.parseInbound(params);
+    console.info(
+      JSON.stringify({
+        event: 'twilio_webhook',
+        messageSid: params.MessageSid ?? inbound.providerMessageId ?? null,
+        numMedia: params.NumMedia ?? '0',
+        webhookMedia: inbound.media?.length ?? 0,
+        from: inbound.from,
+        hasBody: Boolean((inbound.body ?? '').trim()),
+      }),
+    );
     // Fire the full inbound pipeline (persist, capture media, hand off to the
     // orchestrator). handleInbound never throws — unknown senders get a
     // signup-link reply and return brandId:null — but we still guard the call in case of

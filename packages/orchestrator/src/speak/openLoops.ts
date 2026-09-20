@@ -27,9 +27,9 @@ export function readOpenLoops(brand: Brand | { facts?: BusinessFacts | null }): 
     ?.open_loops;
   if (!raw || typeof raw !== "object") return { ...EMPTY_OPEN_LOOPS };
   return {
-    waiting_on: arr(raw.waiting_on),
+    waiting_on: cleanScratchList(raw.waiting_on),
     promised: arr(raw.promised),
-    prefs: arr(raw.prefs),
+    prefs: cleanScratchList(raw.prefs),
     energy: typeof raw.energy === "string" && raw.energy.trim() ? raw.energy.trim() : "steady",
     updated_at: typeof raw.updated_at === "string" ? raw.updated_at : undefined,
   };
@@ -38,6 +38,33 @@ export function readOpenLoops(brand: Brand | { facts?: BusinessFacts | null }): 
 function arr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => String(x).trim()).filter(Boolean).slice(0, 8);
+}
+
+/**
+ * Prefs / waiting_on that teach Kip to interview instead of acting, or to hard-ban
+ * owner topic asks. Drop them from the scratchpad so they cannot poison the next turn.
+ */
+export function isInterviewLoopScratch(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  return (
+    /\bdiscovery questions?\b/i.test(t) ||
+    /\binterview\b.{0,40}\b(before|first)\b/i.test(t) ||
+    /\b(ask|questions?).{0,40}\b(before|prior to).{0,40}\b(suggest|idea|direction|draft)/i.test(t) ||
+    /\bbefore suggesting\b/i.test(t) ||
+    /\bstay in .{0,60}lane\b/i.test(t) ||
+    /\bowner'?s answer:\s*what (they'?re|are you)\b/i.test(t) ||
+    /\bwhat(?:'s| is) (?:bugging|frustrating) (?:them|you|founders)\b/i.test(t) ||
+    /\bwhat (?:they'?re|are you) (?:working on|noticing)\b/i.test(t) ||
+    /\bowner to share\b/i.test(t) ||
+    /\bwhat (?:they|you|the owner) (?:actually )?(?:do|sell|offer|run)\b/i.test(t) ||
+    /\b(?:learn|confirm|ask).{0,40}\b(?:niche|business type|what .+ (?:do|sell))\b/i.test(t) ||
+    /\bare (?:they|you) a (?:caf|coffee|roaster|restaurant)/i.test(t)
+  );
+}
+
+function cleanScratchList(v: unknown): string[] {
+  return arr(v).filter((x) => !isInterviewLoopScratch(x)).slice(0, 5);
 }
 
 /** Short block for conversation context / Speak system. */
@@ -72,9 +99,9 @@ export async function updateOpenLoopsAfterTurn(
       system: [
         "Update Kip's private scratchpad for the next SMS turn. Output ONLY JSON:",
         '{"waiting_on":[],"promised":[],"prefs":[],"energy":"steady|upbeat|careful|rushed"}',
-        "waiting_on = what Kip still needs from the owner.",
+        "waiting_on = concrete missing artifacts only (photo attach, yes/no on a specific draft, connect link). Never invent an intake questionnaire when the owner asked for ideas, suggestions, or research — Kip should deliver those.",
         "promised = what Kip committed to do.",
-        "prefs = durable owner taste (tone, formats, topics) learned this turn.",
+        "prefs = durable owner taste (tone, formats, topics) learned this turn. Never store process habits like 'ask discovery questions first' or 'interview before suggesting'. Never store a hard topic ban that blocks an ask the owner just made.",
         "Keep each array ≤5 short phrases. Drop resolved items. Merge with prior state thoughtfully.",
       ].join("\n"),
       messages: [
@@ -96,10 +123,11 @@ export async function updateOpenLoopsAfterTurn(
     const end = raw.lastIndexOf("}");
     if (start < 0 || end <= start) return null;
     const parsed = JSON.parse(raw.slice(start, end + 1)) as Partial<OpenLoops>;
+    const nextPrefs = cleanScratchList(parsed.prefs);
     const next: OpenLoops = {
-      waiting_on: arr(parsed.waiting_on),
-      promised: arr(parsed.promised),
-      prefs: arr(parsed.prefs).length ? arr(parsed.prefs) : prev.prefs,
+      waiting_on: cleanScratchList(parsed.waiting_on),
+      promised: arr(parsed.promised).slice(0, 5),
+      prefs: nextPrefs.length ? nextPrefs : cleanScratchList(prev.prefs),
       energy: typeof parsed.energy === "string" && parsed.energy.trim() ? parsed.energy.trim() : prev.energy,
       updated_at: new Date().toISOString(),
     };

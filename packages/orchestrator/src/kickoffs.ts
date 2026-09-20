@@ -31,8 +31,11 @@ import {
 } from "./visualMode.js";
 import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
+import { textWantsCarousel } from "./carouselIntent.js";
 import { ownerInboundAfter } from "./conversationContext.js";
 import { formatScheduledSlot } from "./smsTime.js";
+import { extractPlatforms } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 
 
 /**
@@ -88,6 +91,8 @@ export type KickoffDrainOpts = {
    * a new ask). Still records the kickoff as failed.
    */
   interruptAfter?: string | Date;
+  /** When set, skip SMS if this kickoff was cancelled/superseded mid-drain. */
+  kickoffId?: string;
 };
 
 const COMMIT_RE =
@@ -147,17 +152,26 @@ const NO_PHOTOS_RE =
 const DRAFT_POSTS_RE =
   /\b((can|could|would|will)\s+you\s+)?((please\s+)?(draft|make|create|write|do\s*up|whip\s*up|knock\s*(?:up|out)|put\s+together|produce|spin\s+up|cook\s+up)\s+(me\s+)?(an?\s+)?(\d+\s+)?([\w'-]+\s+){0,4}(posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|a post|something)|(draft|make)\s+(me\s+)?(some|a few|\d+)|make me (some |a few |\d+ )?([\w'-]+\s+){0,2}posts?)\b|\b(post|publish)\s+(me\s+)?(an?\s+|some\s+|\d+\s+)?(?!ed\b)([\w'-]+\s+){0,5}(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?|update|something)\b|\b(i\s+(want|need)|i'?d\s+like|need|want)\s+(an?\s+|some\s+|\d+\s+)?(posts?|carr?ousels?|slides?|cards?|stor(?:y|ies)|reels?)\b|\b(do|get)\s+(me\s+)?(an?\s+)?(posts?|carr?ousels?|slides?|cards?)\b|\b(an?\s+|one\s+|some\s+)(posts?|carr?ousels?|slides?|cards?)\s+(comparing|about|on|for|with|featuring)\b|\b(can|could|would|will)\s+you\s+post\b|\b(do\s+)?something\s+inspirational\b|\bsomething\s+inspirational\b/i;
 
-/** Owner said "with this photo" / "use this" — expects attached media, not generated art. */
+/**
+ * Owner said "with this photo" / "use this" — expects attached media, not generated art.
+ * Prefer `this` over bare `the image` so overlay edits ("no text on the image")
+ * do not look like a missing MMS.
+ */
 export const REFERS_TO_ATTACHED_MEDIA_RE =
-  /\b((with|using|from)\s+)?(this|the)\s+(photo|pic|picture|image|shot|video)\b|\b(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\buse\s+th(is|ese)\b/i;
+  /\b((with|using|from)\s+)?this\s+(photo|pic|picture|image|shot|video)\b|\b(the\s+)?(photo|pic|picture|image|video)\s+(below|above|attached|i\s+(just\s+)?sent)\b|\bthe\s+(attached\s+)?(photo|pic|picture|image|shot|video)\s+(i\s+(just\s+)?sent|you\s+(just\s+)?(got|received)|attached)\b|\buse\s+th(is|ese)\b/i;
 
 /** "Generate the photo" is T2I, not a missing MMS of "the photo". */
 const GENERATED_MEDIA_ASK_RE =
   /\b(generate|source|invent|create|make|ai[- ]?(generated|made|create)?)\s+(the\s+|a\s+|some\s+|me\s+)?(photo|pic|picture|image|shot|visual)s?\b/i;
 
+/** Overlay / caption edits about text on an image — not "I attached a photo". */
+const OVERLAY_TEXT_ON_IMAGE_RE =
+  /\b(no\s+)?text\s+on\s+(the\s+|this\s+)?(photo|pic|picture|image|shot)\b|\bon[- ]image\s+text\b|\b(remove|drop|clear|without)\s+(the\s+)?(text|words|caption)\s+on\b/i;
+
 export function refersToAttachedMedia(body: string | null | undefined): boolean {
   if (!body?.trim()) return false;
   if (GENERATED_MEDIA_ASK_RE.test(body)) return false;
+  if (OVERLAY_TEXT_ON_IMAGE_RE.test(body)) return false;
   return REFERS_TO_ATTACHED_MEDIA_RE.test(body);
 }
 
@@ -229,8 +243,14 @@ function draftOfferSms(
   return `${prefix}${slideNote} for ${when}:\n\n${clipCaption(caption, 180)}\n\nReply yes to send it, or tell me a change.`;
 }
 
+/**
+ * True when the owner wants a carousel — not when they say "not a carousel"
+ * / "single square graphic" (LAB-004).
+ */
+export { textWantsCarousel } from "./carouselIntent.js";
+
 /** How many drafts to queue from a freeform ask (singular "a post" → 1). */
-function inferDraftCount(t: string, wantsCarousel: boolean): number {
+export function inferDraftCount(t: string, wantsCarousel: boolean): number {
   const piece = String.raw`posts?|carr?ousels?|slides?|cards?|tips?|graphics?|stor(?:y|ies)|reels?|photos?|pictures?|pics?`;
   const qtyMatch = new RegExp(String.raw`\b(\d+)\s+([\w'-]+\s+){0,4}(?:${piece})\b`, "i").exec(t);
   const singularMatch = new RegExp(
@@ -257,17 +277,44 @@ function inferDraftCount(t: string, wantsCarousel: boolean): number {
   return 2;
 }
 
+/**
+ * True when the ask is a cold-start first batch — not a singular briefed post that
+ * merely asked for generated/stock photos.
+ */
+function wantsFirstBatchKickoff(t: string): boolean {
+  if (FIRST_BATCH_RE.test(t)) return true;
+  if (NO_PHOTOS_RE.test(t) && (STOCK_OR_GENERATED_RE.test(t) || /\b(just|please|can you|could you)\b/i.test(t))) {
+    return true;
+  }
+  if (!(STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))) return false;
+  // "Draft a LinkedIn post … generated photo" is draft_posts, not a 3-pack.
+  const wantsCarousel = textWantsCarousel(t);
+  if (
+    (DRAFT_POSTS_RE.test(t) || PHOTO_OR_CAROUSEL_DRAFT_RE.test(t)) &&
+    inferDraftCount(t, wantsCarousel) === 1
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Shared draft_posts payload so user-ask and Kip-commit paths keep the brief. */
 function draftPostsPayloadFromText(t: string): Record<string, unknown> {
-  const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+  const wantsCarousel = textWantsCarousel(t);
   const count = inferDraftCount(t, wantsCarousel);
   const visuals = visualsPayloadValue(inferVisualModeFromText(t), t);
+  const destinations = extractPlatforms(t);
+  let topicHint = t.slice(0, 280);
+  if (isLinkedInPrimary(destinations) && topicHint && !/\blinkedin\b/i.test(topicHint)) {
+    topicHint = `LinkedIn: ${topicHint}`.slice(0, 280);
+  }
   return {
     count,
     visuals,
-    topicHint: t.slice(0, 280),
+    topicHint,
     preferCarousel: wantsCarousel,
     format: wantsCarousel ? "carousel" : undefined,
+    ...(destinations.length ? { destinations } : {}),
   };
 }
 
@@ -336,11 +383,7 @@ export function inferKickoffFromUserMessage(
     };
   }
 
-  if (
-    FIRST_BATCH_RE.test(t) ||
-    (NO_PHOTOS_RE.test(t) && STOCK_OR_GENERATED_RE.test(t)) ||
-    (STOCK_OR_GENERATED_RE.test(t) && CONTENT_WORK_RE.test(t))
-  ) {
+  if (wantsFirstBatchKickoff(t)) {
     {
       const mode = inferVisualModeFromText(t);
       const visuals = visualsPayloadValue(mode, t);
@@ -365,7 +408,7 @@ export function inferKickoffFromUserMessage(
     const payload = draftPostsPayloadFromText(t);
     // Bare "A post" / "carousel" menu replies → single piece of that format.
     if (looksLikeFormatMenuReply(t)) {
-      const wantsCarousel = /\bcarr?ousels?\b/i.test(t);
+      const wantsCarousel = textWantsCarousel(t);
       payload.count = 1;
       payload.preferCarousel = wantsCarousel;
       payload.format = wantsCarousel ? "carousel" : undefined;
@@ -427,7 +470,7 @@ export function inferKickoffFromKipCommit(
   if (COMPETITOR_MOVE_RE.test(blob)) {
     return { kind: "competitor_draft", payload: { hint: (userMessage ?? kipReply).slice(0, 280), count: 1 } };
   }
-  if (FIRST_BATCH_RE.test(blob) || STOCK_OR_GENERATED_RE.test(blob) || NO_PHOTOS_RE.test(userMessage ?? "")) {
+  if (FIRST_BATCH_RE.test(blob) || wantsFirstBatchKickoff(userMessage ?? "")) {
     return { kind: "first_batch", payload: { count: 3, visuals: visualsPayloadValue(inferVisualModeFromText(blob), blob) } };
   }
   if (DRAFT_POSTS_RE.test(blob) || CONTENT_WORK_RE.test(blob)) {
@@ -446,6 +489,90 @@ async function rememberPreferredVisuals(brand: Brand, mode: VisualMode): Promise
     brand.id,
   ]);
   brand.visual = visual;
+}
+
+/** Stable brief fingerprint — same ask → "Already on that"; new ask → supersede. */
+export function kickoffBriefKey(payload: Record<string, unknown> | null | undefined): string {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const topic = String(p.topicHint ?? p.hint ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 280);
+  const dests = Array.isArray(p.destinations)
+    ? [...p.destinations].map((d) => String(d).toLowerCase()).sort().join(",")
+    : "";
+  return [
+    topic,
+    String(p.count ?? ""),
+    String(p.format ?? ""),
+    String(p.preferCarousel ?? ""),
+    String(p.visuals ?? ""),
+    dests,
+  ].join("|");
+}
+
+function briefsDiffer(
+  existing: Record<string, unknown> | null | undefined,
+  next: Record<string, unknown>,
+): boolean {
+  return kickoffBriefKey(existing) !== kickoffBriefKey(next);
+}
+
+/** Free the brand+kind unique slot so a newer owner ask can enqueue. */
+export async function cancelActiveKickoffs(
+  brandId: string,
+  kind: KipKickoffKind,
+  note = "superseded by newer owner ask",
+): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `update kip_kickoffs
+        set status = 'cancelled',
+            error = left($3, 500),
+            completed_at = now(),
+            updated_at = now()
+      where brand_id = $1 and kind = $2 and status in ('queued', 'running')
+      returning id`,
+    [brandId, kind, note],
+  );
+  return rows.length;
+}
+
+export async function kickoffStillRunning(id: string): Promise<boolean> {
+  try {
+    const row = await queryOne<{ status: string }>(
+      `select status from kip_kickoffs where id = $1`,
+      [id],
+    );
+    // Unknown/missing row → keep going (don't drop SMS on a lookup flake).
+    if (!row?.status) return true;
+    return row.status === "running";
+  } catch (err) {
+    console.error(`kickoffStillRunning: lookup failed for ${id}`, err);
+    return true;
+  }
+}
+
+class KickoffAbortedError extends Error {
+  constructor(id: string) {
+    super(`kickoff ${id} superseded`);
+    this.name = "KickoffAbortedError";
+  }
+}
+
+async function insertKickoffRow(
+  brandId: string,
+  kind: KipKickoffKind,
+  payload: Record<string, unknown>,
+  reason: KipKickoffReason,
+  sourceMessageId: string | null | undefined,
+): Promise<KipKickoff | null> {
+  return queryOne<KipKickoff>(
+    `insert into kip_kickoffs (brand_id, kind, status, payload, reason, source_message_id)
+     values ($1, $2, 'queued', $3::jsonb, $4, $5)
+     returning *`,
+    [brandId, kind, JSON.stringify(payload), reason, sourceMessageId ?? null],
+  );
 }
 
 export async function enqueueKickoff(
@@ -471,38 +598,78 @@ export async function enqueueKickoff(
     await rememberPreferredVisuals(brand, mode);
   }
   const reason = opts?.reason ?? "system";
+  const ackFor = (kickoff: KipKickoff | null, alreadyQueued: boolean): KickoffEnqueueResult => ({
+    kickoff,
+    alreadyQueued,
+    ackSms: alreadyQueued
+      ? "Already on that — I'll text you when the drafts are ready to approve."
+      : (opts?.ackSms ?? defaultAckSms(kind, payload)),
+  });
+
   try {
-    const kickoff = await queryOne<KipKickoff>(
-      `insert into kip_kickoffs (brand_id, kind, status, payload, reason, source_message_id)
-       values ($1, $2, 'queued', $3::jsonb, $4, $5)
-       returning *`,
-      [
-        brand.id,
-        kind,
-        JSON.stringify(payload),
-        reason,
-        opts?.sourceMessageId ?? null,
-      ],
+    const kickoff = await insertKickoffRow(
+      brand.id,
+      kind,
+      payload,
+      reason,
+      opts?.sourceMessageId,
     );
-    return {
-      kickoff,
-      alreadyQueued: false,
-      ackSms:
-        opts?.ackSms ??
-        defaultAckSms(kind, payload),
-    };
+    return ackFor(kickoff, false);
   } catch (err) {
     // Unique active (brand, kind) → already in flight.
     const msg = err instanceof Error ? err.message : String(err);
-    if (/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(msg)) {
-      return {
-        kickoff: null,
-        alreadyQueued: true,
-        ackSms:
-          "Already on that — I'll text you when the drafts are ready to approve.",
-      };
+    if (!/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(msg)) {
+      throw err;
     }
-    throw err;
+
+    const existing = await queryOne<KipKickoff>(
+      `select * from kip_kickoffs
+        where brand_id = $1 and kind = $2 and status in ('queued', 'running')
+        order by created_at desc limit 1`,
+      [brand.id, kind],
+    );
+    const existingPayload =
+      existing?.payload && typeof existing.payload === "object"
+        ? (existing.payload as Record<string, unknown>)
+        : null;
+    const canSupersede =
+      (reason === "user_request" || reason === "kip_commit") &&
+      Boolean(existing) &&
+      briefsDiffer(existingPayload, payload);
+
+    if (!canSupersede) {
+      return ackFor(null, true);
+    }
+
+    const cancelled = await cancelActiveKickoffs(
+      brand.id,
+      kind,
+      `superseded by newer ${reason}`,
+    );
+    console.warn("[kickoffs] superseded active kickoff for new brief", {
+      brandId: brand.id,
+      kind,
+      cancelled,
+      priorTopic: String(existingPayload?.topicHint ?? "").slice(0, 80),
+      nextTopic: String(payload.topicHint ?? "").slice(0, 80),
+    });
+
+    try {
+      const kickoff = await insertKickoffRow(
+        brand.id,
+        kind,
+        payload,
+        reason,
+        opts?.sourceMessageId,
+      );
+      return ackFor(kickoff, false);
+    } catch (retryErr) {
+      const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+      if (/idx_kip_kickoffs_active_brand_kind|duplicate key|unique/i.test(retryMsg)) {
+        return ackFor(null, true);
+      }
+      throw retryErr;
+    }
   }
 }
 
@@ -618,6 +785,22 @@ async function heartbeatKickoff(id: string): Promise<void> {
   ).catch((err) => console.error(`heartbeatKickoff: failed for ${id}`, err));
 }
 
+/** Owner-facing SMS when every draft slot returned nothing. */
+export function zeroDraftOwnerSms(payload: Record<string, unknown>): string {
+  const dests = destinationsFromPayload(payload);
+  const visuals = String(payload.visuals ?? "photo");
+  const li = isLinkedInPrimary(dests);
+  const platform = li ? "LinkedIn " : "";
+  if (visuals === "designed" || visuals === "text") {
+    return li
+      ? `Couldn't finish that ${platform}text-card draft — reply "photo please" and I'll regenerate with photos, or say go and I'll retry.`
+      : `Couldn't finish that designed draft — reply "photo please" and I'll regenerate with photos, or say go and I'll retry.`;
+  }
+  return li
+    ? `Couldn't finish that ${platform}draft just then — say go and I'll retry, or tweak the brief.`
+    : "Couldn't finish those drafts just then — try again in a moment?";
+}
+
 /** Zero-draft outcome: SMS the client, but record the row as a real failure. */
 async function zeroDraftFailure(
   brand: Brand,
@@ -730,6 +913,77 @@ export async function reclaimStaleKickoffs(opts?: {
   return deliverUnstreamed(results, opts);
 }
 
+/**
+ * Re-queue abandoned `running` kickoffs so a fresh Lab isolate can finish them
+ * after the primary after() was killed at maxDuration. Unlike reclaim (which
+ * fails + SMS), this preserves the brief and lets drain claim again.
+ */
+export async function requeueStaleKickoffs(opts?: {
+  now?: Date;
+  staleMs?: number;
+  brandId?: string;
+}): Promise<string[]> {
+  const staleMs = opts?.staleMs ?? STALE_RUNNING_KICKOFF_MS;
+  const cutoff = new Date((opts?.now ?? new Date()).getTime() - staleMs).toISOString();
+  const rows = opts?.brandId
+    ? await query<{ id: string }>(
+        `update kip_kickoffs
+            set status = 'queued',
+                started_at = null,
+                error = left(concat_ws('; ', nullif(error, ''), 'requeued: abandoned running kickoff'), 500),
+                updated_at = now()
+          where status = 'running'
+            and brand_id = $2
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning id`,
+        [cutoff, opts.brandId],
+      )
+    : await query<{ id: string }>(
+        `update kip_kickoffs
+            set status = 'queued',
+                started_at = null,
+                error = left(concat_ws('; ', nullif(error, ''), 'requeued: abandoned running kickoff'), 500),
+                updated_at = now()
+          where status = 'running'
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning id`,
+        [cutoff],
+      );
+  if (rows.length) {
+    console.warn("[kickoffs] requeued stale running kickoffs", {
+      count: rows.length,
+      ids: rows.map((r) => r.id),
+    });
+  }
+  return rows.map((r) => r.id);
+}
+
+/** Destinations from kickoff payload + any platforms still named in the brief. */
+function destinationsFromPayload(
+  payload: Record<string, unknown>,
+  topicHint?: string | null,
+): string[] {
+  const raw = payload.destinations;
+  const fromPayload = Array.isArray(raw)
+    ? raw.filter((d): d is string => typeof d === "string").map((d) => d.toLowerCase())
+    : [];
+  const fromHint = extractPlatforms(topicHint ?? String(payload.topicHint ?? payload.hint ?? ""));
+  return [...new Set([...fromPayload, ...fromHint])];
+}
+
+/** Keep LinkedIn in the brief when destinations say so but the agent shortened it. */
+function topicHintWithDestinations(hint: string | null | undefined, destinations: string[]): string {
+  let t = (hint ?? "").trim();
+  if (isLinkedInPrimary(destinations) && t && !/\blinkedin\b/i.test(t)) {
+    t = `LinkedIn: ${t}`.slice(0, 400);
+  } else if (isLinkedInPrimary(destinations) && !t) {
+    t = "LinkedIn post";
+  }
+  return t;
+}
+
 async function draftGeneratedPiece(
   brand: Brand,
   pillar: Pillar,
@@ -737,25 +991,28 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-  genOpts?: { forceFresh?: boolean },
+  genOpts?: { forceFresh?: boolean; destinations?: string[] | null },
 ): Promise<
   | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
   | { qaSms: string }
   | null
 > {
-  // Photo + carousel asks must become photo carousels — never a lone feed filler.
+  const destinations = genOpts?.destinations ?? [];
+  const hint = topicHintWithDestinations(topicHint, destinations);
   if (prefer === "carousel" && visuals === "photo") {
     let photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
-      topicHint,
+      topicHint: hint,
       forceFresh: genOpts?.forceFresh,
+      destinations,
     });
     if (photoCarousel && photoCarousel.ok === false) {
       console.warn("draftGeneratedPiece: photo carousel QA fail — silent retry with fresher brief");
       photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
-        topicHint: topicHint
-          ? `${topicHint} (fresh unique cinematic frames, tighter overlays)`
+        topicHint: hint
+          ? `${hint} (fresh unique cinematic frames, tighter overlays)`
           : "fresh unique cinematic frames, tighter overlays",
         forceFresh: true,
+        destinations,
       });
     }
     if (photoCarousel && photoCarousel.ok === false) {
@@ -773,8 +1030,23 @@ async function draftGeneratedPiece(
     return null;
   }
   if (visuals === "photo") {
-    const filler = await generateFillerPost(brand, pillar, { visuals: "photo", topicHint });
+    const filler = await generateFillerPost(brand, pillar, {
+      visuals: "photo",
+      topicHint: hint,
+      destinations,
+    });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
+    return null;
+  }
+  // LinkedIn-primary designed asks: skip generic typed/tip carousels (they ignore
+  // topicHint/destinations) and go straight to a LinkedIn-aware filler.
+  if (isLinkedInPrimary(destinations)) {
+    const filler = await generateFillerPost(brand, pillar, {
+      visuals: "designed",
+      topicHint: hint,
+      destinations,
+    });
+    if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
     return null;
   }
   if (prefer === "carousel" || visuals === "designed") {
@@ -787,7 +1059,11 @@ async function draftGeneratedPiece(
     const tip = await generateTipCarousel(brand, pillar);
     if (tip) return { post: tip.post, mediaUrl: tip.mediaUrl, kindLabel: "tip carousel" };
   }
-  const filler = await generateFillerPost(brand, pillar, { visuals: "designed", topicHint });
+  const filler = await generateFillerPost(brand, pillar, {
+    visuals: "designed",
+    topicHint: hint,
+    destinations,
+  });
   if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
 }
@@ -875,6 +1151,7 @@ async function recoverRecentKickoffPosts(
         and created_at > now() - interval '10 minutes'
         and coalesce(cardinality(media_ids), 0) > 0
         and coalesce(style_meta->>'variant_pick','') <> 'true'
+        and last_offered_at is null
       order by created_at asc
       limit 5`,
     [brand.id, since.toISOString()],
@@ -920,10 +1197,12 @@ async function maybeEnqueueQaSelfHeal(
   if (!Number.isFinite(qaRetry) || qaRetry >= 1) return false;
   if (resolveVisualMode(brand, payload) !== "photo") return false;
   const baseHint = String(payload.topicHint ?? payload.hint ?? "").trim();
+  const destinations = destinationsFromPayload(payload, baseHint);
   const topicHint = (
     baseHint
-      ? `${baseHint} (fresh unique frames, new angles, tighter overlays)`
-      : "fresh unique cinematic frames, tighter overlays"
+      ? `${topicHintWithDestinations(baseHint, destinations)} (fresh unique frames, new angles, tighter overlays)`
+      : topicHintWithDestinations("", destinations) ||
+        "fresh unique cinematic frames, tighter overlays"
   ).slice(0, 400);
   try {
     await enqueueKickoff(brand, "draft_posts", {
@@ -934,6 +1213,7 @@ async function maybeEnqueueQaSelfHeal(
         topicHint,
         forceFresh: true,
         qaRetryCount: qaRetry + 1,
+        ...(destinations.length ? { destinations } : {}),
       },
       reason: "system",
       ackSms: null,
@@ -954,6 +1234,12 @@ export async function deliverUnstreamed(
     typeof deliverOrOpts === "function" ? { deliver: deliverOrOpts } : (deliverOrOpts ?? {});
   if (!opts.deliver) return results;
   for (const r of results) {
+    if (opts.kickoffId && !(await kickoffStillRunning(opts.kickoffId))) {
+      console.warn("[kickoffs] skip deliver — kickoff no longer running", {
+        kickoffId: opts.kickoffId,
+      });
+      continue;
+    }
     const since = r.skipIfInboundAfter ?? opts.interruptAfter;
     if (since) {
       try {
@@ -1030,6 +1316,7 @@ async function runFirstBatch(
     try {
       const pillar = pillars[i % pillars.length]!;
       const kind = kinds[i % kinds.length]!;
+      const destinations = destinationsFromPayload(payload);
       const work = draftGeneratedPiece(
         brand,
         pillar,
@@ -1037,7 +1324,7 @@ async function runFirstBatch(
         kind,
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+        { forceFresh: payload.forceFresh === true, destinations },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
       if (!raced.ok) {
@@ -1107,7 +1394,18 @@ async function runDraftPosts(
   opts?: KickoffDrainOpts,
   heartbeat?: () => Promise<void>,
 ): Promise<KickoffDrainResult[]> {
-  const count = Math.min(5, Math.max(1, Number(payload.count ?? 2) || 2));
+  const topicForCount = String(payload.topicHint ?? payload.hint ?? "");
+  const wantsCarousel =
+    payload.preferCarousel === true ||
+    payload.format === "carousel" ||
+    textWantsCarousel(topicForCount);
+  const inferredCount = topicForCount
+    ? inferDraftCount(topicForCount, wantsCarousel)
+    : 1;
+  const count = Math.min(
+    5,
+    Math.max(1, Number(payload.count ?? inferredCount) || inferredCount),
+  );
   const pillars = await ensurePillars(brand.id);
   if (!pillars.length) {
     return deliverUnstreamed(
@@ -1155,6 +1453,7 @@ async function runDraftPosts(
       // "A post" may still be a carousel when preferCarousel/format says so — not banned.
       const forceCarousel = payload.preferCarousel === true || payload.format === "carousel";
       const prefer = forceCarousel ? "carousel" : "filler";
+      const destinations = destinationsFromPayload(payload);
       const work = draftGeneratedPiece(
         brand,
         pillar,
@@ -1162,7 +1461,7 @@ async function runDraftPosts(
         i % 2 === 0 ? "tip" : "steps",
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true },
+        { forceFresh: payload.forceFresh === true, destinations },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
       if (!raced.ok) {
@@ -1218,7 +1517,7 @@ async function runDraftPosts(
           : await zeroDraftFailure(
               brand,
               "draft_posts",
-              qaFail?.sms ?? "Couldn't finish those drafts just then — try again in a moment?",
+              qaFail?.sms ?? zeroDraftOwnerSms(payload),
             ),
       ],
       opts,
@@ -1290,6 +1589,7 @@ async function runTrendOrCompetitorDraft(
 
   // Bias the generator via a temporary description nudge in the LLM path by
   // preferring a tip carousel; the research hook is SMS'd alongside.
+  const destinations = destinationsFromPayload(payload);
   const drafted = await draftGeneratedPiece(
     brand,
     pillar,
@@ -1297,7 +1597,7 @@ async function runTrendOrCompetitorDraft(
     "tip",
     resolveVisualMode(brand, payload),
     String(payload.topicHint ?? payload.hint ?? ""),
-    { forceFresh: payload.forceFresh === true },
+    { forceFresh: payload.forceFresh === true, destinations },
   );
   if (isQaSmsFailure(drafted)) {
     const selfHeal = await maybeEnqueueQaSelfHeal(brand, payload);
@@ -1381,10 +1681,15 @@ export async function processKickoff(
   const drainOpts: KickoffDrainOpts = {
     ...opts,
     interruptAfter: claimed.created_at ?? claimed.started_at ?? undefined,
+    kickoffId,
   };
 
   const deliverOnce = async (result: KickoffDrainResult): Promise<void> => {
     if (!opts?.deliver) return;
+    if (!(await kickoffStillRunning(kickoffId))) {
+      console.warn("[kickoffs] skip deliverOnce — kickoff no longer running", { kickoffId });
+      return;
+    }
     try {
       await opts.deliver(result);
     } catch (err) {
@@ -1409,7 +1714,12 @@ export async function processKickoff(
         ? (claimed.payload as Record<string, unknown>)
         : {};
 
-    const heartbeat = (): Promise<void> => heartbeatKickoff(kickoffId);
+    const heartbeat = async (): Promise<void> => {
+      await heartbeatKickoff(kickoffId);
+      if (!(await kickoffStillRunning(kickoffId))) {
+        throw new KickoffAbortedError(kickoffId);
+      }
+    };
 
     let results: KickoffDrainResult[] = [];
     switch (claimed.kind) {
@@ -1433,6 +1743,10 @@ export async function processKickoff(
     // A run that drafted nothing already SMS'd the client an apology; recording
     // it `done` with smsCount: 1 made "drafted nothing" indistinguishable from
     // "drafted 3 posts" and hid a brand whose image provider is dead.
+    if (!(await kickoffStillRunning(kickoffId))) {
+      console.warn("[kickoffs] processKickoff exiting — superseded mid-drain", { kickoffId });
+      return [];
+    }
     const failure = results.find((r) => r.kickoffFailure);
     if (failure) {
       await failKickoff(kickoffId, failure.kickoffFailure!);
@@ -1444,6 +1758,10 @@ export async function processKickoff(
     });
     return results;
   } catch (err) {
+    if (err instanceof KickoffAbortedError || (err instanceof Error && err.name === "KickoffAbortedError")) {
+      console.warn("[kickoffs] aborted mid-drain (superseded)", { kickoffId });
+      return [];
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error(`processKickoff: ${kickoffId} failed`, err);
     await failKickoff(kickoffId, message);

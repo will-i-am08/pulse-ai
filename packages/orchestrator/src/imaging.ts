@@ -312,6 +312,12 @@ export async function generatePhotoImage(
     brief?: string;
     /** Pass the brand so the generation is counted against AI_WEEKLY_SPEND_CAP_USD. */
     brand?: SpendBrand | null;
+    /**
+     * Pin the fal still chain (e.g. `["nano_banana"]`) so Lab photo carousels
+     * don't cascade into flux_dev after an empty nano result and blow the 300s
+     * after() budget.
+     */
+    stillIds?: string[];
   },
 ): Promise<Buffer | null> {
   routeImageJob("photo_generate");
@@ -329,7 +335,7 @@ export async function generatePhotoImage(
 
   const scene = brand ? creativeSceneConstraint(brand) : "";
   const fullPrompt = [prompt, scene].filter(Boolean).join(". ");
-  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief);
+  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief, opts?.stillIds);
   if (buf && brand) await recordAiSpend(brand.id, "image").catch(() => {});
   return buf;
 }
@@ -339,13 +345,14 @@ async function generatePhotoImageInner(
   ratio: string,
   quality: CreativeQuality = "standard",
   brief?: string,
+  stillIds?: string[],
 ): Promise<Buffer | null> {
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
     const { resolveStillChain } = await import("./ugc/modelRouter.js");
     const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
     if (falConfigured()) {
-      const chain = resolveStillChain(stillChainForQuality(quality, brief));
+      const chain = resolveStillChain(stillIds?.length ? stillIds : stillChainForQuality(quality, brief));
       const routed = await falGenerateImageRouted({
         prompt,
         aspectRatio: ratio,
@@ -383,6 +390,17 @@ async function generatePhotoImageViaReplicate(
     return null;
   }
   const model = env.REPLICATE_TEXT_IMAGE_MODEL;
+  // Schnell has no negative_prompt — bake realism + anti-slop into the prompt.
+  let hardened = prompt;
+  try {
+    const { FEED_PHOTO_NEGATIVE, FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
+    const avoid = FEED_PHOTO_NEGATIVE.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 24).join(", ");
+    hardened = [prompt, FEED_PHOTO_REALISM_CUE, avoid ? `Avoid: ${avoid}` : ""]
+      .filter(Boolean)
+      .join(". ");
+  } catch {
+    /* presets optional */
+  }
   try {
     let body: any;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -390,7 +408,7 @@ async function generatePhotoImageViaReplicate(
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "wait" },
         body: JSON.stringify({
-          input: { prompt, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
+          input: { prompt: hardened, aspect_ratio: aspectRatio, output_format: "jpg", num_outputs: 1 },
         }),
       });
       body = await res.json();
@@ -504,12 +522,55 @@ export function messageWantsText(body: string | null | undefined): boolean {
   return /\b(text|caption on|words on|title on|headline|writing on|add text|put text|overlay)\b/i.test(body);
 }
 
-/** Explicit "no text on the image" / leave it clean. */
+/** Explicit "no text on the image" / leave it clean / strip overlay. */
 export function messageWantsNoText(body: string | null | undefined): boolean {
   if (!body) return false;
-  return /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
-    body,
-  );
+  const t = body.trim();
+  if (
+    /\b(no text|without text|no headline|no overlay|don'?t add text|leave (it|the photo) (clean|alone|as is)|just the photo|candid)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // "Remove the text", "take the text off the image"
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing|type)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  if (/\b(text|words|headline|overlay)\b.{0,20}\b(off|from)\b.{0,12}\b(the\s+)?(image|photo|pic|picture)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Owner is asking to strip overlay on the *current* pending draft — not briefing a
+ * new creative ("no text, just good looking bread").
+ */
+export function messageWantsStripPendingOverlay(body: string | null | undefined): boolean {
+  if (!body) return false;
+  const t = body.trim();
+  // New creative brief that includes a no-text preference — not a pending strip.
+  if (
+    /\b(make|draft|create|generate|carousel|charasel|post about|knock (up|out))\b/i.test(t) &&
+    !/\b(remove|strip|take off|clear)\b/i.test(t)
+  ) {
+    return false;
+  }
+  if (
+    /\b(remove|strip|drop|delete|take off|clear)\b.{0,28}\b(text|words|headline|overlay|writing)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(no text|without text|text off)\b.{0,24}\b(on|from)\s+(the\s+)?(image|photo|pic|picture|overlay)\b/i.test(t)) {
+    return true;
+  }
+  if (/^(no text|without text|text off|remove the text)\s*[!.?]*$/i.test(t)) return true;
+  return false;
 }
 
 /**
@@ -769,8 +830,46 @@ const OVERLAY_DANGLING_MODIFIERS = new Set([
   "NEXT",
   "LAST",
   "FIRST",
+  // Char-cap of a longer clause must not leave "WHAT FOUNDER OPS ACTUALLY".
+  "ACTUALLY",
+  "REALLY",
+  "LITERALLY",
+  "BASICALLY",
+  "ESSENTIALLY",
+  "SIMPLY",
+  "NEARLY",
+  "ALMOST",
+  "QUITE",
+  "RATHER",
+  "TRULY",
+  "ONLY",
+  "STILL",
 ]);
 
+/**
+ * Restore common contractions the LLM omitted (or that a crude strip ate).
+ * Only safe, high-signal overlays — not every WERE→WE'RE.
+ */
+const OVERLAY_CONTRACTION_REPAIRS: Array<[RegExp, string]> = [
+  [/\bWERE HIRING\b/g, "WE'RE HIRING"],
+  [/\bWERE OPEN\b/g, "WE'RE OPEN"],
+  [/\bWERE LIVE\b/g, "WE'RE LIVE"],
+  [/\bWERE BACK\b/g, "WE'RE BACK"],
+  [/\bITS TIME\b/g, "IT'S TIME"],
+  [/\bLETS\b/g, "LET'S"],
+  [/\bDONT\b/g, "DON'T"],
+  [/\bWONT\b/g, "WON'T"],
+  [/\bCANT\b/g, "CAN'T"],
+  [/\bYOURE\b/g, "YOU'RE"],
+  [/\bTHEYRE\b/g, "THEY'RE"],
+  [/\bIM\b/g, "I'M"],
+];
+
+function repairOverlayContractions(text: string): string {
+  let out = text;
+  for (const [re, to] of OVERLAY_CONTRACTION_REPAIRS) out = out.replace(re, to);
+  return out;
+}
 function isOverlayPossessive(word: string): boolean {
   return /[A-Z0-9]+'S$/i.test(word);
 }
@@ -811,7 +910,7 @@ function dropInteriorForCharFit(words: string[]): boolean {
   return false;
 }
 
-/** Clean overlay copy: keep % ° and possessive apostrophes; drop other punctuation. */
+/** Clean overlay copy: keep % ° and possessive/contraction apostrophes; drop other punctuation. */
 function cleanOverlayText(text: string): string {
   let s = text
     .replace(/[\u2018\u2019]/g, "'")
@@ -819,9 +918,52 @@ function cleanOverlayText(text: string): string {
     .replace(/[\u00BA]/g, "°")
     .replace(/"/g, "");
   s = s.replace(/[^a-zA-Z0-9%'°\s]/g, " ");
-  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S.
+  // Bare quotes / leading-trailing apostrophes, not DOG'S / WORLD'S / WE'RE.
   s = s.replace(/(^|[^A-Za-z0-9])'+|'+(?![A-Za-z])/g, "$1");
-  return s.replace(/\s+/g, " ").trim().toUpperCase();
+  s = s.replace(/\s+/g, " ").trim().toUpperCase();
+  return repairOverlayContractions(s);
+}
+
+/**
+ * Owner named an exact overlay to burn — pull it out of the brief so fillers
+ * do not invent a shorter substitute (LAB-004).
+ *
+ * Matches: "exact overlay headline …: WHAT FOUNDER OPS ACTUALLY DOES",
+ * quoted forms, and "saying/titled …" forms.
+ */
+export function extractExactOverlayHeadline(ask: string | null | undefined): string | null {
+  const t = (ask ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+
+  const patterns: RegExp[] = [
+    /\bexact(?:ly)?\s+overlay\s+headline(?:\s+burned\s+on(?:\s+the)?\s+image)?\s*:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
+    /\b(?:overlay\s+)?headline\s+(?:exactly\s+)?(?:burned\s+on(?:\s+the)?\s+image\s*)?:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
+    /\b(?:with|burn)\s+(?:this\s+)?exact\s+overlay(?:\s+headline)?\s*:\s*["']?([A-Z0-9][A-Z0-9'°%\s]{1,60}?)["']?(?=\s*$|\s*[—\-.]|\s+COMPLIANCE)/i,
+    /\b(?:saying|titled|title)\s*:\s*["']([^"']{2,80})["']/i,
+    /\b(?:saying|titled)\s+["']([^"']{2,80})["']/i,
+    /\bexact(?:ly)?\s+(?:overlay\s+)?(?:headline|text)\s+["']([^"']{2,80})["']/i,
+    /\boverlay(?:\s+headline|\s+text)?\s+["']([^"']{2,80})["']/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(t);
+    const raw = m?.[1]?.trim();
+    if (!raw) continue;
+    const cleaned = cleanOverlayText(raw);
+    const words = cleaned.split(" ").filter(Boolean);
+    if (words.length < 1 || words.length > 12) continue;
+    if (cleaned.length < 2 || cleaned.length > 72) continue;
+    // Reject if we accidentally captured instruction fluff.
+    if (/\b(BURNED|CAROUSEL|GRAPHIC|IMAGE|PLEASE|MAKE)\b/.test(cleaned) && words.length <= 3) {
+      continue;
+    }
+    return cleaned;
+  }
+  return null;
+}
+
+/** Clean + uppercase only — no 5-word / 28-char smash for owner-exact overlays. */
+export function formatExactOverlayHeadline(text: string): string {
+  return cleanOverlayText(text);
 }
 
 /** Drop interior fillers; keep the first and last tokens. */
@@ -842,15 +984,21 @@ export function formatOverlayHeadline(text: string): string {
     words = dropInteriorOverlayFillers(words);
   }
   words = words.slice(0, OVERLAY_HEADLINE_MAX_WORDS);
-  const trailStop = compressed ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
+  // Char-cap (e.g. dropping ACTUALLY) can leave auxiliaries like DOES — same
+  // trail set as word-compression, not the short-headline-safe function set.
+  let charCapped = false;
+  const trailStop = () =>
+    compressed || charCapped ? OVERLAY_COMPRESS_DANGLE_WORDS : OVERLAY_TRAILING_FUNCTION_WORDS;
   const stripTrail = () => {
-    popTrailingOverlayWords(words, trailStop);
+    const stop = trailStop();
+    popTrailingOverlayWords(words, stop);
     popTrailingOverlayModifiers(words);
-    popTrailingOverlayWords(words, trailStop);
+    popTrailingOverlayWords(words, stop);
   };
   const fitWords = () => {
     let joined = words.join(" ");
     while (joined.length > OVERLAY_HEADLINE_MAX_CHARS && words.length > 1) {
+      charCapped = true;
       if (!dropInteriorForCharFit(words)) words.pop();
       joined = words.join(" ");
     }
@@ -863,15 +1011,17 @@ export function formatOverlayHeadline(text: string): string {
   stripTrail();
   out = words.join(" ");
   if (out.length > OVERLAY_HEADLINE_MAX_CHARS) {
+    charCapped = true;
     const cutMidWord = out[OVERLAY_HEADLINE_MAX_CHARS] !== " ";
     const sliced = out.slice(0, OVERLAY_HEADLINE_MAX_CHARS).trim().split(" ").filter(Boolean);
     if (cutMidWord && sliced.length > 1) sliced.pop();
-    popTrailingOverlayWords(sliced, trailStop);
+    const stop = trailStop();
+    popTrailingOverlayWords(sliced, stop);
     popTrailingOverlayModifiers(sliced);
-    popTrailingOverlayWords(sliced, trailStop);
+    popTrailingOverlayWords(sliced, stop);
     out = sliced.join(" ");
   }
-  return out;
+  return repairOverlayContractions(out);
 }
 
 export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
@@ -1008,8 +1158,35 @@ export function inferOverlayTreatment(
  * Break a headline into lines. Pair keeps 2–3 phrase-lines; banner is one line;
  * poster is one word per line only for short titles (pilates). Word gaps on a
  * line are handled by overlayWordNodes, not by isolating every word.
+ * When `exact` is true, skip the 5-word/28-char smash and wrap so each line
+ * still fits the crop (owner-named overlays like WHAT FOUNDER OPS ACTUALLY DOES).
  */
-export function splitOverlayStack(text: string, wrap: OverlayWrap = "pair"): string[] {
+export function splitOverlayStack(
+  text: string,
+  wrap: OverlayWrap = "pair",
+  opts?: { exact?: boolean },
+): string[] {
+  if (opts?.exact) {
+    const cleaned = formatExactOverlayHeadline(text);
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    if (words.length === 1) return [cleaned];
+    // Pack words onto lines that stay within the char budget.
+    const lines: string[] = [];
+    let cur: string[] = [];
+    for (const w of words) {
+      const trial = [...cur, w].join(" ");
+      if (cur.length && trial.length > OVERLAY_HEADLINE_MAX_CHARS) {
+        lines.push(cur.join(" "));
+        cur = [w];
+      } else {
+        cur.push(w);
+      }
+    }
+    if (cur.length) lines.push(cur.join(" "));
+    return lines.length ? lines : [cleaned];
+  }
+
   const formatted = formatOverlayHeadline(text);
   const words = formatted.split(/\s+/).filter(Boolean);
   if (!words.length) return [];
@@ -1041,8 +1218,8 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
   const nameless = isNamelessCreative(brand);
   const out = await callLLM({
     system: nameless
-      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
-      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and possessive apostrophes (40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or) or a dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
+      ? "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and apostrophes in contractions and possessives (WE'RE, DON'T, 40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or), dangling adverb (actually/really), or dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Never include a person's name. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words."
+      : "Write a punchy 2-5 word ALL-CAPS headline to overlay on a social-media image. No quotes, no emoji, no hashtags, no full stop, no dashes. Keep % ° and apostrophes in contractions and possessives (WE'RE, DON'T, 40%, 45°, DOG'S). Never end on a function word (the/a/of/to/for/with/not/in/on/at/and/or), dangling adverb (actually/really), or dangling adjective (annual/daily) that lost its noun. It must be a complete standalone headline, never a truncated sentence or sliced clause. Do not invent a specific job, fault, or this-week win — headline the craft or subject, not a fake incident. Just the words.",
     messages: [
       {
         role: "user",
@@ -1053,8 +1230,9 @@ export async function generateHeadline(brand: Brand, caption: string): Promise<s
     ],
     maxTokens: 20,
   });
+  // Keep apostrophes (WE'RE / DOG'S). Only strip wrapping quotes and stray periods.
   const cleaned = stripPersonalNames(
-    sanitizeChatText(out.replace(/["'.]/g, "")).toUpperCase(),
+    sanitizeChatText(out.replace(/[".]/g, "")).toUpperCase(),
     brand,
   );
   // Never fall back to the owner's personal brand name on faceless accounts.
@@ -1106,6 +1284,8 @@ export type TextTileOptions = {
   treatment?: OverlayTreatment;
   /** Carousel slide index — rotates center / top / bottom when the ask is unlocked. */
   slideIndex?: number;
+  /** Owner named this headline exactly — skip 5-word/28-char smash. */
+  exact?: boolean;
 };
 
 export function resolveOverlayTreatment(
@@ -1573,8 +1753,16 @@ export async function applyTextTile(
   try {
     const treatment = resolveOverlayTreatment(opts, brand.visual);
     const rawHeadline = stripPersonalNames(headline, brand);
-    const safeHeadline =
-      treatment.stack === "stack"
+    const exactFromAsk = extractExactOverlayHeadline(opts?.ask);
+    const exact =
+      Boolean(opts?.exact) ||
+      (exactFromAsk != null &&
+        formatExactOverlayHeadline(rawHeadline) === exactFromAsk);
+    const safeHeadline = exact
+      ? treatment.stack === "stack"
+        ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair", { exact: true }).join("\n")
+        : formatExactOverlayHeadline(rawHeadline)
+      : treatment.stack === "stack"
         ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair").join("\n")
         : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;

@@ -11,7 +11,7 @@ import {
   type PostFormat,
 } from "@pulse/shared";
 import { draftCaption } from "./draftCaption.js";
-import { inferContentJob, formatBiasForJob } from "./contentJobs.js";
+import { inferContentJob, formatBiasForJob, isLinkedInPrimary } from "./contentJobs.js";
 import { humanizeCaption } from "./humanizeCaption.js";
 import {
   editImageForBrand,
@@ -46,6 +46,7 @@ import { scheduleSlot } from "./scheduler.js";
 import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
 import { callLLM } from "./llm.js";
 import { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
+import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
 import {
   composeAndStoreSlide,
   gatherDesignContext,
@@ -60,7 +61,7 @@ import {
   storyLinkCta,
 } from "./destinationLinks.js";
 import type { LinkOffer } from "@pulse/shared";
-import { ensureDesignQa, runDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
+import { ensureDesignQa, designQaFailureSms, type DesignQaFixHints } from "./designQa.js";
 import { routeImageJob } from "./modelRouter.js";
 
 /** Brand visual DNA for photo prompts — prefer ./visualDna.js when present. */
@@ -571,7 +572,7 @@ export function wantsResearchedIdeaSlides(topic: string | null | undefined): boo
 export async function generatePhotoTextCarousel(
   brand: Brand,
   pillar: Pillar,
-  opts?: { topicHint?: string | null; forceFresh?: boolean },
+  opts?: { topicHint?: string | null; forceFresh?: boolean; destinations?: string[] | null },
 ): Promise<
   | { ok: true; post: Post; mediaUrl: string; mediaUrls: string[] }
   | { ok: false; qaSms: string }
@@ -580,6 +581,14 @@ export async function generatePhotoTextCarousel(
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const forceFresh = opts?.forceFresh === true;
   const ideaMode = wantsResearchedIdeaSlides(topic);
+  // Prefer explicit kickoff destinations — agent briefs often drop "LinkedIn".
+  const briefDests = [
+    ...new Set([
+      ...(opts?.destinations ?? []).map((d) => String(d).toLowerCase()),
+      ...extractPlatforms(topic),
+    ]),
+  ];
+  const linkedIn = isLinkedInPrimary(briefDests);
   const facelessLine = facelessPromptLine(brand) ?? "";
   const noFace = facelessPhotoConstraint(brand);
   const visualDna = await gatherVisualDnaForBrand(brand);
@@ -591,11 +600,14 @@ export async function generatePhotoTextCarousel(
     /* creativePlan optional */
   }
   const system = [
-    `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
+    linkedIn
+      ? `You write a LinkedIn multi-image carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}). Not Instagram Stories or Reels.`
+      : `You write a swipeable Instagram carousel for "${creativeBrandLabel(brand)}" in the "${pillar.name}" pillar (${pillar.description}).`,
     facelessLine,
     creativeSceneConstraint(brand),
     visualDna ? `Visual DNA (match this look): ${visualDna}` : "",
     topic ? `Owner brief (follow to the letter — every constraint matters): ${topic}` : "",
+    linkedIn ? linkedInCaptionPromptBlock() : "",
     looksLikeComparisonBrief(topic)
       ? "COMPARISON brief: each relevant overlay/caption must name specific options and state a concrete difference — category tips without named tools FAIL."
       : "",
@@ -603,8 +615,12 @@ export async function generatePhotoTextCarousel(
       ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
       : "",
     ideaMode
-      ? 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
-      : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
+      ? linkedIn
+        ? 'Output ONLY JSON: {"caption":"<LinkedIn commentary 2-4 short paragraphs ≤900 chars naming these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+        : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars naming that these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
+      : linkedIn
+        ? 'Output ONLY JSON: {"caption":"<LinkedIn commentary 2-4 short paragraphs ≤900 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}'
+        : 'Output ONLY JSON: {"caption":"<short feed caption ≤220 chars>","slides":[{"overlay":"<max 5 words>","photo_prompt":"<one sentence: subject + place + lighting>"}]}',
     ideaMode
       ? "Aim for 5 slides (min 4). EACH slide is ONE distinct, concrete, researched AI/business idea (real product/service angle — not vague founder fluff like 'build systems' or 'stay hungry'). Overlay = short idea name. idea_blurb = richer detail that will be printed ON the photo (what it is + who buys + why now). Prefer AI / business ideas grounded in current market demand. No emoji. No personal names."
       : "4 to 5 slides. Each overlay is ONE short punchy line. No emoji. No personal names.",
@@ -785,25 +801,13 @@ export async function generatePhotoTextCarousel(
       quality: photoQuality,
       brief: topic || undefined,
       brand,
+      // Nano only — cascading to flux_dev after an empty nano result ate the
+      // remaining Lab after() budget (LAB-005-carousel 300s kill).
+      stillIds: ["nano_banana"],
     });
-    if (index === 0 && img && !opts?.strongerPhoto) {
-      const retryPrompt = [
-        slide.photoPrompt,
-        FEED_PHOTO_REALISM_CUE,
-        dnaBit,
-        "hero composition, sharp subject, clean background, premium editorial still",
-        noFace,
-        creativeSceneConstraint(brand),
-      ]
-        .filter(Boolean)
-        .join(". ");
-      const retry = await generatePhotoImage(retryPrompt, "1:1", {
-        quality: photoQuality,
-        brief: topic || undefined,
-        brand,
-      });
-      if (retry) img = retry;
-    }
+    // Skip automatic slide-0 double-render on the first pass — Lab's after()
+    // budget is 300s and sequential fal×2 on slide 0 alone burned the wall
+    // before later slides finished. QA recompose still passes strongerPhoto.
     if (!img) return null;
     const mediaId = randomUUID();
     await query(
@@ -840,16 +844,16 @@ export async function generatePhotoTextCarousel(
     return tiled ?? mediaId;
   }
 
-  const mediaIds: string[] = [];
-  for (let i = 0; i < slides.length; i++) {
-    const id = await renderOneSlide(slides[i]!, i);
-    if (!id) {
-      console.error("generatePhotoTextCarousel: photo generation failed for a slide");
-      return null;
-    }
-    mediaIds.push(id);
+  const rendered = await mapWithConcurrency(
+    slides,
+    SLIDE_RENDER_CONCURRENCY,
+    async (slide, i) => renderOneSlide(slide, i),
+  );
+  if (rendered.some((id) => !id) || rendered.length < 3) {
+    console.error("generatePhotoTextCarousel: photo generation failed for a slide");
+    return null;
   }
-  if (mediaIds.length < 3) return null;
+  const mediaIds = rendered as string[];
 
   const slideTexts = slides.map((s) =>
     [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
@@ -861,7 +865,9 @@ export async function generatePhotoTextCarousel(
     slideTexts,
     layoutKey: "photo_overlay",
     mode: "photo_overlay",
-    maxRecomposes: 3,
+    // Lab after() is 300s; three recompose rounds + full rebuild regularly
+    // exceeded it even with parallel slides. One recompose + soft-ship is enough.
+    maxRecomposes: 1,
     recompose: async (_suggest, fixHints?: DesignQaFixHints, attempt = 1) => {
       const reasonsJoined = (fixHints?.reason ?? "").toLowerCase();
       const wantStrongerPhoto =
@@ -889,11 +895,17 @@ export async function generatePhotoTextCarousel(
             slide.ideaBlurb = slide.ideaBlurb.slice(0, attempt >= 3 ? 70 : 110);
           }
         }
-        const rebuilt = await renderOneSlide(slide, idx, {
+      }
+      const rebuiltIds = await mapWithConcurrency(targets, SLIDE_RENDER_CONCURRENCY, async (idx) => {
+        const slide = nextSlides[idx]!;
+        return renderOneSlide(slide, idx, {
           strongerPhoto: true,
           shortenOverlay: wantShorter || attempt >= 2,
         });
-        if (rebuilt) next[idx] = rebuilt;
+      });
+      for (let t = 0; t < targets.length; t++) {
+        const rebuilt = rebuiltIds[t];
+        if (rebuilt) next[targets[t]!] = rebuilt;
       }
       slides.splice(0, slides.length, ...nextSlides);
       const nextTexts = slides.map((s) =>
@@ -907,73 +919,76 @@ export async function generatePhotoTextCarousel(
   let qaRecomposed = qa.recomposed;
 
   if (!qa.qa.pass) {
-    // Final full-rebuild self-heal before we ever apologise.
-    console.warn(
-      "generatePhotoTextCarousel: QA still failing after recomposes — full rebuild",
-      qa.qa.reasons,
+    const hardFail = qa.qa.reasons.some((r) =>
+      /illegib|overflow|empty|recompose failed|AI-slop|photo looks AI|generic/i.test(r),
     );
-    const rebuiltIds: string[] = [];
-    for (let idx = 0; idx < slides.length; idx++) {
-      const slide = slides[idx]!;
-      slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
-      slide.overlay = formatOverlayHeadline(slide.overlay);
-      if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
-      const id = await renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true });
-      if (!id) {
-        return { ok: false, qaSms: designQaFailureSms(brand.name) };
-      }
-      rebuiltIds.push(id);
-    }
-    const finalTexts = slides.map((s) =>
-      [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
-    );
-    const qa2 = await runDesignQa({
-      brand,
-      mediaIds: rebuiltIds,
-      slideTexts: finalTexts,
-      layoutKey: "photo_overlay",
-      mode: "photo_overlay",
-    });
-    const hardFail = qa2.reasons.some((r) =>
-      /illegib|overflow|empty|recompose failed/i.test(r),
-    );
-    if (!qa2.pass && hardFail) {
+    // Skip the full multi-slide rebuild — it regularly blew Lab's 300s isolate.
+    // Soft-ship non-hard remainders; only hard fails apologise.
+    if (hardFail) {
+      console.warn(
+        "generatePhotoTextCarousel: hard QA fail after recompose — not rebuilding",
+        qa.qa.reasons,
+      );
       return { ok: false, qaSms: designQaFailureSms(brand.name) };
     }
-    if (!qa2.pass) {
-      console.warn(
-        "generatePhotoTextCarousel: soft QA remainders after full rebuild — shipping",
-        qa2.reasons,
-      );
-    }
-    qa = { qa: qa2, recomposed: true, mediaIds: rebuiltIds, attempts: (qa.attempts ?? 0) + 1 };
-    finalMediaIds = rebuiltIds;
-    qaRecomposed = true;
+    console.warn(
+      "generatePhotoTextCarousel: soft QA remainders after recompose — shipping",
+      qa.qa.reasons,
+    );
   }
 
   // keep using finalMediaIds below; replace first assignment
   const slot = await scheduleFor(brand, pillar.id, pillar.posts_per_week, "carousel");
+  const finalCaption = humanizeCaption(caption);
+  const dests = linkedIn ? (briefDests.length ? briefDests : ["linkedin"]) : [];
+  const captions = dests.length ? buildPlatformCaptions(finalCaption) : null;
   const post = await queryOne<Post>(
-    `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
-     values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5, $6::jsonb)
-     returning *`,
-    [
-      brand.id,
-      humanizeCaption(caption),
-      finalMediaIds,
-      pillar.id,
-      slot.toISOString(),
-      JSON.stringify({
-        generated: true,
-        wants_text: true,
-        photo_carousel: true,
-        researched_ideas: ideaMode,
-        slides: finalMediaIds.length,
-        topic_hint: topic || null,
-        faceless: isFacelessBrand(brand),
-        qa_recomposed: qaRecomposed,
-      }),
-    ],
+    linkedIn
+      ? `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta, destinations, captions)
+         values ($1, $2, $3::uuid[], 'carousel', $4, false, 'linkedin', 'pending_approval', $5, $6::jsonb, $7::text[], $8::jsonb)
+         returning *`
+      : `insert into posts (brand_id, caption, media_ids, format, pillar_id, is_auto, platform, status, scheduled_at, style_meta)
+         values ($1, $2, $3::uuid[], 'carousel', $4, false, 'instagram', 'pending_approval', $5, $6::jsonb)
+         returning *`,
+    linkedIn
+      ? [
+          brand.id,
+          finalCaption,
+          finalMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify({
+            generated: true,
+            wants_text: true,
+            photo_carousel: true,
+            researched_ideas: ideaMode,
+            slides: finalMediaIds.length,
+            topic_hint: topic || null,
+            faceless: isFacelessBrand(brand),
+            qa_recomposed: qaRecomposed,
+            linkedin_primary: true,
+            format_bias: "carousel",
+          }),
+          dests,
+          JSON.stringify(captions),
+        ]
+      : [
+          brand.id,
+          finalCaption,
+          finalMediaIds,
+          pillar.id,
+          slot.toISOString(),
+          JSON.stringify({
+            generated: true,
+            wants_text: true,
+            photo_carousel: true,
+            researched_ideas: ideaMode,
+            slides: finalMediaIds.length,
+            topic_hint: topic || null,
+            faceless: isFacelessBrand(brand),
+            qa_recomposed: qaRecomposed,
+          }),
+        ],
   );
   if (!post) return null;
   await query(

@@ -23,6 +23,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
 import { enqueueKickoff, looksLikeKickoffRequest } from "./kickoffs.js";
+import { extractPlatforms } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 import {
   clampMemoryText,
   recordKipMemory,
@@ -39,6 +41,8 @@ import { draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
 import { queueUgcJob } from "./ugc/index.js";
 import { queueAiVideoJob } from "./aiVideo.js";
+import { scoutContentIdeas, formatIdeasSms } from "./ideaScout.js";
+import { readKipPreferences } from "./kipMemory.js";
 import {
   clearImageOverlay,
   formatOfferedDraftBlock,
@@ -52,6 +56,8 @@ import {
 export type AgentToolContext = {
   brand: Brand;
   sourceMessageId?: string | null;
+  /** Raw owner SMS/Lab text for this turn (platform names may be stripped from tool briefs). */
+  ownerMessage?: string | null;
   mediaIds?: string[];
   retrievedPack?: string;
   notifyOperator?: (body: string) => Promise<boolean | void>;
@@ -126,7 +132,12 @@ const checkCalendarInputSchema = z
 const draftCopyInputSchema = z
   .object({
     job: z.enum(DRAFT_COPY_JOBS).describe("Which content-engine job to run."),
-    brief: z.string().optional().describe("Optional brief or instructions."),
+    brief: z
+      .string()
+      .optional()
+      .describe(
+        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them.",
+      ),
     count: z.number().optional().describe("How many drafts to queue (job-dependent default)."),
     format: z.enum(PostFormat).optional().describe("Post format hint."),
     visuals: z
@@ -134,7 +145,12 @@ const draftCopyInputSchema = z
       .optional()
       .describe("Visual mode for queued drafts."),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
-    topic_hint: z.string().optional().describe("Topic hint for queued drafts."),
+    topic_hint: z
+      .string()
+      .optional()
+      .describe(
+        "Topic hint for queued drafts. Keep platform names (LinkedIn, Instagram, …) when the owner named them.",
+      ),
   })
   .strict();
 
@@ -152,6 +168,16 @@ const rememberFactInputSchema = z
       .enum(["kip_preferences", "kip_decisions"])
       .optional()
       .describe("Where to store it (default kip_preferences)."),
+  })
+  .strict();
+
+const scoutIdeasInputSchema = z
+  .object({
+    focus: z
+      .string()
+      .optional()
+      .describe("Optional topic, angle, or question to research for ideas."),
+    count: z.number().optional().describe("How many ideas (default 4, min 3, max 6)."),
   })
   .strict();
 
@@ -359,6 +385,11 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
     "Store a short owner preference or decision on the brand for later turns. Keep text brief. Does not publish or change posts.",
     rememberFactInputSchema,
   ),
+  toolDef(
+    "scout_ideas",
+    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use when the owner asks for suggestions, ideas, or to look into topics. Prefer this over interviewing them. Does not draft or publish.",
+    scoutIdeasInputSchema,
+  ),
 ];
 
 export function isValidKickoffKind(kind: unknown): kind is KipKickoffKindT {
@@ -421,6 +452,110 @@ export function looksLikeCalendarAsk(body: string | null | undefined): boolean {
     /\b(?:my |the )?(?:content )?calendar\b/i.test(t) ||
     /\bscheduled (?:this|for the) (?:week|weekend)\b/i.test(t)
   );
+}
+
+/**
+ * Owner wants content ideas / suggestions — not a draft yet.
+ * Fast-path to scout_ideas so Kip never interviews for niche first.
+ */
+export function looksLikeIdeasAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t)) return false;
+  if (looksLikeCalendarAsk(t)) return false;
+  // Draft/make a specific asset → not an ideas ask.
+  if (
+    /\b(draft|write|make|create|generate|schedule)\b/i.test(t) &&
+    /\b(post|carousel|reel|story|caption|batch)\b/i.test(t) &&
+    !/\bideas?\b/i.test(t)
+  ) {
+    return false;
+  }
+  return (
+    /\b(give me|send me|need|want|got any|come up with|suggest|brainstorm|hit me with)\b[\s\S]{0,48}\b(ideas?|suggestions?)\b/i.test(
+      t,
+    ) ||
+    /\b\d+\s+(post\s+)?ideas?\b/i.test(t) ||
+    /\b(post|content)\s+ideas?\b/i.test(t) ||
+    /\bwhat should i post\b/i.test(t) ||
+    /\bideas? for (this|the) week\b/i.test(t) ||
+    /\blook into\b[\s\S]{0,48}\b(ideas?|topics?|angles?)\b/i.test(t)
+  );
+}
+
+/** Owner asking what Kip already knows about the brand — answer from memory, no intake quiz. */
+export function looksLikeBrandRecallAsk(body: string | null | undefined): boolean {
+  if (!body?.trim()) return false;
+  const t = body.trim();
+  if (looksLikeKickoffRequest(t) || looksLikeIdeasAsk(t)) return false;
+  return (
+    /\bwhat do you (know|remember) about (my |the )?brand\b/i.test(t) ||
+    /\bwhat(?:'?s| have you) (got|on file|stored) (on|about|for) (me|my brand|us)\b/i.test(t) ||
+    /\btell me what you know\b/i.test(t) ||
+    /\bwhat(?:'?s| is) on file (about|for) (me|my brand)\b/i.test(t) ||
+    /\bremind me what you(?:'?ve| have) (got|saved|stored)\b/i.test(t)
+  );
+}
+
+function countFromIdeasAsk(body: string): number {
+  const m = body.match(/\b([1-6])\s+(?:post\s+)?ideas?\b/i);
+  if (m) return Number(m[1]);
+  return 3;
+}
+
+/** Scout + SMS rundown for the ideas fast path. */
+export async function loadIdeasSms(brand: Brand, ownerMessage: string): Promise<string> {
+  const count = countFromIdeasAsk(ownerMessage);
+  const result = await scoutContentIdeas(brand, {
+    focus: ownerMessage.slice(0, 400),
+    count,
+  });
+  if (!result.ok) {
+    return humanizeChat(
+      "Hit a snag pulling research — say go and I'll retry with fresh angles.",
+    );
+  }
+  return humanizeChat(formatIdeasSms(result.ideas, result.note));
+}
+
+/** Memory rundown for brand-recall fast path — no niche intake questions. */
+export function summarizeBrandRecall(brand: Brand): string {
+  const lab = brand.facts?.lab === true;
+  const niche =
+    typeof brand.facts?.differentiators === "string" ? brand.facts.differentiators.trim() : "";
+  const prefs = readKipPreferences(brand.facts).map((p) => p.text).filter(Boolean);
+  const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
+  const bits: string[] = ["Here's what I've got on file:"];
+
+  if (niche) {
+    bits.push(`Niche: ${niche}.`);
+  } else if (lab) {
+    bits.push("Niche: not locked yet.");
+  } else if (brand.name?.trim()) {
+    bits.push(`Brand: ${brand.name.trim()}.`);
+  }
+
+  const prefBits: string[] = [];
+  if (profile.tone.length) prefBits.push(`${profile.tone.join("/")} tone`);
+  for (const p of prefs.slice(0, 5)) prefBits.push(p);
+  if (profile.donts.length) {
+    prefBits.push(`don't: ${profile.donts.slice(0, 3).join(", ")}`);
+  }
+  if (prefBits.length) {
+    bits.push(`Preferences: ${prefBits.join("; ")}.`);
+  } else {
+    bits.push("Preferences: none stored yet.");
+  }
+
+  const ctx = brandContextForPrompt(brand).trim();
+  if (ctx) bits.push("Strategy notes are on file.");
+
+  bits.push("That's the solid stuff I'm holding.");
+  return bits.join(" ");
+}
+
+export async function loadBrandRecallSms(brand: Brand): Promise<string> {
+  return humanizeChat(summarizeBrandRecall(brand));
 }
 
 /** Summarize committed upcoming posts as SMS prose (read-only). */
@@ -757,6 +892,25 @@ function topicHintOf(brief?: string, topicHint?: string): string | undefined {
   return t || undefined;
 }
 
+/** Preserve owner-named platforms even when the model shortens the brief. */
+function destinationsForDraft(
+  ctx: AgentToolContext,
+  hint?: string,
+): string[] {
+  return extractPlatforms([ctx.ownerMessage, hint].filter(Boolean).join("\n"));
+}
+
+function enrichTopicHint(hint: string | undefined, destinations: string[]): string | undefined {
+  let t = (hint ?? "").trim();
+  if (!t && !destinations.length) return undefined;
+  if (isLinkedInPrimary(destinations) && t && !/\blinkedin\b/i.test(t)) {
+    t = `LinkedIn: ${t}`;
+  } else if (isLinkedInPrimary(destinations) && !t) {
+    t = "LinkedIn post";
+  }
+  return t || undefined;
+}
+
 async function firstPillar(brandId: string) {
   const pillars = await ensurePillars(brandId);
   return pillars[0] ?? null;
@@ -776,27 +930,37 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
   const count = parsed.data.count;
   const ids = mediaIdsFrom(ctx, parsed.data.media_ids);
   const hint = topicHintOf(brief, topic_hint);
+  const destinations = destinationsForDraft(ctx, hint);
+  const topicHint = enrichTopicHint(hint, destinations);
 
   switch (job) {
     case "caption": {
       const drafted = await draftCaption(ctx.brand.id, ids, {
         hint: [ctx.retrievedPack, brief].filter(Boolean).join("\n"),
+        asLinkedIn: isLinkedInPrimary(destinations),
       });
       const caption = drafted.caption ?? "";
       let postId: string | null = null;
       try {
         const slot = await scheduleSlot({
           brandId: ctx.brand.id,
-          platform: "instagram",
+          platform: isLinkedInPrimary(destinations) ? "linkedin" : "instagram",
           pillarId: null,
           postsPerWeek: 0,
           format: format ?? "feed",
         });
         const row = await queryOne<{ id: string }>(
           `insert into posts (brand_id, caption, media_ids, platform, status, scheduled_at, format)
-           values ($1, $2, $3::uuid[], 'instagram', 'pending_approval', $4, $5)
+           values ($1, $2, $3::uuid[], $6, 'pending_approval', $4, $5)
            returning id`,
-          [ctx.brand.id, caption, ids, slot.toISOString(), format ?? "feed"],
+          [
+            ctx.brand.id,
+            caption,
+            ids,
+            slot.toISOString(),
+            format ?? "feed",
+            isLinkedInPrimary(destinations) ? "linkedin" : "instagram",
+          ],
         );
         postId = row?.id ?? null;
       } catch {
@@ -817,24 +981,27 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     case "post":
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count: positiveInt(count, 1),
-        topicHint: hint,
+        topicHint,
         format,
         visuals,
         preferCarousel: format === "carousel",
+        ...(destinations.length ? { destinations } : {}),
       });
     case "first_batch":
       return queueDraftKickoff(ctx, job, "first_batch", {
         count: positiveInt(count, 3),
         visuals,
-        topicHint: hint,
+        topicHint,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "carousel":
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count: positiveInt(count, 1),
-        topicHint: hint,
+        topicHint,
         format: "carousel",
         visuals,
         preferCarousel: true,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "story": {
       let photoId = ids[0];
@@ -845,14 +1012,15 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
       if (!photoId) {
         return queueDraftKickoff(ctx, job, "draft_posts", {
           count: positiveInt(count, 1),
-          topicHint: hint,
+          topicHint,
           format: "story",
           visuals,
+          ...(destinations.length ? { destinations } : {}),
         });
       }
       const pillar = await firstPillar(ctx.brand.id);
       if (!pillar) return toolError("No content pillars available.");
-      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, hint);
+      const drafted = await draftStoryFromPhoto(ctx.brand, { id: photoId }, pillar, topicHint);
       if (!drafted?.post) return toolError("Could not draft story.");
       return JSON.stringify({
         ok: true,
@@ -865,13 +1033,15 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     }
     case "trend":
       return queueDraftKickoff(ctx, job, "trend_draft", {
-        topicHint: hint,
+        topicHint,
         visuals,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "competitor":
       return queueDraftKickoff(ctx, job, "competitor_draft", {
-        topicHint: hint,
+        topicHint,
         visuals,
+        ...(destinations.length ? { destinations } : {}),
       });
     case "from_library": {
       const photo = await pickFreshPhoto(ctx.brand.id);
@@ -1021,6 +1191,26 @@ async function toolRejectDraft(ctx: AgentToolContext, input: unknown): Promise<s
   return JSON.stringify(result);
 }
 
+async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(scoutIdeasInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+  const result = await scoutContentIdeas(ctx.brand, {
+    focus: parsed.data.focus,
+    count: parsed.data.count,
+    retrievedPack: ctx.retrievedPack,
+  });
+  if (!result.ok) return toolError(result.error);
+  return JSON.stringify({
+    ok: true,
+    ideas: result.ideas,
+    note: result.note,
+    researchRefreshed: result.researchRefreshed,
+    smsDraft: formatIdeasSms(result.ideas, result.note),
+    ackHint:
+      "Text the owner the smsDraft rundown (or the same titles + angles). Offer to draft one they pick. Do not interview them for more intake first.",
+  });
+}
+
 /**
  * Execute one agent tool. Returns a JSON string for Anthropic tool_result content.
  */
@@ -1055,6 +1245,8 @@ export async function executeAgentTool(
         return await toolEscalateToHuman(ctx, input);
       case "remember_fact":
         return await toolRememberFact(ctx, input);
+      case "scout_ideas":
+        return await toolScoutIdeas(ctx, input);
       default:
         return toolError(`Unknown tool: ${name}`);
     }

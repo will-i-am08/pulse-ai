@@ -9,10 +9,11 @@ import {
   editImageForBrand,
   shouldOverlayHeadline,
   messageWantsImageEdit,
+  messageWantsStripPendingOverlay,
   generateHeadline,
   applyTextTile,
 } from "./imaging.js";
-import { reviseOfferedCaption } from "./offeredDraft.js";
+import { clearImageOverlay, reviseOfferedCaption } from "./offeredDraft.js";
 export { captionEditMissed } from "./offeredDraft.js";
 import { looksLikeCreativeRedoAsk } from "./designQa.js";
 import { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage } from "./pillars.js";
@@ -55,6 +56,7 @@ import {
   cancelCampaign,
 } from "./campaigns.js";
 import { updateFactsFromMessage, looksLikeBusinessFact } from "./businessProfile.js";
+import { updateEngagementFromMessage, looksLikeEngagementPref } from "./engagementProfile.js";
 import {
   looksLikeBrandContextUpdate,
   updateBrandContextFromMessage,
@@ -103,6 +105,8 @@ import {
   looksLikeFormatMenuReply,
   looksLikeFormatMenuOutbound,
   looksLikeDraftPreviewOutbound,
+  inferDraftCount,
+  textWantsCarousel,
 } from "./kickoffs.js";
 import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
@@ -130,12 +134,13 @@ import {
   cancelStrategyBrief,
 } from "./strategyBrief.js";
 import { gapInfo, lastInteractionAt, mostRecentActionable, type Actionable } from "./reengagement.js";
+import { readEvents } from "./eventMemory.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
-import { looksLikeCalendarAsk, loadCalendarSms } from "./agentTools.js";
+import { looksLikeCalendarAsk, loadCalendarSms, looksLikeIdeasAsk, loadIdeasSms, looksLikeBrandRecallAsk, loadBrandRecallSms } from "./agentTools.js";
 import { quickReengageReply, quickSocialReply } from "./socialReply.js";
 import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
 import { buildPerformanceDigest } from "./performanceDigest.js";
@@ -188,7 +193,9 @@ import {
   buildPlatformCaptions,
   selectedDestinations,
   shouldPublishImmediately,
+  extractPlatforms,
 } from "./destinations.js";
+import { isLinkedInPrimary } from "./contentJobs.js";
 import {
   generatePhotoVariants,
   parkVariantPick,
@@ -518,7 +525,15 @@ async function trySmartPlannerKickoff(
   const plan = await planSmartTurn({ brand, message: body, context });
   if (!plan?.kickoffKind) return null;
   const kicked = await enqueueKickoff(brand, plan.kickoffKind, {
-    payload: { plan, topicHint: body.slice(0, 280) },
+    payload: {
+      plan,
+      topicHint: body.slice(0, 280),
+      count: inferDraftCount(body, textWantsCarousel(body)),
+      ...((() => {
+        const destinations = extractPlatforms(body);
+        return destinations.length ? { destinations } : {};
+      })()),
+    },
     reason: "user_request",
     sourceMessageId: sourceMessageId ?? null,
     ackSms: plan.speakHint ?? null,
@@ -568,11 +583,24 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
   if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id, { summarize: false });
+  // A named event in the owner's world that just passed and we've not asked
+  // about is the warmest possible re-open ("how'd the Emily Calder shoot go?").
+  const now = Date.now();
+  const passedEvent = readEvents(brand.facts).find(
+    (e) =>
+      e.status !== "closed" &&
+      !e.followed_up_at &&
+      e.when_iso != null &&
+      new Date(e.when_iso).getTime() < now,
+  );
   return speakSMS({
     brand,
     mode: "reengage",
     modeLines: [
       `They've just come back after a break — you two last spoke ${phrase}.`,
+      passedEvent
+        ? `They recently had: ${passedEvent.summary}. Open by warmly asking how it went before anything else.`
+        : "",
       actionable
         ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now. Or start fresh if they'd rather.`
         : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,
@@ -1312,6 +1340,20 @@ async function routeInbound(
         return { reply: `Couldn't check the calendar just now (${detail}). Try again in a bit.` };
       }
     }
+    if (looksLikeBrandRecallAsk(message.body)) {
+      try { return { reply: await loadBrandRecallSms(brand) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't pull brand memory just now (${detail}). Try again in a bit.` };
+      }
+    }
+    if (looksLikeIdeasAsk(message.body)) {
+      try { return { reply: await loadIdeasSms(brand, message.body) }; }
+      catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { reply: `Couldn't pull ideas just now (${detail}). Try again in a bit.` };
+      }
+    }
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
@@ -1335,10 +1377,38 @@ async function routeInbound(
     }
   }
 
+  // "Remove the text" / strip overlay on the pending draft — hard gate before
+  // general agent / caption revise so we never rewrite the caption into a meta refusal.
+  if (pending && message.body && newMedia.length === 0 && messageWantsStripPendingOverlay(message.body)) {
+    const stripped = await clearImageOverlay(brand, pending);
+    if (stripped.ok) {
+      return {
+        reply: stripped.ackSms ?? "Took the text off the image. Caption unchanged. Reply yes to send it.",
+        postId: pending.id,
+        mediaUrl: stripped.mediaUrl ?? undefined,
+      };
+    }
+    return {
+      reply:
+        stripped.error ??
+        "I couldn't strip the overlay on that one — say \"regenerate\" for a clean visual, or tell me how to rewrite the caption.",
+      postId: pending.id,
+    };
+  }
+
+  // Deterministic kickoff before the general agent — "Draft something in my lane"
+  // must enqueue draft_posts, not fall into scout_ideas via the LLM tool loop.
+  if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
+    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
+    if (planned) return planned;
+    const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
+    if (kicked?.ackSms) return { reply: kicked.ackSms };
+  }
+
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads/digest/calendar) and greetings. Owns draft create
-  // and pending-draft mutation via tools. Attached media and high-confidence
+  // connect/disconnect, ads/digest/calendar), greetings, and kickoff. Owns draft
+  // create and pending-draft mutation via tools. Attached media and high-confidence
   // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
   if (
     generalAgentEligible({
@@ -1675,11 +1745,17 @@ async function routeInbound(
 
       // C6: caption + photo grade in parallel (independent LLM/vision steps).
       const captionHint = (message.body ?? "").trim();
+      const hintDests = extractPlatforms(captionHint);
       const [captionResult, editedId] = await Promise.all([
         draftCaption(
           brand.id,
           originalIds,
-          captionHint ? { hint: captionHint } : undefined,
+          captionHint
+            ? {
+                hint: captionHint,
+                asLinkedIn: isLinkedInPrimary(hintDests),
+              }
+            : undefined,
         ),
         firstPhoto
           ? editImageForBrand(brand, firstPhoto.id, message.body ?? undefined).catch(() => null)
@@ -2277,6 +2353,14 @@ async function routeInbound(
         }
         const ctxReply = await updateBrandContextFromMessage(brand, message.body);
         if (ctxReply) return { reply: ctxReply };
+      }
+
+      // Engagement preferences ("ease off the check-ins", "morning report at 8")
+      // tune how proactive/warm/frequent Kip is for THIS owner. Checked before
+      // business facts so "stop messaging me so much" isn't misread as a fact.
+      if (message.body && looksLikeEngagementPref(message.body)) {
+        const prefReply = await updateEngagementFromMessage(brand, message.body);
+        if (prefReply) return { reply: prefReply };
       }
 
       // Business facts stated by the owner ("we're open till 6 now", "coffee's $5")

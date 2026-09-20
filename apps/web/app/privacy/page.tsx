@@ -56,8 +56,9 @@ export default function PrivacyPage() {
           APIs for check-ins and recaps.
         </li>
         <li>
-          <strong>Billing:</strong> plan (Pro / Max), billing period, and payment status via our
-          payment processor — we do not store full card numbers.
+          <strong>Billing:</strong> plan (Pro / Max), billing period, and payment status via{' '}
+          <strong>Stripe</strong> — we do not store full card numbers. Stripe sends receipts and
+          failed-payment emails to the address collected at checkout.
         </li>
         <li>
           <strong>Operator access:</strong> when Pulse staff or a named operator helps set up your
@@ -116,7 +117,7 @@ export default function PrivacyPage() {
           <strong>Vercel / Railway</strong> (or equivalent host) — application hosting.
         </li>
         <li>
-          <strong>Payment processor</strong> (e.g. Stripe) — subscriptions for Pro / Max.
+          <strong>Stripe</strong> — subscriptions, invoices, and card processing for Pro / Max.
         </li>
       </ul>
       <p>

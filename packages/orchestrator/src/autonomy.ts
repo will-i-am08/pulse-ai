@@ -2,6 +2,7 @@ import { query, queryOne, type Brand } from "@pulse/shared";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { personaLines } from "./persona.js";
 import { enqueueKickoff } from "./kickoffs.js";
+import { readEngagementProfile, shouldRunProactive } from "./engagementProfile.js";
 
 /**
  * Proactive autonomy — Kip notices things in the background and queues its own
@@ -80,6 +81,7 @@ export async function maybeEnqueueCompetitorDraft(
   competitorName: string,
   digest: string,
 ): Promise<boolean> {
+  if (!shouldRunProactive("autonomy", readEngagementProfile(brand))) return false;
   if (!(await brandHasAcceptedPlan(brand.id))) return false;
   if (await recentlyProactive(brand.id)) return false;
   if (!/\b(posted|launched|running|new|promo|campaign|reel|carousel|offer|ad)\b/i.test(digest)) {
@@ -118,6 +120,7 @@ export async function queueTrendDraftKickoffs(limit = 5): Promise<number> {
   for (const brand of brands) {
     if (queued >= limit) break;
     try {
+      if (!shouldRunProactive("autonomy", readEngagementProfile(brand))) continue;
       if (await recentlyProactive(brand.id)) continue;
       const scouted = await scoutTrend(brand);
       if (!scouted) continue;

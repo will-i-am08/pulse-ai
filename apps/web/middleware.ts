@@ -14,6 +14,12 @@ function isProtectedPath(pathname: string): boolean {
   );
 }
 
+function nextWithPathname(request: NextRequest, pathname: string) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-pathname', pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const protectedPath = isProtectedPath(pathname);
@@ -25,7 +31,7 @@ export async function middleware(request: NextRequest) {
     // Never throw from middleware — on Vercel that surfaces as a bare
     // MIDDLEWARE_INVOCATION_FAILED / opaque 404-ish failure for /lab.
     // Unauthenticated redirect keeps the lab reachable once AUTH_SECRET is set.
-    if (!protectedPath) return NextResponse.next();
+    if (!protectedPath) return nextWithPathname(request, pathname);
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.search = '';
@@ -56,7 +62,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return nextWithPathname(request, pathname);
 }
 
 export const config = {

@@ -13,7 +13,7 @@ import { KIP_AGENT_TOOLS, executeAgentTool } from "./agentTools.js";
 import { agentIdentity } from "./agentIdentity.js";
 import { looksLikeApproval } from "./classify.js";
 import { loadRecentChatTurns } from "./conversationContext.js";
-import { maybeEnqueueFromKipCommit } from "./kickoffs.js";
+import { looksLikeKickoffRequest, maybeEnqueueFromKipCommit } from "./kickoffs.js";
 import { durablePrefFromCorrectionNote, recordKipMemory } from "./kipMemory.js";
 import { callLLMWithTools, stripMarkdown } from "./llm.js";
 import { retrieveBrandContext } from "./retrieveContext.js";
@@ -34,14 +34,25 @@ export type RunGeneralAgentResult = {
 };
 
 /** In-character SMS when the tool loop throws. Never names an operator or agency. */
-const GENERAL_AGENT_FALLBACK_SMS =
-  "That one glitched on my side. Mind sending it again?";
+export function generalAgentFallbackSms(ownerMessage: string | null | undefined): string {
+  const t = (ownerMessage ?? "").trim();
+  // Only ask them to resend when they were clearly trying to deliver media / a failed attach.
+  if (
+    t &&
+    /\b(photo|pic|picture|image|video|clip|mms|send(ing)? (it|this|that) again|resent|re-?send)\b/i.test(t) &&
+    !/\b(draft|carousel|suggest|idea|research|look into|post about)\b/i.test(t)
+  ) {
+    return "That one glitched on my side. Mind sending it again?";
+  }
+  return "Hit a snag on my side — say go and I'll retry.";
+}
 
 /**
  * True when the general-agent intercept may run: flag on, no attached media.
  * Pending drafts are allowed — the agent mutates them via tools.
  * High-confidence approval ("yes") stays on the hard-gate router.
  * Attached media stays on the photo/video pipeline.
+ * Fresh kickoff-shaped asks stay on the classic enqueue path (not scout_ideas).
  */
 export function generalAgentEligible(opts: {
   flag: boolean;
@@ -52,6 +63,9 @@ export function generalAgentEligible(opts: {
   if (!opts.flag || opts.hasMedia) return false;
   const t = (opts.ownerMessage ?? "").trim();
   if (opts.hasPending && looksLikeApproval(t)) return false;
+  // Without a pending draft, creative kickoffs must not enter the tool loop —
+  // "Draft something in my lane" is draft_posts, not scout_ideas.
+  if (!opts.hasPending && looksLikeKickoffRequest(t)) return false;
   return true;
 }
 
@@ -95,6 +109,7 @@ export async function runGeneralAgent(
   );
 
   let reply: string | undefined;
+  let draftedViaTool = false;
   try {
     const raw = await callLLMWithTools({
       system,
@@ -107,9 +122,11 @@ export async function runGeneralAgent(
       maxRounds: 4,
       toolExecutor: async (name, input) => {
         if (name === "remember_fact") remembered = true;
+        if (name === "draft_copy") draftedViaTool = true;
         return executeAgentTool(name, input, {
           brand,
           sourceMessageId,
+          ownerMessage,
           mediaIds,
           retrievedPack: pack.text,
           operatorAlerts,
@@ -118,12 +135,17 @@ export async function runGeneralAgent(
       },
     });
     reply = humanizeChat(stripMarkdown(raw));
-  } catch {
-    reply = humanizeChat(stripMarkdown(GENERAL_AGENT_FALLBACK_SMS));
+  } catch (err) {
+    console.error(`runGeneralAgent: brand ${brand.id}`, err);
+    reply = humanizeChat(stripMarkdown(generalAgentFallbackSms(ownerMessage)));
   }
 
   if (reply) {
-    await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
+    // draft_copy already enqueued the job — kip_commit must not queue a second
+    // first_batch/draft_posts just because the owner said "generated photo".
+    if (!draftedViaTool) {
+      await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
+    }
     scheduleOpenLoopsUpdate(brand, ownerMessage, reply);
   }
 

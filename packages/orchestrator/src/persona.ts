@@ -1,6 +1,8 @@
 import type { Brand } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { kipMemoryPromptBlock } from "./kipMemory.js";
+import { eventsPromptBlock } from "./eventMemory.js";
+import { readEngagementProfile, engagementToneLines } from "./engagementProfile.js";
 import { metaConnectStatusMessage } from "./smsConnect.js";
 
 // The one self-contained persona, shared by every client-facing prompt so it
@@ -39,7 +41,8 @@ export function brandTalkingIdentity(brand: Brand): string {
     }
     return (
       `You are Kip, this owner's social media manager. ` +
-      `Learn what they actually do from this chat. Never mention the dashboard account name, Lab Cafe, café, or coffee. Never call anything a placeholder to the owner. First question: what do they actually do?`
+      `Learn their niche when they state it — never invent Lab Cafe, café, or coffee, and never call anything a placeholder to the owner. ` +
+      `If they ask for ideas, suggestions, or brand recall before niche is on file: deliver useful ideas from tools/preferences (scout_ideas) or honestly say what is / isn't on file — do not interview them about whether they run a café, specialty angle, audience, or "what you're about".`
     );
   }
   return `You are Kip — "${brand.name}"'s social media manager.`;
@@ -89,6 +92,9 @@ export function personaLines(brand: Brand): string[] {
   }
   const memory = kipMemoryPromptBlock(brand.facts);
   if (memory) lines.push(memory);
+  const events = eventsPromptBlock(brand.facts);
+  if (events) lines.push(events);
+  lines.push(...engagementToneLines(readEngagementProfile(brand)));
   return lines;
 }
 

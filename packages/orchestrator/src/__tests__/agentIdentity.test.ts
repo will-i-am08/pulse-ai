@@ -42,12 +42,41 @@ describe("agentIdentity", () => {
     expect(unnamed).not.toMatch(/\bSam\b/);
   });
 
+  it("never says owner of Lab Cafe for lab brands with empty niche", () => {
+    const prompt = agentIdentity(
+      stubBrand({ name: "Lab Cafe", facts: { lab: true, owner_name: "Sam" } }),
+    );
+    expect(prompt).not.toMatch(/owner of Lab Cafe/i);
+    expect(prompt).toMatch(/owner of this business/i);
+    expect(prompt).not.toMatch(/First question: what do they actually do/i);
+    expect(prompt).toMatch(/never fish|do not quiz|skip the challenge/i);
+  });
+
+  it("uses lab differentiators in who-you-serve when present", () => {
+    const prompt = agentIdentity(
+      stubBrand({
+        name: "Lab Cafe",
+        facts: { lab: true, differentiators: "emergency plumber", owner_name: "Sam" },
+      }),
+    );
+    expect(prompt).toMatch(/owner of emergency plumber/i);
+    expect(prompt).not.toMatch(/owner of Lab Cafe/i);
+  });
+
   it("requires draft_copy before SMS when the owner asked for content", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/tool-call draft_copy before/i);
     expect(prompt).toMatch(/draft_copy/);
     expect(prompt).toMatch(/set_image_text/);
+    expect(prompt).toMatch(/scout_ideas/);
+    expect(prompt).toMatch(/competitor watches|research snapshots|Ad Library/i);
+    expect(prompt).toMatch(/soft challenge|push back once|what it does for their niche/i);
+    expect(prompt).toMatch(/do not interview them first/i);
     expect(prompt).toMatch(/reel with no clip/i);
+    expect(prompt).toMatch(/Brand recall:/i);
+    expect(prompt).toMatch(/never\/don't content bans/i);
+    expect(prompt).toMatch(/never scout_ideas for a draft ask/i);
+    expect(prompt).toMatch(/exact overlay headline/i);
     expect(prompt).not.toMatch(/✨/);
   });
 
@@ -94,9 +123,14 @@ describe("agentIdentity", () => {
     const prompt = agentIdentity(stubBrand({ facts: { owner_name: "Sam", kip_preferences: [] } }));
     expect(prompt).toMatch(/weekday rundown|rundown of days/i);
     expect(prompt).not.toMatch(/Creative default/i);
-    expect(prompt).not.toMatch(/Never ask them to send or upload/i);
     expect(prompt).not.toMatch(/\bType: pull fonts/i);
     expect(prompt).not.toMatch(/Brand strategy on file/i);
     expect(prompt).not.toMatch(/no lists, ever/i);
+  });
+
+  it("tells the agent to generate/source photos instead of stalling on upload vs source", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/never stall asking whether to upload vs source/i);
+    expect(prompt).toMatch(/Photo default/i);
   });
 });

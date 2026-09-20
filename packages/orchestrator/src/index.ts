@@ -128,6 +128,7 @@ export {
   readKipPreferences,
   readKipDecisions,
   clampMemoryText,
+  splitMemoryAtoms,
   durablePrefFromCorrectionNote,
 } from "./kipMemory.js";
 export { planSmartTurn, parseSmartPlan, looksLikeMultiStepAsk } from "./smartPlan.js";
@@ -225,6 +226,8 @@ export {
   generatePhotoImage,
   generateHeadline,
   formatOverlayHeadline,
+  extractExactOverlayHeadline,
+  formatExactOverlayHeadline,
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,
@@ -415,6 +418,12 @@ export {
 } from "./research.js";
 export type { ResearchFocus } from "./research.js";
 export {
+  gatherIdeaResearchBank,
+  ensureIdeaResearchBank,
+  scoutContentIdeas,
+} from "./ideaScout.js";
+export type { ScoutIdea, IdeaResearchBank, ScoutContentIdeasResult } from "./ideaScout.js";
+export {
   looksLikeStrategyRequest,
   getProposedStrategyBrief,
   proposeStrategyBrief,
@@ -535,6 +544,41 @@ export {
 } from "./designBootstrap.js";
 export { gapInfo, lastInteractionAt, mostRecentActionable, isDaytime } from "./reengagement.js";
 export type { GapInfo, GapBucket, Actionable, ActionableKind } from "./reengagement.js";
+export {
+  looksLikeEvent,
+  extractEventsFromMessage,
+  parseEventsResponse,
+  rememberEvents,
+  readEvents,
+  eventsPromptBlock,
+  scheduleEventCapture,
+  selectDueEvent,
+  markEventFollowedUp,
+  closeEvents,
+  FOLLOWUP_GRACE_MS,
+  STALE_MS,
+} from "./eventMemory.js";
+export type { DueEventResult } from "./eventMemory.js";
+export { canSendProactive, recordProactiveSend } from "./proactiveBudget.js";
+export type { ProactiveChannel, ProactiveBudgetOpts } from "./proactiveBudget.js";
+export { composeEventFollowupSms } from "./eventFollowup.js";
+export {
+  readEngagementProfile,
+  engagementToneLines,
+  shouldRunProactive,
+  proactiveBudgetFor,
+  looksLikeEngagementPref,
+  updateEngagementFromMessage,
+} from "./engagementProfile.js";
+export {
+  computeChannelSignals,
+  updateAffinity,
+  decideDialChange,
+  planEngagementLearn,
+  fetchLearnInputs,
+  learnEngagementForBrand,
+} from "./engagementLearn.js";
+export type { LearnPlan, ProactiveSendRow } from "./engagementLearn.js";
 export { renderFeedMockup, renderStoryMockup, storeMockup, foldCaption, previewUrlForPost } from "./mockup.js";
 export type { MockupInput } from "./mockup.js";
 export {
@@ -543,6 +587,7 @@ export {
   buildPlatformCaptions,
   fitCaption,
   fitLinkedInProfessional,
+  linkedInCaptionPromptBlock,
   CAPTION_LIMITS,
   DEST_HINT,
 } from "./destinations.js";
@@ -587,10 +632,14 @@ export {
   inferKickoffFromKipCommit,
   enqueueKickoff,
   enqueueKickoffFromUserMessage,
+  kickoffBriefKey,
+  cancelActiveKickoffs,
+  kickoffStillRunning,
   maybeEnqueueFromKipCommit,
   processKickoff,
   runKickoffDrain,
   reclaimStaleKickoffs,
+  requeueStaleKickoffs,
   STALE_RUNNING_KICKOFF_MS,
 } from "./kickoffs.js";
 export type { KickoffEnqueueResult, KickoffDrainResult, KickoffDeliver, KickoffDrainOpts } from "./kickoffs.js";
@@ -628,6 +677,7 @@ export {
   DEFAULT_JOB_MIX,
   inferContentJob,
   formatBiasForJob,
+  isLinkedInPrimary,
   jobMixPromptBlock,
   pickUnderrepresentedJob,
   isContentJob,

@@ -17,10 +17,10 @@ import type { Brand, BrandPlanFacts, BusinessFacts } from "./types.js";
 export type PlanTier = BrandPlanFacts["tier"];
 export type PlanInterval = BrandPlanFacts["interval"];
 
-/** List prices shown on the landing page (AUD). */
+/** List prices shown on the landing page (AUD, GST-inclusive). */
 export const PLAN_PRICES_AUD = {
-  pro: { month: 79, yearMonthlyEquivalent: 63 },
-  max: { month: 149, yearMonthlyEquivalent: 119 },
+  pro: { month: 79, yearMonthlyEquivalent: 63, year: 756 },
+  max: { month: 149, yearMonthlyEquivalent: 119, year: 1428 },
 } as const;
 
 /**

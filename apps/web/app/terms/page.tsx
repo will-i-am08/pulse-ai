@@ -84,18 +84,28 @@ export default function TermsPage() {
       <ul>
         <li>
           Paid plans currently described as <strong>Pro</strong> and <strong>Max</strong>, billed
-          monthly or annually (annual shown as a monthly equivalent with discount). Prices are in AUD
-          unless stated otherwise and may include GST where required.
+          monthly or annually (annual shown as a monthly equivalent with a 20% discount). Prices are
+          in AUD and include GST.
         </li>
         <li>
-          Features and limits on each plan are as shown at checkout / on the Plan screen. We may
-          change prices or packaging with notice for renewals.
+          Features and limits on each plan are as shown at checkout and on the{' '}
+          <Link href="/app/billing">Billing</Link> screen. We may change prices or packaging with
+          notice for renewals.
         </li>
         <li>
-          Cancel anytime; access continues through the paid period already billed unless we say
-          otherwise. Annual plans are billed up front.
+          Cancel anytime via Billing; access continues through the paid period already billed.
+          Annual plans are billed up front.
         </li>
-        <li>Failed payments may pause publishing or SMS until resolved.</li>
+        <li>
+          If your first seven days are not useful, email{' '}
+          <a href="mailto:will@jmcalder.com">will@jmcalder.com</a> within seven days of the first
+          charge for a refund of that week. We process first-week refunds manually.
+        </li>
+        <li>
+          If a renewal payment fails, Stripe retries the card and we keep access during those retries.
+          If the subscription ends unpaid, dashboard access pauses until you update billing. We do
+          not automatically pause SMS today.
+        </li>
       </ul>
 
       <h2>6. Acceptable use</h2>

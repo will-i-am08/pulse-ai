@@ -49,8 +49,20 @@ describe("personaVoiceLines", () => {
   it("does not treat a lab placeholder name as the real business", () => {
     const brand = { name: "Lab Cafe", facts: { lab: true } } as unknown as Brand;
     const voice = personaVoiceLines(brand).join("\n");
-    expect(voice).toMatch(/Never mention the dashboard account name/i);
+    expect(voice).toMatch(/Never invent Lab Cafe|never invent Lab Cafe|Never mention the dashboard account name/i);
     expect(voice).not.toMatch(/You are Kip — "Lab Cafe"'s social media manager/);
+    expect(voice).not.toMatch(/First question: what do they actually do/i);
+    expect(voice).toMatch(/scout_ideas|do not interview/i);
+  });
+
+  it("uses lab differentiators when on file", () => {
+    const brand = {
+      name: "Lab Cafe",
+      facts: { lab: true, differentiators: "emergency plumber" },
+    } as unknown as Brand;
+    const voice = personaVoiceLines(brand).join("\n");
+    expect(voice).toMatch(/emergency plumber/);
+    expect(voice).not.toMatch(/First question/i);
   });
 });
 

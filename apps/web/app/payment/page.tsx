@@ -1,10 +1,11 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { BrandLockup } from '../components/BrandLockup';
 import { currentUser } from '@/lib/auth/current-user';
 import { listBrandsForOwner } from '@/lib/data/brands';
+import { hasPaidAccess } from '@pulse/shared';
 import { PaymentForm, type PaymentInterval, type PaymentPlanTier } from './PaymentForm';
 import styles from './payment.module.css';
+import { isStripeTestMode } from '@/lib/stripe';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Payment | Kip' };
@@ -12,7 +13,9 @@ export const metadata = { title: 'Payment | Kip' };
 const ERRORS: Record<string, string> = {
   plan: 'Pick a plan to continue.',
   nobrand: 'We couldn’t find your brand. Try signing up again.',
-  kickoff: 'Payment saved, but we couldn’t start setup texts. Open the app and text Kip if needed.',
+  unavailable: 'Payments aren’t available yet. Try again in a moment.',
+  stripe: 'Stripe couldn’t start checkout. Please try again.',
+  session: 'We couldn’t confirm that payment. If you were charged, refresh in a few seconds.',
 };
 
 function parseTier(raw: string | undefined | null): PaymentPlanTier | null {
@@ -30,19 +33,17 @@ function parseInterval(raw: string | undefined | null): PaymentInterval | null {
 export default async function PaymentPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; billing?: string; error?: string }>;
+  searchParams: Promise<{ plan?: string; billing?: string; error?: string; canceled?: string }>;
 }) {
   const user = await currentUser();
   if (!user) redirect('/login');
 
-  const { plan: planQ, billing: billingQ, error } = await searchParams;
+  const { plan: planQ, billing: billingQ, error, canceled } = await searchParams;
   const brands = await listBrandsForOwner(user.id);
   const brand = brands[0] ?? null;
 
-  // Already past payment UI — send them to the messages interstitial while
-  // early onboarding SMS is in flight; otherwise the dashboard.
-  if (brand?.facts?.payment?.submitted_at) {
-    const status = brand.onboarding_state?.status ?? 'none';
+  if (hasPaidAccess(brand?.facts)) {
+    const status = brand?.onboarding_state?.status ?? 'none';
     if (
       status === 'none' ||
       status === 'pending' ||
@@ -66,10 +67,13 @@ export default async function PaymentPage({
   return (
     <main className={styles.wrap}>
       <BrandLockup href="/" className={styles.brand} size={36} />
-      <PaymentForm initialTier={tier} initialInterval={interval} error={msg} />
-      <p className={styles.skip}>
-        <Link href="/app">Skip for now — go to the app</Link>
-      </p>
+      <PaymentForm
+        initialTier={tier}
+        initialInterval={interval}
+        error={msg}
+        canceled={canceled === '1' || canceled === 'true'}
+        testMode={isStripeTestMode()}
+      />
     </main>
   );
 }

@@ -134,6 +134,58 @@ describe("generateFillerPost photo mode", () => {
     expect(insertArgs?.[1]?.[3]).toEqual([expect.any(String)]);
     expect(insertArgs?.[1]?.[3]?.[0]).not.toBe("tiled-media-id");
   });
+
+  it("honors explicit destinations even when topicHint dropped LinkedIn", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage } = await import("../imaging.js");
+    const { callLLM } = await import("../llm.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(callLLM).mockImplementation(async (opts: { system?: string }) => {
+      const sys = String(opts?.system ?? "");
+      if (/ruthless brief-compliance|brief-compliance checker/i.test(sys)) {
+        return JSON.stringify({ pass: true, reasons: [], reinforce_hint: "" });
+      }
+      return JSON.stringify({
+        caption: "Hiring a barista who can pull consistent shots matters more than vibes.",
+        photo_prompt: "Barista steaming milk in a sunlit cafe, natural light",
+        card: "HIRE FOR SKILL NOT VIBES",
+      });
+    });
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-li",
+      caption: "Hiring a barista who can pull consistent shots matters more than vibes.",
+      media_ids: ["tiled-media-id"],
+      platform: "linkedin",
+    } as any);
+
+    try {
+      const out = await generateFillerPost(brand, pillar, {
+        visuals: "photo",
+        topicHint: "hiring barista",
+        destinations: ["linkedin"],
+      });
+      expect(out).not.toBeNull();
+      const draftCall = vi
+        .mocked(callLLM)
+        .mock.calls.find((c) => !/ruthless brief-compliance|brief-compliance checker/i.test(String(c[0]?.system ?? "")));
+      expect(String(draftCall?.[0]?.system ?? "")).toMatch(/LinkedIn/i);
+      const insertSql = String(vi.mocked(queryOne).mock.calls[0]?.[0] ?? "");
+      expect(insertSql).toMatch(/destinations/);
+      const insertArgs = vi.mocked(queryOne).mock.calls[0]?.[1] as unknown[];
+      expect(insertArgs?.[7]).toBe("linkedin");
+      expect(insertArgs?.[8]).toEqual(expect.arrayContaining(["linkedin"]));
+    } finally {
+      vi.mocked(callLLM).mockImplementation(async () =>
+        JSON.stringify({
+          caption: "A real caption about hiring",
+          photo_prompt: "Founder at a desk reviewing resumes, natural light",
+          card: "HIRE FOR SKILL NOT VIBES",
+        }),
+      );
+    }
+  });
 });
 
 describe("FEED_PHOTO_NEGATIVE", () => {
@@ -142,6 +194,32 @@ describe("FEED_PHOTO_NEGATIVE", () => {
     expect(FEED_PHOTO_NEGATIVE).toMatch(/water bottle/i);
     expect(FEED_PHOTO_NEGATIVE).toMatch(/laptop/i);
     expect(FEED_PHOTO_NEGATIVE).toMatch(/typography in image/i);
+  });
+
+  it("Replicate fallback bakes realism + Avoid negatives into the prompt", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const imaging = readFileSync(join(here, "../imaging.ts"), "utf8");
+    const replicate = imaging.slice(
+      imaging.indexOf("async function generatePhotoImageViaReplicate"),
+      imaging.indexOf("export async function editImageForBrand"),
+    );
+    expect(replicate).toMatch(/FEED_PHOTO_REALISM_CUE/);
+    expect(replicate).toMatch(/FEED_PHOTO_NEGATIVE/);
+    expect(replicate).toMatch(/Avoid:/);
+    expect(replicate).toMatch(/prompt: hardened/);
+  });
+
+  it("photo carousel hard-fails AI-slop after full rebuild", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const formats = readFileSync(join(here, "../formats.ts"), "utf8");
+    expect(formats).toMatch(/AI-slop|photo looks AI/);
+    expect(formats).toMatch(/soft QA remainders after full rebuild/);
   });
 });
 

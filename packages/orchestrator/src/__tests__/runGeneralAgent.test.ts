@@ -149,6 +149,22 @@ describe("runGeneralAgent", () => {
     );
   });
 
+  it("skips maybeEnqueueFromKipCommit when draft_copy already ran this turn", async () => {
+    mockedTools.mockImplementationOnce(async (arg: {
+      toolExecutor: (name: string, input: unknown) => Promise<string>;
+    }) => {
+      await arg.toolExecutor("draft_copy", { job: "post", topic_hint: "hiring barista" });
+      return "On it — drafting that LinkedIn post now.";
+    });
+    const brand = stubBrand();
+    await runGeneralAgent({
+      brand,
+      ownerMessage: "Draft a LinkedIn post about hiring a barista — photo please",
+      sourceMessageId: "msg-li",
+    });
+    expect(mockedCommit).not.toHaveBeenCalled();
+  });
+
   it("returns an in-character fallback and still tries the kickoff net when the tool loop throws", async () => {
     mockedTools.mockRejectedValueOnce(new Error("llm down"));
     const brand = stubBrand();
@@ -159,6 +175,8 @@ describe("runGeneralAgent", () => {
     });
     expect(out.reply.length).toBeGreaterThan(0);
     expect(out.reply.toLowerCase()).not.toMatch(/operator|agency/);
+    expect(out.reply.toLowerCase()).toMatch(/snag|retry|go/);
+    expect(out.reply.toLowerCase()).not.toMatch(/sending it again/);
     expect(mockedCommit).toHaveBeenCalledWith(brand, "draft a post", out.reply, "msg-err");
   });
 
@@ -272,7 +290,7 @@ describe("generalAgentEligible", () => {
     ).toBe(false);
   });
 
-  it("is true when the flag is on with no media — including kickoff-shaped asks", () => {
+  it("is true when the flag is on with no media — but kickoff asks stay classic", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: false })).toBe(true);
     expect(
       generalAgentEligible({
@@ -289,7 +307,16 @@ describe("generalAgentEligible", () => {
         hasPending: false,
         ownerMessage: "draft me 3 posts",
       }),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: false,
+        ownerMessage: "Draft something in my lane",
+      }),
+    ).toBe(false);
+    // Reel-only asks are not kickoffs — agent may still handle them.
     expect(
       generalAgentEligible({
         flag: true,
@@ -302,19 +329,28 @@ describe("generalAgentEligible", () => {
 });
 
 describe("processInbound general-agent insert", () => {
-  it("sits after digest and calendar, after greetings", () => {
+  it("sits after digest and calendar, after greetings, after kickoff", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
     );
     const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
     const calendarIdx = src.indexOf("looksLikeCalendarAsk(message.body)");
+    const ideasIdx = src.indexOf("looksLikeIdeasAsk(message.body)");
+    const recallIdx = src.indexOf("looksLikeBrandRecallAsk(message.body)");
     const greetingIdx = src.indexOf("looksLikeGreeting(message.body)");
+    // First kickoff intercept (before general agent), not the later classic fallback.
+    const kickoffBeforeAgent = src.indexOf(
+      "Deterministic kickoff before the general agent",
+    );
     const agentIdx = src.indexOf("generalAgentEligible({");
     expect(digestIdx).toBeGreaterThan(-1);
     expect(calendarIdx).toBeGreaterThan(digestIdx);
-    expect(greetingIdx).toBeGreaterThan(calendarIdx);
-    expect(agentIdx).toBeGreaterThan(greetingIdx);
+    expect(recallIdx).toBeGreaterThan(calendarIdx);
+    expect(ideasIdx).toBeGreaterThan(recallIdx);
+    expect(greetingIdx).toBeGreaterThan(ideasIdx);
+    expect(kickoffBeforeAgent).toBeGreaterThan(greetingIdx);
+    expect(agentIdx).toBeGreaterThan(kickoffBeforeAgent);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);

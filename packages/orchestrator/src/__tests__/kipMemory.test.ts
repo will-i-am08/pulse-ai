@@ -6,6 +6,7 @@ import {
   mergeKipMemoryFact,
   readKipDecisions,
   readKipPreferences,
+  splitMemoryAtoms,
 } from "../kipMemory.js";
 
 describe("kipMemory readers", () => {
@@ -22,6 +23,22 @@ describe("kipMemory readers", () => {
     };
     expect(readKipPreferences(facts)).toHaveLength(1);
     expect(readKipDecisions(facts)[0]?.text).toBe("skip stories this week");
+  });
+});
+
+describe("splitMemoryAtoms", () => {
+  it("keeps a short single pref intact", () => {
+    expect(splitMemoryAtoms("prefer carousels")).toEqual(["prefer carousels"]);
+  });
+
+  it("splits compound for-the-record blobs so bans stay their own entry", () => {
+    const atoms = splitMemoryAtoms(
+      "Niche: founder ops and AI workflows. Never write about cafes or coffee. Prefer carousels over single image posts.",
+    );
+    expect(atoms.length).toBeGreaterThanOrEqual(3);
+    expect(atoms.some((a) => /never write about cafes/i.test(a))).toBe(true);
+    expect(atoms.some((a) => /carousels/i.test(a))).toBe(true);
+    expect(atoms.some((a) => /founder ops/i.test(a))).toBe(true);
   });
 });
 
@@ -46,16 +63,17 @@ describe("kipMemoryPromptBlock", () => {
     // Last 6 prefs only
     expect(block).toMatch(/pref 7/);
     expect(block).not.toMatch(/pref 0/);
-    expect(block).toMatch(/Honour these/);
+    expect(block).toMatch(/never\/don't content bans/i);
   });
 
   it("truncates long entry text", () => {
-    const long = "x".repeat(150);
+    const long = "x".repeat(200);
     const block = kipMemoryPromptBlock({
       kip_preferences: [{ text: long, atISO: "2026-01-01T00:00:00.000Z" }],
     });
-    expect(block.length).toBeLessThan(long.length + 80);
     expect(block).toMatch(/…/);
+    // Prompt truncates each entry well below the stored max.
+    expect(block).not.toContain(long);
   });
 });
 
@@ -68,6 +86,23 @@ describe("mergeKipMemoryFact", () => {
     const again = mergeKipMemoryFact(merged, "kip_decisions", "skip stories this week");
     expect(again.kip_decisions?.[0]?.text).toBe("skip stories this week");
     expect(again.kip_preferences).toHaveLength(1);
+  });
+
+  it("splits compound text into atomic preference entries", () => {
+    const merged = mergeKipMemoryFact(
+      {},
+      "kip_preferences",
+      "Niche: founder ops and AI workflows. Never write about cafes or coffee. Prefer carousels over single image posts.",
+      "2026-09-18T00:00:00.000Z",
+    );
+    expect(merged.kip_preferences!.length).toBeGreaterThanOrEqual(3);
+    expect(merged.kip_preferences!.some((e) => /cafes or coffee/i.test(e.text))).toBe(true);
+  });
+
+  it("dedupes exact re-statements", () => {
+    let facts = mergeKipMemoryFact({}, "kip_preferences", "Never write about cafes or coffee.");
+    facts = mergeKipMemoryFact(facts, "kip_preferences", "Never write about cafes or coffee.");
+    expect(facts.kip_preferences).toHaveLength(1);
   });
 
   it("clamps text and bounds list length", () => {
