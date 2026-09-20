@@ -913,6 +913,53 @@ export async function reclaimStaleKickoffs(opts?: {
   return deliverUnstreamed(results, opts);
 }
 
+/**
+ * Re-queue abandoned `running` kickoffs so a fresh Lab isolate can finish them
+ * after the primary after() was killed at maxDuration. Unlike reclaim (which
+ * fails + SMS), this preserves the brief and lets drain claim again.
+ */
+export async function requeueStaleKickoffs(opts?: {
+  now?: Date;
+  staleMs?: number;
+  brandId?: string;
+}): Promise<string[]> {
+  const staleMs = opts?.staleMs ?? STALE_RUNNING_KICKOFF_MS;
+  const cutoff = new Date((opts?.now ?? new Date()).getTime() - staleMs).toISOString();
+  const rows = opts?.brandId
+    ? await query<{ id: string }>(
+        `update kip_kickoffs
+            set status = 'queued',
+                started_at = null,
+                error = left(concat_ws('; ', nullif(error, ''), 'requeued: abandoned running kickoff'), 500),
+                updated_at = now()
+          where status = 'running'
+            and brand_id = $2
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning id`,
+        [cutoff, opts.brandId],
+      )
+    : await query<{ id: string }>(
+        `update kip_kickoffs
+            set status = 'queued',
+                started_at = null,
+                error = left(concat_ws('; ', nullif(error, ''), 'requeued: abandoned running kickoff'), 500),
+                updated_at = now()
+          where status = 'running'
+            and started_at is not null
+            and greatest(started_at, updated_at) < $1::timestamptz
+          returning id`,
+        [cutoff],
+      );
+  if (rows.length) {
+    console.warn("[kickoffs] requeued stale running kickoffs", {
+      count: rows.length,
+      ids: rows.map((r) => r.id),
+    });
+  }
+  return rows.map((r) => r.id);
+}
+
 /** Destinations from kickoff payload + any platforms still named in the brief. */
 function destinationsFromPayload(
   payload: Record<string, unknown>,

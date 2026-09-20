@@ -312,6 +312,12 @@ export async function generatePhotoImage(
     brief?: string;
     /** Pass the brand so the generation is counted against AI_WEEKLY_SPEND_CAP_USD. */
     brand?: SpendBrand | null;
+    /**
+     * Pin the fal still chain (e.g. `["nano_banana"]`) so Lab photo carousels
+     * don't cascade into flux_dev after an empty nano result and blow the 300s
+     * after() budget.
+     */
+    stillIds?: string[];
   },
 ): Promise<Buffer | null> {
   routeImageJob("photo_generate");
@@ -329,7 +335,7 @@ export async function generatePhotoImage(
 
   const scene = brand ? creativeSceneConstraint(brand) : "";
   const fullPrompt = [prompt, scene].filter(Boolean).join(". ");
-  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief);
+  const buf = await generatePhotoImageInner(fullPrompt, ratio, quality, opts?.brief, opts?.stillIds);
   if (buf && brand) await recordAiSpend(brand.id, "image").catch(() => {});
   return buf;
 }
@@ -339,13 +345,14 @@ async function generatePhotoImageInner(
   ratio: string,
   quality: CreativeQuality = "standard",
   brief?: string,
+  stillIds?: string[],
 ): Promise<Buffer | null> {
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
     const { resolveStillChain } = await import("./ugc/modelRouter.js");
     const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
     if (falConfigured()) {
-      const chain = resolveStillChain(stillChainForQuality(quality, brief));
+      const chain = resolveStillChain(stillIds?.length ? stillIds : stillChainForQuality(quality, brief));
       const routed = await falGenerateImageRouted({
         prompt,
         aspectRatio: ratio,

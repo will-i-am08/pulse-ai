@@ -30,4 +30,9 @@ describe("generatePhotoTextCarousel Lab budget", () => {
       /if \(index === 0 && img && !opts\?\.strongerPhoto\)/,
     );
   });
+
+  it("pins nano_banana and caps QA recomposes for Lab budget", () => {
+    expect(photo).toMatch(/stillIds:\s*\["nano_banana"\]/);
+    expect(photo).toMatch(/maxRecomposes:\s*1/);
+  });
 });
