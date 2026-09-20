@@ -7,6 +7,14 @@ import { LandingComposer } from './components/LandingComposer';
 import { ThreadDemo } from './components/ThreadDemo';
 import { LandingFaq } from './components/LandingFaq';
 import { HeroTextKip } from './components/HeroTextKip';
+import { LANDING_FAQS } from '../lib/faq';
+import {
+  SITE_DESCRIPTION,
+  breadcrumbSchema,
+  faqSchema,
+  jsonLd,
+  softwareApplicationSchema,
+} from '../lib/seo';
 import {
   Underline,
   Ticks,
@@ -34,8 +42,14 @@ import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'Kip | Text a photo. It’s posted.',
-  description:
-    'Kip runs your organic social. Text a photo, it writes the caption in your voice, you say yes, and it posts to Instagram, Facebook, X and Threads. Nothing posts without your yes.',
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    title: 'Kip | Text a photo. It’s posted.',
+    description: SITE_DESCRIPTION,
+    url: '/',
+  },
 };
 
 const CROISSANT = '/brand/thread-photo.jpg';
@@ -45,6 +59,19 @@ export default function LandingPage() {
 
   return (
     <main className={styles.page}>
+      {/* Page-level structured data: the product itself, the FAQ, and a
+          breadcrumb. This is the core GEO payload for AI answer engines. */}
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{
+          __html: jsonLd([
+            softwareApplicationSchema(),
+            faqSchema(LANDING_FAQS),
+            breadcrumbSchema([{ name: 'Home', path: '/' }]),
+          ]),
+        }}
+      />
       <LandingEffects
         navId="lp-nav"
         navSolidClass={styles.navSolid ?? 'navSolid'}
