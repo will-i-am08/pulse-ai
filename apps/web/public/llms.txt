@@ -1,0 +1,44 @@
+# Kip
+
+> Kip runs your organic social media. You text a photo to Kip; it writes the caption in your brand voice; you reply "yes"; it posts to Instagram, Facebook, X and Threads. Nothing posts without your approval unless you turn on Autopilot.
+
+Kip is a product of Pulse Social Media. It is built for small shops, creators and founders who want to stay consistent on social media without hiring a social media manager or wrestling with a scheduling dashboard. The whole workflow lives in an SMS text thread.
+
+## What Kip does
+
+- Writes captions in your voice from a photo you text in.
+- Publishes organic posts to Instagram, Facebook, X and Threads (organic only — no paid ads or media buying).
+- Waits for your "yes" before every post by default; optional Autopilot posts for you after a heads-up.
+- Runs a weekly Monday check-in, a Friday recap, and a quiet reminder if you haven't sent a photo in 10 days.
+- Keeps an editable brand memory so the voice stays consistent.
+- Encrypts data in transit and at rest; never sells data or uses it to train models.
+
+## What Kip does not do
+
+- No paid advertising or media buying.
+- No on-site photo shoots or video production.
+- No strategy decks or stand-up meetings.
+
+## Pricing
+
+- Plans start at USD $79/month, up to around $149/month for higher tiers.
+- Positioned between a typical scheduling tool ($15–$100+/month, but you still write the posts) and hiring a social media manager ($2,000–$5,000/month).
+- Cancel anytime on monthly plans. First-week refund if it isn't useful.
+
+## Getting started
+
+- Setup takes about ten minutes: connect your channels, text a photo, approve the first caption.
+- Most people are live the same day.
+
+## Links
+
+- Home: /
+- Pricing: /#pricing
+- FAQ: /#faq
+- Notes (blog): /blog
+- Privacy: /privacy
+- Terms: /terms
+
+## Contact
+
+- Email: will@jmcalder.com

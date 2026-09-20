@@ -1,61 +1,60 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { BLOG_POSTS, BLOG_POSTS_BY_SLUG } from '../../../lib/blog';
+import { articleSchema, breadcrumbSchema, jsonLd } from '../../../lib/seo';
 import styles from '../../page.module.css';
-
-const POSTS: Record<
-  string,
-  { title: string; date: string; paragraphs: string[] }
-> = {
-  'text-a-photo': {
-    title: 'Why Kip starts with a text thread',
-    date: 'Sep 2026',
-    paragraphs: [
-      'Most social tools ask you to open a dashboard, drag assets into a calendar, and remember to come back. Shop owners don’t forget social because they’re lazy — they forget because the work is on the floor, and the phone is already in their pocket.',
-      'Kip lives in that pocket. You text a photo. Kip writes the caption in your voice. You say yes. It posts. The loop is short enough to finish between customers.',
-      'Dashboards still exist if you want them. The point is you shouldn’t need one to stay consistent.',
-    ],
-  },
-  'organic-only': {
-    title: 'Organic only — on purpose',
-    date: 'Sep 2026',
-    paragraphs: [
-      'Paid ads are a different sport: budgets, creative tests, attribution arguments. Useful later. Not the first problem for a bakery that hasn’t posted in three weeks.',
-      'Kip stays in organic — Instagram, Facebook, X, Threads — so the product stays sharp. Captions, calendar, nudges, recaps, autopilot when you want evenings back.',
-      'If you need media buying, hire for that. Kip’s job is showing up every week without sounding like a robot or a retainer.',
-    ],
-  },
-  'vs-hiring': {
-    title: 'Kip vs hiring a social media manager',
-    date: 'Sep 2026',
-    paragraphs: [
-      'A good social media manager is worth real money: voice, calendar, approvals, the weekly rhythm. They also cost $2,000–$5,000 a month, keep office hours, and often want decks.',
-      'Kip covers the organic half of that job from $79 a month — captions, channels, calendar, yes-before-post. You send the photos. No on-site shoots. No paid ads. No stand-ups.',
-      'If you need custom creative production and strategy workshops, hire a human. If you need the posting job done without another salary, text Kip.',
-    ],
-  },
-};
 
 type Props = { params: Promise<{ slug: string }> };
 
-export async function generateStaticParams() {
-  return Object.keys(POSTS).map((slug) => ({ slug }));
+export function generateStaticParams() {
+  return BLOG_POSTS.map((post) => ({ slug: post.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const post = POSTS[slug];
-  if (!post) return { title: 'Notes | Kip' };
-  return { title: `${post.title} | Kip`, description: post.paragraphs[0] };
+  const post = BLOG_POSTS_BY_SLUG[slug];
+  if (!post) return { title: 'Notes' };
+  return {
+    title: post.title,
+    description: post.blurb,
+    alternates: { canonical: `/blog/${slug}` },
+    openGraph: {
+      type: 'article',
+      title: `${post.title} | Kip`,
+      description: post.blurb,
+      url: `/blog/${slug}`,
+      publishedTime: post.isoDate,
+    },
+  };
 }
 
 export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
-  const post = POSTS[slug];
+  const post = BLOG_POSTS_BY_SLUG[slug];
   if (!post) notFound();
 
   return (
     <main className={styles.notesPage}>
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{
+          __html: jsonLd([
+            articleSchema({
+              title: post.title,
+              description: post.blurb,
+              path: `/blog/${slug}`,
+              datePublished: post.isoDate,
+            }),
+            breadcrumbSchema([
+              { name: 'Home', path: '/' },
+              { name: 'Notes', path: '/blog' },
+              { name: post.title, path: `/blog/${slug}` },
+            ]),
+          ]),
+        }}
+      />
       <header className={styles.notesTop}>
         <Link className={styles.notesBrand} href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
