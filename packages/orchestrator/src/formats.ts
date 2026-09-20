@@ -802,24 +802,9 @@ export async function generatePhotoTextCarousel(
       brief: topic || undefined,
       brand,
     });
-    if (index === 0 && img && !opts?.strongerPhoto) {
-      const retryPrompt = [
-        slide.photoPrompt,
-        FEED_PHOTO_REALISM_CUE,
-        dnaBit,
-        "hero composition, sharp subject, clean background, premium editorial still",
-        noFace,
-        creativeSceneConstraint(brand),
-      ]
-        .filter(Boolean)
-        .join(". ");
-      const retry = await generatePhotoImage(retryPrompt, "1:1", {
-        quality: photoQuality,
-        brief: topic || undefined,
-        brand,
-      });
-      if (retry) img = retry;
-    }
+    // Skip automatic slide-0 double-render on the first pass — Lab's after()
+    // budget is 300s and sequential fal×2 on slide 0 alone burned the wall
+    // before later slides finished. QA recompose still passes strongerPhoto.
     if (!img) return null;
     const mediaId = randomUUID();
     await query(
@@ -856,16 +841,16 @@ export async function generatePhotoTextCarousel(
     return tiled ?? mediaId;
   }
 
-  const mediaIds: string[] = [];
-  for (let i = 0; i < slides.length; i++) {
-    const id = await renderOneSlide(slides[i]!, i);
-    if (!id) {
-      console.error("generatePhotoTextCarousel: photo generation failed for a slide");
-      return null;
-    }
-    mediaIds.push(id);
+  const rendered = await mapWithConcurrency(
+    slides,
+    SLIDE_RENDER_CONCURRENCY,
+    async (slide, i) => renderOneSlide(slide, i),
+  );
+  if (rendered.some((id) => !id) || rendered.length < 3) {
+    console.error("generatePhotoTextCarousel: photo generation failed for a slide");
+    return null;
   }
-  if (mediaIds.length < 3) return null;
+  const mediaIds = rendered as string[];
 
   const slideTexts = slides.map((s) =>
     [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
@@ -905,11 +890,17 @@ export async function generatePhotoTextCarousel(
             slide.ideaBlurb = slide.ideaBlurb.slice(0, attempt >= 3 ? 70 : 110);
           }
         }
-        const rebuilt = await renderOneSlide(slide, idx, {
+      }
+      const rebuiltIds = await mapWithConcurrency(targets, SLIDE_RENDER_CONCURRENCY, async (idx) => {
+        const slide = nextSlides[idx]!;
+        return renderOneSlide(slide, idx, {
           strongerPhoto: true,
           shortenOverlay: wantShorter || attempt >= 2,
         });
-        if (rebuilt) next[idx] = rebuilt;
+      });
+      for (let t = 0; t < targets.length; t++) {
+        const rebuilt = rebuiltIds[t];
+        if (rebuilt) next[targets[t]!] = rebuilt;
       }
       slides.splice(0, slides.length, ...nextSlides);
       const nextTexts = slides.map((s) =>
@@ -928,18 +919,22 @@ export async function generatePhotoTextCarousel(
       "generatePhotoTextCarousel: QA still failing after recomposes — full rebuild",
       qa.qa.reasons,
     );
-    const rebuiltIds: string[] = [];
     for (let idx = 0; idx < slides.length; idx++) {
       const slide = slides[idx]!;
       slide.photoPrompt = mutatePhotoPrompt(slide.photoPrompt, 9, idx);
       slide.overlay = formatOverlayHeadline(slide.overlay);
       if (slide.ideaBlurb) slide.ideaBlurb = slide.ideaBlurb.slice(0, 90);
-      const id = await renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true });
-      if (!id) {
-        return { ok: false, qaSms: designQaFailureSms(brand.name) };
-      }
-      rebuiltIds.push(id);
     }
+    const rebuiltRaw = await mapWithConcurrency(
+      slides,
+      SLIDE_RENDER_CONCURRENCY,
+      async (slide, idx) =>
+        renderOneSlide(slide, idx, { strongerPhoto: true, shortenOverlay: true }),
+    );
+    if (rebuiltRaw.some((id) => !id)) {
+      return { ok: false, qaSms: designQaFailureSms(brand.name) };
+    }
+    const rebuiltIds = rebuiltRaw as string[];
     const finalTexts = slides.map((s) =>
       [s.overlay, s.ideaBlurb].filter(Boolean).join(" — "),
     );
