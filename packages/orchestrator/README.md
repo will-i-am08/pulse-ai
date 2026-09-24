@@ -18,8 +18,8 @@ Workstream B. Implements the frozen `@pulse/orchestrator` interface from
   reasoning}`); malformed output or a failed call is treated as low
   confidence `other`, never guessed.
 - **`src/processInbound.ts`** — dispatches on the classification. Confidence
-  below `0.55` short-circuits to a clarification reply before any DB write
-  beyond persisting the classification itself.
+  below `0.55` is a leftover turn (`leftoverTurn`: general agent when flagged,
+  otherwise converse) — never a yes/change/no command list or a format menu.
 - **`src/draftCaption.ts`** — loads brand + strategy notes + media rows,
   builds a system prompt encoding tone/dos/donts/banned words/emoji &
   hashtag policy/learned notes/examples, and returns a caption plus a

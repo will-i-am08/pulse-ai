@@ -133,4 +133,13 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/never stall asking whether to upload vs source/i);
     expect(prompt).toMatch(/Photo default/i);
   });
+
+  it("treats leftover turns as the start of a text, never a command menu", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/Leftover turns:/);
+    expect(prompt).toMatch(/hello is never an approval/i);
+    expect(prompt).toMatch(/Never dump a yes \/ change \/ no command list/i);
+    expect(prompt).toMatch(/Never list formats as a menu/i);
+    expect(prompt).toMatch(/Do not spend tool calls on a bare hi/i);
+  });
 });

@@ -5,7 +5,7 @@ vi.mock("../llm.js", () => ({
 }));
 
 import { callLLM } from "../llm.js";
-import { ruleBasedClassify, classifyInbound } from "../classify.js";
+import { ruleBasedClassify, classifyInbound, looksLikeApproval } from "../classify.js";
 
 const mockedCallLLM = callLLM as unknown as ReturnType<typeof vi.fn>;
 
@@ -14,6 +14,18 @@ beforeEach(() => {
   mockedCallLLM.mockImplementation(async () =>
     JSON.stringify({ classification: "instruction", confidence: 0.9 }),
   );
+});
+
+describe("looksLikeApproval", () => {
+  it("is the hard yes-gate, not a greeting or a fuzzy edit", () => {
+    expect(looksLikeApproval("yes")).toBe(true);
+    expect(looksLikeApproval("Yep!")).toBe(true);
+    expect(looksLikeApproval("looks good")).toBe(true);
+    expect(looksLikeApproval("hey")).toBe(false);
+    expect(looksLikeApproval("hi")).toBe(false);
+    expect(looksLikeApproval("idk maybe warmer")).toBe(false);
+    expect(looksLikeApproval("X only")).toBe(false);
+  });
 });
 
 describe("ruleBasedClassify", () => {

@@ -294,6 +294,25 @@ describe("approval fan-out", () => {
     expect(insertParams[2]).toEqual([PHOTO]);
   });
 
+  it("writes an approval_log approved row when the claim wins", async () => {
+    winsTheClaim();
+    await approveSelectedDestinations({
+      post: fakePost({ destinations: ["instagram"], captions: buildPlatformCaptions("ok") }),
+      brand: fakeBrand(),
+      actor: "owner",
+      postNow: false,
+    });
+    const logCall = mockedQuery.mock.calls.find((c) => String(c[0]).includes("insert into approval_log"));
+    expect(logCall).toBeTruthy();
+    expect(String(logCall![0])).toMatch(/'approved'/);
+    expect(logCall![1]).toEqual([
+      "post-1",
+      "brand-1",
+      "owner",
+      expect.stringMatching(/Approved via inbound/i),
+    ]);
+  });
+
   it("X-only approval never inserts a Threads sibling", async () => {
     winsTheClaim();
     await approveSelectedDestinations({

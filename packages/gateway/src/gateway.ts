@@ -4,8 +4,6 @@ import {
   finishOnboarding,
   craftHumanAck,
   stripLeadingAck,
-  looksLikeAffirmation,
-  looksLikeGreeting,
   looksLikeCalendarAsk,
   looksLikePhotoBackgroundAsk,
   looksLikeSlowSmsWork,
@@ -95,21 +93,18 @@ export function looksLikeCompleteSmsTurn(text: string): boolean {
 }
 
 /**
- * Whole-turn hi / thanks / calendar / progress / complete ask — skip the
- * coalesce sleep. Keep the wait for split thoughts, MMS, and "with this photo".
+ * Skip the coalesce sleep only for clearly finished turns (progress pings,
+ * punctuated asks, calendar lookups). A lone "hey" / thanks must wait — the
+ * next bubble may be "scrap that" / a brief, and greeting-classifying the
+ * first SMS as done drops it.
+ * Keep the wait for split thoughts, MMS, and "with this photo".
  */
 export function shouldSkipInboundBurst(opts: { text: string; hasMedia: boolean }): boolean {
   if (opts.hasMedia) return false;
   const t = (opts.text ?? "").trim();
   if (!t) return false;
   if (refersToAttachedMedia(t)) return false;
-  return (
-    looksLikeGreeting(t) ||
-    looksLikeAffirmation(t) ||
-    looksLikeCalendarAsk(t) ||
-    looksLikeProgressCheck(t) ||
-    looksLikeCompleteSmsTurn(t)
-  );
+  return looksLikeCalendarAsk(t) || looksLikeProgressCheck(t) || looksLikeCompleteSmsTurn(t);
 }
 
 /** Owner asking how work-in-progress is going — answer directly, don't fake-wrap. */

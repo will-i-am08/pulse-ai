@@ -269,6 +269,22 @@ describe("generalAgentEligible", () => {
         ownerMessage: "remove the text",
       }),
     ).toBe(true);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: true,
+        ownerMessage: "hey",
+      }),
+    ).toBe(true);
+    expect(
+      generalAgentEligible({
+        flag: true,
+        hasMedia: false,
+        hasPending: true,
+        ownerMessage: "idk maybe warmer",
+      }),
+    ).toBe(true);
   });
 
   it("is false for high-confidence approval when a draft is pending", () => {
@@ -329,39 +345,41 @@ describe("generalAgentEligible", () => {
 });
 
 describe("processInbound general-agent insert", () => {
-  it("sits after digest and calendar, after greetings, after kickoff", () => {
+  it("sits after overlay-strip and kickoff; leftover turns use leftoverTurn", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
     );
-    const digestIdx = src.indexOf("looksLikeDigestRequest(message.body)");
-    const calendarIdx = src.indexOf("looksLikeCalendarAsk(message.body)");
-    const ideasIdx = src.indexOf("looksLikeIdeasAsk(message.body)");
-    const recallIdx = src.indexOf("looksLikeBrandRecallAsk(message.body)");
-    const greetingIdx = src.indexOf("looksLikeGreeting(message.body)");
+    expect(src).not.toMatch(/looksLikeDigestRequest\(message\.body\)/);
+    expect(src).not.toMatch(/looksLikeCalendarAsk\(message\.body\)/);
+    expect(src).not.toMatch(/looksLikeIdeasAsk\(message\.body\)/);
+    expect(src).not.toMatch(/looksLikeBrandRecallAsk\(message\.body\)/);
+    expect(src).not.toMatch(/loadCalendarSms|loadIdeasSms|loadBrandRecallSms|buildPerformanceDigest/);
+    const leftoverIdx = src.indexOf("async function leftoverTurn");
+    expect(leftoverIdx).toBeGreaterThan(-1);
+    const greetingIdx = src.indexOf("looksLikeGreeting(message.body) || looksLikeAffirmation");
+    expect(greetingIdx).toBeGreaterThan(leftoverIdx);
+    expect(src.slice(greetingIdx, greetingIdx + 900)).toMatch(/leftoverTurn\(/);
+    expect(src.slice(greetingIdx, greetingIdx + 900)).not.toMatch(/quickSocialReply/);
     // First kickoff intercept (before general agent), not the later classic fallback.
     const kickoffBeforeAgent = src.indexOf(
       "Deterministic kickoff before the general agent",
     );
-    const agentIdx = src.indexOf("generalAgentEligible({");
-    expect(digestIdx).toBeGreaterThan(-1);
-    expect(calendarIdx).toBeGreaterThan(digestIdx);
-    expect(recallIdx).toBeGreaterThan(calendarIdx);
-    expect(ideasIdx).toBeGreaterThan(recallIdx);
-    expect(greetingIdx).toBeGreaterThan(ideasIdx);
     expect(kickoffBeforeAgent).toBeGreaterThan(greetingIdx);
+    const agentIdx = src.indexOf("generalAgentEligible({", kickoffBeforeAgent);
     expect(agentIdx).toBeGreaterThan(kickoffBeforeAgent);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);
     const converseFn = src.slice(src.indexOf("async function converse"), src.indexOf("async function reengage"));
-    expect(converseFn.indexOf("quickSocialReply")).toBeGreaterThan(-1);
-    expect(converseFn.indexOf("quickSocialReply")).toBeLessThan(converseFn.indexOf("buildConversationContext"));
+    expect(converseFn.indexOf("quickSocialReply")).toBe(-1);
+    expect(converseFn).toMatch(/pendingDraft/);
+    expect(converseFn).toMatch(/never dump reply yes/);
     const reFn = src.slice(src.indexOf("async function reengage"), src.indexOf("export type InboundResult"));
-    expect(reFn.indexOf("quickReengageReply")).toBeGreaterThan(-1);
-    expect(reFn.indexOf("quickReengageReply")).toBeLessThan(reFn.indexOf("buildConversationContext"));
+    expect(reFn.indexOf("quickReengageReply")).toBe(-1);
     expect(reFn).toMatch(/summarize:\s*false/);
     expect(reFn).toMatch(/think:\s*false/);
+    expect(reFn).toMatch(/never dump reply yes \/ change \/ no/);
   });
 
   it("question path threads operatorAlert and does not double-enqueue when the general agent is on", () => {

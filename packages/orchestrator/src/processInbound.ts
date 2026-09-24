@@ -140,12 +140,8 @@ import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
 import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
-import { looksLikeCalendarAsk, loadCalendarSms, looksLikeIdeasAsk, loadIdeasSms, looksLikeBrandRecallAsk, loadBrandRecallSms } from "./agentTools.js";
-import { quickReengageReply, quickSocialReply } from "./socialReply.js";
 import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
-import { buildPerformanceDigest } from "./performanceDigest.js";
 import {
-  looksLikeDigestRequest,
   looksLikeMakeMore,
   getPerfPending,
   applyMakeMoreOfThese,
@@ -543,23 +539,35 @@ async function trySmartPlannerKickoff(
 }
 
 /**
- * Chat back like a switched-on human — for greetings, thanks, and small talk,
- * or when a message carries no actionable intent. Warm and brief; never recites
- * a feature menu and never says "I'm not sure what you want".
+ * Chat back like a switched-on human — leftover turns the hard gates didn't
+ * claim (greetings, fuzzy replies, unmatched instructions). Never recites a
+ * feature menu or a yes/change/no command list.
  */
-async function converse(brand: Brand, message: string): Promise<string> {
-  const quick = quickSocialReply(brand, message);
-  if (quick) return quick;
+async function converse(
+  brand: Brand,
+  message: string,
+  opts?: { pendingDraft?: boolean },
+): Promise<string> {
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id, { summarize: false });
+  const pendingLines = opts?.pendingDraft
+    ? [
+        "A draft is waiting on them. A hello or fuzzy reply is not an approval and not a discard.",
+        "If they only said hi, greet back inside the real reply and you may note the draft is still there.",
+        "If the message looks like a fuzzy edit, ask one specific question — never dump reply yes / tell me a change / no.",
+      ]
+    : [
+        "If they only said hi, greet back inside the real reply if you need to. A hello is the start of a text, not a separate small-talk pipeline.",
+      ];
   return speakSMS({
     brand,
     mode: "converse",
     modeLines: [
-      "They just sent a casual, conversational message — a greeting, a thanks, or small talk.",
+      "They sent a leftover turn — a greeting, thanks, fuzzy note, or something that isn't a hard gate.",
       "Reply like their social media manager texting back: warm, switched-on, one or two sentences. No corporate tone, no bullet lists, no menus of features.",
-      "Match their energy. If they only said hi, say hi back warmly, and only if it feels natural, add that you're around whenever they want to post something.",
-      "Never say you're unsure what they want, and never ask them to clarify a friendly hello.",
+      "Never list formats as a menu. Never tell them to pick a post, a carousel, or send a photo as a feature list. Infer, start, or ask one real question.",
+      "Never say you're unsure what they want as a command list.",
+      ...pendingLines,
       profile.tone.length ? `Lean on this brand's tone where it fits: ${profile.tone.join(", ")}.` : "",
       `Emoji policy: ${profile.emoji_policy}.`,
     ].filter(Boolean) as string[],
@@ -579,8 +587,6 @@ async function converse(brand: Brand, message: string): Promise<string> {
  * Never assumes seamless continuity, never recites a feature menu.
  */
 async function reengage(brand: Brand, message: string, phrase: string, actionable: Actionable | null): Promise<string> {
-  const quick = quickReengageReply(brand, message, phrase, actionable);
-  if (quick) return quick;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const context = await buildConversationContext(brand.id, { summarize: false });
   // A named event in the owner's world that just passed and we've not asked
@@ -604,7 +610,7 @@ async function reengage(brand: Brand, message: string, phrase: string, actionabl
       actionable
         ? `Something was left unfinished: ${actionable.summary}. Warmly welcome them back, note it's been ${phrase}, and offer to pick that up now. Or start fresh if they'd rather.`
         : `Nothing is pending. Warmly welcome them back, note it's been ${phrase}, and lightly offer to get something out whenever they're ready.`,
-      "One or two sentences, natural SMS tone. No bullet lists, no menus, never say you're unsure what they want.",
+      "One or two sentences, natural SMS tone. No bullet lists, no menus, never dump reply yes / change / no, never say you're unsure what they want.",
       profile.tone.length ? `Lean on this brand's tone where it fits: ${profile.tone.join(", ")}.` : "",
       `Emoji policy: ${profile.emoji_policy}.`,
     ].filter(Boolean) as string[],
@@ -626,6 +632,42 @@ export type InboundResult = {
   /** Operator-only escalate body. Never included in owner SMS. */
   operatorAlert?: string;
 };
+
+/**
+ * Leftover owner SMS the hard gates didn't claim: greetings, calendar/ideas/
+ * digest/recall asks, fuzzy replies, unmatched instructions. When the general
+ * agent is on, it owns the turn. When it's off, converse — never a yes/change/no
+ * script or a format menu.
+ */
+async function leftoverTurn(
+  brand: Brand,
+  ownerMessage: string,
+  opts: {
+    pending: Post | null;
+    hasMedia: boolean;
+    sourceMessageId?: string | null;
+  },
+): Promise<InboundResult> {
+  if (
+    generalAgentEligible({
+      flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
+      hasMedia: opts.hasMedia,
+      hasPending: opts.pending != null,
+      ownerMessage,
+    })
+  ) {
+    const out = await runGeneralAgent({
+      brand,
+      ownerMessage,
+      sourceMessageId: opts.sourceMessageId,
+      mediaIds: [],
+    });
+    return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
+  }
+  const chat = await converse(brand, ownerMessage, { pendingDraft: opts.pending != null });
+  await maybeEnqueueFromKipCommitIfAsked(brand, ownerMessage, chat, opts.sourceMessageId ?? null);
+  return { reply: chat };
+}
 
 /**
  * Decide + act on an inbound message. Frozen signature per
@@ -1326,42 +1368,12 @@ async function routeInbound(
     if (CONNECT_LINKEDIN_RE.test(message.body)) return { reply: connectLinkMessage(brand, "linkedin") };
     if (CONNECT_TIKTOK_RE.test(message.body)) return { reply: connectLinkMessage(brand, "tiktok") };
     if (CONNECT_META_RE.test(message.body)) return { reply: connectLinkMessage(brand, "meta") };
-    if (looksLikeDigestRequest(message.body)) {
-      try { return { reply: await buildPerformanceDigest(brand) }; }
-      catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        return { reply: `Couldn't build your performance recap just now (${detail}). Try again in a bit.` };
-      }
-    }
-    if (looksLikeCalendarAsk(message.body)) {
-      try { return { reply: await loadCalendarSms(brand) }; }
-      catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        return { reply: `Couldn't check the calendar just now (${detail}). Try again in a bit.` };
-      }
-    }
-    if (looksLikeBrandRecallAsk(message.body)) {
-      try { return { reply: await loadBrandRecallSms(brand) }; }
-      catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        return { reply: `Couldn't pull brand memory just now (${detail}). Try again in a bit.` };
-      }
-    }
-    if (looksLikeIdeasAsk(message.body)) {
-      try { return { reply: await loadIdeasSms(brand, message.body) }; }
-      catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        return { reply: `Couldn't pull ideas just now (${detail}). Try again in a bit.` };
-      }
-    }
   }
 
   // A plain greeting or bit of small talk ("hi", "thanks!", "how's it going") —
-  // with no photo — just gets a warm human reply. This runs before the general
-  // agent so a friendly hello never pays retrieve + a 4-round tool loop. It fires
-  // even when a draft is pending: a greeting is never an approval, so
-  // looksLikeGreeting only matches unambiguous pleasantries (never "yes"/"ok"),
-  // and the pending draft is left as-is.
+  // leftoverTurn, not a canned Hey-Bill pipeline. looksLikeGreeting never
+  // matches yes/ok, so a hello is never an approval. When the agent is on it
+  // sees the pending draft; when it's off, converse does.
   if (
     message.body &&
     newMedia.length === 0 &&
@@ -1370,11 +1382,11 @@ async function routeInbound(
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body, gap.phrase, await mostRecentActionable(brand.id)) };
     }
-    {
-      const chat = await converse(brand, message.body);
-      await maybeEnqueueFromKipCommitIfAsked(brand, message.body, chat, message.id);
-      return { reply: chat };
-    }
+    return leftoverTurn(brand, message.body, {
+      pending,
+      hasMedia: false,
+      sourceMessageId: message.id,
+    });
   }
 
   // "Remove the text" / strip overlay on the pending draft — hard gate before
@@ -1407,9 +1419,10 @@ async function routeInbound(
 
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads/digest/calendar), greetings, and kickoff. Owns draft
-  // create and pending-draft mutation via tools. Attached media and high-confidence
-  // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
+  // connect/disconnect, ads), overlay-strip, and kickoff. Greetings, calendar,
+  // ideas, digest, and fuzzy leftover turns reach this intercept (or leftoverTurn,
+  // which calls the same agent). Attached media and high-confidence approval
+  // ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
   if (
     generalAgentEligible({
       flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
@@ -1442,12 +1455,9 @@ async function routeInbound(
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body ?? "", gap.phrase, await mostRecentActionable(brand.id)) };
     }
-    // Mid-conversation: with a draft awaiting the client, an unclear message is
-    // most likely a fuzzy edit or approval — ask to clarify rather than
-    // guess-and-act (BUILD_CONTRACTS). BUT: if the last outbound was the format
-    // menu ("Tell me what to make…") or wasn't a draft preview at all, stale
-    // pending_approval rows must not trap a format reply / creative ask into
-    // "Reply yes to approve" with no draft shown.
+    // Stale pending_approval + a format/kickoff reply still enqueue. Fuzzy
+    // leftover on a real draft preview goes to leftoverTurn — never a
+    // yes/change/no command list.
     if (pending) {
       const lastOut = await latestOutboundBody(brand.id);
       const awaitingDraftDecision =
@@ -1462,21 +1472,13 @@ async function routeInbound(
           const kicked = await enqueueKickoffFromUserMessage(brand, body, message.id);
           if (kicked?.ackSms) return { reply: kicked.ackSms };
         }
-        return { reply: await converse(brand, body) };
       }
-      return {
-        reply:
-          'Not quite sure what you\'d like there. Reply "yes" to approve, tell me what to change, or "no" to discard.',
-      };
     }
-    const draftedReply = await latestDraftedInteraction(brand.id);
-    if (draftedReply) {
-      return {
-        reply:
-          'Not quite sure — reply "approve that reply" or "send" to post, "send this instead: …", tell me a change, or ignore to leave it.',
-      };
-    }
-    return { reply: await converse(brand, message.body ?? "") };
+    return leftoverTurn(brand, message.body ?? "", {
+      pending,
+      hasMedia: newMedia.length > 0,
+      sourceMessageId: message.id,
+    });
   }
 
   // Deep research verbs — niche / customers / competitors / ads → structured brief + snapshot.
@@ -2378,7 +2380,7 @@ async function routeInbound(
         if (configReply) return { reply: configReply };
       }
       // Creative / format-menu replies that slipped past kickoff detection —
-      // enqueue instead of the dead-end "Tell me what to make" menu.
+      // enqueue instead of a leftover chat that never starts the work.
       if (
         message.body &&
         (looksLikeFormatMenuReply(message.body) ||
@@ -2390,16 +2392,17 @@ async function routeInbound(
       }
 
       // Ambiguous multi-step instruction — thin planner (flagged) before the
-      // generic fallback. Specific handlers above always win first.
+      // leftover turn. Specific handlers above always win first.
       if (message.body && newMedia.length === 0) {
         const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
         if (planned) return planned;
       }
 
-      return {
-        reply:
-          "Got it. Tell me what to make — a post, a carousel, or send a photo with a quick brief — and I'll get on it.",
-      };
+      return leftoverTurn(brand, message.body ?? "", {
+        pending,
+        hasMedia: newMedia.length > 0,
+        sourceMessageId: message.id,
+      });
     }
   }
 }

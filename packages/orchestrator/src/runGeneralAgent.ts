@@ -50,9 +50,10 @@ export function generalAgentFallbackSms(ownerMessage: string | null | undefined)
 /**
  * True when the general-agent intercept may run: flag on, no attached media.
  * Pending drafts are allowed — the agent mutates them via tools.
+ * Greetings, calendar, ideas, digest, and fuzzy leftover turns are eligible.
  * High-confidence approval ("yes") stays on the hard-gate router.
- * Attached media stays on the photo/video pipeline.
- * Fresh kickoff-shaped asks stay on the classic enqueue path (not scout_ideas).
+ * Attached media stays on the photo/video pipeline (Phase C).
+ * Fresh kickoff-shaped asks stay on the classic enqueue path (Phase B).
  */
 export function generalAgentEligible(opts: {
   flag: boolean;
