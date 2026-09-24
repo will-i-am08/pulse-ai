@@ -103,12 +103,7 @@ import {
   refersToAttachedMedia,
   looksLikeUseThisBrief,
   looksLikeFormatMenuReply,
-  looksLikeFormatMenuOutbound,
-  looksLikeDraftPreviewOutbound,
-  inferDraftCount,
-  textWantsCarousel,
 } from "./kickoffs.js";
-import { looksLikeMultiStepAsk, planSmartTurn } from "./smartPlan.js";
 import { DRAFT_FILLER_RE } from "./draftAsk.js";
 import {
   looksLikePhotoBackgroundAsk,
@@ -138,7 +133,6 @@ import { readEvents } from "./eventMemory.js";
 import { personaLines, connectionSummary } from "./persona.js";
 import { callLLM, stripMarkdown } from "./llm.js";
 import { speakSMS } from "./speak/index.js";
-import { answerWithTools } from "./smartAnswer.js";
 import { generalAgentEligible, runGeneralAgent } from "./runGeneralAgent.js";
 import { formatScheduledSlot as formatSlot, formatGoingOutWhen } from "./smsTime.js";
 import {
@@ -482,9 +476,6 @@ async function answerQuestion(
       mediaIds: [],
     });
   }
-  if (getServerEnv().KIP_TOOL_LOOP) {
-    return { reply: await answerWithTools(brand, context, question, { sourceMessageId }) };
-  }
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const reply = await speakSMS({
     brand,
@@ -504,38 +495,6 @@ async function answerQuestion(
     classification: "question",
   });
   return { reply };
-}
-
-/**
- * When KIP_SMART_PLANNER is on and the message looks multi-step, plan then
- * optionally enqueue a kickoff. Returns null to fall through to existing paths.
- */
-async function trySmartPlannerKickoff(
-  brand: Brand,
-  body: string,
-  sourceMessageId?: string | null,
-  context?: string,
-): Promise<{ reply: string } | null> {
-  if (!getServerEnv().KIP_SMART_PLANNER) return null;
-  if (!looksLikeMultiStepAsk(body)) return null;
-  const plan = await planSmartTurn({ brand, message: body, context });
-  if (!plan?.kickoffKind) return null;
-  const kicked = await enqueueKickoff(brand, plan.kickoffKind, {
-    payload: {
-      plan,
-      topicHint: body.slice(0, 280),
-      count: inferDraftCount(body, textWantsCarousel(body)),
-      ...((() => {
-        const destinations = extractPlatforms(body);
-        return destinations.length ? { destinations } : {};
-      })()),
-    },
-    reason: "user_request",
-    sourceMessageId: sourceMessageId ?? null,
-    ackSms: plan.speakHint ?? null,
-  });
-  if (!kicked.ackSms) return null;
-  return { reply: kicked.ackSms };
 }
 
 /**
@@ -635,9 +594,10 @@ export type InboundResult = {
 
 /**
  * Leftover owner SMS the hard gates didn't claim: greetings, calendar/ideas/
- * digest/recall asks, fuzzy replies, unmatched instructions. When the general
- * agent is on, it owns the turn. When it's off, converse — never a yes/change/no
- * script or a format menu.
+ * digest/recall asks, fuzzy replies, unmatched instructions, kickoff-shaped
+ * asks. When the general agent is on, it owns the turn (draft via draft_copy).
+ * When it's off, kickoff-shaped leftover still starts work via the content
+ * engine; everything else converses — never a yes/change/no script or format menu.
  */
 async function leftoverTurn(
   brand: Brand,
@@ -663,6 +623,15 @@ async function leftoverTurn(
       mediaIds: [],
     });
     return { reply: out.reply, mediaUrl: out.mediaUrl, operatorAlert: out.operatorAlert };
+  }
+  if (
+    !opts.hasMedia &&
+    (looksLikeKickoffRequest(ownerMessage) ||
+      looksLikeFormatMenuReply(ownerMessage) ||
+      looksLikeUseThisBrief(ownerMessage))
+  ) {
+    const kicked = await enqueueKickoffFromUserMessage(brand, ownerMessage, opts.sourceMessageId);
+    if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
   const chat = await converse(brand, ownerMessage, { pendingDraft: opts.pending != null });
   await maybeEnqueueFromKipCommitIfAsked(brand, ownerMessage, chat, opts.sourceMessageId ?? null);
@@ -1408,21 +1377,12 @@ async function routeInbound(
     };
   }
 
-  // Deterministic kickoff before the general agent — "Draft something in my lane"
-  // must enqueue draft_posts, not fall into scout_ideas via the LLM tool loop.
-  if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
-    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
-    if (planned) return planned;
-    const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
-    if (kicked?.ackSms) return { reply: kicked.ackSms };
-  }
-
   // General agent (flagged, off by default): after hard gates (onboarding, dest
   // link, HOLD, parked carousel/variants, pending format cmds, engagement/CRM,
-  // connect/disconnect, ads), overlay-strip, and kickoff. Greetings, calendar,
-  // ideas, digest, and fuzzy leftover turns reach this intercept (or leftoverTurn,
-  // which calls the same agent). Attached media and high-confidence approval
-  // ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
+  // connect/disconnect, ads) and overlay-strip. Kickoff-shaped asks, greetings,
+  // calendar, ideas, digest, and fuzzy leftover turns reach this intercept (or
+  // leftoverTurn, which calls the same agent). Attached media and high-confidence
+  // approval ("yes") stay on the classic router. Discard (CANCEL_RE) is above.
   if (
     generalAgentEligible({
       flag: Boolean(getServerEnv().KIP_GENERAL_AGENT),
@@ -1454,25 +1414,6 @@ async function routeInbound(
     // unfinished thing) rather than either guessing or asking a cold "huh?".
     if (gap.bucket !== "seamless") {
       return { reply: await reengage(brand, message.body ?? "", gap.phrase, await mostRecentActionable(brand.id)) };
-    }
-    // Stale pending_approval + a format/kickoff reply still enqueue. Fuzzy
-    // leftover on a real draft preview goes to leftoverTurn — never a
-    // yes/change/no command list.
-    if (pending) {
-      const lastOut = await latestOutboundBody(brand.id);
-      const awaitingDraftDecision =
-        looksLikeDraftPreviewOutbound(lastOut) && !looksLikeFormatMenuOutbound(lastOut);
-      if (!awaitingDraftDecision) {
-        const body = message.body ?? "";
-        if (
-          looksLikeFormatMenuReply(body) ||
-          looksLikeUseThisBrief(body) ||
-          looksLikeKickoffRequest(body)
-        ) {
-          const kicked = await enqueueKickoffFromUserMessage(brand, body, message.id);
-          if (kicked?.ackSms) return { reply: kicked.ackSms };
-        }
-      }
     }
     return leftoverTurn(brand, message.body ?? "", {
       pending,
@@ -1547,13 +1488,6 @@ async function routeInbound(
           "I didn't get the photo on that text — send the image again (caption in the same message is fine) and I'll draft it straight away.",
       };
     }
-  }
-
-  if (message.body && newMedia.length === 0 && looksLikeKickoffRequest(message.body)) {
-    const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
-    if (planned) return planned;
-    const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
-    if (kicked?.ackSms) return { reply: kicked.ackSms };
   }
 
   if (message.body && newMedia.length === 0 && !pending) {
@@ -2378,24 +2312,6 @@ async function routeInbound(
         const pillars = await ensurePillars(brand.id);
         const configReply = await configurePillarsFromMessage(brand, pillars, message.body);
         if (configReply) return { reply: configReply };
-      }
-      // Creative / format-menu replies that slipped past kickoff detection —
-      // enqueue instead of a leftover chat that never starts the work.
-      if (
-        message.body &&
-        (looksLikeFormatMenuReply(message.body) ||
-          looksLikeUseThisBrief(message.body) ||
-          looksLikeKickoffRequest(message.body))
-      ) {
-        const kicked = await enqueueKickoffFromUserMessage(brand, message.body, message.id);
-        if (kicked?.ackSms) return { reply: kicked.ackSms };
-      }
-
-      // Ambiguous multi-step instruction — thin planner (flagged) before the
-      // leftover turn. Specific handlers above always win first.
-      if (message.body && newMedia.length === 0) {
-        const planned = await trySmartPlannerKickoff(brand, message.body, message.id);
-        if (planned) return planned;
       }
 
       return leftoverTurn(brand, message.body ?? "", {

@@ -79,7 +79,7 @@ Three layers. The model stays general; tools and retrieval narrow. Content engin
 
 **Hard gates (existing handlers, no LLM router):** onboarding FSM, destination-link confirm, HOLD, parked carousel/variant picks, pending-draft format cmds, high-confidence **approval** (`yes` / `looksLikeApproval`), discard (`CANCEL_RE`), engagement/CRM verbs, connect/disconnect, ads toggles. Attached media still uses the existing photo/video/UGC pipeline. Greetings, calendar, ideas, digest, brand-recall, and fuzzy leftover turns go to `leftoverTurn` / `runGeneralAgent` (flag off → converse). The gateway does **not** skip the inbound coalesce sleep for a lone “hey” / thanks — a follow-up SMS may still land. Calendar / progress pings / punctuated asks still skip.
 
-When the flag is on and there is **no attached media** (pending drafts **allowed**; kickoff-shaped asks stay classic until a later phase), `routeInbound` calls `runGeneralAgent` (after those gates). High-confidence approval with a pending draft does **not** enter the agent — it stays on the classic approve path.
+When the flag is on and there is **no attached media** (pending drafts **allowed**; kickoff-shaped asks **go through the agent** via `draft_copy`), `routeInbound` calls `runGeneralAgent` (after those gates). High-confidence approval with a pending draft does **not** enter the agent — it stays on the classic approve path.
 
 1. `retrieveBrandContext` — working set (prefs, facts, strategy, engine including **offered-draft world model** when pending: caption vs on-image text, source vs styled media, format) plus query-selected tone/campaigns. **No conversation summarize LLM.** Logs `{ event: "retrieve", brandId, sections, chars }`. No vector DB.
 2. `agentIdentity` — `personaVoiceLines` (not full `personaLines`), who it serves, judgment (draft_copy for new work; set_image_text vs revise_caption for pending), escalation. Not a task menu. No photo/font/strategy dump.
@@ -107,7 +107,7 @@ When the flag is on and there is **no attached media** (pending drafts **allowed
 
 Calendar / ideas / digest / brand-recall asks use the same leftover path (agent tools when the flag is on). Twilio “Still on this — one sec…” filler only for `looksLikeSlowSmsWork` (kickoff/draft jobs).
 
-Flag off → today's classify/switch router. `KIP_TOOL_LOOP` question path is unchanged when the general-agent flag is off.
+Flag off → leftover turns converse (kickoff-shaped leftover still starts work via the content engine). `KIP_TOOL_LOOP` and `KIP_SMART_PLANNER` are unused on the inbound path (env remnants until a later flag cleanup).
 
 ## Acceptance (Phase 0–4)
 
@@ -131,7 +131,7 @@ Flag off → today's classify/switch router. `KIP_TOOL_LOOP` question path is un
 - [ ] `revise_caption` / `looksLikeMetaCaption` never persist clarifying questions as captions.
 - [ ] `retrieveBrandContext` includes banned words / prefs / engine status + offered-draft world model when pending; empty sections stay `(none)`.
 - [ ] `agentIdentity` has role + draft_copy / set_image_text judgment + escalation triggers; no tool menu.
-- [ ] Flag off → existing inbound path (leftover turns converse, never a yes/change/no script or format menu). Flag on after gates → `runGeneralAgent` (no media; pending allowed; approval excluded). Greetings and calendar asks **do** enter the agent when the flag is on.
+- [ ] Flag off → leftover turns converse (kickoff-shaped leftover still enqueues via the engine). Flag on after gates → `runGeneralAgent` (no media; pending allowed; kickoffs allowed; approval excluded). Greetings, calendar, and creative asks **do** enter the agent when the flag is on.
 - [ ] `maybeEnqueueFromKipCommit` still runs after a general-agent reply.
 - [ ] `looksLikeCalendarAsk` is true for “what’s on my calendar this week?” and false for draft/ads compound asks.
 - [ ] `summarizeCalendar` is SMS prose, not JSON.

@@ -306,7 +306,7 @@ describe("generalAgentEligible", () => {
     ).toBe(false);
   });
 
-  it("is true when the flag is on with no media — but kickoff asks stay classic", () => {
+  it("is true when the flag is on with no media — kickoff asks go through the agent", () => {
     expect(generalAgentEligible({ flag: true, hasMedia: false, hasPending: false })).toBe(true);
     expect(
       generalAgentEligible({
@@ -323,7 +323,7 @@ describe("generalAgentEligible", () => {
         hasPending: false,
         ownerMessage: "draft me 3 posts",
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       generalAgentEligible({
         flag: true,
@@ -331,8 +331,7 @@ describe("generalAgentEligible", () => {
         hasPending: false,
         ownerMessage: "Draft something in my lane",
       }),
-    ).toBe(false);
-    // Reel-only asks are not kickoffs — agent may still handle them.
+    ).toBe(true);
     expect(
       generalAgentEligible({
         flag: true,
@@ -345,7 +344,7 @@ describe("generalAgentEligible", () => {
 });
 
 describe("processInbound general-agent insert", () => {
-  it("sits after overlay-strip and kickoff; leftover turns use leftoverTurn", () => {
+  it("sits after overlay-strip; leftover turns use leftoverTurn; kickoffs are not a pre-agent intercept", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
@@ -355,19 +354,20 @@ describe("processInbound general-agent insert", () => {
     expect(src).not.toMatch(/looksLikeIdeasAsk\(message\.body\)/);
     expect(src).not.toMatch(/looksLikeBrandRecallAsk\(message\.body\)/);
     expect(src).not.toMatch(/loadCalendarSms|loadIdeasSms|loadBrandRecallSms|buildPerformanceDigest/);
+    expect(src).not.toMatch(/trySmartPlannerKickoff|KIP_SMART_PLANNER|KIP_TOOL_LOOP|answerWithTools/);
     const leftoverIdx = src.indexOf("async function leftoverTurn");
     expect(leftoverIdx).toBeGreaterThan(-1);
     const greetingIdx = src.indexOf("looksLikeGreeting(message.body) || looksLikeAffirmation");
     expect(greetingIdx).toBeGreaterThan(leftoverIdx);
     expect(src.slice(greetingIdx, greetingIdx + 900)).toMatch(/leftoverTurn\(/);
     expect(src.slice(greetingIdx, greetingIdx + 900)).not.toMatch(/quickSocialReply/);
-    // First kickoff intercept (before general agent), not the later classic fallback.
-    const kickoffBeforeAgent = src.indexOf(
-      "Deterministic kickoff before the general agent",
-    );
-    expect(kickoffBeforeAgent).toBeGreaterThan(greetingIdx);
-    const agentIdx = src.indexOf("generalAgentEligible({", kickoffBeforeAgent);
-    expect(agentIdx).toBeGreaterThan(kickoffBeforeAgent);
+    const overlayIdx = src.indexOf('"Remove the text" / strip overlay on the pending draft');
+    const agentIdx = src.indexOf("General agent (flagged, off by default)");
+    expect(overlayIdx).toBeGreaterThan(-1);
+    expect(agentIdx).toBeGreaterThan(overlayIdx);
+    const between = src.slice(overlayIdx, agentIdx);
+    expect(between).not.toMatch(/looksLikeKickoffRequest/);
+    expect(between).not.toMatch(/enqueueKickoffFromUserMessage/);
     expect(src).toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);

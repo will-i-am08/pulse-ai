@@ -123,6 +123,9 @@ describe("KIP_AGENT_TOOLS", () => {
     }
     const draft = KIP_AGENT_TOOLS.find((t) => t.name === "draft_copy");
     expect(draft?.input_schema).toMatchObject({ required: ["job"] });
+    expect(draft?.description).toMatch(/Never scout_ideas for a draft ask/i);
+    const scout = KIP_AGENT_TOOLS.find((t) => t.name === "scout_ideas");
+    expect(scout?.description).toMatch(/call draft_copy instead/i);
     const escalate = KIP_AGENT_TOOLS.find((t) => t.name === "escalate_to_human");
     expect(escalate?.input_schema).toMatchObject({ required: ["reason", "summary"] });
   });
@@ -373,6 +376,38 @@ describe("executeAgentTool", () => {
         }),
       }),
     );
+  });
+
+  it("draft_copy infers count from the owner wording when count is omitted", async () => {
+    await executeAgentTool(
+      "draft_copy",
+      { job: "post", topic_hint: "new bun" },
+      { brand: stubBrand(), ownerMessage: "Draft me a post about the new bun" },
+    );
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({ payload: expect.objectContaining({ count: 1 }) }),
+    );
+
+    mockedEnqueue.mockClear();
+    await executeAgentTool(
+      "draft_copy",
+      { job: "post", topic_hint: "coffee" },
+      { brand: stubBrand(), ownerMessage: "draft me 3 posts" },
+    );
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({ payload: expect.objectContaining({ count: 3 }) }),
+    );
+  });
+
+  it("scout_ideas refuses a draft-shaped owner ask", async () => {
+    const raw = await executeAgentTool(
+      "scout_ideas",
+      { focus: "autumn" },
+      { brand: stubBrand(), ownerMessage: "Draft something in my lane" },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/draft_copy/i);
   });
 
   it("schedule_post never writes status published", async () => {

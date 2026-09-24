@@ -22,7 +22,7 @@ import {
 import type Anthropic from "@anthropic-ai/sdk";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
-import { enqueueKickoff, looksLikeKickoffRequest } from "./kickoffs.js";
+import { enqueueKickoff, inferDraftCount, looksLikeKickoffRequest, textWantsCarousel } from "./kickoffs.js";
 import { extractPlatforms } from "./destinations.js";
 import { isLinkedInPrimary } from "./contentJobs.js";
 import {
@@ -138,7 +138,12 @@ const draftCopyInputSchema = z
       .describe(
         "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them.",
       ),
-    count: z.number().optional().describe("How many drafts to queue (job-dependent default)."),
+    count: z
+      .number()
+      .optional()
+      .describe(
+        "How many drafts to queue. If omitted, inferred from the owner's wording (e.g. \"a post\" → 1, \"draft me 3\" → 3).",
+      ),
     format: z.enum(PostFormat).optional().describe("Post format hint."),
     visuals: z
       .enum(["photo", "designed", "stock", "generated"])
@@ -337,7 +342,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Content-engine facade: draft a caption, queue posts/first batch/carousel/story/trend/competitor, pull from library, or queue UGC/reel. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(
@@ -387,7 +392,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "scout_ideas",
-    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use when the owner asks for suggestions, ideas, or to look into topics. Prefer this over interviewing them. Does not draft or publish.",
+    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use only when they asked for suggestions, ideas, or to look into topics — not to draft. If they asked to draft/make a post, call draft_copy instead. Prefer this over interviewing them. Does not draft or publish.",
     scoutIdeasInputSchema,
   ),
 ];
@@ -696,6 +701,20 @@ function positiveInt(value: number | undefined, fallback: number): number {
   return Math.max(1, Math.floor(value));
 }
 
+/** Count for draft_copy: explicit tool arg wins; otherwise infer from the owner's wording. */
+function draftCopyCount(
+  ctx: AgentToolContext,
+  job: DraftCopyJob,
+  requested: number | undefined,
+  format?: PostFormatT,
+): number {
+  if (requested != null && Number.isFinite(requested)) return positiveInt(requested, 1);
+  if (job === "first_batch") return 3;
+  const t = ctx.ownerMessage ?? "";
+  const wantsCarousel = job === "carousel" || format === "carousel" || textWantsCarousel(t);
+  return inferDraftCount(t, wantsCarousel);
+}
+
 function mediaIdsFrom(ctx: AgentToolContext, inputIds?: string[]): string[] {
   const ids = [...(inputIds ?? []), ...(ctx.mediaIds ?? [])].filter(
     (id): id is string => typeof id === "string" && id.length > 0,
@@ -927,7 +946,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
   if (!parsed.ok) return toolError(parsed.error, { allowedJobs: [...DRAFT_COPY_JOBS] });
 
   const { job, brief, format, visuals, topic_hint } = parsed.data;
-  const count = parsed.data.count;
+  const count = draftCopyCount(ctx, job, parsed.data.count, format);
   const ids = mediaIdsFrom(ctx, parsed.data.media_ids);
   const hint = topicHintOf(brief, topic_hint);
   const destinations = destinationsForDraft(ctx, hint);
@@ -980,7 +999,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     }
     case "post":
       return queueDraftKickoff(ctx, job, "draft_posts", {
-        count: positiveInt(count, 1),
+        count,
         topicHint,
         format,
         visuals,
@@ -989,14 +1008,14 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
       });
     case "first_batch":
       return queueDraftKickoff(ctx, job, "first_batch", {
-        count: positiveInt(count, 3),
+        count,
         visuals,
         topicHint,
         ...(destinations.length ? { destinations } : {}),
       });
     case "carousel":
       return queueDraftKickoff(ctx, job, "draft_posts", {
-        count: positiveInt(count, 1),
+        count,
         topicHint,
         format: "carousel",
         visuals,
@@ -1011,7 +1030,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
       }
       if (!photoId) {
         return queueDraftKickoff(ctx, job, "draft_posts", {
-          count: positiveInt(count, 1),
+          count,
           topicHint,
           format: "story",
           visuals,
@@ -1194,6 +1213,9 @@ async function toolRejectDraft(ctx: AgentToolContext, input: unknown): Promise<s
 async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<string> {
   const parsed = parseToolInput(scoutIdeasInputSchema, input);
   if (!parsed.ok) return toolError(parsed.error);
+  if (looksLikeKickoffRequest(ctx.ownerMessage)) {
+    return toolError("Owner asked to draft content. Call draft_copy instead of scout_ideas.");
+  }
   const result = await scoutContentIdeas(ctx.brand, {
     focus: parsed.data.focus,
     count: parsed.data.count,

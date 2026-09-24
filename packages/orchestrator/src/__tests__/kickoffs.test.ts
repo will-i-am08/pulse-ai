@@ -99,6 +99,8 @@ describe("looksLikeKickoffRequest", () => {
   it("ignores plain chat", () => {
     expect(looksLikeKickoffRequest("thanks!")).toBe(false);
     expect(looksLikeKickoffRequest("what do you think of carousels?")).toBe(false);
+    expect(looksLikeKickoffRequest("how often should I post?")).toBe(false);
+    expect(looksLikeKickoffRequest("How often should I post?")).toBe(false);
   });
 
   it("looksLikeSlowSmsWork matches kickoffs only", () => {

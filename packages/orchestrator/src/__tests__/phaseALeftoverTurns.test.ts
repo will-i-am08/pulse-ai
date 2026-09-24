@@ -63,8 +63,9 @@ describe("Phase A leftover turns", () => {
     ).toBe(true);
     const low = src.slice(src.indexOf("LOW_CONFIDENCE_THRESHOLD"), src.indexOf("Deep research verbs"));
     expect(low).toMatch(/leftoverTurn\(/);
-    const fallback = src.slice(src.lastIndexOf("trySmartPlannerKickoff"));
+    const fallback = src.slice(src.lastIndexOf("configurePillarsFromMessage"));
     expect(fallback).toMatch(/leftoverTurn\(/);
+    expect(fallback).not.toMatch(/trySmartPlannerKickoff/);
   });
 
   it("yes on an offered draft still hits approveSelectedDestinations", () => {
