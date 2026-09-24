@@ -10,16 +10,13 @@ Workstream B. Implements the frozen `@pulse/orchestrator` interface from
   Reads `DRAFT_MODEL` / `FALLBACK_MODEL` from `getServerEnv()` (never
   hardcoded). Retries the primary model twice with exponential backoff, then
   makes one attempt on the fallback model before giving up.
-- **`src/classify.ts`** — two-stage classification. A cheap deterministic
-  pass (`ruleBasedClassify`) handles the large majority of real SMS traffic
-  (media presence, plain approvals, question shape, edit-signal words) with
-  no LLM call. Anything genuinely ambiguous falls through to one `callLLM`
-  call that must return strict JSON (`{classification, confidence,
-  reasoning}`); malformed output or a failed call is treated as low
-  confidence `other`, never guessed.
-- **`src/processInbound.ts`** — dispatches on the classification. Confidence
-  below `0.55` is a leftover turn (`leftoverTurn`: general agent when flagged,
-  otherwise converse) — never a yes/change/no command list or a format menu.
+- **`src/classify.ts`** — `looksLikeApproval` is the hard yes-gate. Rule-based
+  leftover labels still exist as a belt after the agent; attached media is a
+  brief (not a turn-owner at confidence 1).
+- **`src/processInbound.ts`** — hard gates first (yes-before-post, no/scrap,
+  HOLD, spend, disconnect), then leftover turns go to `leftoverTurn` /
+  `runGeneralAgent` (photos included). Confidence below `0.55` is a leftover
+  turn — never a yes/change/no command list or a format menu.
 - **`src/draftCaption.ts`** — loads brand + strategy notes + media rows,
   builds a system prompt encoding tone/dos/donts/banned words/emoji &
   hashtag policy/learned notes/examples, and returns a caption plus a

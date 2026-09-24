@@ -129,11 +129,12 @@ describe("runCheckin", () => {
     expect(markSent).not.toHaveBeenCalled();
   });
 
-  it("sends the generic weekly nudge when nothing is pending", async () => {
+  it("sends a clock-brain check-in when nothing is pending", async () => {
     const now = new Date("2026-01-08T12:00:00Z");
     const sendToBrand = vi.fn().mockResolvedValue(undefined);
     const markSent = vi.fn().mockResolvedValue(undefined);
     const getLastInboundAt = vi.fn().mockResolvedValue(new Date("2026-01-05T00:00:00Z").toISOString());
+    const composeSms = vi.fn().mockResolvedValue("Anything you want me on this week?");
 
     await runCheckin(fakeBrand(), fakeTrigger(), {
       getLastInboundAt,
@@ -142,18 +143,22 @@ describe("runCheckin", () => {
       sendToBrand,
       markSent,
       now: () => now,
+      composeSms,
     });
 
-    expect(sendToBrand).toHaveBeenCalledWith("brand-1", "Anything to send me this week?");
+    expect(composeSms).toHaveBeenCalled();
+    expect(String(composeSms.mock.calls[0]![1])).not.toMatch(/Reply yes/i);
+    expect(sendToBrand).toHaveBeenCalledWith("brand-1", "Anything you want me on this week?");
     expect(markSent).toHaveBeenCalledWith("trigger-1");
   });
 
-  it("names the unfinished thing when something's pending", async () => {
+  it("names the unfinished thing when something's pending — no yes/change/no menu", async () => {
     const now = new Date("2026-01-08T12:00:00Z");
     const sendToBrand = vi.fn().mockResolvedValue(undefined);
     const markSent = vi.fn().mockResolvedValue(undefined);
     const getLastInboundAt = vi.fn().mockResolvedValue(null);
     const getActionable = vi.fn().mockResolvedValue({ kind: "draft", summary: "your BTS post" });
+    const composeSms = vi.fn().mockResolvedValue("your BTS post is still sitting with you.");
 
     await runCheckin(fakeBrand(), fakeTrigger(), {
       getLastInboundAt,
@@ -162,10 +167,13 @@ describe("runCheckin", () => {
       sendToBrand,
       markSent,
       now: () => now,
+      composeSms,
     });
 
     expect(sendToBrand).toHaveBeenCalledTimes(1);
     expect(sendToBrand.mock.calls[0]![1]).toContain("your BTS post");
+    expect(sendToBrand.mock.calls[0]![1]).not.toMatch(/Reply yes/i);
+    expect(String(composeSms.mock.calls[0]![1])).toContain("your BTS post");
     expect(markSent).toHaveBeenCalledWith("trigger-1");
   });
 });

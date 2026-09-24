@@ -76,6 +76,10 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/Brand recall:/i);
     expect(prompt).toMatch(/never\/don't content bans/i);
     expect(prompt).toMatch(/never scout_ideas for a draft ask/i);
+    expect(prompt).toMatch(/Photos:/);
+    expect(prompt).toMatch(/Clock wake/);
+    expect(prompt).toMatch(/confirm_pending_ask/);
+    expect(prompt).toMatch(/Never park the chat on Reply 1, 2, or 3/);
     expect(prompt).toMatch(/exact overlay headline/i);
     expect(prompt).not.toMatch(/✨/);
   });

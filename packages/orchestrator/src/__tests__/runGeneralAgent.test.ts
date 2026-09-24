@@ -165,6 +165,17 @@ describe("runGeneralAgent", () => {
     expect(mockedCommit).not.toHaveBeenCalled();
   });
 
+  it("skips maybeEnqueueFromKipCommit on clock wakes", async () => {
+    const brand = stubBrand();
+    await runGeneralAgent({
+      brand,
+      ownerMessage:
+        "[Clock wake — not an owner message. Do not treat as yes/approval. Do not publish.]\nMonday check-in.",
+      sourceMessageId: "clock-1",
+    });
+    expect(mockedCommit).not.toHaveBeenCalled();
+  });
+
   it("returns an in-character fallback and still tries the kickoff net when the tool loop throws", async () => {
     mockedTools.mockRejectedValueOnce(new Error("llm down"));
     const brand = stubBrand();
@@ -251,12 +262,12 @@ describe("runGeneralAgent", () => {
 });
 
 describe("generalAgentEligible", () => {
-  it("is false when the flag is off", () => {
-    expect(generalAgentEligible({ flag: false, hasMedia: false, hasPending: false })).toBe(false);
+  it("is false only for high-confidence approval when a draft is pending", () => {
+    expect(generalAgentEligible({ flag: false, hasMedia: false, hasPending: false })).toBe(true);
   });
 
-  it("is false when the flag is on and there is media", () => {
-    expect(generalAgentEligible({ flag: true, hasMedia: true, hasPending: false })).toBe(false);
+  it("is true when there is media — photos are briefs", () => {
+    expect(generalAgentEligible({ flag: true, hasMedia: true, hasPending: false })).toBe(true);
   });
 
   it("is true when the flag is on with a pending draft (agent owns draft mutation)", () => {
@@ -362,13 +373,13 @@ describe("processInbound general-agent insert", () => {
     expect(src.slice(greetingIdx, greetingIdx + 900)).toMatch(/leftoverTurn\(/);
     expect(src.slice(greetingIdx, greetingIdx + 900)).not.toMatch(/quickSocialReply/);
     const overlayIdx = src.indexOf('"Remove the text" / strip overlay on the pending draft');
-    const agentIdx = src.indexOf("General agent (flagged, off by default)");
+    const agentIdx = src.indexOf("General agent (default inbound path after hard gates)");
     expect(overlayIdx).toBeGreaterThan(-1);
     expect(agentIdx).toBeGreaterThan(overlayIdx);
     const between = src.slice(overlayIdx, agentIdx);
     expect(between).not.toMatch(/looksLikeKickoffRequest/);
     expect(between).not.toMatch(/enqueueKickoffFromUserMessage/);
-    expect(src).toMatch(/KIP_GENERAL_AGENT/);
+    expect(src).not.toMatch(/KIP_GENERAL_AGENT/);
     expect(src).toMatch(/runGeneralAgent/);
     expect(src).toMatch(/operatorAlert: out\.operatorAlert/);
     const converseFn = src.slice(src.indexOf("async function converse"), src.indexOf("async function reengage"));
@@ -389,7 +400,7 @@ describe("processInbound general-agent insert", () => {
     );
     const q = src.slice(src.indexOf('case "question"'), src.indexOf('case "instruction"'));
     expect(q).toMatch(/operatorAlert: out\.operatorAlert/);
-    expect(q).toMatch(/KIP_GENERAL_AGENT/);
-    expect(q).toMatch(/maybeEnqueueFromKipCommitIfAsked/);
+    expect(q).not.toMatch(/KIP_GENERAL_AGENT/);
+    expect(q).not.toMatch(/maybeEnqueueFromKipCommitIfAsked/);
   });
 });

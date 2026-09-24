@@ -29,9 +29,10 @@ describe("looksLikeApproval", () => {
 });
 
 describe("ruleBasedClassify", () => {
-  it("classifies any message with media as 'media', regardless of text", () => {
+  it("does not let attached media steal a yes on an offered draft", () => {
+    expect(ruleBasedClassify("yes", true, true)?.classification).toBe("approval");
     expect(ruleBasedClassify("check this out", true, false)?.classification).toBe("media");
-    expect(ruleBasedClassify(null, true, false)?.classification).toBe("media");
+    expect(ruleBasedClassify("check this out", true, false)?.confidence).toBeLessThan(1);
   });
 
   it("classifies plain approval words as 'approval'", () => {

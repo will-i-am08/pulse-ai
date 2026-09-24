@@ -109,23 +109,21 @@ export function ruleBasedClassify(
 ): ClassifyResult | null {
   const text = (body ?? "").trim();
 
+  // Yes on an offered draft is a hard gate even if they also attached a photo.
+  // Attachments are briefs for the agent — not a classification that owns the turn.
+  if (looksLikeApproval(text)) {
+    if (!hasPendingPost) {
+      return hasMedia ? null : { classification: "other", confidence: 0.85 };
+    }
+    return { classification: "approval", confidence: 0.95 };
+  }
+
   if (hasMedia) {
-    // New media is always treated as new content, regardless of any
-    // accompanying text (which draftCaption uses as extra guidance).
-    return { classification: "media", confidence: 1 };
+    return { classification: "media", confidence: 0.5 };
   }
 
   if (text.length === 0) {
     return { classification: "other", confidence: 0.3 };
-  }
-
-  if (looksLikeApproval(text)) {
-    // Without something to approve, "yes"/"great"/"perfect" are just vibes —
-    // not an approval action. Leave as other so chatBack handles them warmly.
-    if (!hasPendingPost) {
-      return { classification: "other", confidence: 0.85 };
-    }
-    return { classification: "approval", confidence: 0.95 };
   }
 
   const lower = text.toLowerCase();

@@ -18,7 +18,7 @@ describe("Phase B kickoffs through the brain", () => {
     expect(src).not.toMatch(/KIP_TOOL_LOOP/);
     expect(src).not.toMatch(/answerWithTools/);
     const overlayIdx = src.indexOf('"Remove the text" / strip overlay on the pending draft');
-    const agentIdx = src.indexOf("General agent (flagged, off by default)");
+    const agentIdx = src.indexOf("General agent (default inbound path after hard gates)");
     expect(overlayIdx).toBeGreaterThan(-1);
     expect(agentIdx).toBeGreaterThan(overlayIdx);
     const between = src.slice(overlayIdx, agentIdx);

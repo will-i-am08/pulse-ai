@@ -20,6 +20,7 @@ vi.mock("../proactive/deps.js", () => ({
   videoEditFallbackSms: vi.fn(() => "fallback"),
   generateTipCarousel: vi.fn(async () => null),
   generateTypedCarousel: vi.fn(async () => null),
+  composeClockSms: vi.fn(async () => "clock sms"),
 }));
 
 // Declared with a rest parameter so the recorded calls keep their arguments:

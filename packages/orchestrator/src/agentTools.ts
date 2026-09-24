@@ -14,6 +14,7 @@ import {
   PostFormat,
   type Brand,
   type KipKickoffKind as KipKickoffKindT,
+  type MediaAsset,
   type Platform as PlatformT,
   type Post,
   type PostFormat as PostFormatT,
@@ -37,7 +38,7 @@ import { draftCaption } from "./draftCaption.js";
 import { humanizeChat } from "./speak/humanizeChat.js";
 import { formatScheduledSlot, formatWeekday, joinEnglish, localYmd } from "./smsTime.js";
 import { draftPostFromPhoto, pickFreshPhoto } from "./library.js";
-import { draftStoryFromPhoto } from "./formats.js";
+import { draftCarouselFromPhotos, draftStoryFromPhoto } from "./formats.js";
 import { ensurePillars } from "./pillars.js";
 import { queueUgcJob } from "./ugc/index.js";
 import { queueAiVideoJob } from "./aiVideo.js";
@@ -52,6 +53,21 @@ import {
   reviseOfferedDraftCaption,
   setImageOverlay,
 } from "./offeredDraft.js";
+import { looksLikeApproval } from "./classify.js";
+import { applyNichePlan, getProposedPlan } from "./nichePlan.js";
+import {
+  clearPendingDestinationLink,
+  getPendingDestinationLink,
+  handleDestinationLinkConfirmation,
+} from "./destinationLinks.js";
+import {
+  acceptStrategyPieces,
+  cancelStrategyBrief,
+  getProposedStrategyBrief,
+  parseStrategyAccept,
+} from "./strategyBrief.js";
+import { activateCampaign, getProposedCampaign } from "./campaigns.js";
+import { clearPerfPending, confirmPerfSuggestion } from "./performanceActions.js";
 
 export type AgentToolContext = {
   brand: Brand;
@@ -173,6 +189,18 @@ const rememberFactInputSchema = z
       .enum(["kip_preferences", "kip_decisions"])
       .optional()
       .describe("Where to store it (default kip_preferences)."),
+  })
+  .strict();
+
+const confirmPendingAskInputSchema = z
+  .object({
+    action: z
+      .enum(["accept", "reject"])
+      .describe("Accept or reject the last confirm you asked (plan, booking link, strategy, organic campaign, perf mix). Never publishes a post. Never spends ads."),
+    kind: z
+      .enum(["auto", "plan", "booking_link", "strategy", "campaign", "perf"])
+      .optional()
+      .describe("Which parked confirm to resolve. Default auto = the last one on file."),
   })
   .strict();
 
@@ -342,7 +370,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Never scout_ideas for a draft ask. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(
@@ -394,6 +422,11 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
     "scout_ideas",
     "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use only when they asked for suggestions, ideas, or to look into topics — not to draft. If they asked to draft/make a post, call draft_copy instead. Prefer this over interviewing them. Does not draft or publish.",
     scoutIdeasInputSchema,
+  ),
+  toolDef(
+    "confirm_pending_ask",
+    "Accept or reject the last confirm you asked when it is NOT a publish yes: content plan (pillars only — never enqueue first_batch), booking link, strategy brief, organic campaign, or perf mix. Do not use this for a yes on an offered draft. Never publishes. Never spends ads.",
+    confirmPendingAskInputSchema,
   ),
 ];
 
@@ -935,6 +968,60 @@ async function firstPillar(brandId: string) {
   return pillars[0] ?? null;
 }
 
+async function draftFromAttachedMedia(
+  ctx: AgentToolContext,
+  job: DraftCopyJob,
+  ids: string[],
+  topicHint?: string,
+  format?: PostFormatT,
+): Promise<string | null> {
+  if (ids.length === 0) return null;
+  const pillar = await firstPillar(ctx.brand.id);
+  if (!pillar) return toolError("No content pillars available.");
+
+  const wantsCarousel =
+    job === "carousel" || format === "carousel" || (ids.length >= 2 && !/separat|split|each/i.test(ctx.ownerMessage ?? ""));
+
+  if (ids.length >= 2 && wantsCarousel) {
+    const drafted = await draftCarouselFromPhotos(ctx.brand, ids, pillar, {
+      brief: topicHint,
+    });
+    if (!drafted?.post) return toolError("Could not draft carousel from those photos.");
+    rememberMediaUrl(ctx, drafted.mediaUrl);
+    return JSON.stringify({
+      ok: true,
+      job,
+      postId: drafted.post.id,
+      captionExcerpt: captionExcerpt(drafted.post.caption),
+      slides: drafted.post.media_ids.length,
+      ackSms: "Drafted a carousel from those photos — still needs your approval. Nothing is published.",
+      note: "Draft only — never published. Owner still approves. Do not ask them to type carousel or separate.",
+    });
+  }
+
+  const photo =
+    (await queryOne<MediaAsset>(
+      `select * from media_assets where id = $1 and brand_id = $2`,
+      [ids[0], ctx.brand.id],
+    )) ?? ({ id: ids[0] } as MediaAsset);
+  const drafted = await draftPostFromPhoto(
+    ctx.brand,
+    photo,
+    pillar,
+    topicHint?.trim() ? { hint: topicHint.trim() } : undefined,
+  );
+  if (!drafted?.post) return toolError("Could not draft a post from the attached photo.");
+  rememberMediaUrl(ctx, drafted.mediaUrl);
+  return JSON.stringify({
+    ok: true,
+    job,
+    postId: drafted.post.id,
+    captionExcerpt: captionExcerpt(drafted.post.caption),
+    ackSms: "Drafted a post from that photo — still needs your approval. Nothing is published.",
+    note: "Draft only — never published. Owner still approves. Talk about looks like a person; never Reply 1, 2, or 3.",
+  });
+}
+
 async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<string> {
   const rec = asRecord(input);
   if (!isDraftCopyJob(rec.job)) {
@@ -997,7 +1084,9 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         note: "Draft only — never published. Owner still approves.",
       });
     }
-    case "post":
+    case "post": {
+      const attached = await draftFromAttachedMedia(ctx, job, ids, topicHint, format);
+      if (attached) return attached;
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count,
         topicHint,
@@ -1006,6 +1095,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         preferCarousel: format === "carousel",
         ...(destinations.length ? { destinations } : {}),
       });
+    }
     case "first_batch":
       return queueDraftKickoff(ctx, job, "first_batch", {
         count,
@@ -1013,7 +1103,9 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         topicHint,
         ...(destinations.length ? { destinations } : {}),
       });
-    case "carousel":
+    case "carousel": {
+      const attached = await draftFromAttachedMedia(ctx, job, ids, topicHint, "carousel");
+      if (attached) return attached;
       return queueDraftKickoff(ctx, job, "draft_posts", {
         count,
         topicHint,
@@ -1022,6 +1114,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         preferCarousel: true,
         ...(destinations.length ? { destinations } : {}),
       });
+    }
     case "story": {
       let photoId = ids[0];
       if (!photoId) {
@@ -1233,6 +1326,138 @@ async function toolScoutIdeas(ctx: AgentToolContext, input: unknown): Promise<st
   });
 }
 
+async function toolConfirmPendingAsk(ctx: AgentToolContext, input: unknown): Promise<string> {
+  const parsed = parseToolInput(confirmPendingAskInputSchema, input);
+  if (!parsed.ok) return toolError(parsed.error);
+
+  const offered = await loadOfferedDraft(ctx.brand.id);
+  if (offered && looksLikeApproval(ctx.ownerMessage)) {
+    return toolError(
+      "A draft is offered and the owner said yes — that is a hard publish gate. Do not use this tool.",
+    );
+  }
+
+  const kind = parsed.data.kind ?? "auto";
+  const accept = parsed.data.action === "accept";
+
+  const tryPlan = kind === "auto" || kind === "plan";
+  const tryLink = kind === "auto" || kind === "booking_link";
+  const tryStrategy = kind === "auto" || kind === "strategy";
+  const tryCampaign = kind === "auto" || kind === "campaign";
+  const tryPerf = kind === "auto" || kind === "perf";
+
+  if (tryPlan) {
+    const plan = await getProposedPlan(ctx.brand.id);
+    if (plan) {
+      if (accept) {
+        await applyNichePlan(ctx.brand, plan);
+        return JSON.stringify({
+          ok: true,
+          kind: "plan",
+          applied: true,
+          firstBatchEnqueued: false,
+          ackSms: "Plan's live — pillars and cadence are set. Want me to draft the first few? Each still waits for a yes.",
+          note: "Plan applied only. Never enqueues first_batch. Never publishes.",
+        });
+      }
+      await query(`update content_plans set status = 'failed', updated_at = now() where id = $1`, [plan.id]);
+      return JSON.stringify({
+        ok: true,
+        kind: "plan",
+        applied: false,
+        ackSms: "Scrapped that plan. Nothing was applied.",
+      });
+    }
+    if (kind === "plan") return toolError("No proposed content plan waiting.");
+  }
+
+  if (tryLink && getPendingDestinationLink(ctx.brand)) {
+    if (accept) {
+      const confirmed = await handleDestinationLinkConfirmation(ctx.brand, "yes");
+      if (!confirmed) return toolError("Could not save the booking link.");
+      return JSON.stringify({
+        ok: true,
+        kind: "booking_link",
+        ackSms: confirmed.reply,
+        note: "Saved the URL only. Did not publish a post.",
+      });
+    }
+    await clearPendingDestinationLink(ctx.brand);
+    return JSON.stringify({
+      ok: true,
+      kind: "booking_link",
+      ackSms: "Okay, skipped that booking link.",
+    });
+  }
+  if (kind === "booking_link") return toolError("No booking link waiting to confirm.");
+
+  if (tryStrategy) {
+    const brief = await getProposedStrategyBrief(ctx.brand.id);
+    if (brief) {
+      if (accept) {
+        const pieces = parseStrategyAccept(ctx.ownerMessage ?? "yes") ?? "all";
+        const sms = await acceptStrategyPieces(ctx.brand, brief, pieces);
+        return JSON.stringify({
+          ok: true,
+          kind: "strategy",
+          ackSms: sms,
+          note: "Strategy saved. Did not publish.",
+        });
+      }
+      await cancelStrategyBrief(brief.id);
+      return JSON.stringify({
+        ok: true,
+        kind: "strategy",
+        ackSms: "Scrapped that strategy brief. Nothing was saved to your brand objects.",
+      });
+    }
+    if (kind === "strategy") return toolError("No proposed strategy brief waiting.");
+  }
+
+  if (tryCampaign) {
+    const campaign = await getProposedCampaign(ctx.brand.id);
+    if (campaign) {
+      if (accept) {
+        const sms = await activateCampaign(ctx.brand, campaign, false);
+        return JSON.stringify({
+          ok: true,
+          kind: "campaign",
+          ackSms: sms,
+          note: "Organic campaign only — no ad spend. Posts still follow approval rules.",
+        });
+      }
+      await query(`update campaigns set status = 'cancelled' where id = $1`, [campaign.id]);
+      return JSON.stringify({
+        ok: true,
+        kind: "campaign",
+        ackSms: "No worries, I've scrapped that campaign. Nothing scheduled.",
+      });
+    }
+    if (kind === "campaign") return toolError("No proposed campaign waiting.");
+  }
+
+  if (tryPerf) {
+    if (accept) {
+      const sms = await confirmPerfSuggestion(ctx.brand);
+      if (!sms) return toolError("No performance suggestion waiting.");
+      return JSON.stringify({
+        ok: true,
+        kind: "perf",
+        ackSms: sms,
+        note: "Mix/perf only. Did not publish a feed post.",
+      });
+    }
+    await clearPerfPending(ctx.brand);
+    return JSON.stringify({
+      ok: true,
+      kind: "perf",
+      ackSms: "No worries — left your mix as is. Nothing changed.",
+    });
+  }
+
+  return toolError("Nothing waiting to confirm.");
+}
+
 /**
  * Execute one agent tool. Returns a JSON string for Anthropic tool_result content.
  */
@@ -1269,6 +1494,8 @@ export async function executeAgentTool(
         return await toolRememberFact(ctx, input);
       case "scout_ideas":
         return await toolScoutIdeas(ctx, input);
+      case "confirm_pending_ask":
+        return await toolConfirmPendingAsk(ctx, input);
       default:
         return toolError(`Unknown tool: ${name}`);
     }

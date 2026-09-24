@@ -1,10 +1,11 @@
 /**
- * Wave 2 general-agent turn: retrieve brand context, identity system prompt,
+ * Owner-SMS / clock brain: retrieve brand context, identity system prompt,
  * bounded tool loop, SMS humanize, then a kickoff safety net if the model
  * promised work without a successful draft_copy.
  *
- * Gated by KIP_GENERAL_AGENT (off by default). Does not rewrite the content engine.
- * When on, owns create + revise of drafts via tools (including pending drafts).
+ * Default inbound path after hard gates. Does not rewrite the content engine.
+ * Owns create + revise of drafts via tools (including pending drafts and photos).
+ * High-confidence approval ("yes") on an offered draft never enters this loop.
  */
 
 import type { Brand } from "@pulse/shared";
@@ -48,20 +49,23 @@ export function generalAgentFallbackSms(ownerMessage: string | null | undefined)
 }
 
 /**
- * True when the general-agent intercept may run: flag on, no attached media.
+ * True when leftover / inbound turns may enter the agent.
  * Pending drafts are allowed — the agent mutates them via tools.
- * Greetings, calendar, ideas, digest, fuzzy leftover, and kickoff-shaped
- * asks are eligible (draft via draft_copy, not a regex enqueue in front).
- * High-confidence approval ("yes") stays on the hard-gate router.
- * Attached media stays on the photo/video pipeline (Phase C).
+ * Photos are briefs (hasMedia does not lock the agent out).
+ * High-confidence approval ("yes") on an offered draft stays on the hard-gate
+ * router — never this loop.
+ *
+ * `flag` is ignored (agent is the inbound path). Kept optional so older call
+ * sites / lab harnesses still typecheck.
  */
 export function generalAgentEligible(opts: {
-  flag: boolean;
-  hasMedia: boolean;
+  flag?: boolean;
+  hasMedia?: boolean;
   hasPending: boolean;
   ownerMessage?: string;
 }): boolean {
-  if (!opts.flag || opts.hasMedia) return false;
+  void opts.flag;
+  void opts.hasMedia;
   const t = (opts.ownerMessage ?? "").trim();
   if (opts.hasPending && looksLikeApproval(t)) return false;
   return true;
@@ -141,7 +145,8 @@ export async function runGeneralAgent(
   if (reply) {
     // draft_copy already enqueued the job — kip_commit must not queue a second
     // first_batch/draft_posts just because the owner said "generated photo".
-    if (!draftedViaTool) {
+    // Clock wakes are not owner briefs; never enqueue from our own nudge copy.
+    if (!draftedViaTool && !ownerMessage.startsWith("[Clock wake")) {
       await maybeEnqueueFromKipCommit(brand, ownerMessage, reply, sourceMessageId);
     }
     scheduleOpenLoopsUpdate(brand, ownerMessage, reply);

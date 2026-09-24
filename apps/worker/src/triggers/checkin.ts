@@ -1,7 +1,7 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
 import type { Actionable } from "@pulse/gateway";
-import { readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
+import { composeClockSms, readEngagementProfile, shouldRunProactive } from "@pulse/orchestrator";
 import { logger } from "../lib/logger.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -20,6 +20,8 @@ export interface CheckinDeps {
   /** Optional: ledger the send for the engagement learner. */
   recordSend?: (brandId: string) => Promise<void>;
   now: () => Date;
+  /** Optional clock brain. Tests stub this; production uses composeClockSms. */
+  composeSms?: (brand: Brand, brief: string) => Promise<string>;
 }
 
 /**
@@ -44,9 +46,10 @@ export async function runCheckin(brand: Brand, trigger: ProactiveTrigger, deps: 
     return;
   }
   const actionable = await deps.getActionable(brand.id);
-  const body = actionable
-    ? `Just checking in 🙂 ${actionable.summary} is still waiting on you. Want it sorted, or anything new to send me?`
-    : "Anything to send me this week?";
+  const brief = actionable
+    ? `Monday-style check-in. They have something unfinished: ${actionable.summary}. Nudge once like a colleague. Do not dump yes/change/no. Do not approve or publish.`
+    : `Monday-style check-in. Nothing unfinished. Ask if they want you on anything this week. One short text. No format menu. Do not publish.`;
+  const body = await (deps.composeSms ?? composeClockSms)(brand, brief);
   await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);
   await deps.recordSend?.(brand.id);

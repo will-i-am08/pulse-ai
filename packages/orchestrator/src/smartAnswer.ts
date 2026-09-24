@@ -1,8 +1,6 @@
 /**
- * Smart Kip Phase 2 — question answers via bounded Anthropic tool loop
- * (KIP_TOOL_LOOP). Tools are calendar, analytics, draft_copy, escalate, remember.
- * When KIP_GENERAL_AGENT is on, processInbound / answerQuestion use runGeneralAgent
- * instead of this path.
+ * Legacy question tool loop. Owner SMS uses runGeneralAgent instead.
+ * Tools are calendar, analytics, draft_copy, escalate, remember.
  */
 
 import type { Brand } from "@pulse/shared";
