@@ -164,5 +164,3 @@ export async function countPendingDrafts(brandId: string): Promise<number> {
   );
   return Number(row?.n ?? 0);
 }
-
-export type { Post };
