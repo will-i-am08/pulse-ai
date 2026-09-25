@@ -52,10 +52,86 @@ async function captureOwnerName(brand: Brand, transcript: OnboardingTurnMsg[]): 
   }
 }
 
-/** Extract the niche + admired accounts and seed a pending plan (kicks off research). */
-async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnMsg[]): Promise<void> {
+const NAMED_TYPEFACE_RE =
+  /\b(inter|anton|playfair|serif|sans[\s-]?serif|typeface|font|helvetica|futura|garamond|georgia|arial|roboto|display)\b/i;
+
+function interviewHasTradingName(brand: Brand): boolean {
+  const business = String((brand.facts as { business_name?: string } | undefined)?.business_name ?? "").trim();
+  return Boolean(business) && business.toLowerCase() !== "lab cafe";
+}
+
+function interviewHasFonts(brand: Brand): boolean {
+  return Boolean(brand.visual?.fonts?.length);
+}
+
+/** Lab chats stay pending; capture tokens without waiting for finishOnboarding. */
+export function shouldCaptureInterviewTokens(brand: Brand): boolean {
+  if ((brand.facts as { lab?: boolean } | undefined)?.lab === true) return true;
+  const status = brand.onboarding_state?.status;
+  return Boolean(status && status !== "done");
+}
+
+async function loadInterviewConvo(brand: Brand, transcript?: OnboardingTurnMsg[]): Promise<string> {
+  const bits: string[] = [];
+  if (transcript?.length) {
+    bits.push(transcript.map((t) => `${t.role}: ${t.content}`).join("\n"));
+  }
+  if (!bits[0] || bits[0].length < 40) {
+    try {
+      const rows = await query<{ direction: string; body: string | null }>(
+        `select direction, body from messages
+          where brand_id = $1 and body is not null and body <> ''
+          order by created_at desc
+          limit 30`,
+        [brand.id],
+      );
+      bits.push(
+        [...rows]
+          .reverse()
+          .map((r) => `${r.direction === "inbound" ? "user" : "assistant"}: ${r.body}`)
+          .join("\n"),
+      );
+    } catch {
+      /* best-effort */
+    }
+  }
+  const prefs = (brand.facts as { kip_preferences?: { text?: string }[] } | undefined)?.kip_preferences;
+  if (Array.isArray(prefs) && prefs.length) {
+    bits.push(prefs.map((p) => `pref: ${p.text ?? ""}`).join("\n"));
+  }
+  return bits.filter(Boolean).join("\n");
+}
+
+/**
+ * Persist trading name / named typefaces / colours from the interview.
+ * Lab chats stay `pending` and never reach finishOnboarding — without this,
+ * overlayMasthead is empty and stampBrandLogo no-ops.
+ */
+export async function captureInterviewVisualTokens(
+  brand: Brand,
+  transcript?: OnboardingTurnMsg[],
+): Promise<{ brand: Brand; niche: string; exemplars: string | null }> {
+  const empty = { brand, niche: "", exemplars: null as string | null };
   try {
-    const convo = transcript.map((t) => `${t.role}: ${t.content}`).join("\n");
+    const convo = await loadInterviewConvo(brand, transcript);
+    if (!convo.trim()) return empty;
+    const hasName = interviewHasTradingName(brand);
+    const hasFonts = interviewHasFonts(brand);
+    if (hasName && hasFonts) {
+      return {
+        brand,
+        niche: String((brand.facts as { differentiators?: string } | undefined)?.differentiators ?? ""),
+        exemplars: null,
+      };
+    }
+    if (hasName && !hasFonts && !NAMED_TYPEFACE_RE.test(convo)) {
+      return {
+        brand,
+        niche: String((brand.facts as { differentiators?: string } | undefined)?.differentiators ?? ""),
+        exemplars: null,
+      };
+    }
+
     const raw = await callLLM({
       system:
         "From this onboarding chat, extract the business's niche/industry (a short phrase), any 1–2 accounts/competitors the owner said they admire, the trading name if they gave one, and any typefaces or brand colours they named. " +
@@ -76,7 +152,8 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
     );
     const facts = { ...(row?.facts ?? brand.facts ?? {}) } as Record<string, unknown>;
     const visual = { ...(row?.visual ?? brand.visual ?? {}) };
-    const niche = parsed.niche?.trim();
+    const niche = parsed.niche?.trim() ?? "";
+    const exemplars = parsed.exemplars?.trim() || null;
     const business = parsed.business_name?.trim();
     if (business && business.toLowerCase() !== "lab cafe") {
       facts.business_name = business;
@@ -95,16 +172,31 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
       JSON.stringify(visual),
       brand.id,
     ]);
+    const next = await queryOne<Brand>("select * from brands where id = $1", [brand.id]);
+    return {
+      brand: next ?? { ...brand, facts: facts as Brand["facts"], visual },
+      niche,
+      exemplars,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** Extract the niche + admired accounts and seed a pending plan (kicks off research). */
+async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnMsg[]): Promise<void> {
+  try {
+    const { brand: next, niche, exemplars } = await captureInterviewVisualTokens(brand, transcript);
     if (niche) {
-      await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
+      await seedPendingPlan(next.id, niche, exemplars);
     }
     // Seed niche look pack from what they actually said — never the lab placeholder name.
     try {
       const { resolveLookPackFromNiche } = await import("./lookPacks/index.js");
       const { setBrandLookPack } = await import("./variants.js");
-      const pack = resolveLookPackFromNiche(niche ?? "");
+      const pack = resolveLookPackFromNiche(niche);
       if (pack.id !== "generic_faithful") {
-        await setBrandLookPack(brand.id, pack.id);
+        await setBrandLookPack(next.id, pack.id);
       }
     } catch {
       /* non-fatal */

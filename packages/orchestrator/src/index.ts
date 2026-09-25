@@ -23,6 +23,8 @@ export { speakSMS, buildSpeakSystem, needsThink, humanizeChat, readOpenLoops } f
 export type { SpeakMode, SpeakOptions, ThinkResult } from "./speak/index.js";
 
 export {
+  captureInterviewVisualTokens,
+  shouldCaptureInterviewTokens,
   startOnboarding,
   kickOffOnboardingAfterPayment,
   beginOnboardingInterview,

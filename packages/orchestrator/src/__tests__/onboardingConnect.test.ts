@@ -163,5 +163,9 @@ describe("onboarding visual capture", () => {
     expect(src).toMatch(/visual\.fonts = fonts/);
     expect(src).toMatch(/visual\.colors = colors/);
     expect(src).toMatch(/Do not invent fonts or colours/);
+    expect(src).toMatch(/export async function captureInterviewVisualTokens/);
+    expect(src).toMatch(/select direction, body from messages/);
+    expect(src).toMatch(/export function shouldCaptureInterviewTokens/);
+    expect(src).toMatch(/lab === true/);
   });
 });
