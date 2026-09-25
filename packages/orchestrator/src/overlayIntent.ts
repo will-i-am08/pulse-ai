@@ -8,6 +8,7 @@ import {
   extractExactOverlayHeadline,
   messageWantsNoText,
   messageWantsText,
+  overlayFaceFromVisual,
   type OverlayTreatment,
 } from "./imaging.js";
 
@@ -20,13 +21,35 @@ export type FeedOverlayIntent = {
   exactHeadline: string | null;
 };
 
-/** Bottom band, one line, Inter — not the stacked Anton poster. */
+/** Bottom band, one line — Inter unless the brand’s tokens are serif. */
 export const QUIET_OVERLAY_TREATMENT: OverlayTreatment = {
   placement: "bottom",
   stack: "single",
   face: "inter",
   wrap: "banner",
 };
+
+/** House type recipe from this brand’s visual.fonts, not one Kip Inter poster. */
+export function brandOverlayTreatment(
+  visual: { fonts?: string[] } | null | undefined,
+  tone: FeedOverlayTone,
+): OverlayTreatment {
+  const face = overlayFaceFromVisual(visual);
+  if (tone === "quiet") {
+    return {
+      placement: "bottom",
+      stack: "single",
+      face: face === "anton" ? "inter" : face,
+      wrap: "banner",
+    };
+  }
+  return {
+    placement: "center",
+    stack: "stack",
+    face,
+    wrap: "pair",
+  };
+}
 
 export const FEED_OVERLAY_INSTRUCTION =
   "On-image type: honour overlay:none (clean photo, card may be empty) or overlay:headline (card is the on-image line). Quiet = one short line, not a stacked shout. Shouty = punchy 2–5 words. This is the brand's house style — do not mix clean and poster on the next slide. Do not map a niche to overlay vs clean — the agent already chose from brand facts, voice, and design rules.";
@@ -97,6 +120,17 @@ export function resolveFeedOverlayIntent(input: {
   }
 
   return { mode: "none", tone, exactHeadline: null };
+}
+
+/** True only when the agent/owner turned type off — not the generated-feed default. */
+export function overlayExplicitlyOff(input: {
+  brief?: string | null;
+  overlay?: unknown;
+}): boolean {
+  if (modeOf(input.overlay) === "none") return true;
+  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
+  if (!brief) return false;
+  return messageWantsNoText(brief) || /\bno overlay\b|\boverlay:\s*none\b/i.test(brief);
 }
 
 export function overlayOptsFromPayload(payload: Record<string, unknown> | null | undefined): {

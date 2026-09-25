@@ -155,6 +155,7 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/Variety is between brands/i);
     expect(prompt).toMatch(/Do not randomize treatment post-to-post/i);
     expect(prompt).toMatch(/caf[eé]=skip/i);
+    expect(prompt).toMatch(/visual\.fonts|Playfair|typeface/i);
     expect(prompt).not.toMatch(/if niche is caf[eé].*no overlay/i);
     expect(prompt).not.toMatch(/Vary across this brand's week/i);
   });
@@ -165,6 +166,7 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/elements none or mark or constructed/i);
     expect(prompt).toMatch(/Variety is between brands/i);
     expect(prompt).toMatch(/Do not randomize treatment post-to-post/i);
+    expect(prompt).toMatch(/constructed = palette\/type\/mark on a generated photo/i);
     expect(prompt).toMatch(/caf[eé]=template/i);
     expect(prompt).not.toMatch(/if niche is caf[eé].*quote.?card/i);
     expect(prompt).not.toMatch(/Vary across this brand's week/i);

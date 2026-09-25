@@ -85,7 +85,7 @@ describe("inferOverlayTreatment", () => {
     {
       ask: "text over the top",
       visual: { fonts: ["Playfair Display"] },
-      want: { placement: "center", stack: "stack", face: "inter", wrap: "pair" },
+      want: { placement: "center", stack: "stack", face: "playfair", wrap: "pair" },
     },
     {
       ask: "post this",
@@ -252,7 +252,7 @@ describe("overlay treatment wiring", () => {
       imaging.indexOf("async function renderTile"),
       imaging.indexOf("export async function applyTextTile"),
     );
-    expect(renderTile).toMatch(/letterSpacing: "0\.03em"/);
+    expect(renderTile).toMatch(/0\.03em/);
     expect(renderTile).toMatch(/textShadow:/);
     expect(renderTile).toMatch(/overlayWordNodes\(/);
     expect(renderTile).toMatch(/overlaySafeInset\(/);

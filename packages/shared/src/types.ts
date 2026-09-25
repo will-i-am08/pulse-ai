@@ -891,6 +891,8 @@ export interface BusinessFacts {
   policies?: string;
   faqs?: Array<{ q: string; a: string }>;
   differentiators?: string;
+  /** Trading name for wordmark stamps — not the lab placeholder. */
+  business_name?: string;
   /** Rolling weekly AI video/specialty spend estimate (ops cost guard). */
   ai_spend?: AiSpendFacts;
   /** Active niche look pack id (café-warm, salon-clean, …). */

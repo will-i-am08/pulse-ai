@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QUIET_OVERLAY_TREATMENT, resolveFeedOverlayIntent } from "../overlayIntent.js";
+import { QUIET_OVERLAY_TREATMENT, brandOverlayTreatment, overlayExplicitlyOff, resolveFeedOverlayIntent } from "../overlayIntent.js";
 
 describe("resolveFeedOverlayIntent", () => {
   it("defaults generated stills to clean (no always-tile)", () => {
@@ -42,10 +42,27 @@ describe("resolveFeedOverlayIntent", () => {
     });
   });
 
+  it("uses brand visual tokens for face so two brands do not share Inter", () => {
+    expect(brandOverlayTreatment({ fonts: ["Playfair Display"] }, "shouty").face).toBe("playfair");
+    expect(brandOverlayTreatment({ fonts: ["Anton"] }, "shouty").face).toBe("anton");
+    expect(brandOverlayTreatment({ fonts: ["Inter"] }, "quiet").face).toBe("inter");
+    expect(brandOverlayTreatment({}, "quiet").face).toBe("inter");
+    expect(brandOverlayTreatment({}, "shouty").face).toBe("anton");
+  });
+
   it("does not encode café=skip or tech=shout", () => {
     const cafe = resolveFeedOverlayIntent({ brief: "café bun special, natural light" });
     const tech = resolveFeedOverlayIntent({ brief: "SaaS launch announcement" });
     expect(cafe.mode).toBe("none");
     expect(tech.mode).toBe("none");
+  });
+});
+
+describe("overlayExplicitlyOff", () => {
+  it("does not treat the generated-feed default as an explicit off", () => {
+    expect(overlayExplicitlyOff({})).toBe(false);
+    expect(overlayExplicitlyOff({ brief: "Saturday bun" })).toBe(false);
+    expect(overlayExplicitlyOff({ overlay: "none" })).toBe(true);
+    expect(overlayExplicitlyOff({ brief: "no overlay on this" })).toBe(true);
   });
 });

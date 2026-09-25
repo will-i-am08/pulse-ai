@@ -57,6 +57,7 @@ describe("lab chat restart", () => {
     expect(fn).toMatch(/delete facts\.owner_name/);
     expect(fn).toMatch(/delete facts\.look_pack/);
     expect(fn).toMatch(/delete facts\.differentiators/);
+    expect(fn).toMatch(/delete facts\.business_name/);
     expect(fn).toMatch(/delete facts\.kip_preferences/);
     expect(fn).toMatch(/delete facts\.kip_decisions/);
     expect(fn).toMatch(/delete facts\.open_loops/);
@@ -148,5 +149,19 @@ describe("voiceRecapSms", () => {
     expect(sms).not.toMatch(/I'll skip use /i);
     expect(sms).not.toMatch(/I'll stay clear of .+ and /i);
     expect(sms).not.toMatch(/dashboard/i);
+  });
+});
+
+describe("onboarding visual capture", () => {
+  it("stores business_name, fonts, and colours from the interview", () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../onboarding.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/"business_name"/);
+    expect(src).toMatch(/facts\.business_name = business/);
+    expect(src).toMatch(/visual\.fonts = fonts/);
+    expect(src).toMatch(/visual\.colors = colors/);
+    expect(src).toMatch(/Do not invent fonts or colours/);
   });
 });
