@@ -18,7 +18,8 @@ import { resolveVisualMode, type VisualMode } from "./visualMode.js";
 import { inferContentJob, formatBiasForJob, isLinkedInPrimary } from "./contentJobs.js";
 import { hooksPromptBlock } from "./hooks.js";
 import { humanizeCaption, captionJobForFormat, captionJobPrompt } from "./humanizeCaption.js";
-import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames, creativeBrandLabel, creativeSceneConstraint } from "./faceless.js";
+import { facelessPromptLine, facelessPhotoConstraint, stripPersonalNames, creativeBrandLabel, creativeSceneConstraint, overlayMasthead } from "./faceless.js";
+import { captureInterviewVisualTokens } from "./onboarding.js";
 import { NEVER_INVENT_PROOF } from "./persona.js";
 import {
   looksLikeCityscapeBrief,
@@ -69,6 +70,12 @@ export async function generateFillerPost(
     overlay_headline: opts?.overlay_headline,
   });
   const elementsIntent = resolveFeedElementsIntent({ brief: topic, elements: opts?.elements });
+  if (
+    (elementsIntent === "mark" || elementsIntent === "constructed") &&
+    !overlayMasthead(brand)
+  ) {
+    brand = (await captureInterviewVisualTokens(brand)).brand;
+  }
   const wantOverlay =
     overlayIntent.mode === "headline" ||
     (elementsIntent === "constructed" &&

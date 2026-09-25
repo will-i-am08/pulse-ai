@@ -350,6 +350,21 @@ describe("generateFillerPost photo mode", () => {
     await generateFillerPost(brand, pillar, { visuals: "photo", elements: "none" });
     expect(stampBrandLogo).not.toHaveBeenCalled();
   });
+
+  it("captures interview tokens before stamping when the masthead is empty", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const fillers = readFileSync(join(here, "../fillers.ts"), "utf8");
+    const inbound = readFileSync(join(here, "../processInbound.ts"), "utf8");
+    expect(fillers).toMatch(/captureInterviewVisualTokens/);
+    expect(fillers).toMatch(/overlayMasthead\(brand\)/);
+    expect(inbound).toMatch(/shouldCaptureInterviewTokens/);
+    expect(inbound).toMatch(/captureInterviewVisualTokens/);
+    const leftover = inbound.slice(inbound.indexOf("async function leftoverTurn"));
+    expect(leftover.indexOf("captureInterviewVisualTokens")).toBeLessThan(leftover.indexOf("runGeneralAgent"));
+  });
 });
 
 describe("FEED_PHOTO_NEGATIVE", () => {

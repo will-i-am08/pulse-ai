@@ -4,7 +4,7 @@ import { classifyInbound, type InboundClassification, looksLikeAffirmation, look
 import { draftCaption } from "./draftCaption.js";
 import { applyCorrection } from "./applyCorrection.js";
 import { buildConversationContext } from "./conversationContext.js";
-import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleAwaitingContact, handleReadingContent, acknowledgeThenContinue } from "./onboarding.js";
+import { onboardingNext, WRAP_ACK, ensureOwnerNameFromUser, handleAwaitingConnect, handleAwaitingContact, handleReadingContent, acknowledgeThenContinue, captureInterviewVisualTokens, shouldCaptureInterviewTokens } from "./onboarding.js";
 import {
   editImageForBrand,
   shouldOverlayHeadline,
@@ -558,6 +558,13 @@ async function leftoverTurn(
     mediaIds?: string[];
   },
 ): Promise<InboundResult> {
+  // Lab interviews stay `pending` and skip finishOnboarding. Capture the
+  // trading name / typefaces here so mark stamps and overlay faces exist
+  // before the agent drafts.
+  const captured = shouldCaptureInterviewTokens(brand)
+    ? await captureInterviewVisualTokens(brand)
+    : { brand };
+  brand = captured.brand;
   if (
     generalAgentEligible({
       hasPending: opts.pending != null,
