@@ -242,7 +242,7 @@ async function formatEngine(brand: Brand): Promise<string> {
   const n = Number(photoCount) || 0;
   if (n > 0) {
     lines.push(
-      `Library: ${n} photo${n === 1 ? "" : "s"} on file. Do not ask the owner to upload — use the library.`,
+      `Library: ${n} unused owner photo${n === 1 ? "" : "s"}. Prefer from_library or pass media_ids instead of generating, unless they asked for generated/stock or this brief needs a scene they did not shoot.`,
     );
   } else {
     lines.push("Library: 0 photos on file.");

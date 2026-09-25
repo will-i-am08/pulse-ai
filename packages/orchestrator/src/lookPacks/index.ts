@@ -29,7 +29,7 @@ const CROP_VARIANT_FRAMES: [LookFrameGravity, LookFrameGravity, LookFrameGravity
 ];
 
 export const PHOTO_EDIT_FAITHFUL_CORE =
-  "Enhance this exact photograph in place. Adjust only lighting, exposure, colour grade, sharpness, and crop/framing of what is already visible.";
+  "Enhance this exact photograph in place. Adjust only lighting, exposure, colour grade, sharpness, and crop/framing of what is already visible. Keep the phone-shot character — slight grain, handheld crop, natural light — not a glossy studio ad, unless the request or brand photo_style asks for a more professional grade.";
 
 export const PHOTO_EDIT_FAITHFUL_PROHIBITION =
   "Do not add, remove, replace, or restage any person, face, body, vehicle, van, storefront, uniform, tool, pipe, signage, text, logo, or trade prop that is not already clearly visible in the source photo. Do not change the subject category (e.g. food must stay food, not a job site).";

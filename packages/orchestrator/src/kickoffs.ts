@@ -1009,8 +1009,8 @@ async function draftGeneratedPiece(
       console.warn("draftGeneratedPiece: photo carousel QA fail — silent retry with fresher brief");
       photoCarousel = await generatePhotoTextCarousel(brand, pillar, {
         topicHint: hint
-          ? `${hint} (fresh unique cinematic frames, tighter overlays)`
-          : "fresh unique cinematic frames, tighter overlays",
+          ? `${hint} (fresh unique handheld frames, tighter overlays)`
+          : "fresh unique handheld frames, tighter overlays",
         forceFresh: true,
         destinations,
       });
@@ -1202,7 +1202,7 @@ async function maybeEnqueueQaSelfHeal(
     baseHint
       ? `${topicHintWithDestinations(baseHint, destinations)} (fresh unique frames, new angles, tighter overlays)`
       : topicHintWithDestinations("", destinations) ||
-        "fresh unique cinematic frames, tighter overlays"
+        "fresh unique handheld frames, tighter overlays"
   ).slice(0, 400);
   try {
     await enqueueKickoff(brand, "draft_posts", {

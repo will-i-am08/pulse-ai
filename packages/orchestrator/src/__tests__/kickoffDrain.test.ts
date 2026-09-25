@@ -91,7 +91,10 @@ describe("runDraftPosts / runFirstBatch timeout recovery (source pin)", () => {
       const recover = fn.indexOf("recoverRecentKickoffPosts");
       const fail =
         fnName === "runDraftPosts"
-          ? fn.indexOf("Couldn't finish those drafts just then")
+          ? Math.max(
+              fn.indexOf("Couldn't finish those drafts just then"),
+              fn.indexOf("zeroDraftOwnerSms"),
+            )
           : fn.indexOf("Hit a snag drafting that first batch");
       expect(pendingWait).toBeGreaterThan(-1);
       expect(recover).toBeGreaterThan(pendingWait);
@@ -123,14 +126,18 @@ describe("runDraftPosts / runFirstBatch timeout recovery (source pin)", () => {
       const timeoutReturn = fn.indexOf("pending.push");
       const pendingWait = fn.indexOf("awaitPendingDraftWork");
       const recover = fn.indexOf("recoverRecentKickoffPosts");
-      const failAt = fnName === "runDraftPosts" ? fn.indexOf(fail) : fn.indexOf(firstBatchFail);
+      const failAt =
+        fnName === "runDraftPosts"
+          ? Math.max(fn.indexOf(fail), fn.indexOf("zeroDraftOwnerSms"))
+          : fn.indexOf(firstBatchFail);
       expect(timeoutReturn).toBeGreaterThan(-1);
       expect(pendingWait).toBeGreaterThan(timeoutReturn);
       expect(recover).toBeGreaterThan(pendingWait);
       expect(failAt).toBeGreaterThan(recover);
     }
     expect(src).toMatch(/status in \('pending_approval', 'draft'\)/);
-    expect(src.indexOf("async function recoverRecentKickoffPosts")).toBeLessThan(src.indexOf(fail));
+    expect(src.indexOf("async function recoverRecentKickoffPosts")).toBeGreaterThan(-1);
+    expect(src).toContain("Couldn't finish those drafts just then");
   });
 
   it("recover skips posts without media_ids and cannot throw into the fail SMS", () => {

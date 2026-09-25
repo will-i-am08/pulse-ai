@@ -175,11 +175,11 @@ export async function generateEditPrompt(
   const styleBits = brandPhotoStyleBits(brand);
   const system = [
     business
-      ? "You write ONE image-editing instruction for the Flux Kontext model that faithfully polishes a client's phone photo. Prefer a faithful polish — lighting, colour, sharpness, tidiness — not a restaged scene."
-      : "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up.",
+      ? "You write ONE image-editing instruction for the Flux Kontext model that faithfully polishes a client's phone photo. Prefer a faithful polish — lighting, colour, sharpness, tidiness — not a restaged scene. Keep the phone-shot character (slight grain, handheld crop) unless the request or brand photo_style asks for a more professional grade."
+      : "You write ONE vivid image-editing instruction for the Flux Kontext model that turns a client's phone photo into a scroll-stopping social-media image. The change must be clearly visible and worth it — a real transformation, never a timid touch-up. Still read as a real phone photo, not CGI, unless their photo_style or this request asks for a more produced look.",
     business
-      ? "BUSINESS account — FAITHFUL POLISH: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, tidiness and polish like a pro product shoot. Do NOT reinvent, replace, restage, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront, no invented tools or vehicles."
-      : "PERSONAL/creator account: go bold and cinematic — dramatic directional lighting, rich contrast and a strong colour grade, striking and high-energy — while keeping the subject clearly recognisable.",
+      ? "BUSINESS account — FAITHFUL POLISH: keep the real subject/product/premises truthful and recognisable. Improve lighting, colour fidelity, and tidiness while keeping iPhone grain and handheld framing. Do not studio-polish into a glossy ad unless the client request or brand visual/photo_style asks for a more professional grade. Do NOT reinvent, replace, restage, or misrepresent the product, place, or people. No fantasy props, no fake packaging, no relocated storefront, no invented tools or vehicles."
+      : "PERSONAL/creator account: stronger light and colour are fine when their voice asks for it — keep the subject clearly recognisable and default to a real phone photo, not a 3D render.",
     styleBits.length ? `Brand visual + photo_style direction: ${styleBits.join("; ")}.` : "",
     asked
       ? `Client request (lighting/grade/crop hint only — never restage or invent subjects): "${asked}".`
@@ -350,7 +350,8 @@ async function generatePhotoImageInner(
   try {
     const { falConfigured, falGenerateImageRouted } = await import("./ugc/falClient.js");
     const { resolveStillChain } = await import("./ugc/modelRouter.js");
-    const { FEED_PHOTO_NEGATIVE } = await import("./ugc/presets/stillPresets.js");
+    const { FEED_PHOTO_NEGATIVE, withFeedPhotoLook } = await import("./ugc/presets/stillPresets.js");
+    prompt = withFeedPhotoLook(prompt);
     if (falConfigured()) {
       const chain = resolveStillChain(stillIds?.length ? stillIds : stillChainForQuality(quality, brief));
       const routed = await falGenerateImageRouted({
@@ -393,9 +394,9 @@ async function generatePhotoImageViaReplicate(
   // Schnell has no negative_prompt — bake realism + anti-slop into the prompt.
   let hardened = prompt;
   try {
-    const { FEED_PHOTO_NEGATIVE, FEED_PHOTO_REALISM_CUE } = await import("./ugc/presets/stillPresets.js");
+    const { FEED_PHOTO_NEGATIVE, withFeedPhotoLook } = await import("./ugc/presets/stillPresets.js");
     const avoid = FEED_PHOTO_NEGATIVE.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 24).join(", ");
-    hardened = [prompt, FEED_PHOTO_REALISM_CUE, avoid ? `Avoid: ${avoid}` : ""]
+    hardened = [withFeedPhotoLook(prompt), avoid ? `Avoid: ${avoid}` : ""]
       .filter(Boolean)
       .join(". ");
   } catch {

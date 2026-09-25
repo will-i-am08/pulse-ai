@@ -164,6 +164,7 @@ describe("faithful variant edits", () => {
     for (const pack of Object.values(LOOK_PACKS_V1)) {
       const req = buildVariantEditRequest(pack, 0, 3);
       expect(req).toContain(PHOTO_EDIT_FAITHFUL_PROHIBITION);
+      expect(req).toMatch(/phone-shot character|slight grain|handheld/i);
       expect(req).not.toMatch(/depict that trade/i);
       expect(req).not.toMatch(/plumber van|tools, job sites|finished jobs/i);
       expect(req).not.toMatch(/restyle this into a café/i);
@@ -184,6 +185,9 @@ describe("faithful variant edits", () => {
     expect(fn).not.toMatch(/creativeSceneConstraint/);
     expect(fn).not.toMatch(/Honour that request above everything else/);
     expect(fn).not.toMatch(/MOST IMPORTANT/);
+    expect(fn).toMatch(/phone-shot character|iPhone grain/i);
+    expect(fn).toMatch(/unless the (client )?request or brand/i);
+    expect(fn).not.toMatch(/like a pro product shoot/);
   });
 
   it("editImageForBrand variant mode skips generateEditPrompt", () => {

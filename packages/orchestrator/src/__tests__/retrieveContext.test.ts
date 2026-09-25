@@ -67,7 +67,8 @@ describe("retrieveBrandContext", () => {
     mockedBanked.mockResolvedValue(4);
     const pack = await retrieveBrandContext(stubBrand(), "make a carousel");
     expect(pack.text).toMatch(/## Engine/);
-    expect(pack.text).toMatch(/4 photos?/i);
+    expect(pack.text).toMatch(/4 unused owner photos/i);
+    expect(pack.text).toMatch(/from_library/i);
     expect(pack.text).toMatch(/library/i);
     expect(pack.text).toMatch(/Upcoming:/);
     expect(mockedBanked).toHaveBeenCalledWith("brand-1");
