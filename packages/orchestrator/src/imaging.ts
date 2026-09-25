@@ -30,6 +30,7 @@ import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 // in the Next serverless bundle and the worker — no file tracing / path issues.
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
+import { safePublicUrl } from "./research.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
 
@@ -1925,5 +1926,77 @@ export async function applyStoryCreative(
   } catch (err) {
     console.error(`applyStoryCreative: failed for media ${mediaId}`, err);
     return null;
+  }
+}
+
+const LOGO_MAX_BYTES = 2_000_000;
+
+/** Composite a logo onto a still, bottom-left, ~16% of width. */
+export async function compositeBrandLogo(base: Buffer, logo: Buffer): Promise<Buffer> {
+  const meta = await sharp(base).metadata();
+  const width = meta.width ?? 1080;
+  const height = meta.height ?? 1080;
+  const markW = Math.max(48, Math.round(width * 0.16));
+  const resized = await sharp(logo)
+    .resize({ width: markW, withoutEnlargement: true })
+    .ensureAlpha()
+    .png()
+    .toBuffer();
+  const lm = await sharp(resized).metadata();
+  const pad = Math.round(width * 0.045);
+  const left = pad;
+  const top = Math.max(0, height - (lm.height ?? markW) - pad);
+  return sharp(base)
+    .composite([{ input: resized, left, top }])
+    .jpeg({ quality: 88 })
+    .toBuffer();
+}
+
+async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
+  const url = safePublicUrl(logoUrl);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      headers: { Accept: "image/*,*/*;q=0.8", "User-Agent": "KipBot/1.0" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    const ctype = res.headers.get("content-type") ?? "";
+    if (ctype && !/^image\//i.test(ctype) && !/octet-stream/i.test(ctype)) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length || buf.length > LOGO_MAX_BYTES) return null;
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stamp `brand.visual.logo_url` onto a stored still. No-op (returns the same id)
+ * when nameless, no logo, or fetch/composite fails — masthead wordmark still
+ * covers brands that only have a name.
+ */
+export async function stampBrandLogo(brand: Brand, mediaId: string): Promise<string | null> {
+  if (isNamelessCreative(brand)) return mediaId;
+  const logoUrl = brand.visual?.logo_url;
+  if (!logoUrl) return mediaId;
+  const blob = await getMedia(mediaId);
+  if (!blob) return null;
+  try {
+    const logo = await fetchBrandLogoBytes(logoUrl);
+    if (!logo) return mediaId;
+    const stamped = await compositeBrandLogo(Buffer.from(blob.bytes), logo);
+    const newId = randomUUID();
+    await query(
+      `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)
+       values ($1, $2, $3, 'photo', 'operator', 'image/jpeg')`,
+      [newId, brand.id, newId],
+    );
+    await putMedia(newId, new Uint8Array(stamped), "image/jpeg");
+    return newId;
+  } catch (err) {
+    console.error(`stampBrandLogo: failed for media ${mediaId}`, err);
+    return mediaId;
   }
 }

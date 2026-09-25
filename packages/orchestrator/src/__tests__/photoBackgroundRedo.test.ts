@@ -34,6 +34,7 @@ vi.mock("../imaging.js", async (importOriginal) => {
     renderQuoteCard: vi.fn(async () => Buffer.from("fake-card")),
     generateHeadline: vi.fn(async () => "FALLBACK HEADLINE"),
     applyTextTile: vi.fn(async () => "tiled-media-id"),
+    stampBrandLogo: vi.fn(async (_brand, mediaId: string) => mediaId),
   };
 });
 
@@ -254,6 +255,66 @@ describe("generateFillerPost photo mode", () => {
         }),
       );
     }
+  });
+
+  it("constructs from elements via the designed path and stamps the mark", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, renderQuoteCard, stampBrandLogo } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-el",
+      caption: "A real caption about hiring",
+      media_ids: ["marked-media-id"],
+    } as any);
+    vi.mocked(stampBrandLogo).mockResolvedValueOnce("marked-media-id");
+
+    const out = await generateFillerPost(brand, pillar, { elements: "constructed" });
+    expect(out).not.toBeNull();
+    expect(generatePhotoImage).not.toHaveBeenCalled();
+    expect(renderQuoteCard).toHaveBeenCalled();
+    expect(stampBrandLogo).toHaveBeenCalled();
+    const insertArgs = vi.mocked(queryOne).mock.calls[0];
+    const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
+    expect(meta.brand_elements).toBe("constructed");
+  });
+
+  it("stamps a brand mark on a photo when elements is mark", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, applyTextTile, stampBrandLogo } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-mark",
+      caption: "A real caption about hiring",
+      media_ids: ["logo-media-id"],
+    } as any);
+    vi.mocked(stampBrandLogo).mockResolvedValueOnce("logo-media-id");
+
+    const out = await generateFillerPost(brand, pillar, { visuals: "photo", elements: "mark" });
+    expect(out).not.toBeNull();
+    expect(applyTextTile).not.toHaveBeenCalled();
+    expect(stampBrandLogo).toHaveBeenCalled();
+    const insertArgs = vi.mocked(queryOne).mock.calls[0];
+    const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
+    expect(meta.brand_elements).toBe("mark");
+  });
+
+  it("does not stamp a logo when elements is none", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, stampBrandLogo } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-none",
+      caption: "A real caption about hiring",
+      media_ids: ["tiled-media-id"],
+    } as any);
+
+    await generateFillerPost(brand, pillar, { visuals: "photo", elements: "none" });
+    expect(stampBrandLogo).not.toHaveBeenCalled();
   });
 });
 

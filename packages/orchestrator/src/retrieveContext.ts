@@ -6,6 +6,7 @@
 import { brandVoiceProfileSchema, query, queryOne, type Brand, type Post } from "@pulse/shared";
 import { brandContextForPrompt } from "./brandContext.js";
 import { factsForPrompt } from "./businessProfile.js";
+import { formatBrandKitLine, formatMarketVisualsLine } from "./brandElements.js";
 import { kipMemoryPromptBlock, readKipDecisions, readKipPreferences } from "./kipMemory.js";
 import { bankedPhotoCount } from "./library.js";
 import { formatOfferedDraftBlock } from "./offeredDraft.js";
@@ -198,7 +199,7 @@ type PublishedPostRow = {
 type UpcomingRow = { scheduled_at: string; caption: string | null; status: string };
 
 async function formatEngine(brand: Brand): Promise<string> {
-  const [photoCount, pending, kickoffs, upcoming, proposedPlan, strategyBrief, proposedCampaign] =
+  const [photoCount, pending, kickoffs, upcoming, proposedPlan, strategyBrief, proposedCampaign, exemplars] =
     await Promise.all([
     bankedPhotoCount(brand.id).catch(() => 0),
     safeQueryOne<Post>(
@@ -234,6 +235,19 @@ async function formatEngine(brand: Brand): Promise<string> {
     ),
     safeQueryOne<{ id: string }>(
       `select id from campaigns where brand_id = $1 and status = 'proposed' order by created_at desc limit 1`,
+      [brand.id],
+    ),
+    safeQuery<{
+      label?: string | null;
+      notes?: string | null;
+      competitor_name?: string | null;
+      source?: string | null;
+    }>(
+      `select label, notes, competitor_name, source
+         from visual_exemplars
+        where brand_id = $1
+        order by created_at desc
+        limit 3`,
       [brand.id],
     ),
   ]);
@@ -289,6 +303,9 @@ async function formatEngine(brand: Brand): Promise<string> {
 
   const visuals = brand.visual?.preferred_visuals;
   lines.push(visuals ? `Preferred visuals: ${visuals}` : `Preferred visuals: ${NONE}`);
+  lines.push(formatBrandKitLine(brand.visual));
+  const market = formatMarketVisualsLine(exemplars);
+  if (market) lines.push(market);
 
   const kinds = kickoffs.map((k) => String(k.kind ?? "").trim()).filter(Boolean);
   lines.push(kinds.length ? `In-flight kickoffs: ${kinds.join(", ")}` : `In-flight kickoffs: ${NONE}`);

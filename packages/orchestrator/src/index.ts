@@ -152,6 +152,14 @@ export {
   looksLikeDesignedVisualsAsk,
   inferVisualModeFromText,
 } from "./visualMode.js";
+export {
+  resolveFeedElementsIntent,
+  elementsOptsFromPayload,
+  formatBrandKitLine,
+  formatMarketVisualsLine,
+  FEED_ELEMENTS_INSTRUCTION,
+} from "./brandElements.js";
+export type { FeedElementsMode } from "./brandElements.js";
 
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
 export { scheduleSlot } from "./scheduler.js";
@@ -221,6 +229,8 @@ export {
   editImageForBrand,
   applyTextTile,
   applyStoryCreative,
+  stampBrandLogo,
+  compositeBrandLogo,
   shouldOverlayHeadline,
   messageWantsText,
   brandPhotoStyleBits,

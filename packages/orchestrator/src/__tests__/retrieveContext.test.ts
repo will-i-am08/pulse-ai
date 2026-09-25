@@ -74,6 +74,26 @@ describe("retrieveBrandContext", () => {
     expect(mockedBanked).toHaveBeenCalledWith("brand-1");
   });
 
+  it("engine pack includes brand kit tokens so the agent can pick a house style", async () => {
+    const pack = await retrieveBrandContext(
+      stubBrand({
+        visual: {
+          colors: ["#111111", "#f5e6c8"],
+          fonts: ["Inter"],
+          logo_url: "https://example.com/logo.png",
+          aesthetic: "warm minimal",
+          preferred_visuals: "photo",
+        },
+      }),
+      "draft a post",
+    );
+    expect(pack.text).toMatch(/Brand kit:/);
+    expect(pack.text).toMatch(/logo yes/);
+    expect(pack.text).toMatch(/#111111/);
+    expect(pack.text).toMatch(/warm minimal/);
+    expect(pack.text).not.toMatch(/caf[eé]=template/i);
+  });
+
   it("engine pack describes offered draft overlay vs caption when pending exists", async () => {
     mockedQueryOne.mockImplementation(async (sql: string) => {
       if (String(sql).includes("pending_approval") && String(sql).includes("select *")) {
