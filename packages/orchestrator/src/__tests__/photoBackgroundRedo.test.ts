@@ -38,6 +38,14 @@ vi.mock("../imaging.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../briefCompliance.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../briefCompliance.js")>();
+  return {
+    ...actual,
+    reviewBriefCompliance: vi.fn(async () => ({ pass: true, reasons: [], reinforceHint: "" })),
+  };
+});
+
 vi.mock("../llm.js", () => ({
   callLLM: vi.fn(async () =>
     JSON.stringify({
@@ -121,7 +129,9 @@ describe("generateFillerPost photo mode", () => {
       brand,
       expect.any(String),
       "HIRE FOR SKILL NOT VIBES",
-      undefined,
+      expect.objectContaining({
+        treatment: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
+      }),
     );
     expect(generateHeadline).not.toHaveBeenCalled();
 
@@ -176,7 +186,7 @@ describe("generateFillerPost photo mode", () => {
     const { generateFillerPost } = await import("../fillers.js");
     const { generatePhotoImage, applyTextTile } = await import("../imaging.js");
     const { queryOne } = await import("@pulse/shared");
-    const { QUIET_OVERLAY_TREATMENT } = await import("../overlayIntent.js");
+    const { brandOverlayTreatment } = await import("../overlayIntent.js");
 
     vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
     vi.mocked(queryOne).mockResolvedValueOnce({
@@ -194,7 +204,7 @@ describe("generateFillerPost photo mode", () => {
       brand,
       expect.any(String),
       "HIRE FOR SKILL NOT VIBES",
-      expect.objectContaining({ treatment: QUIET_OVERLAY_TREATMENT }),
+      expect.objectContaining({ treatment: brandOverlayTreatment({}, "quiet") }),
     );
   });
 
@@ -257,11 +267,12 @@ describe("generateFillerPost photo mode", () => {
     }
   });
 
-  it("constructs from elements via the designed path and stamps the mark", async () => {
+  it("constructs on a generated photo with type and mark", async () => {
     const { generateFillerPost } = await import("../fillers.js");
-    const { generatePhotoImage, renderQuoteCard, stampBrandLogo } = await import("../imaging.js");
+    const { generatePhotoImage, renderQuoteCard, applyTextTile, stampBrandLogo } = await import("../imaging.js");
     const { queryOne } = await import("@pulse/shared");
 
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
     vi.mocked(queryOne).mockResolvedValueOnce({
       id: "post-el",
       caption: "A real caption about hiring",
@@ -271,12 +282,35 @@ describe("generateFillerPost photo mode", () => {
 
     const out = await generateFillerPost(brand, pillar, { elements: "constructed" });
     expect(out).not.toBeNull();
-    expect(generatePhotoImage).not.toHaveBeenCalled();
-    expect(renderQuoteCard).toHaveBeenCalled();
+    expect(generatePhotoImage).toHaveBeenCalled();
+    expect(renderQuoteCard).not.toHaveBeenCalled();
+    expect(applyTextTile).toHaveBeenCalled();
     expect(stampBrandLogo).toHaveBeenCalled();
     const insertArgs = vi.mocked(queryOne).mock.calls[0];
     const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
     expect(meta.brand_elements).toBe("constructed");
+    expect(meta.wants_text).toBe(true);
+  });
+
+  it("falls back to a palette quote card when constructed is graphics-only", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, renderQuoteCard, stampBrandLogo } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-card",
+      caption: "A real caption about hiring",
+      media_ids: ["card-id"],
+    } as any);
+
+    const out = await generateFillerPost(brand, pillar, {
+      elements: "constructed",
+      topicHint: "quote cards only, graphics only",
+    });
+    expect(out).not.toBeNull();
+    expect(generatePhotoImage).not.toHaveBeenCalled();
+    expect(renderQuoteCard).toHaveBeenCalled();
+    expect(stampBrandLogo).not.toHaveBeenCalled();
   });
 
   it("stamps a brand mark on a photo when elements is mark", async () => {

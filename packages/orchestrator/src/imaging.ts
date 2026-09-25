@@ -1028,7 +1028,7 @@ export function formatOverlayHeadline(text: string): string {
 
 export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
 export type OverlayStack = "single" | "stack";
-export type OverlayFace = "inter" | "anton";
+export type OverlayFace = "inter" | "anton" | "playfair";
 /** How words break across lines. Poster is the pilates one-word stack; pair/banner keep phrases together. */
 export type OverlayWrap = "banner" | "pair" | "poster";
 
@@ -1065,26 +1065,41 @@ export function cycleOverlayWrap(slideIndex = 0): OverlayWrap {
 
 function overlayWantsDisplayFace(visual?: VisualProfile | null): boolean {
   const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
-  // Same priority as resolveBrandPalette: serif wins, so "Playfair Display" stays Inter in v1.
+  // Serif wins so "Playfair Display" stays Playfair, not Anton.
   if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
     return false;
   }
   return fonts.some((f) => /anton|impact|bebas|display|condensed|oswald|archivo black/.test(f));
 }
 
-function overlayFaceFromContext(
+/** Map stored visual.fonts onto a burnable face. Empty tokens stay Anton for shouty type. */
+export function overlayFaceFromVisual(
   visual?: VisualProfile | null,
   opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
 ): OverlayFace {
   if (opts?.ideaBlurb || opts?.mixedFonts) return "anton";
-  // Serif stays Inter in v1. Everything else uses Anton — Inter-on-a-band
-  // looked thin and smashed next to a stacked Anton tip slide.
-  if (overlayWantsDisplayFace(visual)) return "anton";
   const fonts = (visual?.fonts ?? []).map((f) => f.toLowerCase());
   if (fonts.some((f) => /serif|playfair|georgia|garamond|times|didot|bodoni|editorial/.test(f))) {
+    return "playfair";
+  }
+  if (overlayWantsDisplayFace(visual)) return "anton";
+  if (
+    fonts.some((f) =>
+      /sans|helvetica|arial|montserrat|inter|futura|gothic|roboto|open sans|lato|poppins|dm sans|neue|linear/.test(
+        f,
+      ),
+    )
+  ) {
     return "inter";
   }
   return "anton";
+}
+
+function overlayFaceFromContext(
+  visual?: VisualProfile | null,
+  opts?: { ideaBlurb?: boolean; mixedFonts?: boolean },
+): OverlayFace {
+  return overlayFaceFromVisual(visual, opts);
 }
 
 /**
@@ -1288,6 +1303,8 @@ export type TextTileOptions = {
   slideIndex?: number;
   /** Owner named this headline exactly — skip 5-word/28-char smash. */
   exact?: boolean;
+  /** Skip the burned masthead when stampBrandLogo will own the mark. */
+  omitMasthead?: boolean;
 };
 
 export function resolveOverlayTreatment(
@@ -1435,7 +1452,8 @@ async function renderTile(
   const titleLines = headline.split("\n").map((l) => l.trim()).filter(Boolean);
   const stacked = titleLines.length > 1;
   const longestTitle = titleLines.reduce((a, l) => (l.length > a.length ? l : a), headline);
-  const titleFont = treatment.face === "anton" ? "Anton" : "Inter";
+  const titleFont =
+    treatment.face === "anton" ? "Anton" : treatment.face === "playfair" ? "Playfair" : "Inter";
   const detailFont = "Inter";
   const leftAlign = treatment.placement === "low_left";
   const baseSize = overlayFontSize(width, longestTitle, hasBody);
@@ -1568,7 +1586,7 @@ async function renderTile(
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        letterSpacing: "0.03em",
+        letterSpacing: treatment.face === "playfair" ? "0.01em" : "0.03em",
         lineHeight: 1.05,
         textShadow: "0 4px 28px rgba(0,0,0,0.55)",
         textAlign: titleAlign,
@@ -1769,7 +1787,8 @@ export async function applyTextTile(
         : formatOverlayHeadline(rawHeadline);
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
-    const tiled = await renderTile(blob.bytes, safeHeadline, overlayMasthead(brand), brand.visual, {
+    const masthead = opts?.omitMasthead ? "" : overlayMasthead(brand);
+    const tiled = await renderTile(blob.bytes, safeHeadline, masthead, brand.visual, {
       ...opts,
       body: safeBody,
       eyebrow: safeEyebrow,
@@ -1952,6 +1971,59 @@ export async function compositeBrandLogo(base: Buffer, logo: Buffer): Promise<Bu
     .toBuffer();
 }
 
+/** Typographic wordmark when there is no logo_url — same corner as the logo stamp. */
+export async function compositeBrandWordmark(
+  base: Buffer,
+  mark: string,
+  visual?: VisualProfile | null,
+): Promise<Buffer> {
+  const meta = await sharp(base).metadata();
+  const width = meta.width ?? 1080;
+  const height = meta.height ?? 1080;
+  const palette = resolveBrandPalette(visual);
+  const label = mark.replace(/\s+/g, " ").trim().slice(0, 32);
+  const fontSize = Math.max(18, Math.round(width * 0.028));
+  const markW = Math.min(Math.round(width * 0.62), Math.max(160, Math.round(label.length * fontSize * 0.62)));
+  const markH = Math.round(fontSize * 2.4);
+  const svg = await satori(
+    {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          width: `${markW}px`,
+          height: `${markH}px`,
+          color: palette.text,
+          fontFamily: palette.displayFont,
+          fontSize: `${fontSize}px`,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          fontWeight: 700,
+        },
+        children: label,
+      },
+    } as unknown as Parameters<typeof satori>[0],
+    {
+      width: markW,
+      height: markH,
+      fonts: [
+        { name: "Anton", data: ANTON, weight: 400, style: "normal" },
+        { name: "Playfair", data: SERIF, weight: 700, style: "normal" },
+        { name: "Inter", data: INTER_REGULAR, weight: 400, style: "normal" },
+        { name: "Inter", data: INTER_BOLD, weight: 700, style: "normal" },
+      ],
+    },
+  );
+  const png = new Resvg(svg, { fitTo: { mode: "width", value: markW } }).render().asPng();
+  const pad = Math.round(width * 0.045);
+  const top = Math.max(0, height - markH - pad);
+  return sharp(base)
+    .composite([{ input: png, left: pad, top }])
+    .jpeg({ quality: 88 })
+    .toBuffer();
+}
+
 async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
   const url = safePublicUrl(logoUrl);
   if (!url) return null;
@@ -1973,20 +2045,26 @@ async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
 }
 
 /**
- * Stamp `brand.visual.logo_url` onto a stored still. No-op (returns the same id)
- * when nameless, no logo, or fetch/composite fails — masthead wordmark still
- * covers brands that only have a name.
+ * Stamp the brand mark onto a stored still: `logo_url` when fetchable,
+ * otherwise a typographic wordmark from overlayMasthead. No-op when nameless
+ * or there is nothing to stamp.
  */
 export async function stampBrandLogo(brand: Brand, mediaId: string): Promise<string | null> {
   if (isNamelessCreative(brand)) return mediaId;
-  const logoUrl = brand.visual?.logo_url;
-  if (!logoUrl) return mediaId;
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    const logo = await fetchBrandLogoBytes(logoUrl);
-    if (!logo) return mediaId;
-    const stamped = await compositeBrandLogo(Buffer.from(blob.bytes), logo);
+    let stamped: Buffer | null = null;
+    const logoUrl = brand.visual?.logo_url;
+    if (logoUrl) {
+      const logo = await fetchBrandLogoBytes(logoUrl);
+      if (logo) stamped = await compositeBrandLogo(Buffer.from(blob.bytes), logo);
+    }
+    if (!stamped) {
+      const mark = overlayMasthead(brand);
+      if (!mark) return mediaId;
+      stamped = await compositeBrandWordmark(Buffer.from(blob.bytes), mark, brand.visual);
+    }
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)

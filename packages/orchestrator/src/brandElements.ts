@@ -5,11 +5,12 @@
  */
 
 import type { VisualProfile } from "@pulse/shared";
+import { looksLikeDesignedVisualsAsk } from "./visualMode.js";
 
 export type FeedElementsMode = "none" | "mark" | "constructed";
 
 export const FEED_ELEMENTS_INSTRUCTION =
-  "Brand kit: honour elements:none (photo-led, do not stamp a logo), elements:mark (stamp the brand logo/wordmark), or elements:constructed (build the post from palette, type, and mark — no photo required). This is the brand's house style — do not mix photo-only and quote-card on the next slide. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
+  "Brand kit: honour elements:none (photo-led, do not stamp a logo), elements:mark (stamp the brand logo/wordmark), or elements:constructed (build from palette, type, and mark — generate a photo for type and the mark to sit on unless the brief is graphics-only / quote cards). This is the brand's house style — do not mix photo-only and quote-card on the next slide. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
 
 function modeOf(v: unknown): FeedElementsMode | null {
   if (v === "none" || v === "mark" || v === "constructed") return v;
@@ -41,6 +42,11 @@ export function resolveFeedElementsIntent(input: {
     return "mark";
   }
   return "none";
+}
+
+/** Constructed is kit-on-photo unless the owner asked for type-only cards. */
+export function constructedWantsPhoto(brief?: string | null): boolean {
+  return !looksLikeDesignedVisualsAsk(brief);
 }
 
 export function elementsOptsFromPayload(payload: Record<string, unknown> | null | undefined): {

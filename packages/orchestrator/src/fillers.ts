@@ -30,11 +30,13 @@ import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } f
 import { FEED_PHOTO_LOOK_INSTRUCTION, FEED_PHOTO_REALISM_CUE } from "./ugc/presets/stillPresets.js";
 import {
   FEED_OVERLAY_INSTRUCTION,
-  QUIET_OVERLAY_TREATMENT,
+  brandOverlayTreatment,
+  overlayExplicitlyOff,
   resolveFeedOverlayIntent,
 } from "./overlayIntent.js";
 import {
   FEED_ELEMENTS_INSTRUCTION,
+  constructedWantsPhoto,
   resolveFeedElementsIntent,
 } from "./brandElements.js";
 
@@ -44,6 +46,7 @@ import {
  * agent-generated content never auto-posts. Photo mode may burn a headline
  * onto the still when the agent asked for overlay (models stay text-free).
  * Brand-kit language (mark / constructed) is agent-chosen, then repeated.
+ * Constructed generates a photo for type + mark unless the brief is graphics-only.
  */
 export async function generateFillerPost(
   brand: Brand,
@@ -65,14 +68,17 @@ export async function generateFillerPost(
     overlay_tone: opts?.overlay_tone,
     overlay_headline: opts?.overlay_headline,
   });
-  const wantOverlay = overlayIntent.mode === "headline";
-  const exactOverlay = overlayIntent.exactHeadline;
   const elementsIntent = resolveFeedElementsIntent({ brief: topic, elements: opts?.elements });
-  const visuals =
-    elementsIntent === "constructed" ? "designed" : (opts?.visuals ?? resolveVisualMode(brand));
+  const wantOverlay =
+    overlayIntent.mode === "headline" ||
+    (elementsIntent === "constructed" &&
+      !overlayExplicitlyOff({ brief: topic, overlay: opts?.overlay }));
+  const exactOverlay = overlayIntent.exactHeadline;
+  const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
-  const wantPhoto = visuals === "photo";
+  const wantPhoto =
+    elementsIntent === "constructed" ? constructedWantsPhoto(topic) : visuals === "photo";
   const job = inferContentJob({
     key: pillar.key,
     name: pillar.name,
@@ -139,6 +145,9 @@ export async function generateFillerPost(
       ? [
           linkedIn ? "Caption can be fuller LinkedIn commentary — still keep JSON valid." : "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: one clear subject tied to the caption + place + lighting. Honour any background the owner named.",
+          elementsIntent === "constructed"
+            ? "The still is a photographed scene the headline and brand mark will sit on — not a blank graphic, not a poster, no type in the photo."
+            : "",
           FEED_PHOTO_LOOK_INSTRUCTION,
           FEED_OVERLAY_INSTRUCTION,
           noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
@@ -248,22 +257,22 @@ export async function generateFillerPost(
         (exactOverlay && formatExactOverlayHeadline(exactOverlay)) ||
         (card && card.replace(/["']/g, "").trim()) ||
         (await generateHeadline(brand, caption));
+      const overlayTreatment = brandOverlayTreatment(brand.visual, overlayIntent.tone);
       const tileOpts = {
         ...(topic ? { ask: topic } : {}),
         ...(exactOverlay ? { exact: true } : {}),
-        ...(overlayIntent.tone === "quiet" ? { treatment: QUIET_OVERLAY_TREATMENT } : {}),
+        treatment: overlayTreatment,
+        ...(elementsIntent !== "none" ? { omitMasthead: true } : {}),
       };
-      const tiledId = await applyTextTile(
-        brand,
-        mediaId,
-        photoHeadline,
-        Object.keys(tileOpts).length ? tileOpts : undefined,
-      );
+      const tiledId = await applyTextTile(brand, mediaId, photoHeadline, tileOpts);
       if (tiledId) mediaId = tiledId;
     }
     if (elementsIntent === "mark" || elementsIntent === "constructed") {
-      const stampedId = await stampBrandLogo(brand, mediaId);
-      if (stampedId) mediaId = stampedId;
+      // Quote cards already paint the wordmark via overlayMasthead; still stamp a logo file.
+      if (wantPhoto || brand.visual?.logo_url) {
+        const stampedId = await stampBrandLogo(brand, mediaId);
+        if (stampedId) mediaId = stampedId;
+      }
     }
   } catch (err) {
     console.error("generateFillerPost: render/store failed", err);

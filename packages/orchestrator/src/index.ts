@@ -157,6 +157,7 @@ export {
   elementsOptsFromPayload,
   formatBrandKitLine,
   formatMarketVisualsLine,
+  constructedWantsPhoto,
   FEED_ELEMENTS_INSTRUCTION,
 } from "./brandElements.js";
 export type { FeedElementsMode } from "./brandElements.js";
@@ -229,8 +230,9 @@ export {
   editImageForBrand,
   applyTextTile,
   applyStoryCreative,
-  stampBrandLogo,
+  compositeBrandWordmark,
   compositeBrandLogo,
+  stampBrandLogo,
   shouldOverlayHeadline,
   messageWantsText,
   brandPhotoStyleBits,
@@ -247,7 +249,7 @@ export {
   resolveOverlayTreatment,
   cycleOverlayPlacement,
   cycleOverlayWrap,
-  splitOverlayStack,
+  overlayFaceFromVisual,
   overlayWordNodes,
   DEFAULT_OVERLAY_TREATMENT,
   OVERLAY_STYLE_CYCLE,
@@ -256,6 +258,8 @@ export {
 export {
   resolveFeedOverlayIntent,
   overlayOptsFromPayload,
+  brandOverlayTreatment,
+  overlayExplicitlyOff,
   QUIET_OVERLAY_TREATMENT,
   FEED_OVERLAY_INSTRUCTION,
 } from "./overlayIntent.js";

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FEED_ELEMENTS_INSTRUCTION,
+  constructedWantsPhoto,
   formatBrandKitLine,
   formatMarketVisualsLine,
   resolveFeedElementsIntent,
@@ -22,6 +23,14 @@ describe("resolveFeedElementsIntent", () => {
     expect(resolveFeedElementsIntent({ brief: "elements:constructed" })).toBe("constructed");
     expect(resolveFeedElementsIntent({ brief: "stamp the logo on this" })).toBe("mark");
     expect(resolveFeedElementsIntent({ brief: "never stamp logo, keep photos clean" })).toBe("none");
+  });
+});
+
+describe("constructedWantsPhoto", () => {
+  it("defaults constructed to a photo unless the brief is graphics-only", () => {
+    expect(constructedWantsPhoto("constructed graphics, black and cream")).toBe(true);
+    expect(constructedWantsPhoto("quote cards only")).toBe(false);
+    expect(constructedWantsPhoto("graphics only")).toBe(false);
   });
 });
 
@@ -73,6 +82,22 @@ describe("compositeBrandLogo", () => {
       .png()
       .toBuffer();
     const out = await compositeBrandLogo(base, logo);
+    const meta = await sharp(out).metadata();
+    expect(meta.width).toBe(200);
+    expect(meta.height).toBe(200);
+  });
+});
+
+describe("compositeBrandWordmark", () => {
+  it("keeps the canvas size when stamping a wordmark", async () => {
+    const sharp = (await import("sharp")).default;
+    const { compositeBrandWordmark } = await import("../imaging.js");
+    const base = await sharp({
+      create: { width: 200, height: 200, channels: 3, background: "#222222" },
+    })
+      .jpeg()
+      .toBuffer();
+    const out = await compositeBrandWordmark(base, "FORGE OPS", { fonts: ["Anton"], colors: ["#111111", "#f5f0e8"] });
     const meta = await sharp(out).metadata();
     expect(meta.width).toBe(200);
     expect(meta.height).toBe(200);

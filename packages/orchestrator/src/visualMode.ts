@@ -88,6 +88,15 @@ export function resolveVisualMode(
   const raw = String(payload?.visuals ?? brand.visual?.preferred_visuals ?? "")
     .trim()
     .toLowerCase();
+  const elements = String(payload?.elements ?? "")
+    .trim()
+    .toLowerCase();
+  const topic = String(payload?.topicHint ?? payload?.brief ?? payload?.hint ?? "");
+  // Constructed is kit language (palette/type/mark), not a photo-less card.
+  // Only skip the photo when the brief is explicitly graphics-only.
+  if (elements === "constructed") {
+    return looksLikeDesignedVisualsAsk(topic) ? "designed" : "photo";
+  }
   if (
     raw === "designed" ||
     raw === "text" ||
@@ -97,12 +106,11 @@ export function resolveVisualMode(
     raw === "graphics" ||
     raw === "constructed"
   ) {
+    if (raw === "constructed") {
+      return looksLikeDesignedVisualsAsk(topic) ? "designed" : "photo";
+    }
     return "designed";
   }
-  const elements = String(payload?.elements ?? "")
-    .trim()
-    .toLowerCase();
-  if (elements === "constructed") return "designed";
   if (
     raw === "photo" ||
     raw === "photos" ||

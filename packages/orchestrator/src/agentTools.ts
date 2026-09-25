@@ -164,7 +164,7 @@ const draftCopyInputSchema = z
     visuals: z
       .enum(["photo", "designed", "stock", "generated"])
       .optional()
-      .describe("Visual mode for queued drafts. constructed brand-elements language maps to designed."),
+      .describe("Visual mode for queued drafts. constructed brand-elements language generates a photo unless the brief is graphics-only."),
     overlay: z
       .enum(["none", "headline"])
       .optional()
@@ -185,7 +185,7 @@ const draftCopyInputSchema = z
       .enum(["none", "mark", "constructed"])
       .optional()
       .describe(
-        "Brand-kit language for THIS brand, repeated on every draft. none = photo-led, no extra stamp; mark = add logo (or wordmark if no logo_url); constructed = build from palette/type/mark (designed graphics). Pick from competitor/market research in the pack, remembered likes, and visual tokens — not a café/tech table, not a new roll each post.",
+        "Brand-kit language for THIS brand, repeated on every draft. none = photo-led, no extra stamp; mark = add logo (or wordmark if no logo_url); constructed = palette/type/mark on a generated photo unless they asked for graphics-only cards. Pick from competitor/market research in the pack, remembered likes, and visual tokens — not a café/tech table, not a new roll each post.",
       ),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
     topic_hint: z
@@ -392,7 +392,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, and on-image design rules — then repeat it. Set elements none or mark or constructed to THIS brand's construction language from research, remembered likes, and visual tokens — then repeat it; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, visual.fonts, and on-image design rules — then repeat it. Set elements none or mark or constructed to THIS brand's construction language from research, remembered likes, and visual tokens — then repeat it; constructed puts type and the mark on a generated photo unless they asked for graphics-only cards; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(

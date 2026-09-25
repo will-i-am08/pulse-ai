@@ -58,19 +58,44 @@ async function captureNicheAndSeedPlan(brand: Brand, transcript: OnboardingTurnM
     const convo = transcript.map((t) => `${t.role}: ${t.content}`).join("\n");
     const raw = await callLLM({
       system:
-        "From this onboarding chat, extract the business's niche/industry (a short phrase) and any 1–2 accounts/competitors the owner said they admire. " +
-        'Output JSON {"niche":"","exemplars":""} — empty strings if not stated.',
+        "From this onboarding chat, extract the business's niche/industry (a short phrase), any 1–2 accounts/competitors the owner said they admire, the trading name if they gave one, and any typefaces or brand colours they named. " +
+        'Output JSON {"niche":"","exemplars":"","business_name":"","fonts":[],"colors":[]} — empty strings/arrays if not stated. Do not invent fonts or colours.',
       messages: [{ role: "user", content: convo }],
-      maxTokens: 80,
+      maxTokens: 160,
     });
-    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as { niche?: string; exemplars?: string };
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as {
+      niche?: string;
+      exemplars?: string;
+      business_name?: string;
+      fonts?: unknown;
+      colors?: unknown;
+    };
+    const row = await queryOne<{ facts: Brand["facts"]; visual: Brand["visual"] }>(
+      "select facts, visual from brands where id = $1",
+      [brand.id],
+    );
+    const facts = { ...(row?.facts ?? brand.facts ?? {}) } as Record<string, unknown>;
+    const visual = { ...(row?.visual ?? brand.visual ?? {}) };
     const niche = parsed.niche?.trim();
+    const business = parsed.business_name?.trim();
+    if (business && business.toLowerCase() !== "lab cafe") {
+      facts.business_name = business;
+    }
+    const fonts = Array.isArray(parsed.fonts)
+      ? parsed.fonts.map((f) => String(f).trim()).filter(Boolean).slice(0, 3)
+      : [];
+    const colors = Array.isArray(parsed.colors)
+      ? parsed.colors.map((c) => String(c).trim()).filter(Boolean).slice(0, 4)
+      : [];
+    if (fonts.length) visual.fonts = fonts;
+    if (colors.length) visual.colors = colors;
+    if (niche) facts.differentiators = niche;
+    await query("update brands set facts = $1::jsonb, visual = $2::jsonb where id = $3", [
+      JSON.stringify(facts),
+      JSON.stringify(visual),
+      brand.id,
+    ]);
     if (niche) {
-      const facts = { ...(brand.facts ?? {}), differentiators: niche };
-      await query("update brands set facts = $1::jsonb where id = $2", [
-        JSON.stringify(facts),
-        brand.id,
-      ]);
       await seedPendingPlan(brand.id, niche, parsed.exemplars?.trim() || null);
     }
     // Seed niche look pack from what they actually said — never the lab placeholder name.
@@ -1368,6 +1393,7 @@ export async function archiveLabChatAndRestart(brandId: string): Promise<{
   delete facts.owner_name;
   delete facts.look_pack;
   delete facts.differentiators;
+  delete facts.business_name;
   delete facts.pending_destination_link;
   delete facts.kip_preferences;
   delete facts.kip_decisions;
@@ -1434,6 +1460,7 @@ export async function hardResetLabBrand(brandId: string): Promise<void> {
   delete facts.owner_name;
   delete facts.look_pack;
   delete facts.differentiators;
+  delete facts.business_name;
   delete facts.pending_destination_link;
   delete facts.kip_preferences;
   delete facts.kip_decisions;
