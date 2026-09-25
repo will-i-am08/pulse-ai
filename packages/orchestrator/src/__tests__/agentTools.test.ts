@@ -142,6 +142,11 @@ describe("KIP_AGENT_TOOLS", () => {
     expect((draft?.input_schema as { properties?: Record<string, { enum?: string[] }> }).properties?.overlay?.enum).toEqual(
       ["none", "headline"],
     );
+    expect(draft?.description).toMatch(/elements none or mark or constructed/i);
+    expect(draft?.description).toMatch(/THIS brand's construction language/i);
+    expect((draft?.input_schema as { properties?: Record<string, { enum?: string[] }> }).properties?.elements?.enum).toEqual(
+      ["none", "mark", "constructed"],
+    );
     const scout = KIP_AGENT_TOOLS.find((t) => t.name === "scout_ideas");
     expect(scout?.description).toMatch(/call draft_copy instead/i);
     const escalate = KIP_AGENT_TOOLS.find((t) => t.name === "escalate_to_human");
@@ -346,6 +351,28 @@ describe("executeAgentTool", () => {
         payload: expect.objectContaining({
           overlay: "none",
           overlay_tone: "quiet",
+          topicHint: "Saturday bun",
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy passes elements choice onto the kickoff payload", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      {
+        job: "post",
+        count: 1,
+        topic_hint: "Saturday bun",
+        elements: "constructed",
+      },
+      { brand: stubBrand(), sourceMessageId: "msg-el" },
+    );
+    expect(JSON.parse(raw).ok).toBe(true);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          elements: "constructed",
           topicHint: "Saturday bun",
         }),
       }),

@@ -159,6 +159,17 @@ describe("agentIdentity", () => {
     expect(prompt).not.toMatch(/Vary across this brand's week/i);
   });
 
+  it("tells the agent to pick a brand-true construction language, not a mixed grid", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/Brand elements:/);
+    expect(prompt).toMatch(/elements none or mark or constructed/i);
+    expect(prompt).toMatch(/Variety is between brands/i);
+    expect(prompt).toMatch(/Do not randomize treatment post-to-post/i);
+    expect(prompt).toMatch(/caf[eé]=template/i);
+    expect(prompt).not.toMatch(/if niche is caf[eé].*quote.?card/i);
+    expect(prompt).not.toMatch(/Vary across this brand's week/i);
+  });
+
   it("treats leftover turns as the start of a text, never a command menu", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/Leftover turns:/);

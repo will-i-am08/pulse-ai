@@ -152,7 +152,7 @@ const draftCopyInputSchema = z
       .string()
       .optional()
       .describe(
-        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim.",
+        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim. Brand elements: set elements none or mark or constructed to this brand's language (repeat it; do not randomize). Ground the pick in pack research, remembered likes, and visual tokens — not a café=template table.",
       ),
     count: z
       .number()
@@ -164,7 +164,7 @@ const draftCopyInputSchema = z
     visuals: z
       .enum(["photo", "designed", "stock", "generated"])
       .optional()
-      .describe("Visual mode for queued drafts."),
+      .describe("Visual mode for queued drafts. constructed brand-elements language maps to designed."),
     overlay: z
       .enum(["none", "headline"])
       .optional()
@@ -181,6 +181,12 @@ const draftCopyInputSchema = z
       .string()
       .optional()
       .describe("Exact words to burn when overlay is headline, or when the owner named the line. Do not invent a shorter substitute."),
+    elements: z
+      .enum(["none", "mark", "constructed"])
+      .optional()
+      .describe(
+        "Brand-kit language for THIS brand, repeated on every draft. none = photo-led, no extra stamp; mark = add logo (or wordmark if no logo_url); constructed = build from palette/type/mark (designed graphics). Pick from competitor/market research in the pack, remembered likes, and visual tokens — not a café/tech table, not a new roll each post.",
+      ),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
     topic_hint: z
       .string()
@@ -386,7 +392,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, and on-image design rules — then repeat it; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, and on-image design rules — then repeat it. Set elements none or mark or constructed to THIS brand's construction language from research, remembered likes, and visual tokens — then repeat it; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(
@@ -431,12 +437,12 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "remember_fact",
-    "Store a short owner preference or decision on the brand for later turns. Keep text brief. Does not publish or change posts.",
+    "Store a short owner preference or decision on the brand for later turns. Keep text brief. Includes lasting visual likes (always/never logo, live on graphics vs photos). Does not publish or change posts.",
     rememberFactInputSchema,
   ),
   toolDef(
     "scout_ideas",
-    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes), refreshing via deep research when thin. Use only when they asked for suggestions, ideas, or to look into topics — not to draft. If they asked to draft/make a post, call draft_copy instead. Prefer this over interviewing them. Does not draft or publish.",
+    "Research-backed content ideas: reuses competitor watches + research snapshots (hooks, Ad Library angles, niche themes, visual exemplars), refreshing via deep research when thin. Use only when they asked for suggestions, ideas, or to look into topics — not to draft. If they asked to draft/make a post, call draft_copy instead (the retrieved pack already has kit + market visuals). Prefer this over interviewing them. Does not draft or publish.",
     scoutIdeasInputSchema,
   ),
   toolDef(
@@ -1048,7 +1054,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
   const parsed = parseToolInput(draftCopyInputSchema, input);
   if (!parsed.ok) return toolError(parsed.error, { allowedJobs: [...DRAFT_COPY_JOBS] });
 
-  const { job, brief, format, visuals, topic_hint, overlay, overlay_tone, overlay_headline } =
+  const { job, brief, format, visuals, topic_hint, overlay, overlay_tone, overlay_headline, elements } =
     parsed.data;
   const count = draftCopyCount(ctx, job, parsed.data.count, format);
   const ids = mediaIdsFrom(ctx, parsed.data.media_ids);
@@ -1060,6 +1066,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
     ...(overlay_tone ? { overlay_tone } : {}),
     ...(overlay_headline?.trim() ? { overlay_headline: overlay_headline.trim() } : {}),
   };
+  const elementsPayload = elements ? { elements } : {};
 
   switch (job) {
     case "caption": {
@@ -1117,6 +1124,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         preferCarousel: format === "carousel",
         ...(destinations.length ? { destinations } : {}),
         ...overlayPayload,
+        ...elementsPayload,
       });
     }
     case "first_batch":
@@ -1126,6 +1134,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         topicHint,
         ...(destinations.length ? { destinations } : {}),
         ...overlayPayload,
+        ...elementsPayload,
       });
     case "carousel": {
       const attached = await draftFromAttachedMedia(ctx, job, ids, topicHint, "carousel");
@@ -1138,6 +1147,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         preferCarousel: true,
         ...(destinations.length ? { destinations } : {}),
         ...overlayPayload,
+        ...elementsPayload,
       });
     }
     case "story": {
@@ -1154,6 +1164,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
           visuals,
           ...(destinations.length ? { destinations } : {}),
           ...overlayPayload,
+          ...elementsPayload,
         });
       }
       const pillar = await firstPillar(ctx.brand.id);
@@ -1175,6 +1186,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         visuals,
         ...(destinations.length ? { destinations } : {}),
         ...overlayPayload,
+        ...elementsPayload,
       });
     case "competitor":
       return queueDraftKickoff(ctx, job, "competitor_draft", {
@@ -1182,6 +1194,7 @@ async function toolDraftCopy(ctx: AgentToolContext, input: unknown): Promise<str
         visuals,
         ...(destinations.length ? { destinations } : {}),
         ...overlayPayload,
+        ...elementsPayload,
       });
     case "from_library": {
       const photo = await pickFreshPhoto(ctx.brand.id);

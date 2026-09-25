@@ -94,10 +94,15 @@ export function resolveVisualMode(
     raw === "card" ||
     raw === "cards" ||
     raw === "graphic" ||
-    raw === "graphics"
+    raw === "graphics" ||
+    raw === "constructed"
   ) {
     return "designed";
   }
+  const elements = String(payload?.elements ?? "")
+    .trim()
+    .toLowerCase();
+  if (elements === "constructed") return "designed";
   if (
     raw === "photo" ||
     raw === "photos" ||

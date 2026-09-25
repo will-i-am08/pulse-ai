@@ -8,6 +8,7 @@ import {
   applyTextTile,
   formatOverlayHeadline,
   formatExactOverlayHeadline,
+  stampBrandLogo,
 } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
 import { scheduleSlot } from "./scheduler.js";
@@ -32,12 +33,17 @@ import {
   QUIET_OVERLAY_TREATMENT,
   resolveFeedOverlayIntent,
 } from "./overlayIntent.js";
+import {
+  FEED_ELEMENTS_INSTRUCTION,
+  resolveFeedElementsIntent,
+} from "./brandElements.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
  * client asks the agent to draft one). Always lands as pending_approval —
  * agent-generated content never auto-posts. Photo mode may burn a headline
  * onto the still when the agent asked for overlay (models stay text-free).
+ * Brand-kit language (mark / constructed) is agent-chosen, then repeated.
  */
 export async function generateFillerPost(
   brand: Brand,
@@ -49,9 +55,9 @@ export async function generateFillerPost(
     overlay?: unknown;
     overlay_tone?: unknown;
     overlay_headline?: unknown;
+    elements?: unknown;
   },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
-  const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
   const overlayIntent = resolveFeedOverlayIntent({
     brief: topic,
@@ -61,6 +67,9 @@ export async function generateFillerPost(
   });
   const wantOverlay = overlayIntent.mode === "headline";
   const exactOverlay = overlayIntent.exactHeadline;
+  const elementsIntent = resolveFeedElementsIntent({ brief: topic, elements: opts?.elements });
+  const visuals =
+    elementsIntent === "constructed" ? "designed" : (opts?.visuals ?? resolveVisualMode(brand));
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
@@ -108,6 +117,7 @@ export async function generateFillerPost(
     profile.tone.length ? `Tone: ${profile.tone.join(", ")}.` : "",
     ctx || "",
     NEVER_INVENT_PROOF,
+    FEED_ELEMENTS_INSTRUCTION,
     "No scarcity, book-now, filling-up-fast, or SALE energy unless the owner brief explicitly asks for a promo.",
     wantPhoto
       ? linkedIn
@@ -251,6 +261,10 @@ export async function generateFillerPost(
       );
       if (tiledId) mediaId = tiledId;
     }
+    if (elementsIntent === "mark" || elementsIntent === "constructed") {
+      const stampedId = await stampBrandLogo(brand, mediaId);
+      if (stampedId) mediaId = stampedId;
+    }
   } catch (err) {
     console.error("generateFillerPost: render/store failed", err);
     return null;
@@ -276,6 +290,7 @@ export async function generateFillerPost(
       : wantPhoto
         ? { wants_text: false }
         : {}),
+    ...(elementsIntent !== "none" ? { brand_elements: elementsIntent } : {}),
   };
   const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(

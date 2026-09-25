@@ -36,6 +36,8 @@ describe("resolveVisualMode", () => {
     expect(resolveVisualMode({ visual: {} }, { visuals: "generated" })).toBe("photo");
     expect(resolveVisualMode({ visual: {} }, { visuals: "stock" })).toBe("photo");
     expect(resolveVisualMode({ visual: {} }, { visuals: "designed" })).toBe("designed");
+    expect(resolveVisualMode({ visual: {} }, { elements: "constructed" })).toBe("designed");
+    expect(resolveVisualMode({ visual: {} }, { visuals: "constructed" })).toBe("designed");
   });
 
   it("falls back to brand preferred_visuals then photo", () => {

@@ -30,6 +30,7 @@ import {
   withPreferredVisuals,
   type VisualMode,
 } from "./visualMode.js";
+import { elementsOptsFromPayload } from "./brandElements.js";
 import { mapWithConcurrency, DRAFT_CONCURRENCY, raceTimeout, DRAFT_SLOT_TIMEOUT_MS } from "./concurrency.js";
 import { looksLikeMakeReelRequest } from "./aiVideo.js";
 import { textWantsCarousel } from "./carouselIntent.js";
@@ -509,6 +510,9 @@ export function kickoffBriefKey(payload: Record<string, unknown> | null | undefi
     String(p.format ?? ""),
     String(p.preferCarousel ?? ""),
     String(p.visuals ?? ""),
+    String(p.overlay ?? ""),
+    String(p.overlay_tone ?? ""),
+    String(p.elements ?? ""),
     dests,
   ].join("|");
 }
@@ -992,7 +996,7 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-  genOpts?: { forceFresh?: boolean; destinations?: string[] | null; overlay?: unknown; overlay_tone?: unknown; overlay_headline?: unknown },
+  genOpts?: { forceFresh?: boolean; destinations?: string[] | null; overlay?: unknown; overlay_tone?: unknown; overlay_headline?: unknown; elements?: unknown },
 ): Promise<
   | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
   | { qaSms: string }
@@ -1036,6 +1040,7 @@ async function draftGeneratedPiece(
       topicHint: hint,
       destinations,
       ...overlayOptsFromPayload(genOpts),
+      ...elementsOptsFromPayload(genOpts),
     });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
     return null;
@@ -1047,6 +1052,8 @@ async function draftGeneratedPiece(
       visuals: "designed",
       topicHint: hint,
       destinations,
+      ...overlayOptsFromPayload(genOpts),
+      ...elementsOptsFromPayload(genOpts),
     });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
     return null;
@@ -1065,6 +1072,8 @@ async function draftGeneratedPiece(
     visuals: "designed",
     topicHint: hint,
     destinations,
+    ...overlayOptsFromPayload(genOpts),
+    ...elementsOptsFromPayload(genOpts),
   });
   if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "feed post" };
   return null;
@@ -1326,7 +1335,7 @@ async function runFirstBatch(
         kind,
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
+        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload), ...elementsOptsFromPayload(payload) },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
       if (!raced.ok) {
@@ -1463,7 +1472,7 @@ async function runDraftPosts(
         i % 2 === 0 ? "tip" : "steps",
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
+        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload), ...elementsOptsFromPayload(payload) },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
       if (!raced.ok) {
@@ -1599,7 +1608,7 @@ async function runTrendOrCompetitorDraft(
     "tip",
     resolveVisualMode(brand, payload),
     String(payload.topicHint ?? payload.hint ?? ""),
-    { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
+    { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload), ...elementsOptsFromPayload(payload) },
   );
   if (isQaSmsFailure(drafted)) {
     const selfHeal = await maybeEnqueueQaSelfHeal(brand, payload);
