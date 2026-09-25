@@ -10,6 +10,7 @@ import {
   type Post,
 } from "@pulse/shared";
 import { callLLM, stripMarkdown } from "./llm.js";
+import { overlayOptsFromPayload } from "./overlayIntent.js";
 import { ensurePillars } from "./pillars.js";
 import {
   generateFillerPost,
@@ -991,7 +992,7 @@ async function draftGeneratedPiece(
   kind: TypedCarouselKind = "tip",
   visuals: VisualMode = "photo",
   topicHint?: string | null,
-  genOpts?: { forceFresh?: boolean; destinations?: string[] | null },
+  genOpts?: { forceFresh?: boolean; destinations?: string[] | null; overlay?: unknown; overlay_tone?: unknown; overlay_headline?: unknown },
 ): Promise<
   | { post: Post; mediaUrl: string; mediaUrls?: string[]; kindLabel: string }
   | { qaSms: string }
@@ -1034,6 +1035,7 @@ async function draftGeneratedPiece(
       visuals: "photo",
       topicHint: hint,
       destinations,
+      ...overlayOptsFromPayload(genOpts),
     });
     if (filler) return { post: filler.post, mediaUrl: filler.mediaUrl, kindLabel: "photo post" };
     return null;
@@ -1324,7 +1326,7 @@ async function runFirstBatch(
         kind,
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true, destinations },
+        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `first_batch slot ${i + 1}`);
       if (!raced.ok) {
@@ -1461,7 +1463,7 @@ async function runDraftPosts(
         i % 2 === 0 ? "tip" : "steps",
         visuals,
         String(payload.topicHint ?? ""),
-        { forceFresh: payload.forceFresh === true, destinations },
+        { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
       );
       const raced = await raceTimeout(work, DRAFT_SLOT_TIMEOUT_MS, `draft_posts slot ${i + 1}`);
       if (!raced.ok) {
@@ -1597,7 +1599,7 @@ async function runTrendOrCompetitorDraft(
     "tip",
     resolveVisualMode(brand, payload),
     String(payload.topicHint ?? payload.hint ?? ""),
-    { forceFresh: payload.forceFresh === true, destinations },
+    { forceFresh: payload.forceFresh === true, destinations, ...overlayOptsFromPayload(payload) },
   );
   if (isQaSmsFailure(drafted)) {
     const selfHeal = await maybeEnqueueQaSelfHeal(brand, payload);

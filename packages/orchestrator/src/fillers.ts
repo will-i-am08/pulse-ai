@@ -7,7 +7,6 @@ import {
   generateHeadline,
   applyTextTile,
   formatOverlayHeadline,
-  extractExactOverlayHeadline,
   formatExactOverlayHeadline,
 } from "./imaging.js";
 import { previewUrlForPost } from "./mockup.js";
@@ -28,21 +27,40 @@ import {
 } from "./briefCompliance.js";
 import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
 import { FEED_PHOTO_LOOK_INSTRUCTION, FEED_PHOTO_REALISM_CUE } from "./ugc/presets/stillPresets.js";
+import {
+  FEED_OVERLAY_INSTRUCTION,
+  QUIET_OVERLAY_TREATMENT,
+  resolveFeedOverlayIntent,
+} from "./overlayIntent.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
  * client asks the agent to draft one). Always lands as pending_approval —
- * agent-generated content never auto-posts. Photo mode burns a headline onto
- * the generated still (models stay text-free; overlay is applied after).
+ * agent-generated content never auto-posts. Photo mode may burn a headline
+ * onto the still when the agent asked for overlay (models stay text-free).
  */
 export async function generateFillerPost(
   brand: Brand,
   pillar: Pillar,
-  opts?: { visuals?: VisualMode; topicHint?: string | null; destinations?: string[] | null },
+  opts?: {
+    visuals?: VisualMode;
+    topicHint?: string | null;
+    destinations?: string[] | null;
+    overlay?: unknown;
+    overlay_tone?: unknown;
+    overlay_headline?: unknown;
+  },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const visuals = opts?.visuals ?? resolveVisualMode(brand);
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
-  const exactOverlay = extractExactOverlayHeadline(topic);
+  const overlayIntent = resolveFeedOverlayIntent({
+    brief: topic,
+    overlay: opts?.overlay,
+    overlay_tone: opts?.overlay_tone,
+    overlay_headline: opts?.overlay_headline,
+  });
+  const wantOverlay = overlayIntent.mode === "headline";
+  const exactOverlay = overlayIntent.exactHeadline;
   const profile = brandVoiceProfileSchema.parse(brand.brand_voice_profile ?? {});
   const ctx = brandContextForPrompt(brand);
   const wantPhoto = visuals === "photo";
@@ -93,19 +111,26 @@ export async function generateFillerPost(
     "No scarcity, book-now, filling-up-fast, or SALE energy unless the owner brief explicitly asks for a promo.",
     wantPhoto
       ? linkedIn
-        ? 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
-        : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
+        ? wantOverlay
+          ? 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
+          : 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":""}'
+        : wantOverlay
+          ? 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":"<2-5 word overlay headline>"}'
+          : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","photo_prompt":"<one sentence: subject + place + lighting>","card":""}'
       : linkedIn
         ? 'Output ONLY JSON (no markdown): {"caption":"<2-4 short paragraphs of LinkedIn commentary, concrete stake first, ≤900 chars>","card":"<4-12 word line for a text card>"}'
         : 'Output ONLY JSON (no markdown): {"caption":"<≤2 short sentences, ≤280 chars>","card":"<4-12 word line for a text card>"}',
-    wantPhoto
+    wantPhoto && wantOverlay
       ? "The card overlay must be a complete standalone headline, never a truncated sentence or sliced clause."
-      : "",
+      : wantPhoto
+        ? "Leave card empty — this still is a clean photo with no burned-in type."
+        : "",
     wantPhoto
       ? [
           linkedIn ? "Caption can be fuller LinkedIn commentary — still keep JSON valid." : "Keep caption short — long captions get truncated and break JSON parsing.",
           "photo_prompt: one clear subject tied to the caption + place + lighting. Honour any background the owner named.",
           FEED_PHOTO_LOOK_INSTRUCTION,
+          FEED_OVERLAY_INSTRUCTION,
           noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
@@ -146,9 +171,11 @@ export async function generateFillerPost(
       caption = stripPersonalNames(drafted.caption, brand);
       card = exactOverlay
         ? formatExactOverlayHeadline(exactOverlay)
-        : wantPhoto
+        : wantPhoto && wantOverlay
           ? formatOverlayHeadline(stripPersonalNames(drafted.card, brand))
-          : stripPersonalNames(drafted.card, brand);
+          : wantPhoto
+            ? ""
+            : stripPersonalNames(drafted.card, brand);
       photoPrompt = drafted.photoPrompt;
       if (!topic) break;
       const compliance = await reviewBriefCompliance({
@@ -204,22 +231,23 @@ export async function generateFillerPost(
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
 
-    // Burn headline onto generated photos (models stay text-free).
+    // Burn headline only when the agent asked for overlay (models stay text-free).
     // Keep the clean source id so set_image_text(false) can restore it.
-    if (wantPhoto) {
+    if (wantPhoto && wantOverlay) {
       photoHeadline =
         (exactOverlay && formatExactOverlayHeadline(exactOverlay)) ||
         (card && card.replace(/["']/g, "").trim()) ||
         (await generateHeadline(brand, caption));
+      const tileOpts = {
+        ...(topic ? { ask: topic } : {}),
+        ...(exactOverlay ? { exact: true } : {}),
+        ...(overlayIntent.tone === "quiet" ? { treatment: QUIET_OVERLAY_TREATMENT } : {}),
+      };
       const tiledId = await applyTextTile(
         brand,
         mediaId,
         photoHeadline,
-        topic
-          ? { ask: topic, exact: Boolean(exactOverlay) }
-          : exactOverlay
-            ? { exact: true }
-            : undefined,
+        Object.keys(tileOpts).length ? tileOpts : undefined,
       );
       if (tiledId) mediaId = tiledId;
     }
@@ -243,9 +271,11 @@ export async function generateFillerPost(
     format_bias: formatHint,
     generated: true,
     ...(linkedIn ? { linkedin_primary: true } : {}),
-    ...(wantPhoto
+    ...(wantPhoto && wantOverlay
       ? { wants_text: true, ...(photoHeadline ? { headline: photoHeadline } : {}) }
-      : {}),
+      : wantPhoto
+        ? { wants_text: false }
+        : {}),
   };
   const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(

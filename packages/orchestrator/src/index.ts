@@ -244,6 +244,13 @@ export {
   OVERLAY_WRAP_CYCLE,
 } from "./imaging.js";
 export {
+  resolveFeedOverlayIntent,
+  overlayOptsFromPayload,
+  QUIET_OVERLAY_TREATMENT,
+  FEED_OVERLAY_INSTRUCTION,
+} from "./overlayIntent.js";
+export type { FeedOverlayIntent, FeedOverlayMode, FeedOverlayTone } from "./overlayIntent.js";
+export {
   overlayMasthead,
   isNamelessCreative,
   isFacelessBrand,

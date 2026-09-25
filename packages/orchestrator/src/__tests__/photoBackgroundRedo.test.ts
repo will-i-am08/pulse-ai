@@ -114,7 +114,7 @@ describe("generateFillerPost photo mode", () => {
       media_ids: ["tiled-media-id"],
     } as any);
 
-    const out = await generateFillerPost(brand, pillar, { visuals: "photo" });
+    const out = await generateFillerPost(brand, pillar, { visuals: "photo", overlay: "headline" });
     expect(out).not.toBeNull();
     expect(applyTextTile).toHaveBeenCalledWith(
       brand,
@@ -133,6 +133,75 @@ describe("generateFillerPost photo mode", () => {
     // Clean photo id is preserved so set_image_text(false) can restore it.
     expect(insertArgs?.[1]?.[3]).toEqual([expect.any(String)]);
     expect(insertArgs?.[1]?.[3]?.[0]).not.toBe("tiled-media-id");
+  });
+
+  it("does not burn overlay on generated stills by default", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, applyTextTile } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-clean",
+      caption: "A real caption about hiring",
+      media_ids: ["source-id"],
+    } as any);
+
+    const out = await generateFillerPost(brand, pillar, { visuals: "photo" });
+    expect(out).not.toBeNull();
+    expect(applyTextTile).not.toHaveBeenCalled();
+    const insertArgs = vi.mocked(queryOne).mock.calls[0];
+    const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
+    expect(meta.wants_text).toBe(false);
+  });
+
+  it("skips tiling when overlay is none even if the LLM wrote a card", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, applyTextTile } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-none",
+      caption: "A real caption about hiring",
+      media_ids: ["source-id"],
+    } as any);
+
+    await generateFillerPost(brand, pillar, { visuals: "photo", overlay: "none" });
+    expect(applyTextTile).not.toHaveBeenCalled();
+  });
+
+  it("applies quiet treatment when overlay_tone is quiet", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, applyTextTile } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+    const { QUIET_OVERLAY_TREATMENT } = await import("../overlayIntent.js");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-quiet",
+      caption: "A real caption about hiring",
+      media_ids: ["tiled-media-id"],
+    } as any);
+
+    await generateFillerPost(brand, pillar, {
+      visuals: "photo",
+      overlay: "headline",
+      overlay_tone: "quiet",
+    });
+    expect(applyTextTile).toHaveBeenCalledWith(
+      brand,
+      expect.any(String),
+      "HIRE FOR SKILL NOT VIBES",
+      expect.objectContaining({ treatment: QUIET_OVERLAY_TREATMENT }),
+    );
+  });
+
+  it("does not encode a café overlay skip table", async () => {
+    const { FEED_OVERLAY_INSTRUCTION } = await import("../overlayIntent.js");
+    expect(FEED_OVERLAY_INSTRUCTION).toMatch(/Do not map a niche to overlay/i);
+    expect(FEED_OVERLAY_INSTRUCTION).toMatch(/house style/i);
+    expect(FEED_OVERLAY_INSTRUCTION).not.toMatch(/caf[eé].*=.*none|tech.*=.*headline/i);
   });
 
   it("honors explicit destinations even when topicHint dropped LinkedIn", async () => {
