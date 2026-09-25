@@ -147,6 +147,18 @@ describe("agentIdentity", () => {
     expect(prompt).not.toMatch(/caf[eé].*=.*iphone|tech.*=.*pro/i);
   });
 
+  it("tells the agent to pick a brand-true overlay language, not a mixed grid", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/On-image type:/);
+    expect(prompt).toMatch(/overlay none or headline/i);
+    expect(prompt).toMatch(/quiet|shouty/);
+    expect(prompt).toMatch(/Variety is between brands/i);
+    expect(prompt).toMatch(/Do not randomize treatment post-to-post/i);
+    expect(prompt).toMatch(/caf[eé]=skip/i);
+    expect(prompt).not.toMatch(/if niche is caf[eé].*no overlay/i);
+    expect(prompt).not.toMatch(/Vary across this brand's week/i);
+  });
+
   it("treats leftover turns as the start of a text, never a command menu", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/Leftover turns:/);

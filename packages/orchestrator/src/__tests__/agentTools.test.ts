@@ -137,6 +137,11 @@ describe("KIP_AGENT_TOOLS", () => {
     const draft = KIP_AGENT_TOOLS.find((t) => t.name === "draft_copy");
     expect(draft?.input_schema).toMatchObject({ required: ["job"] });
     expect(draft?.description).toMatch(/Never scout_ideas for a draft ask/i);
+    expect(draft?.description).toMatch(/overlay none or headline/i);
+    expect(draft?.description).toMatch(/repeat it|THIS brand's overlay language/i);
+    expect((draft?.input_schema as { properties?: Record<string, { enum?: string[] }> }).properties?.overlay?.enum).toEqual(
+      ["none", "headline"],
+    );
     const scout = KIP_AGENT_TOOLS.find((t) => t.name === "scout_ideas");
     expect(scout?.description).toMatch(/call draft_copy instead/i);
     const escalate = KIP_AGENT_TOOLS.find((t) => t.name === "escalate_to_human");
@@ -318,6 +323,30 @@ describe("executeAgentTool", () => {
         payload: expect.objectContaining({
           count: 1,
           topicHint: "weekend special",
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy passes overlay choice onto the kickoff payload", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      {
+        job: "post",
+        count: 1,
+        topic_hint: "Saturday bun",
+        overlay: "none",
+        overlay_tone: "quiet",
+      },
+      { brand: stubBrand(), sourceMessageId: "msg-ov" },
+    );
+    expect(JSON.parse(raw).ok).toBe(true);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          overlay: "none",
+          overlay_tone: "quiet",
+          topicHint: "Saturday bun",
         }),
       }),
     );
