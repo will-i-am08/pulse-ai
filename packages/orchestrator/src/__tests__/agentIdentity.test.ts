@@ -138,6 +138,15 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/Photo default/i);
   });
 
+  it("defaults generated photos to shot-on-iPhone and library when they have unused shots", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/shot-on-iPhone|phone-native/i);
+    expect(prompt).toMatch(/from_library|library photos/i);
+    expect(prompt).toMatch(/professional or studio look/i);
+    expect(prompt).toMatch(/Do not assume a niche always looks one way/i);
+    expect(prompt).not.toMatch(/caf[eé].*=.*iphone|tech.*=.*pro/i);
+  });
+
   it("treats leftover turns as the start of a text, never a command menu", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/Leftover turns:/);

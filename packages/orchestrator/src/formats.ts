@@ -47,6 +47,7 @@ import { ensurePillars, classifyPhotoPillar } from "./pillars.js";
 import { callLLM } from "./llm.js";
 import { mapWithConcurrency, SLIDE_RENDER_CONCURRENCY } from "./concurrency.js";
 import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
+import { FEED_PHOTO_LOOK_INSTRUCTION } from "./ugc/presets/stillPresets.js";
 import {
   composeAndStoreSlide,
   gatherDesignContext,
@@ -612,8 +613,9 @@ export async function generatePhotoTextCarousel(
       ? "COMPARISON brief: each relevant overlay/caption must name specific options and state a concrete difference — category tips without named tools FAIL."
       : "",
     looksLikeCityscapeBrief(topic)
-      ? "VISUAL brief: every photo_prompt MUST be a cinematic cityscape / skyline (urban dusk or night lights), not desks or offices."
+      ? "VISUAL brief: every photo_prompt MUST be a cityscape / skyline (urban dusk or night lights), shot like a phone photo, not desks or offices."
       : "",
+    FEED_PHOTO_LOOK_INSTRUCTION,
     ideaMode
       ? linkedIn
         ? 'Output ONLY JSON: {"caption":"<LinkedIn commentary 2-4 short paragraphs ≤900 chars naming these are researched ideas>","slides":[{"overlay":"<idea title max 5 words>","photo_prompt":"<one sentence: photoreal subject matching the visual brief + place + lighting>","idea_blurb":"<2 sentences burned on the slide: what the product/service is, who pays, why now — concrete, ≤220 chars>"}]}'
@@ -752,7 +754,7 @@ export async function generatePhotoTextCarousel(
     "eye-level tracking-shot feel, long lens compression, shallow depth of field",
     "elevated wide establishing frame, misty dawn atmosphere",
     "tight detail crop of bodywork/wheel, cinematic bokeh city lights",
-    "rear three-quarter, neon night reflections, premium editorial still",
+    "rear three-quarter, night reflections, phone still",
   ];
 
   function mutatePhotoPrompt(base: string, pass: number, slideIndex: number): string {
@@ -762,7 +764,7 @@ export async function generatePhotoTextCarousel(
       `fresh unique frame (pass ${pass})`,
       cue,
       "distinct composition from any prior render — new angle, new lighting, new location detail",
-      "photoreal cinematic photography matching the brief, no text, no watermark, no logo",
+      "photoreal phone photo matching the brief, shot on iPhone, no text, no watermark, no logo",
     ].join(". ");
   }
 
@@ -790,7 +792,7 @@ export async function generatePhotoTextCarousel(
       FEED_PHOTO_REALISM_CUE,
       dnaBit,
       stronger
-        ? "hero composition, sharp subject, clean background, premium editorial still, photoreal not AI-slop"
+        ? "hero composition, sharp subject, clean background, iPhone still, photoreal not AI-slop"
         : "",
       noFace,
       creativeSceneConstraint(brand),

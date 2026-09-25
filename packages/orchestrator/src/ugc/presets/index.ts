@@ -13,6 +13,8 @@ export {
   STILL_NEGATIVE,
   FEED_PHOTO_NEGATIVE,
   FEED_PHOTO_REALISM_CUE,
+  FEED_PHOTO_LOOK_INSTRUCTION,
+  withFeedPhotoLook,
   productOnlyStillPrompt,
   productInHandStillPrompt,
   actorSelfiePrompt,

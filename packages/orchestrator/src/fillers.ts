@@ -27,6 +27,7 @@ import {
   reviewBriefCompliance,
 } from "./briefCompliance.js";
 import { extractPlatforms, linkedInCaptionPromptBlock, buildPlatformCaptions } from "./destinations.js";
+import { FEED_PHOTO_LOOK_INSTRUCTION, FEED_PHOTO_REALISM_CUE } from "./ugc/presets/stillPresets.js";
 
 /**
  * Generate a filler post for a pillar (used when a slot is starving and the
@@ -103,7 +104,8 @@ export async function generateFillerPost(
     wantPhoto
       ? [
           linkedIn ? "Caption can be fuller LinkedIn commentary — still keep JSON valid." : "Keep caption short — long captions get truncated and break JSON parsing.",
-          "photo_prompt: real handheld/stock look, natural window or outdoor light, one clear subject tied to the caption — and honour any background the owner named.",
+          "photo_prompt: one clear subject tied to the caption + place + lighting. Honour any background the owner named.",
+          FEED_PHOTO_LOOK_INSTRUCTION,
           noFace || "People in frame are fine when the brief calls for them; otherwise prefer a clear subject.",
           "Do NOT invent random desk clutter (water bottles, laptops, phones, coffee cups, packaging) unless the post is literally about that object.",
           "No text, logos, watermarks, UI, posters, or graphics in the photo — type is burned on afterward from card.",
@@ -180,9 +182,7 @@ export async function generateFillerPost(
     let img: Buffer | null = null;
     if (wantPhoto && photoPrompt) {
       const ref = visualReference(brand, false);
-      const stockCue =
-        "Photorealistic editorial photograph, full-frame camera, natural grain, real-world materials, documentary lighting — not CGI, not AI art, not plastic HDR, no text, no logos, no watermark, no UI, no random props unrelated to the subject";
-      const prompt = [photoPrompt, stockCue, noFace, scene, ref].filter(Boolean).join(". ");
+      const prompt = [photoPrompt, FEED_PHOTO_REALISM_CUE, noFace, scene, ref].filter(Boolean).join(". ");
       // Pass the brand so this counts against AI_WEEKLY_SPEND_CAP_USD — fillers
       // generate one paid image per draft, which was previously uncapped.
       img = await generatePhotoImage(prompt, "1:1", { brand });
