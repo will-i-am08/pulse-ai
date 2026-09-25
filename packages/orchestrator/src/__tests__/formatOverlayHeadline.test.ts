@@ -291,9 +291,10 @@ describe("overlay headline wiring", () => {
     expect(fillers).not.toMatch(/4-12 word overlay/);
     expect(fillers).toMatch(/standalone headline/);
     expect(fillers).toMatch(/truncated sentence/);
-    expect(fillers).toMatch(/extractExactOverlayHeadline/);
     expect(fillers).toMatch(/formatExactOverlayHeadline/);
     expect(fillers).toMatch(/exactOverlay/);
+    const overlayIntent = readFileSync(join(here, "../overlayIntent.ts"), "utf8");
+    expect(overlayIntent).toMatch(/extractExactOverlayHeadline/);
   });
 
   it("formats overlay titles max 5 words and does not headline idea_blurb", () => {

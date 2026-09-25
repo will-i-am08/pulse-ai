@@ -294,7 +294,7 @@ describe("generateFillerPost photo mode", () => {
 
     const out = await generateFillerPost(brand, pillar, { visuals: "photo", elements: "mark" });
     expect(out).not.toBeNull();
-    expect(applyTextTile).toHaveBeenCalled();
+    expect(applyTextTile).not.toHaveBeenCalled();
     expect(stampBrandLogo).toHaveBeenCalled();
     const insertArgs = vi.mocked(queryOne).mock.calls[0];
     const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
