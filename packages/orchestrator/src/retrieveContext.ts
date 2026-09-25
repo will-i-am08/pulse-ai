@@ -198,7 +198,8 @@ type PublishedPostRow = {
 type UpcomingRow = { scheduled_at: string; caption: string | null; status: string };
 
 async function formatEngine(brand: Brand): Promise<string> {
-  const [photoCount, pending, kickoffs, upcoming] = await Promise.all([
+  const [photoCount, pending, kickoffs, upcoming, proposedPlan, strategyBrief, proposedCampaign] =
+    await Promise.all([
     bankedPhotoCount(brand.id).catch(() => 0),
     safeQueryOne<Post>(
       `select * from posts
@@ -223,6 +224,18 @@ async function formatEngine(brand: Brand): Promise<string> {
         limit 4`,
       [brand.id, ["pending_approval", "approved", "scheduled"]],
     ),
+    safeQueryOne<{ id: string }>(
+      `select id from content_plans where brand_id = $1 and status = 'proposed' order by created_at desc limit 1`,
+      [brand.id],
+    ),
+    safeQueryOne<{ id: string }>(
+      `select id from strategy_briefs where brand_id = $1 and status = 'proposed' order by created_at desc limit 1`,
+      [brand.id],
+    ),
+    safeQueryOne<{ id: string }>(
+      `select id from campaigns where brand_id = $1 and status = 'proposed' order by created_at desc limit 1`,
+      [brand.id],
+    ),
   ]);
 
   const lines: string[] = [];
@@ -240,6 +253,39 @@ async function formatEngine(brand: Brand): Promise<string> {
   } else {
     lines.push(`Pending draft: ${NONE}`);
   }
+
+  const confirms: string[] = [];
+  if (pending?.id) {
+    confirms.push(
+      "A draft is in front of them. Bare yes publishes that draft, not a plan, link, or campaign.",
+    );
+  }
+  if (proposedPlan) {
+    confirms.push(
+      "Proposed content plan waiting — accept applies pillars only (no first_batch). Use confirm_pending_ask.",
+    );
+  }
+  const pendingLink = brand.facts?.pending_destination_link;
+  if (pendingLink && typeof pendingLink === "object" && pendingLink !== null && "url" in pendingLink) {
+    confirms.push(
+      `Booking link waiting to confirm (${String((pendingLink as { url?: string }).url ?? "")}). Confirm-before-save. Use confirm_pending_ask. Do not let a booking yes publish a post.`,
+    );
+  }
+  if (strategyBrief) {
+    confirms.push("Proposed strategy brief waiting. Use confirm_pending_ask.");
+  }
+  if (proposedCampaign) {
+    confirms.push("Proposed organic campaign waiting. Use confirm_pending_ask. No ad spend.");
+  }
+  const perf = (brand.facts as { kip_perf_pending?: { summary?: string } } | null)?.kip_perf_pending;
+  if (perf) {
+    confirms.push(
+      `Perf suggestion waiting (${perf.summary ?? "mix"}). Use confirm_pending_ask. Do not publish a feed post.`,
+    );
+  }
+  lines.push(
+    confirms.length ? `Last confirm asked: ${confirms.join(" ")}` : `Last confirm asked: ${NONE}`,
+  );
 
   const visuals = brand.visual?.preferred_visuals;
   lines.push(visuals ? `Preferred visuals: ${visuals}` : `Preferred visuals: ${NONE}`);

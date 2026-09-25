@@ -77,6 +77,7 @@ export async function runTriggerLoop(now: () => Date = () => new Date()): Promis
             sendToBrand,
             markSent,
             now,
+            isDaytime,
           });
           break;
         case "alert":

@@ -1,12 +1,10 @@
 /**
- * Smart Kip Phase 4 — thin multi-step planner.
- * Produces a short JSON plan before kickoff work. Not a free-form agent.
- * Never publishes; never invents ad spend.
+ * Smart Kip Phase 4 — thin multi-step planner (unused on the inbound path;
+ * the agent uses tools in one turn). Never publishes; never invents ad spend.
  */
 
 import {
   KipKickoffKind,
-  getServerEnv,
   type Brand,
   type KipKickoffKind as KipKickoffKindT,
 } from "@pulse/shared";
@@ -102,7 +100,7 @@ export function parseSmartPlan(raw: string, minConfidence = 0.45): SmartPlan | n
 }
 
 /**
- * Ask the smart-tier model for a short plan. Returns null when the flag is off,
+ * Ask the smart-tier model for a short plan. Returns null when
  * the model fails, or the plan is invalid / low confidence.
  */
 export async function planSmartTurn(input: {
@@ -110,8 +108,6 @@ export async function planSmartTurn(input: {
   message: string;
   context?: string;
 }): Promise<SmartPlan | null> {
-  if (!getServerEnv().KIP_SMART_PLANNER) return null;
-
   const memory = kipMemoryPromptBlock(input.brand.facts);
   const system = [
     ...personaLines(input.brand),

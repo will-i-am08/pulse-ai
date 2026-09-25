@@ -613,7 +613,7 @@ export async function beginOnboardingInterview(brandId: string): Promise<string>
   const opening = await callLLM({ system, messages: toMessages([seed]), maxTokens: 250 });
   const transcript: OnboardingTurnMsg[] = [seed, { role: "assistant", content: opening }];
   await saveState(brand.id, { status: "in_progress", type, turns: 0, transcript, answers });
-  return sanitizeChatText(await enforceOneQuestion(opening));
+  return sanitizeChatText(opening);
 }
 
 /**
@@ -936,44 +936,6 @@ export async function kickOffOnboardingAfterPayment(brandId: string): Promise<st
 
 export const WRAP_ACK = "Love it — I've got what I need. Writing your voice up now, one sec.";
 
-/** Count the questions in a message. */
-function questionCount(text: string): number {
-  return (text.match(/\?/g) ?? []).length;
-}
-
-/**
- * Backstop for the one-question rule: prompts ask, but the model still slips.
- * If a reply asks more than one question, have the model keep only the most
- * important one. One repair attempt, then accept (never loop forever).
- */
-async function enforceOneQuestion(reply: string): Promise<string> {
-  if (questionCount(reply) <= 1) return reply;
-  try {
-    const fixed = await callLLM({
-      system:
-        "Rewrite the message below as ONE short question (under 25 words). " +
-        "Keep the reaction to what they said, keep only the single most important question, delete the rest. " +
-        "Plain SMS text. No em dashes, no markdown. Output ONLY the rewritten message.",
-      messages: [{ role: "user", content: reply }],
-      maxTokens: 120,
-    });
-    const clean = fixed.trim();
-    return questionCount(clean) >= questionCount(reply) ? reply : clean;
-  } catch {
-    return reply;
-  }
-}
-
-/**
- * One conversational turn: runs the interview only (fast). Returns the reply
- * and whether the interview is complete. When complete, the caller must send
- * WRAP_ACK first, then run finishOnboarding in the background and deliver its
- * rundown as a second message. Never bundle the ack with the rundown: the
- * compile takes 30s+ and the owner should never stare at dead air.
- */
-
-/** True when Kip already asked about admired / example accounts in this transcript. */
-
 /** Owner is unsure / can't answer — count these so we stop digging and brief them. */
 export function looksLikeUnsureReply(body: string): boolean {
   const t = (body ?? "").trim();
@@ -1125,7 +1087,7 @@ export async function onboardingNext(
 
   transcript.push({ role: "assistant", content: raw });
   await saveState(brand.id, { status: "in_progress", type, turns, transcript, answers });
-  return { reply: sanitizeChatText(await enforceOneQuestion(raw)), complete: false };
+  return { reply: sanitizeChatText(raw), complete: false };
 }
 
 /** One conversational turn. Returns the agent's reply and whether setup is complete. */

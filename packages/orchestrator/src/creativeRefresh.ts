@@ -1,17 +1,17 @@
 /**
- * Weekly organic creative refresh — park 3 look variants from a library photo.
+ * Weekly organic creative refresh — draft a look from a library photo.
+ * Looks stay as engine; we do not park a 1/2/3 picker.
  */
-import { query, queryOne, type Brand, type Post } from "@pulse/shared";
-import { pickFreshPhoto } from "./library.js";
+import { query, queryOne, type Brand } from "@pulse/shared";
+import { draftPostFromPhoto, pickFreshPhoto } from "./library.js";
 import {
   generatePhotoVariants,
-  parkVariantPick,
   getPendingVariantPick,
-  variantPickSms,
   variantMediaUrls,
   lookPackForBrand,
 } from "./variants.js";
 import { aiSpendWeekKey } from "./aiSpend.js";
+import { ensurePillars } from "./pillars.js";
 
 export type CreativeRefreshResult =
   | {
@@ -101,7 +101,8 @@ export async function brandNeedsCreativeRefresh(brand: Brand): Promise<boolean> 
 }
 
 /**
- * Run one creative refresh for a brand: library photo → 3 variants → park + SMS copy.
+ * Run one creative refresh for a brand: library photo → styled draft + optional looks.
+ * Talks like a person. Does not park Reply 1/2/3.
  */
 export async function runCreativeRefreshForBrand(brand: Brand): Promise<CreativeRefreshResult> {
   if (!(await brandNeedsCreativeRefresh(brand))) return null;
@@ -109,21 +110,29 @@ export async function runCreativeRefreshForBrand(brand: Brand): Promise<Creative
   const photo = await pickFreshPhoto(brand.id);
   if (!photo) return null;
 
+  const pillars = await ensurePillars(brand.id);
+  const pillar = pillars[0];
+  if (!pillar) return null;
+
   const pack = lookPackForBrand(brand);
   const gen = await generatePhotoVariants(brand, photo.id, { pack });
-  if (!gen.ok || gen.mediaIds.length === 0) return null;
+  const drafted = await draftPostFromPhoto(brand, photo, pillar);
+  if (!drafted?.post) return null;
 
-  await parkVariantPick(brand.id, photo.id, gen.mediaIds, gen.pack.id);
   await markRefreshSent(brand.id);
 
-  const urls = variantMediaUrls(gen.mediaIds);
+  const urls = gen.ok && gen.mediaIds.length
+    ? variantMediaUrls(gen.mediaIds)
+    : drafted.mediaUrl
+      ? [drafted.mediaUrl]
+      : [];
   return {
     brandId: brand.id,
     sms:
-      `Your feed's going a bit stale — three fresh ${gen.pack.smsName} cuts from a photo you already sent.\n\n` +
-      `${variantPickSms(gen.pack, gen.mediaIds.length)}`,
+      `Your feed's going a bit stale — leaned a ${pack.smsName} grade from a photo you already sent. ` +
+      `Say if you want a punchier cut. Nothing posts until you say yes.`,
     mediaUrls: urls,
-    mediaUrl: urls[0],
+    mediaUrl: urls[0] ?? drafted.mediaUrl ?? undefined,
   };
 }
 
@@ -155,5 +164,3 @@ export async function countPendingDrafts(brandId: string): Promise<number> {
   );
   return Number(row?.n ?? 0);
 }
-
-export type { Post };

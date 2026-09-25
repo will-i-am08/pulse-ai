@@ -19,6 +19,10 @@ function gapClause(phrase: string): string {
 /**
  * Instant SMS for a whole-message hi / thanks / vibe. No LLM.
  * Null when the inbound isn't a social beat (caller should speak).
+ *
+ * Phase A: inbound no longer owns hi/thanks with these canned lines —
+ * leftover turns go to the agent (or converse). Kept for tests / callers
+ * that still want a local social beat.
  */
 export function quickSocialReply(brand: Brand, inbound: string): string | null {
   const t = (inbound ?? "").trim();

@@ -21,31 +21,6 @@ const serverEnvSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true" || v === "1"),
-  /**
-   * When "true"/"1", question turns use a bounded Anthropic tool loop
-   * (brand facts, recent posts, calendar, kickoffs, remember). Off by default.
-   */
-  KIP_TOOL_LOOP: z
-    .string()
-    .optional()
-    .transform((v) => v === "true" || v === "1"),
-  /**
-   * When "true"/"1", owner SMS with no attached media uses the general-agent
-   * tool loop (including pending-draft create/revise via tools). High-confidence
-   * approval ("yes") and attached media stay on the classic router. Off by default.
-   */
-  KIP_GENERAL_AGENT: z
-    .string()
-    .optional()
-    .transform((v) => v === "true" || v === "1"),
-  /**
-   * When "true"/"1", multi-step owner asks get a short SmartPlan before
-   * kickoff enqueue (thin planner). Off by default.
-   */
-  KIP_SMART_PLANNER: z
-    .string()
-    .optional()
-    .transform((v) => v === "true" || v === "1"),
 
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),

@@ -101,6 +101,8 @@ export type { CallLLMOptions, CallLLMWithToolsOptions, LlmTier, ModelPlanStep, M
 export { answerWithTools } from "./smartAnswer.js";
 export { runGeneralAgent, generalAgentEligible } from "./runGeneralAgent.js";
 export type { RunGeneralAgentOpts, RunGeneralAgentResult } from "./runGeneralAgent.js";
+export { composeClockSms, clockFallbackSms, isClockWake, CLOCK_WAKE_PREFIX } from "./clockTurn.js";
+export { setupYieldsToWork } from "./setupYield.js";
 export { retrieveBrandContext, rankByKeywordOverlap } from "./retrieveContext.js";
 export type { BrandContextPack } from "./retrieveContext.js";
 export {

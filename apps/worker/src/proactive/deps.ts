@@ -48,4 +48,5 @@ export {
   composeEventFollowupSms,
   canSendProactive,
   recordProactiveSend,
+  composeClockSms,
 } from "@pulse/orchestrator";

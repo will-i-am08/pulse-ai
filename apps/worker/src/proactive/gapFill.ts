@@ -2,7 +2,6 @@ import { query, queryOne, type Brand, type Pillar, type Post } from "@pulse/shar
 import {
   sendToBrand,
   isDaytime,
-  gapNudgeMessage,
   chooseNextFormat,
   pickFreshPhoto,
   pickFreshPhotos,
@@ -13,6 +12,7 @@ import {
   videoEditFallbackSms,
   generateTipCarousel,
   generateTypedCarousel,
+  composeClockSms,
 } from "./deps.js";
 import { logger } from "../lib/logger.js";
 
@@ -150,13 +150,20 @@ export async function runGapFillLoop(): Promise<void> {
         const topic = pillar.name.toLowerCase();
         const lead = auto
           ? `We were a bit light on ${topic}, so I put together a ${kind} and scheduled it for ${when}. Reply HOLD to stop it, or tell me a change.`
-          : `We were a bit light on ${topic}, so I put together a ${kind}:\n\n${drafted.post.caption}\n\nProposed for ${when}. Reply yes to send it, tell me a change, or no to bin it.`;
+          : await composeClockSms(
+              brand,
+              `Gap-fill: pillar "${pillar.name}" was light so you drafted a ${kind} (status pending_approval, proposed ${when}). Caption:\n${drafted.post.caption}\nTell them you drafted it. Still wait for yes unless this is autopilot. Do not dump yes/change/no. Do not publish.`,
+            );
         await sendToBrand(brand.id, lead, drafted.mediaUrl ? [drafted.mediaUrl] : undefined);
         await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
         break;
       }
 
-      await sendToBrand(brand.id, await gapNudgeMessage(brand, pillar.name));
+      const nudge = await composeClockSms(
+        brand,
+        `Gap-fill: pillar "${pillar.name}" is light this week and you have no photo to draft from. Nudge once like a colleague for a snap, or offer to put something together. No yes/change/no menu. Do not publish.`,
+      );
+      await sendToBrand(brand.id, nudge);
       await query("update pillars set last_gap_ping_at = now() where id = $1", [pillar.id]);
       break;
     }

@@ -76,6 +76,10 @@ describe("agentIdentity", () => {
     expect(prompt).toMatch(/Brand recall:/i);
     expect(prompt).toMatch(/never\/don't content bans/i);
     expect(prompt).toMatch(/never scout_ideas for a draft ask/i);
+    expect(prompt).toMatch(/Photos:/);
+    expect(prompt).toMatch(/Clock wake/);
+    expect(prompt).toMatch(/confirm_pending_ask/);
+    expect(prompt).toMatch(/Never park the chat on Reply 1, 2, or 3/);
     expect(prompt).toMatch(/exact overlay headline/i);
     expect(prompt).not.toMatch(/✨/);
   });
@@ -132,5 +136,14 @@ describe("agentIdentity", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/never stall asking whether to upload vs source/i);
     expect(prompt).toMatch(/Photo default/i);
+  });
+
+  it("treats leftover turns as the start of a text, never a command menu", () => {
+    const prompt = agentIdentity(stubBrand());
+    expect(prompt).toMatch(/Leftover turns:/);
+    expect(prompt).toMatch(/hello is never an approval/i);
+    expect(prompt).toMatch(/Never dump a yes \/ change \/ no command list/i);
+    expect(prompt).toMatch(/Never list formats as a menu/i);
+    expect(prompt).toMatch(/Do not spend tool calls on a bare hi/i);
   });
 });

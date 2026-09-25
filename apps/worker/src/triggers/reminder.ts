@@ -1,5 +1,6 @@
 import { query } from "@pulse/shared";
 import type { Brand, ProactiveTrigger } from "@pulse/shared";
+import { composeClockSms } from "@pulse/orchestrator";
 import { logger } from "../lib/logger.js";
 
 const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
@@ -9,6 +10,8 @@ export interface ReminderDeps {
   sendToBrand: (brandId: string, body: string) => Promise<boolean | void>;
   markSent: (triggerId: string) => Promise<void>;
   now: () => Date;
+  isDaytime?: (now: Date) => boolean;
+  composeSms?: (brand: Brand, brief: string) => Promise<string>;
 }
 
 /**
@@ -32,12 +35,15 @@ export async function runReminder(brand: Brand, trigger: ProactiveTrigger, deps:
   const lastMediaAt = await deps.getLastMediaReceivedAt(brand.id);
   const now = deps.now();
   if (!shouldSendReminder(lastMediaAt, trigger.last_sent_at, now)) return;
+  if (deps.isDaytime && !deps.isDaytime(now)) {
+    logger.info(`skip reminder for brand ${brand.id}: outside daytime hours`);
+    return;
+  }
 
   logger.info(`sending reminder nudge to brand ${brand.id} (no media since ${lastMediaAt ?? "ever"})`);
-  await deps.sendToBrand(
-    brand.id,
-      "Haven't heard from you in a while. Anything to post this week? Send me a pic or video anytime."
-  );
+  const brief = `They have gone quiet for 10+ days with no photo. Nudge once like a colleague. Ask if they want to post this week. No yes/change/no menu. Do not publish.`;
+  const body = await (deps.composeSms ?? composeClockSms)(brand, brief);
+  await deps.sendToBrand(brand.id, body);
   await deps.markSent(trigger.id);
 }
 

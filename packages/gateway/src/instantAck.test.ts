@@ -49,14 +49,18 @@ describe("looksLikeCompleteSmsTurn", () => {
 
 describe("shouldSkipInboundBurst", () => {
   it("skips the coalesce sleep for complete short turns", () => {
-    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: false })).toBe(true);
-    expect(shouldSkipInboundBurst({ text: "thanks", hasMedia: false })).toBe(true);
-    expect(shouldSkipInboundBurst({ text: "Awesome", hasMedia: false })).toBe(true);
     expect(shouldSkipInboundBurst({ text: "what's on my calendar this week?", hasMedia: false })).toBe(
       true,
     );
     expect(shouldSkipInboundBurst({ text: "how's it going", hasMedia: false })).toBe(true);
     expect(shouldSkipInboundBurst({ text: "can you make it shorter?", hasMedia: false })).toBe(true);
+  });
+
+  it("keeps the wait for a lone hey / thanks so a follow-up SMS can land", () => {
+    expect(shouldSkipInboundBurst({ text: "hi", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "hey", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "thanks", hasMedia: false })).toBe(false);
+    expect(shouldSkipInboundBurst({ text: "Awesome", hasMedia: false })).toBe(false);
   });
 
   it("keeps the wait for split thoughts, MMS, and photo-referring text", () => {

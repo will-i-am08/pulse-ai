@@ -61,13 +61,25 @@ vi.mock("../scheduler.js", () => ({
 
 vi.mock("../formats.js", () => ({
   draftStoryFromPhoto: vi.fn(async () => null),
+  draftCarouselFromPhotos: vi.fn(async () => ({
+    post: { id: "car-1", caption: "Three slides", media_ids: ["m1", "m2"] },
+    mediaUrl: "https://example.com/car.jpg",
+  })),
 }));
 
 vi.mock("../pillars.js", () => ({
   ensurePillars: vi.fn(async () => [{ id: "pillar-1", posts_per_week: 2, name: "Product" }]),
 }));
 
+vi.mock("../nichePlan.js", () => ({
+  getProposedPlan: vi.fn(async () => null),
+  applyNichePlan: vi.fn(async () => {}),
+}));
+
 import { enqueueKickoff } from "../kickoffs.js";
+import { draftPostFromPhoto } from "../library.js";
+import { draftCarouselFromPhotos } from "../formats.js";
+import { applyNichePlan, getProposedPlan } from "../nichePlan.js";
 import {
   KIP_AGENT_TOOLS,
   buildBrandProfilePayload,
@@ -105,6 +117,7 @@ describe("KIP_AGENT_TOOLS", () => {
   it("defines the expected tool names", () => {
     expect(KIP_AGENT_TOOLS.map((t) => t.name).sort()).toEqual([
       "check_calendar",
+      "confirm_pending_ask",
       "draft_copy",
       "escalate_to_human",
       "get_offered_draft",
@@ -123,6 +136,9 @@ describe("KIP_AGENT_TOOLS", () => {
     }
     const draft = KIP_AGENT_TOOLS.find((t) => t.name === "draft_copy");
     expect(draft?.input_schema).toMatchObject({ required: ["job"] });
+    expect(draft?.description).toMatch(/Never scout_ideas for a draft ask/i);
+    const scout = KIP_AGENT_TOOLS.find((t) => t.name === "scout_ideas");
+    expect(scout?.description).toMatch(/call draft_copy instead/i);
     const escalate = KIP_AGENT_TOOLS.find((t) => t.name === "escalate_to_human");
     expect(escalate?.input_schema).toMatchObject({ required: ["reason", "summary"] });
   });
@@ -373,6 +389,84 @@ describe("executeAgentTool", () => {
         }),
       }),
     );
+  });
+
+  it("draft_copy infers count from the owner wording when count is omitted", async () => {
+    await executeAgentTool(
+      "draft_copy",
+      { job: "post", topic_hint: "new bun" },
+      { brand: stubBrand(), ownerMessage: "Draft me a post about the new bun" },
+    );
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({ payload: expect.objectContaining({ count: 1 }) }),
+    );
+
+    mockedEnqueue.mockClear();
+    await executeAgentTool(
+      "draft_copy",
+      { job: "post", topic_hint: "coffee" },
+      { brand: stubBrand(), ownerMessage: "draft me 3 posts" },
+    );
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({ payload: expect.objectContaining({ count: 3 }) }),
+    );
+  });
+
+  it("draft_copy post with attached photos drafts immediately instead of queueing", async () => {
+    vi.mocked(draftPostFromPhoto).mockResolvedValueOnce({
+      post: { id: "p-photo", caption: "Morning latte" },
+      mediaUrl: "https://example.com/p.jpg",
+    } as never);
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "post" },
+      { brand: stubBrand(), mediaIds: ["media-1"], ownerMessage: "" },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(true);
+    expect(result.postId).toBe("p-photo");
+    expect(result.note).toMatch(/never published/i);
+    expect(mockedEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("draft_copy carousel with two attached photos drafts a carousel", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      { job: "carousel" },
+      { brand: stubBrand(), mediaIds: ["m1", "m2"], ownerMessage: "tasting menu, one post" },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(true);
+    expect(result.postId).toBe("car-1");
+    expect(result.slides).toBe(2);
+    expect(mockedEnqueue).not.toHaveBeenCalled();
+    expect(vi.mocked(draftCarouselFromPhotos)).toHaveBeenCalled();
+  });
+
+  it("confirm_pending_ask applies a plan without enqueueing first_batch", async () => {
+    vi.mocked(getProposedPlan).mockResolvedValueOnce({ id: "plan-1" } as never);
+    const raw = await executeAgentTool(
+      "confirm_pending_ask",
+      { action: "accept", kind: "plan" },
+      { brand: stubBrand(), ownerMessage: "sounds good" },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(true);
+    expect(result.kind).toBe("plan");
+    expect(result.firstBatchEnqueued).toBe(false);
+    expect(vi.mocked(applyNichePlan)).toHaveBeenCalled();
+    expect(mockedEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("scout_ideas refuses a draft-shaped owner ask", async () => {
+    const raw = await executeAgentTool(
+      "scout_ideas",
+      { focus: "autumn" },
+      { brand: stubBrand(), ownerMessage: "Draft something in my lane" },
+    );
+    const result = JSON.parse(raw);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/draft_copy/i);
   });
 
   it("schedule_post never writes status published", async () => {

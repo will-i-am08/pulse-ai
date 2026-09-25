@@ -1,22 +1,11 @@
-import { query } from "@pulse/shared";
-import { sendToBrand, isDaytime } from "./deps.js";
+import { query, queryOne, type Brand } from "@pulse/shared";
+import { sendToBrand, isDaytime, composeClockSms } from "./deps.js";
 import { logger } from "../lib/logger.js";
-
-/** Pick a varied chase nudge for a pending draft. */
-function chaseNudge(what: string): string {
-  const templates = [
-    `Quick nudge — ${what} is still waiting. Want it to go out, or shall I tweak it? ("no" to bin it.)`,
-    `Hey, ${what} has been sitting there. Ship it, tweak it, or scrap it?`,
-    `${what} is still pending. "Yes" to post, tell me a change, or "no" to discard.`,
-    `Just checking — ${what} ready to go, or want changes?`,
-    `Still on ${what}? Reply yes to send it, tell me a change, or no to scrap it.`,
-  ];
-  return templates[Math.floor(Math.random() * templates.length)]!;
-}
 
 /**
  * Nudge once about a draft left waiting ~24h (daytime only). Atomic chased_at
  * claim prevents double-send on overlapping ticks / restarts.
+ * SMS comes from the same brain — never a yes/tweak/no menu.
  */
 export async function runChaseLoop(): Promise<void> {
   if (!isDaytime(new Date())) return;
@@ -42,7 +31,13 @@ export async function runChaseLoop(): Promise<void> {
     if (claimed.length === 0) continue;
     const what = row.pillar_name ? `your ${row.pillar_name} post` : "the post I drafted";
     try {
-      await sendToBrand(row.brand_id, chaseNudge(what));
+      const brand = await queryOne<Brand>(`select * from brands where id = $1`, [row.brand_id]);
+      if (!brand) continue;
+      const body = await composeClockSms(
+        brand,
+        `Chase: ${what} has been sitting pending_approval ~24h. Nudge once like a colleague. Do not dump yes/change/no. Do not approve or publish.`,
+      );
+      await sendToBrand(row.brand_id, body);
     } catch (err) {
       logger.error(`chase: send failed for post ${row.id}`, {
         error: err instanceof Error ? err.message : String(err),

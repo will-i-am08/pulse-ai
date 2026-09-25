@@ -5,7 +5,7 @@ vi.mock("../llm.js", () => ({
 }));
 
 import { callLLM } from "../llm.js";
-import { ruleBasedClassify, classifyInbound } from "../classify.js";
+import { ruleBasedClassify, classifyInbound, looksLikeApproval } from "../classify.js";
 
 const mockedCallLLM = callLLM as unknown as ReturnType<typeof vi.fn>;
 
@@ -16,10 +16,23 @@ beforeEach(() => {
   );
 });
 
+describe("looksLikeApproval", () => {
+  it("is the hard yes-gate, not a greeting or a fuzzy edit", () => {
+    expect(looksLikeApproval("yes")).toBe(true);
+    expect(looksLikeApproval("Yep!")).toBe(true);
+    expect(looksLikeApproval("looks good")).toBe(true);
+    expect(looksLikeApproval("hey")).toBe(false);
+    expect(looksLikeApproval("hi")).toBe(false);
+    expect(looksLikeApproval("idk maybe warmer")).toBe(false);
+    expect(looksLikeApproval("X only")).toBe(false);
+  });
+});
+
 describe("ruleBasedClassify", () => {
-  it("classifies any message with media as 'media', regardless of text", () => {
+  it("does not let attached media steal a yes on an offered draft", () => {
+    expect(ruleBasedClassify("yes", true, true)?.classification).toBe("approval");
     expect(ruleBasedClassify("check this out", true, false)?.classification).toBe("media");
-    expect(ruleBasedClassify(null, true, false)?.classification).toBe("media");
+    expect(ruleBasedClassify("check this out", true, false)?.confidence).toBeLessThan(1);
   });
 
   it("classifies plain approval words as 'approval'", () => {

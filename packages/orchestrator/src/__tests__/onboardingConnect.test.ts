@@ -109,12 +109,14 @@ describe("lab chat restart", () => {
 });
 
 describe("wrap hold", () => {
-  it("does not pile a plan tease on a draft ask during wrap", () => {
+  it("yields a photo or draft ask during wrap instead of swallowing it", () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), "../processInbound.ts"),
       "utf8",
     );
-    expect(src).toMatch(/finishing your voice first, then I'll draft that/);
+    expect(src).toMatch(/setupYieldsToWork/);
+    expect(src).not.toMatch(/finishing your voice first, then I'll draft that/);
+    expect(src).not.toMatch(/Got it — finishing your voice first/);
   });
 });
 
