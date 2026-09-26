@@ -152,7 +152,7 @@ const draftCopyInputSchema = z
       .string()
       .optional()
       .describe(
-        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim. Construction: set elements none or mark or constructed. Kit is identity: when this still needs it, set elements mark (logo or wordmark). Omit deco to keep the photo clean. deco is only a vehicle for that mark (badge/sticker = labeled), never a nameless pill. Not a café=template table.",
+        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim. Construction: set elements none or mark or constructed. Kit is identity and request-only: default none (type only). Set elements mark only when they asked for the name/logo on THIS still. Omit deco unless they asked. deco is a labeled vehicle for that mark, never a nameless pill. Not a café=template table.",
       ),
     count: z
       .number()
@@ -185,7 +185,7 @@ const draftCopyInputSchema = z
       .enum(["none", "mark", "constructed"])
       .optional()
       .describe(
-        "Construction for this draft: none = photo-led; mark = stamp logo/wordmark on THIS still so kit points at the brand; constructed = palette/type on a generated photo unless they asked for graphics-only cards. Type language still repeats. deco does not replace the mark — nameless stickers are not kit.",
+        "Construction for this draft. Default none = photo + overlay type, no badge/logo. mark = stamp logo/wordmark because they asked on THIS still (or you set this field). constructed = palette/type on a generated photo unless they asked for graphics-only cards. Type language still repeats. Do not set mark for offers/announcements unless they asked. Nameless stickers are not kit.",
       ),
     deco: z
       .array(
@@ -205,7 +205,7 @@ const draftCopyInputSchema = z
       )
       .optional()
       .describe(
-        "Optional placement for THIS still's mark (badge/sticker = labeled wordmark). Omit or [] to keep the photo clean (default). Never use this as a nameless shape catalog. Identity is elements:mark.",
+        "Optional placement for THIS still's mark (badge/sticker = labeled wordmark). Omit or [] unless they asked for kit on this still (default clean). Never use this as a nameless shape catalog. Identity is elements:mark, and only on request.",
       ),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
     topic_hint: z
@@ -412,7 +412,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, visual.fonts, and on-image design rules — then repeat it. Typeface, case, tracking, and hierarchy come from tokens, not one Inter/Anton pair. Set elements none or mark or constructed for construction. Kit is identity and per still: omit deco so photos stay clean; when THIS still needs kit, set elements mark (logo or wordmark) so it points at the brand — never a nameless sticker. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, visual.fonts, and on-image design rules — then repeat it. Typeface, case, tracking, and hierarchy come from tokens, not one Inter/Anton pair. Set elements none or mark or constructed for construction. Kit is identity and request-only: default elements none, omit deco (overlay type only, no badge/logo). Set elements mark only when they asked for the name/logo on THIS still — never a nameless sticker. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(

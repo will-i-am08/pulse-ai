@@ -156,6 +156,7 @@ export {
 } from "./visualMode.js";
 export {
   resolveFeedElementsIntent,
+  briefAsksForIdentityKit,
   resolveFeedDecoIntent,
   elementsOptsFromPayload,
   formatBrandKitLine,

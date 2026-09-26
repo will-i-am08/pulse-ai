@@ -74,7 +74,11 @@ export async function generateFillerPost(
     overlay_tone: opts?.overlay_tone,
     overlay_headline: opts?.overlay_headline,
   });
-  const elementsIntent = resolveFeedElementsIntent({ brief: topic, elements: opts?.elements });
+  const elementsIntent = resolveFeedElementsIntent({
+    brief: topic,
+    elements: opts?.elements,
+    name: overlayMasthead(brand),
+  });
   const decoPieces = resolveFeedDecoIntent({
     brief: topic,
     deco: opts?.deco,
@@ -281,7 +285,6 @@ export async function generateFillerPost(
         ...(topic ? { ask: topic } : {}),
         ...(exactOverlay ? { exact: true } : {}),
         treatment: overlayTreatment,
-        ...(wantMark ? { omitMasthead: true } : {}),
       };
       const tiledId = await applyTextTile(brand, mediaId, photoHeadline, tileOpts);
       if (tiledId) mediaId = tiledId;

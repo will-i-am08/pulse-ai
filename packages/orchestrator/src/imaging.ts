@@ -1341,8 +1341,8 @@ export type TextTileOptions = {
   slideIndex?: number;
   /** Owner named this headline exactly — skip 5-word/28-char smash. */
   exact?: boolean;
-  /** Skip the burned masthead when stampBrandLogo will own the mark. */
-  omitMasthead?: boolean;
+  /** Burn trading-name masthead on the overlay tile. Default off — kit is request-only via stampBrandLogo. */
+  includeMasthead?: boolean;
 };
 
 export function resolveOverlayTreatment(
@@ -1845,7 +1845,7 @@ export async function applyTextTile(
     const safeHeadline = applyOverlayCase(safeHeadlineRaw, treatment.textCase ?? "upper");
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
-    const masthead = opts?.omitMasthead ? "" : overlayMasthead(brand);
+    const masthead = opts?.includeMasthead ? overlayMasthead(brand) : "";
     const tiled = await renderTile(blob.bytes, safeHeadline, masthead, brand.visual, {
       ...opts,
       body: safeBody,
@@ -2119,7 +2119,7 @@ async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
 /**
  * Stamp this still: optional decorative chrome plus logo/wordmark.
  * Sticker/badge are identity vehicles (labeled mark), never empty pills.
- * Default is a clean photo — kit is per-post, not a house stamp.
+ * Default is overlay type only — kit is request-only, not a house stamp.
  */
 export async function stampBrandLogo(
   brand: Brand,
