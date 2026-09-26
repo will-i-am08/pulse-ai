@@ -31,7 +31,7 @@ import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 import { safePublicUrl } from "./research.js";
-import { resolveBrandDecoKit, type FeedElementsMode } from "./brandElements.js";
+import { resolveBrandDecoKit, type DecoPiece, type FeedElementsMode } from "./brandElements.js";
 import { compositeBrandDecoration } from "./brandDecoration.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
@@ -2112,15 +2112,14 @@ async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
 }
 
 /**
- * Stamp this brand's kit onto a stored still: decorative pieces (frame, corners,
- * colour bar, shape) plus `logo_url` when fetchable, otherwise a typographic
- * wordmark or badge from overlayMasthead. No-op when nameless and there is
- * nothing to paint.
+ * Stamp this still: optional decorative pieces (only when `deco` is set) plus
+ * logo/wordmark when elements is mark/constructed or deco includes a badge.
+ * Default is a clean photo — ornaments are per-post, not a house kit.
  */
 export async function stampBrandLogo(
   brand: Brand,
   mediaId: string,
-  opts?: { elements?: FeedElementsMode },
+  opts?: { elements?: FeedElementsMode; deco?: DecoPiece[] },
 ): Promise<string | null> {
   if (isNamelessCreative(brand)) return mediaId;
   const blob = await getMedia(mediaId);
@@ -2129,12 +2128,14 @@ export async function stampBrandLogo(
     let stamped: Buffer = Buffer.from(blob.bytes);
     let changed = false;
     const mode: FeedElementsMode =
-      opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "mark";
-    const kit = resolveBrandDecoKit(brand.visual, mode);
-    if (kit && kit.pieces.length) {
+      opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "none";
+    const deco = Array.isArray(opts?.deco) ? opts.deco : [];
+    const kit = resolveBrandDecoKit(brand.visual, deco);
+    const paintPieces = (kit?.pieces ?? []).filter((p) => p !== "badge");
+    if (kit && paintPieces.length) {
       const palette = resolveBrandPalette(brand.visual);
       stamped = Buffer.from(
-        await compositeBrandDecoration(stamped, kit, {
+        await compositeBrandDecoration(stamped, { ...kit, pieces: paintPieces }, {
           stroke: palette.text,
           fill: palette.muted,
           accent: palette.bgFrom,
@@ -2142,9 +2143,10 @@ export async function stampBrandLogo(
       );
       changed = true;
     }
+    const wantMark = mode !== "none" || deco.includes("badge");
     let marked = false;
     const logoUrl = brand.visual?.logo_url;
-    if (logoUrl) {
+    if (wantMark && logoUrl) {
       const logo = await fetchBrandLogoBytes(logoUrl);
       if (logo) {
         stamped = Buffer.from(await compositeBrandLogo(stamped, logo));
@@ -2152,7 +2154,7 @@ export async function stampBrandLogo(
         changed = true;
       }
     }
-    if (!marked) {
+    if (wantMark && !marked) {
       const mark = overlayMasthead(brand);
       if (mark) {
         stamped = Buffer.from(

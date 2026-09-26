@@ -156,13 +156,17 @@ export {
 } from "./visualMode.js";
 export {
   resolveFeedElementsIntent,
+  resolveFeedDecoIntent,
   elementsOptsFromPayload,
   formatBrandKitLine,
   formatMarketVisualsLine,
   constructedWantsPhoto,
   brandVisualLane,
   resolveBrandDecoKit,
+  suggestDecoPieces,
+  parseDecoPieces,
   FEED_ELEMENTS_INSTRUCTION,
+  DECO_PIECES,
 } from "./brandElements.js";
 export type { FeedElementsMode, BrandDecoKit, BrandVisualLane, DecoPiece } from "./brandElements.js";
 

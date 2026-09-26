@@ -1,7 +1,7 @@
 /**
  * Canva-style decorative kit composited onto stills.
- * Lane is derived from visual tokens (fonts, aesthetic, palette) — not a niche table.
- * Same kit repeats for the brand; mark vs constructed only changes intensity.
+ * Pieces are chosen per still (owner ask or agent), not stamped on every photo.
+ * Lane only tints bar weight — never a niche table.
  */
 import sharp from "sharp";
 import type { BrandDecoKit, DecoPiece } from "./brandElements.js";
@@ -12,7 +12,7 @@ function svgEscape(hex: string): string {
 }
 
 function pieceSet(pieces: DecoPiece[]): Set<DecoPiece> {
-  return new Set(pieces);
+  return new Set(pieces.filter((p) => p !== "badge"));
 }
 
 /** Full-bleed SVG decoration (alpha) composited over a still. */
@@ -36,6 +36,10 @@ export async function compositeBrandDecoration(
   const barW = kit.lane === "industrial" ? Math.max(14, Math.round(width * 0.028)) : Math.max(8, Math.round(width * 0.016));
   const parts: string[] = [];
 
+  if (set.has("ribbon")) {
+    const rh = Math.max(22, Math.round(height * 0.055));
+    parts.push(`<rect x="0" y="0" width="${width}" height="${rh}" fill="${accent}" fill-opacity="0.92"/>`);
+  }
   if (set.has("bar")) {
     parts.push(`<rect x="0" y="0" width="${barW}" height="${height}" fill="${accent}"/>`);
   }
@@ -70,13 +74,47 @@ export async function compositeBrandDecoration(
     const ry = height - inset - rh;
     parts.push(`<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${accent}"/>`);
   }
+  if (set.has("underline")) {
+    const uw = Math.round(width * 0.34);
+    const uh = Math.max(4, Math.round(height * 0.008));
+    const ux = Math.round((width - uw) / 2);
+    const uy = Math.round(height * 0.72);
+    parts.push(`<rect x="${ux}" y="${uy}" width="${uw}" height="${uh}" fill="${accent}"/>`);
+  }
   if (set.has("shape")) {
     const s = Math.max(8, Math.round(width * 0.012));
     const cx = inset + arm + Math.round(s * 1.6);
-    const cy = inset + Math.round(s * 0.4);
+    const cy = inset + Math.round(s * 0.4) + (set.has("ribbon") ? Math.round(height * 0.04) : 0);
     parts.push(
       `<rect x="${cx - s}" y="${cy - s}" width="${s * 2}" height="${s * 2}" fill="${fill}" transform="rotate(45 ${cx} ${cy})"/>`,
     );
+  }
+  if (set.has("circle")) {
+    const r = Math.max(16, Math.round(width * 0.028));
+    const cx = width - inset - r;
+    const cy = inset + r + (set.has("ribbon") ? Math.round(height * 0.03) : 0);
+    parts.push(
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-opacity="0.92"/>`,
+    );
+  }
+  if (set.has("sticker")) {
+    const swd = Math.max(72, Math.round(width * 0.13));
+    const sht = Math.max(36, Math.round(height * 0.055));
+    const sx = width - inset - swd;
+    const sy = inset + (set.has("ribbon") ? Math.round(height * 0.04) : 0);
+    const rx = Math.round(sht * 0.45);
+    parts.push(
+      `<rect x="${sx}" y="${sy}" width="${swd}" height="${sht}" rx="${rx}" fill="${accent}" transform="rotate(-8 ${sx + swd / 2} ${sy + sht / 2})"/>`,
+    );
+  }
+  if (set.has("dots")) {
+    const r = Math.max(4, Math.round(width * 0.007));
+    const gap = Math.round(r * 3.2);
+    const y = inset + r;
+    const start = Math.round(width / 2 - gap);
+    for (let i = 0; i < 3; i++) {
+      parts.push(`<circle cx="${start + i * gap}" cy="${y}" r="${r}" fill="${accent}"/>`);
+    }
   }
 
   const svg = Buffer.from(

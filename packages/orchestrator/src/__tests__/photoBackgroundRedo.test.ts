@@ -286,13 +286,15 @@ describe("generateFillerPost photo mode", () => {
     expect(generatePhotoImage).toHaveBeenCalled();
     expect(renderQuoteCard).not.toHaveBeenCalled();
     expect(applyTextTile).toHaveBeenCalled();
-    expect(stampBrandLogo).toHaveBeenCalled();
+    expect(stampBrandLogo).toHaveBeenCalledWith(brand, expect.any(String), {
+      elements: "constructed",
+      deco: [],
+    });
     const insertArgs = vi.mocked(queryOne).mock.calls[0];
     const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
     expect(meta.brand_elements).toBe("constructed");
     expect(meta.wants_text).toBe(true);
-    expect(meta.brand_kit).toMatchObject({ lane: "minimal" });
-    expect(stampBrandLogo).toHaveBeenCalledWith(brand, expect.any(String), { elements: "constructed" });
+    expect(meta.brand_kit).toBeUndefined();
   });
 
   it("falls back to a palette quote card when constructed is graphics-only", async () => {
@@ -352,6 +354,33 @@ describe("generateFillerPost photo mode", () => {
 
     await generateFillerPost(brand, pillar, { visuals: "photo", elements: "none" });
     expect(stampBrandLogo).not.toHaveBeenCalled();
+  });
+
+  it("stamps named deco pieces on a photo when this still asks for them", async () => {
+    const { generateFillerPost } = await import("../fillers.js");
+    const { generatePhotoImage, stampBrandLogo } = await import("../imaging.js");
+    const { queryOne } = await import("@pulse/shared");
+
+    vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: "post-deco",
+      caption: "A real caption about hiring",
+      media_ids: ["deco-media-id"],
+    } as any);
+    vi.mocked(stampBrandLogo).mockResolvedValueOnce("deco-media-id");
+
+    const out = await generateFillerPost(brand, pillar, {
+      visuals: "photo",
+      deco: ["frame", "sticker"],
+    });
+    expect(out).not.toBeNull();
+    expect(stampBrandLogo).toHaveBeenCalledWith(brand, expect.any(String), {
+      elements: "none",
+      deco: ["frame", "sticker"],
+    });
+    const insertArgs = vi.mocked(queryOne).mock.calls[0];
+    const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
+    expect(meta.brand_kit).toMatchObject({ pieces: ["frame", "sticker"] });
   });
 
   it("captures interview tokens before stamping when the masthead is empty", async () => {

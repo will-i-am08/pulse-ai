@@ -39,6 +39,7 @@ import {
   FEED_ELEMENTS_INSTRUCTION,
   constructedWantsPhoto,
   resolveBrandDecoKit,
+  resolveFeedDecoIntent,
   resolveFeedElementsIntent,
 } from "./brandElements.js";
 
@@ -47,8 +48,9 @@ import {
  * client asks the agent to draft one). Always lands as pending_approval —
  * agent-generated content never auto-posts. Photo mode may burn a headline
  * onto the still when the agent asked for overlay (models stay text-free).
- * Brand-kit language (mark / constructed) is agent-chosen, then repeated.
- * Constructed generates a photo for type + mark unless the brief is graphics-only.
+ * Construction (mark / constructed) is agent-chosen. Decorative ornaments are
+ * optional per still (deco pieces or an owner ask) — default photos stay clean.
+ * Constructed generates a photo for type unless the brief is graphics-only.
  */
 export async function generateFillerPost(
   brand: Brand,
@@ -61,6 +63,7 @@ export async function generateFillerPost(
     overlay_tone?: unknown;
     overlay_headline?: unknown;
     elements?: unknown;
+    deco?: unknown;
   },
 ): Promise<{ post: Post; mediaUrl: string } | null> {
   const topic = (opts?.topicHint ?? "").trim().slice(0, 400);
@@ -71,8 +74,13 @@ export async function generateFillerPost(
     overlay_headline: opts?.overlay_headline,
   });
   const elementsIntent = resolveFeedElementsIntent({ brief: topic, elements: opts?.elements });
+  const decoPieces = resolveFeedDecoIntent({
+    brief: topic,
+    deco: opts?.deco,
+    visual: brand.visual,
+  });
   if (
-    (elementsIntent === "mark" || elementsIntent === "constructed") &&
+    (elementsIntent === "mark" || elementsIntent === "constructed" || decoPieces.includes("badge")) &&
     !overlayMasthead(brand)
   ) {
     brand = (await captureInterviewVisualTokens(brand)).brand;
@@ -258,6 +266,7 @@ export async function generateFillerPost(
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
 
+    const wantMark = elementsIntent === "mark" || elementsIntent === "constructed" || decoPieces.includes("badge");
     // Burn headline only when the agent asked for overlay (models stay text-free).
     // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto && wantOverlay) {
@@ -270,15 +279,18 @@ export async function generateFillerPost(
         ...(topic ? { ask: topic } : {}),
         ...(exactOverlay ? { exact: true } : {}),
         treatment: overlayTreatment,
-        ...(elementsIntent !== "none" ? { omitMasthead: true } : {}),
+        ...(wantMark ? { omitMasthead: true } : {}),
       };
       const tiledId = await applyTextTile(brand, mediaId, photoHeadline, tileOpts);
       if (tiledId) mediaId = tiledId;
     }
-    if (elementsIntent === "mark" || elementsIntent === "constructed") {
+    if (wantMark || decoPieces.length) {
       // Quote cards already paint the wordmark via overlayMasthead; still stamp a logo file.
-      if (wantPhoto || brand.visual?.logo_url) {
-        const stampedId = await stampBrandLogo(brand, mediaId, { elements: elementsIntent });
+      if (wantPhoto || brand.visual?.logo_url || decoPieces.length) {
+        const stampedId = await stampBrandLogo(brand, mediaId, {
+          elements: elementsIntent,
+          deco: decoPieces,
+        });
         if (stampedId) mediaId = stampedId;
       }
     }
@@ -307,15 +319,11 @@ export async function generateFillerPost(
       : wantPhoto
         ? { wants_text: false }
         : {}),
-    ...(elementsIntent !== "none"
-      ? {
-          brand_elements: elementsIntent,
-          brand_kit: resolveBrandDecoKit(brand.visual, elementsIntent),
-          overlay_type: wantPhoto && wantOverlay ? brandOverlayTreatment(brand.visual, overlayIntent.tone) : undefined,
-        }
-      : wantPhoto && wantOverlay
-        ? { overlay_type: brandOverlayTreatment(brand.visual, overlayIntent.tone) }
-        : {}),
+    ...(elementsIntent !== "none" ? { brand_elements: elementsIntent } : {}),
+    ...(decoPieces.length ? { brand_kit: resolveBrandDecoKit(brand.visual, decoPieces) } : {}),
+    ...(wantPhoto && wantOverlay
+      ? { overlay_type: brandOverlayTreatment(brand.visual, overlayIntent.tone) }
+      : {}),
   };
   const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(

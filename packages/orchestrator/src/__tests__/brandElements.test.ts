@@ -5,8 +5,11 @@ import {
   constructedWantsPhoto,
   formatBrandKitLine,
   formatMarketVisualsLine,
+  parseDecoPieces,
   resolveBrandDecoKit,
+  resolveFeedDecoIntent,
   resolveFeedElementsIntent,
+  suggestDecoPieces,
 } from "../brandElements.js";
 
 describe("resolveFeedElementsIntent", () => {
@@ -65,7 +68,7 @@ describe("formatMarketVisualsLine", () => {
 describe("FEED_ELEMENTS_INSTRUCTION", () => {
   it("does not encode a café template table", () => {
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/Do not map a niche to a template/i);
-    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/decorative kit/i);
+    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/OPTIONAL and PER POST/i);
     expect(FEED_ELEMENTS_INSTRUCTION).not.toMatch(/if niche is caf[eé]/i);
   });
 });
@@ -82,25 +85,56 @@ describe("brandVisualLane", () => {
 });
 
 describe("resolveBrandDecoKit", () => {
-  it("skips decoration when elements is none", () => {
+  it("skips decoration when no pieces are chosen", () => {
     expect(resolveBrandDecoKit({ fonts: ["Anton"] }, "none")).toBeNull();
+    expect(resolveBrandDecoKit({ fonts: ["Anton"] }, "constructed")).toBeNull();
+    expect(resolveBrandDecoKit({ fonts: ["Anton"] }, [])).toBeNull();
   });
 
-  it("gives two token lanes different pieces and repeats within a brand", () => {
-    const cafe = resolveBrandDecoKit({ fonts: ["Inter"], aesthetic: "warm minimal" }, "mark");
-    const ops = resolveBrandDecoKit({ fonts: ["Anton"], colors: ["#111111", "#f5f0e8"] }, "constructed");
-    expect(cafe?.lane).toBe("minimal");
-    expect(ops?.lane).toBe("graphic");
-    expect(cafe?.pieces).toContain("corners");
-    expect(ops?.pieces).toContain("bar");
-    expect(cafe?.pieces).not.toEqual(ops?.pieces);
-    expect(resolveBrandDecoKit({ fonts: ["Inter"], aesthetic: "warm minimal" }, "mark")).toEqual(cafe);
-    expect(resolveBrandDecoKit({ fonts: ["Anton"], colors: ["#111111", "#f5f0e8"] }, "constructed")).toEqual(ops);
+  it("paints the requested pieces and repeats the same list", () => {
+    const framed = resolveBrandDecoKit({ fonts: ["Inter"] }, ["frame", "sticker"]);
+    expect(framed?.pieces).toEqual(["frame", "sticker"]);
+    expect(framed?.mark).toBe("wordmark");
+    expect(resolveBrandDecoKit({ fonts: ["Inter"] }, ["frame", "sticker"])).toEqual(framed);
+    expect(resolveBrandDecoKit({ fonts: ["Anton"] }, ["bar", "badge"])?.mark).toBe("badge");
   });
 
   it("does not encode café=frame or tech=badge", () => {
     const src = `${FEED_ELEMENTS_INSTRUCTION} café bun`;
     expect(src).not.toMatch(/if niche is caf[eé].*frame/i);
+  });
+});
+
+describe("resolveFeedDecoIntent", () => {
+  it("defaults photos clean", () => {
+    expect(resolveFeedDecoIntent({})).toEqual([]);
+    expect(resolveFeedDecoIntent({ brief: "Draft Saturday's bun" })).toEqual([]);
+  });
+
+  it("honours named pieces on the still or in the brief", () => {
+    expect(resolveFeedDecoIntent({ deco: ["frame", "badge"] })).toEqual(["frame", "badge"]);
+    expect(resolveFeedDecoIntent({ brief: "Add a sticker and a colour bar on this one" })).toEqual([
+      "bar",
+      "sticker",
+    ]);
+    expect(resolveFeedDecoIntent({ brief: "keep photos clean, no decoration" })).toEqual([]);
+  });
+
+  it("suggests a wider-than-corners set only when asked to decorate without naming pieces", () => {
+    const suggested = resolveFeedDecoIntent({
+      brief: "Decorate this still",
+      visual: { fonts: ["Inter"], aesthetic: "warm minimal" },
+    });
+    expect(suggested.length).toBeGreaterThan(0);
+    expect(suggested).not.toEqual(["corners"]);
+    expect(suggestDecoPieces({ fonts: ["Anton"] })).toContain("sticker");
+    expect(suggestDecoPieces({ fonts: ["Anton"] })).not.toEqual(["corners"]);
+  });
+});
+
+describe("parseDecoPieces", () => {
+  it("caps and dedupes the vocabulary", () => {
+    expect(parseDecoPieces(["frame", "frame", "nope", "underline"])).toEqual(["frame", "underline"]);
   });
 });
 
@@ -152,7 +186,7 @@ describe("compositeBrandDecoration", () => {
       .toBuffer();
     const out = await compositeBrandDecoration(
       base,
-      { lane: "graphic", pieces: ["bar", "corners", "shape"], mark: "badge" },
+      { lane: "graphic", pieces: ["bar", "sticker", "underline"], mark: "badge" },
       { stroke: "#f5f0e8", fill: "#c8c0b4", accent: "#111111" },
     );
     const meta = await sharp(out).metadata();
