@@ -28,6 +28,12 @@ describe("resolveFeedElementsIntent", () => {
     expect(resolveFeedElementsIntent({ brief: "elements:constructed" })).toBe("constructed");
     expect(resolveFeedElementsIntent({ brief: "stamp the logo on this" })).toBe("mark");
     expect(resolveFeedElementsIntent({ brief: "never stamp logo, keep photos clean" })).toBe("none");
+    expect(
+      resolveFeedElementsIntent({
+        brief: "Keep this still clean — no frame, no sticker. Type only.",
+        elements: "mark",
+      }),
+    ).toBe("none");
   });
 });
 
@@ -118,6 +124,21 @@ describe("resolveFeedDecoIntent", () => {
       "sticker",
     ]);
     expect(resolveFeedDecoIntent({ brief: "keep photos clean, no decoration" })).toEqual([]);
+  });
+
+  it("does not treat 'no sticker' as a request, and keep-this-still-clean beats a deco field", () => {
+    expect(
+      resolveFeedDecoIntent({
+        brief: "Keep this still clean — no frame, no sticker, no colour bar, no badge. Type only.",
+        deco: ["frame", "sticker", "badge"],
+      }),
+    ).toEqual([]);
+    expect(
+      resolveFeedDecoIntent({
+        brief: "Weekend tarts. Add a big colour bar and a big sticker — not corners, not a tiny pill.",
+      }),
+    ).toEqual(["bar", "sticker"]);
+    expect(resolveFeedDecoIntent({ brief: "keep photos clean", deco: ["sticker"] })).toEqual(["sticker"]);
   });
 
   it("suggests a wider-than-corners set only when asked to decorate without naming pieces", () => {
