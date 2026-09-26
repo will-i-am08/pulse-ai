@@ -59,26 +59,41 @@ export function parseDecoPieces(raw: unknown): DecoPiece[] {
   return out;
 }
 
+function phraseNegatedAt(brief: string, index: number): boolean {
+  const window = brief.slice(Math.max(0, index - 80), index).toLowerCase();
+  if (/\b(do not|don't|dont|never|without|no)\b/i.test(window)) return true;
+  return /\b(no|not|not a|not the|without|without a|without the|skip|skip the|never|don't|dont|do not)\b[\s,:'"—-]*$/i.test(
+    window.trimEnd(),
+  );
+}
+
+function isKitRefusedBrief(brief: string): boolean {
+  return /\b((do not|don't|dont|never)\b.{0,80}\b(name|logo|badge|wordmark|mark|sticker)\b|\bno (name|logo|badge|wordmark|sticker)s?\b.{0,40}\bon this|\bno brand mark\b|\bnever stamp\b|\btype only\b)/i.test(
+    brief,
+  );
+}
+
 /**
  * Owner asked for identity kit on THIS still (name, logo, wordmark, badge),
- * not overlay type and not a generic tart/hiring brief.
+ * not overlay type and not a generic tart/hiring brief. Negation wins.
  */
 export function briefAsksForIdentityKit(brief?: string | null, name?: string | null): boolean {
   const text = (brief ?? "").replace(/\s+/g, " ").trim();
-  if (!text) return false;
-  if (
-    /\b(stamp (the |our |my )?(logo|mark|wordmark|name|badge)|add (our |the |my )?(logo|wordmark|name|badge|mark)|put (our |the |my )?(name|logo|wordmark|badge|mark)|with (our |the |my )?(logo|wordmark|name)|brand mark|elements:\s*mark|our (name|logo|wordmark) on|trading[- ]name|(logo|wordmark|name|badge) (on|onto) this)\b/i.test(
-      text,
-    )
-  ) {
-    return true;
+  if (!text || isThisStillCleanBrief(text) || isKitRefusedBrief(text)) return false;
+  const askRe =
+    /\b(stamp (the |our |my )?(logo|mark|wordmark|name|badge)|add (our |the |my )?(logo|wordmark|name|badge|mark)|put (our |the |my )?(name|logo|wordmark|badge|mark)|with (our |the |my )?(logo|wordmark|name)|brand mark|elements:\s*mark|our (name|logo|wordmark) on|trading[- ]name|(logo|wordmark|name|badge) (on|onto) this)\b/gi;
+  for (const m of text.matchAll(askRe)) {
+    if (!phraseNegatedAt(text, m.index ?? 0)) return true;
   }
   const n = (name ?? "").replace(/\s+/g, " ").trim();
   if (n.length < 3) return false;
   const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const named = new RegExp(esc, "i");
-  if (!named.test(text)) return false;
-  return /\b(put|stamp|add|with)\b/i.test(text) && /\b(on|onto)\b/i.test(text);
+  const named = new RegExp(esc, "gi");
+  for (const m of text.matchAll(named)) {
+    if (phraseNegatedAt(text, m.index ?? 0)) continue;
+    if (/\b(put|stamp|add|with)\b/i.test(text) && /\b(on|onto)\b/i.test(text)) return true;
+  }
+  return false;
 }
 
 /**
@@ -94,13 +109,13 @@ export function resolveFeedElementsIntent(input: {
   name?: string | null;
 }): FeedElementsMode {
   const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
-  if (brief && isThisStillCleanBrief(brief) && !briefAsksForIdentityKit(brief, input.name)) {
+  if (brief && (isThisStillCleanBrief(brief) || isKitRefusedBrief(brief))) {
     return "none";
   }
-  const field = modeOf(input.elements);
-  if (field) return field;
-
-  if (!brief) return "none";
+  if (!brief) {
+    const field = modeOf(input.elements);
+    return field ?? "none";
+  }
 
   if (/\belements:\s*none\b|\bno brand mark\b|\bno logo\b|\bnever stamp (the )?logo\b/i.test(brief)) {
     return "none";
@@ -108,9 +123,10 @@ export function resolveFeedElementsIntent(input: {
   if (/\belements:\s*constructed\b|\bconstructed from elements\b|\bgraphics? only\b|\bquote cards?\b|\btext cards?\b|\bdesigned (slides?|graphics?|cards?)\b/i.test(brief)) {
     return "constructed";
   }
-  if (/\belements:\s*mark\b/.test(brief) || briefAsksForIdentityKit(brief, input.name)) {
-    return "mark";
-  }
+  const field = modeOf(input.elements);
+  if (field === "constructed") return "constructed";
+  if (field === "none") return "none";
+  if (briefAsksForIdentityKit(brief, input.name)) return "mark";
   return "none";
 }
 
@@ -182,11 +198,16 @@ export function decoNeedsIdentity(pieces: DecoPiece[]): boolean {
   return pieces.length > 0;
 }
 
-function negatedBefore(brief: string, index: number): boolean {
-  const window = brief.slice(Math.max(0, index - 28), index).toLowerCase();
-  return /\b(no|not|not a|not the|without|without a|without the|skip|skip the|never|don't|dont|do not)\b[\s,:'"—-]*$/i.test(
-    window.trimEnd(),
+function isThisStillCleanBrief(brief: string): boolean {
+  return (
+    /\b(keep this (still|photo|shot|image|post) clean|type only|deco:\s*none|no decorations? on this|undecorated|plain photo)\b/i.test(
+      brief,
+    ) || isKitRefusedBrief(brief)
   );
+}
+
+function negatedBefore(brief: string, index: number): boolean {
+  return phraseNegatedAt(brief, index);
 }
 
 function namedDecoPiecesFromBrief(brief: string): DecoPiece[] {
@@ -213,12 +234,6 @@ function namedDecoPiecesFromBrief(brief: string): DecoPiece[] {
   add("dots", /\bdots\b/i);
   add("badge", /\bbadges?\b/i);
   return named;
-}
-
-function isThisStillCleanBrief(brief: string): boolean {
-  return /\b(keep this (still|photo|shot|image|post) clean|type only|deco:\s*none|no decorations? on this|undecorated|plain photo)\b/i.test(
-    brief,
-  );
 }
 
 function isGeneralCleanBrief(brief: string): boolean {
@@ -253,9 +268,9 @@ export function resolveFeedDecoIntent(input: {
   visual?: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null;
 }): DecoPiece[] {
   const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
+  if (brief && isThisStillCleanBrief(brief)) return [];
   const named = brief ? namedDecoPiecesFromBrief(brief) : [];
   if (named.length) return named;
-  if (brief && isThisStillCleanBrief(brief)) return [];
   if (input.deco != null) {
     if (input.deco === "none" || input.deco === false) return [];
     return parseDecoPieces(input.deco);
