@@ -1,7 +1,9 @@
 /**
  * Agent-chosen brand-kit language for generated posts.
+ * Construction (photo vs mark vs constructed) can stay brand-true.
+ * Decorative ornaments are optional and per still — default photos clean.
  * Not a niche table: café vs founder-ops is decided in identity + draft_copy
- * from research + remembered likes, then passed here as elements / a brief directive.
+ * from research + remembered likes, then passed here as elements / deco / a brief directive.
  */
 
 import type { VisualProfile } from "@pulse/shared";
@@ -12,7 +14,20 @@ export type FeedElementsMode = "none" | "mark" | "constructed";
 /** Token-derived visual lane — fonts / aesthetic / palette, never a niche name. */
 export type BrandVisualLane = "editorial" | "graphic" | "minimal" | "industrial";
 
-export type DecoPiece = "frame" | "corners" | "bar" | "rule" | "shape";
+export const DECO_PIECES = [
+  "frame",
+  "corners",
+  "bar",
+  "rule",
+  "underline",
+  "shape",
+  "circle",
+  "sticker",
+  "ribbon",
+  "dots",
+  "badge",
+] as const;
+export type DecoPiece = (typeof DECO_PIECES)[number];
 export type MarkPlacement = "wordmark" | "badge";
 
 export type BrandDecoKit = {
@@ -22,11 +37,26 @@ export type BrandDecoKit = {
 };
 
 export const FEED_ELEMENTS_INSTRUCTION =
-  "Brand kit: honour elements:none (photo-led, do not stamp a logo or decoration), elements:mark (stamp the brand logo/wordmark plus this brand's decorative kit — frames, corner marks, colour bars, badges, shapes), or elements:constructed (build from palette, type, mark, and the same kit on a generated photo unless the brief is graphics-only / quote cards). Kit pieces come from visual tokens (fonts, aesthetic, palette), not a café=template table. This is the brand's house style — do not mix photo-only and quote-card on the next slide. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
+  "Brand kit: honour elements:none (photo-led), elements:mark (stamp logo/wordmark on THIS still), or elements:constructed (build from palette and type on a generated photo unless the brief is graphics-only / quote cards). Decorative ornaments are OPTIONAL and PER POST — default the photo clean. Only add ornaments when this still needs them or the owner asked. Set deco to pieces from the vocabulary (frame, corners, bar, rule, underline, shape, circle, sticker, ribbon, dots, badge) that fit visual tokens — not only L-corners, not a café=template table, not the same kit on every photo, not a random mix to vary the grid. Type language can still repeat. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
+
+const DECO_SET = new Set<string>(DECO_PIECES);
 
 function modeOf(v: unknown): FeedElementsMode | null {
   if (v === "none" || v === "mark" || v === "constructed") return v;
   return null;
+}
+
+export function parseDecoPieces(raw: unknown): DecoPiece[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,\s]+/) : [];
+  const out: DecoPiece[] = [];
+  for (const item of list) {
+    const key = String(item).trim().toLowerCase();
+    if (!DECO_SET.has(key)) continue;
+    const piece = key as DecoPiece;
+    if (!out.includes(piece)) out.push(piece);
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 
 /**
@@ -99,33 +129,103 @@ export function brandVisualLane(
 }
 
 /**
- * Brand-stable decorative kit. Intensity follows elements (mark = light,
- * constructed = fuller). Same lane → same pieces on every post.
+ * When the owner/agent asked to decorate this still without naming pieces,
+ * pick a short lane-true set. Not corners-only. Not a café table.
+ */
+export function suggestDecoPieces(
+  visual?: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null,
+): DecoPiece[] {
+  const lane = brandVisualLane(visual);
+  if (lane === "editorial") return ["frame", "underline", "rule"];
+  if (lane === "graphic") return ["bar", "sticker", "badge"];
+  if (lane === "industrial") return ["bar", "ribbon", "frame"];
+  return ["underline", "rule", "dots"];
+}
+
+function decoPiecesFromBrief(brief: string): DecoPiece[] | null {
+  if (
+    /\b(no decorations?|no ornaments?|keep (the )?(photos?|stills?) clean|deco:\s*none|undecorated|plain photo)\b/i.test(
+      brief,
+    )
+  ) {
+    return [];
+  }
+  const named: DecoPiece[] = [];
+  const add = (piece: DecoPiece) => {
+    if (!named.includes(piece) && named.length < 4) named.push(piece);
+  };
+  if (/\b(frames?|inset frame|borders?)\b/i.test(brief)) add("frame");
+  if (/\b(corners?|corner marks?|l-?corners?)\b/i.test(brief)) add("corners");
+  if (/\b((colour|color|side|accent) bars?|add a bar)\b/i.test(brief)) add("bar");
+  if (/\b(hairlines?|a rule|rules under)\b/i.test(brief)) add("rule");
+  if (/\bunderlines?\b/i.test(brief)) add("underline");
+  if (/\b(diamonds?|rotated squares?)\b/i.test(brief)) add("shape");
+  if (/\b(circles?|rings?)\b/i.test(brief)) add("circle");
+  if (/\bstickers?\b/i.test(brief)) add("sticker");
+  if (/\bribbons?\b/i.test(brief)) add("ribbon");
+  if (/\bdots\b/i.test(brief)) add("dots");
+  if (/\bbadges?\b/i.test(brief)) add("badge");
+  if (named.length) return named;
+  if (
+    /\b(decorate (this|it|the (still|photo|image|post))|add decorations?|ornaments?|canva[- ]style|graphic elements|decorative (kit|elements?))\b/i.test(
+      brief,
+    )
+  ) {
+    return null;
+  }
+  return [];
+}
+
+/**
+ * Per-still ornaments. Default empty (clean photo). Field wins, then named
+ * pieces in the brief, then a lane suggestion only when they asked to decorate
+ * without naming pieces. Never implied by elements mark/constructed.
+ */
+export function resolveFeedDecoIntent(input: {
+  brief?: string | null;
+  deco?: unknown;
+  visual?: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null;
+}): DecoPiece[] {
+  if (input.deco != null) {
+    if (input.deco === "none" || input.deco === false) return [];
+    return parseDecoPieces(input.deco);
+  }
+  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
+  if (!brief) return [];
+  const fromBrief = decoPiecesFromBrief(brief);
+  if (fromBrief === null) return suggestDecoPieces(input.visual);
+  return fromBrief;
+}
+
+/**
+ * Kit for THIS still from explicit pieces. Empty pieces → no ornaments.
+ * Badge in the list chooses badge mark placement; other pieces paint.
  */
 export function resolveBrandDecoKit(
   visual?: VisualProfile | null,
-  mode: FeedElementsMode = "none",
+  pieces: DecoPiece[] | FeedElementsMode = [],
 ): BrandDecoKit | null {
-  if (mode === "none") return null;
+  // Back-compat: old callers passed elements mode. Mode no longer implies a kit.
+  if (pieces === "none" || pieces === "mark" || pieces === "constructed") return null;
+  const list = Array.isArray(pieces) ? pieces.filter((p, i, all) => DECO_SET.has(p) && all.indexOf(p) === i) : [];
+  if (!list.length) return null;
   const lane = brandVisualLane(visual);
-  const full = mode === "constructed";
-  if (lane === "editorial") {
-    return { lane, pieces: full ? ["frame", "rule", "corners"] : ["rule", "corners"], mark: "wordmark" };
-  }
-  if (lane === "graphic") {
-    return { lane, pieces: full ? ["bar", "corners", "shape"] : ["bar", "shape"], mark: "badge" };
-  }
-  if (lane === "industrial") {
-    return { lane, pieces: full ? ["bar", "frame", "shape"] : ["bar"], mark: full ? "badge" : "wordmark" };
-  }
-  return { lane, pieces: full ? ["corners", "bar"] : ["corners"], mark: "wordmark" };
+  return {
+    lane,
+    pieces: list,
+    mark: list.includes("badge") ? "badge" : "wordmark",
+  };
 }
 
 export function elementsOptsFromPayload(payload: Record<string, unknown> | null | undefined): {
   elements?: unknown;
+  deco?: unknown;
 } {
-  if (!payload || payload.elements == null) return {};
-  return { elements: payload.elements };
+  if (!payload) return {};
+  const out: { elements?: unknown; deco?: unknown } = {};
+  if (payload.elements != null) out.elements = payload.elements;
+  if (payload.deco != null) out.deco = payload.deco;
+  return out;
 }
 
 /** One pack line so the agent can pick a house style from tokens, not a niche table. */

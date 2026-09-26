@@ -143,10 +143,16 @@ describe("KIP_AGENT_TOOLS", () => {
       ["none", "headline"],
     );
     expect(draft?.description).toMatch(/elements none or mark or constructed/i);
-    expect(draft?.description).toMatch(/decorative kit/i);
-    expect(draft?.description).toMatch(/THIS brand's construction language/i);
+    expect(draft?.description).toMatch(/per still/i);
+    expect(draft?.description).toMatch(/omit deco/i);
     expect((draft?.input_schema as { properties?: Record<string, { enum?: string[] }> }).properties?.elements?.enum).toEqual(
       ["none", "mark", "constructed"],
+    );
+    expect(
+      (draft?.input_schema as { properties?: Record<string, { items?: { enum?: string[] } }> }).properties?.deco?.items
+        ?.enum,
+    ).toEqual(
+      ["frame", "corners", "bar", "rule", "underline", "shape", "circle", "sticker", "ribbon", "dots", "badge"],
     );
     const scout = KIP_AGENT_TOOLS.find((t) => t.name === "scout_ideas");
     expect(scout?.description).toMatch(/call draft_copy instead/i);
@@ -374,6 +380,28 @@ describe("executeAgentTool", () => {
       expect.objectContaining({
         payload: expect.objectContaining({
           elements: "constructed",
+          topicHint: "Saturday bun",
+        }),
+      }),
+    );
+  });
+
+  it("draft_copy passes per-still deco pieces onto the kickoff payload", async () => {
+    const raw = await executeAgentTool(
+      "draft_copy",
+      {
+        job: "post",
+        count: 1,
+        topic_hint: "Saturday bun",
+        deco: ["frame", "badge"],
+      },
+      { brand: stubBrand(), sourceMessageId: "msg-deco" },
+    );
+    expect(JSON.parse(raw).ok).toBe(true);
+    expect(mockedEnqueue.mock.calls[0]![2]).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          deco: ["frame", "badge"],
           topicHint: "Saturday bun",
         }),
       }),
