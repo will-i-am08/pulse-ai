@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kip — Charcoal Field · mark kinship</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --void: #0a0a0a;
+      --ink: #1d1d1f;
+      --cat: #202020;
+      --disc: #f4f1ea; /* exact logo disc */
+      --paper: #f4f1ea;
+      --mute: #6e6e73;
+      --line: #e6e2da;
+      --display: "Syne", system-ui, sans-serif;
+      --text: "DM Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--void);
+      color: var(--paper);
+      font-family: var(--text);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    .proof {
+      display: flex; align-items: center; justify-content: center; gap: 1rem;
+      padding: 8px 16px; background: #050505;
+      border-bottom: 1px solid rgba(244,241,234,0.08);
+      font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.45);
+    }
+    .proof b { color: var(--disc); font-weight: 600; }
+    .proof .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--disc);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
+
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      padding: 14px 22px;
+      background: rgba(10,10,10,0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(244,241,234,0.08);
+    }
+    .top-brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-weight: 600; letter-spacing: -0.02em; font-size: 17px;
+    }
+    .top-brand img { width: 32px; height: 32px; border-radius: 50%; }
+    .top nav {
+      display: flex; flex-wrap: wrap; gap: 8px 18px;
+      font-size: 13px; color: rgba(244,241,234,0.5);
+    }
+    .top nav a:hover { color: var(--paper); }
+
+    /* —— Logo-led hero on disc paper —— */
+    .hero {
+      background: var(--disc);
+      color: var(--ink);
+      min-height: 100svh;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      align-items: stretch;
+    }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+    .hero-copy {
+      padding: clamp(72px, 12vh, 120px) clamp(24px, 5vw, 64px);
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .hero-copy .mark {
+      width: 96px; height: 96px; border-radius: 50%;
+      margin-bottom: 28px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+      animation: settle 0.9s ease both;
+    }
+    .hero-copy .brand {
+      font-family: var(--display);
+      font-weight: 800; font-size: 15px;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      margin: 0 0 14px; color: var(--cat);
+      animation: arrive 0.7s 0.05s ease both;
+    }
+    .hero-copy h1 {
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: clamp(44px, 7vw, 84px);
+      letter-spacing: -0.05em; line-height: 0.92;
+      margin: 0 0 18px; max-width: 10ch;
+      animation: arrive 0.8s 0.12s ease both;
+    }
+    .hero-copy p {
+      max-width: 34ch; color: rgba(29,29,31,0.62);
+      font-size: 17px; margin: 0 0 28px;
+      animation: arrive 0.8s 0.2s ease both;
+    }
+    .hero-copy .cta {
+      display: inline-flex; width: fit-content;
+      background: var(--void); color: var(--disc);
+      font-weight: 600; font-size: 15px;
+      padding: 14px 22px; border-radius: 999px;
+      animation: arrive 0.8s 0.28s ease both;
+    }
+    .hero-art {
+      position: relative; min-height: 70svh; overflow: hidden;
+      background: var(--disc);
+    }
+    .hero-art img {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: left center;
+      animation: settle 1.1s ease both;
+    }
+    @keyframes settle { from{opacity:0} to{opacity:1} }
+    @keyframes arrive {
+      from{opacity:0;transform:translateY(14px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-copy .mark, .hero-copy .brand, .hero-copy h1,
+      .hero-copy p, .hero-copy .cta, .hero-art img { animation: none !important; }
+    }
+
+    section {
+      padding: 88px 24px;
+      border-top: 1px solid rgba(244,241,234,0.08);
+    }
+    .wrap { max-width: 1160px; margin: 0 auto; }
+    .kicker {
+      font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.42); font-weight: 600; margin: 0 0 10px;
+    }
+    .section-title {
+      font-family: var(--display); font-weight: 700;
+      font-size: clamp(30px, 4.5vw, 48px);
+      letter-spacing: -0.04em; line-height: 1.02;
+      margin: 0 0 12px; max-width: 18ch;
+    }
+    .lede {
+      color: rgba(244,241,234,0.58); max-width: 54ch;
+      margin: 0 0 40px; font-size: 16px;
+    }
+
+    /* kinship */
+    .kin-grid {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 18px; align-items: stretch;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 800px) { .kin-grid { grid-template-columns: 1fr; } }
+    .kin-mark {
+      background: var(--disc);
+      border: 1px solid rgba(244,241,234,0.12);
+      padding: 48px 32px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      text-align: center; color: var(--ink);
+    }
+    .kin-mark img { width: 180px; height: 180px; border-radius: 50%; }
+    .kin-mark h3 {
+      margin: 0; font-family: var(--display);
+      font-size: 22px; letter-spacing: -0.03em;
+    }
+    .kin-mark p { margin: 0; font-size: 14px; color: rgba(29,29,31,0.58); max-width: 28ch; }
+    .kin-dna {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .dna-card {
+      background: #111; border: 1px solid rgba(244,241,234,0.1); overflow: hidden;
+    }
+    .dna-card img { width: 100%; aspect-ratio: 1; object-fit: cover; object-position: top; }
+    .dna-card .meta { padding: 12px 14px 14px; }
+    .dna-card h4 {
+      margin: 0 0 4px; font-family: var(--display);
+      font-size: 16px; letter-spacing: -0.02em;
+    }
+    .dna-card p { margin: 0; font-size: 12px; color: rgba(244,241,234,0.5); }
+
+    .vocab {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    }
+    @media (max-width: 800px) { .vocab { grid-template-columns: 1fr 1fr; } }
+    .vocab-item {
+      background: var(--disc); color: var(--ink);
+      padding: 18px; border: 1px solid rgba(244,241,234,0.08);
+    }
+    .vocab-item strong {
+      display: block; font-family: var(--display);
+      font-size: 15px; margin-bottom: 6px;
+    }
+    .vocab-item span { font-size: 13px; color: rgba(29,29,31,0.58); }
+
+    .compare {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    @media (max-width: 760px) { .compare { grid-template-columns: 1fr; } }
+    .panel {
+      border: 1px solid rgba(244,241,234,0.1);
+      padding: 22px; background: #111;
+    }
+    .panel h3 {
+      margin: 0 0 12px; font-size: 12px;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: rgba(244,241,234,0.45);
+    }
+    .panel.kip h3 { color: var(--disc); }
+    .panel ul {
+      margin: 0; padding-left: 1.1rem;
+      color: rgba(244,241,234,0.78); font-size: 14px;
+    }
+    .panel li + li { margin-top: 8px; }
+
+    .series-label {
+      display: block; margin: 36px 0 14px;
+      font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+      color: rgba(244,241,234,0.4); font-weight: 600;
+    }
+    .series-label:first-of-type { margin-top: 0; }
+    .plates {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    }
+    @media (max-width: 900px) { .plates { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) { .plates { grid-template-columns: 1fr; } }
+    .plate-card {
+      border: 1px solid rgba(244,241,234,0.1);
+      background: #111; overflow: hidden;
+    }
+    .plate-card img {
+      width: 100%; aspect-ratio: 3/4;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
+    }
+    .plate-card.square img { aspect-ratio: 1; }
+    .plate-card.wide img { aspect-ratio: 16/9; }
+    .plate-card .meta { padding: 14px; }
+    .plate-card h3 {
+      margin: 0 0 4px; font-family: var(--display);
+      font-size: 18px; letter-spacing: -0.02em;
+    }
+    .plate-card p { margin: 0; font-size: 13px; color: rgba(244,241,234,0.5); }
+    .plate-card .tag {
+      display: inline-block; margin-top: 8px;
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(244,241,234,0.35);
+    }
+
+    .wall {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+    @media (max-width: 1000px) { .wall { grid-template-columns: 1fr 1fr; } }
+    .billboard {
+      display: grid; grid-template-rows: 1.4fr 0.6fr;
+      aspect-ratio: 3/4; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
+    }
+    .billboard .art { overflow: hidden; min-height: 0; }
+    .billboard .art img {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
+    }
+    .billboard .typeband {
+      padding: 12px 14px 14px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
+      background: var(--disc); color: var(--ink);
+    }
+    .billboard.on-dark .typeband { background: var(--void); color: var(--paper); }
+    .billboard .nameplate {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .billboard .nameplate img {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    }
+    .billboard .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(18px, 2vw, 24px);
+      letter-spacing: -0.04em; line-height: 1;
+    }
+    .billboard .line {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(18px, 2vw, 26px);
+      letter-spacing: -0.045em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
+    }
+    .billboard .whisper {
+      font-size: 11px; opacity: 0.62; line-height: 1.35; max-width: 26ch;
+    }
+    /* Name-as-architecture — Polsia physics, Kip casing */
+    .billboard.name-hero {
+      grid-template-rows: 1.1fr 0.9fr;
+    }
+    .billboard.name-hero .nameplate .word {
+      font-size: clamp(36px, 4.5vw, 52px);
+      letter-spacing: -0.055em;
+    }
+    .billboard.name-hero .line {
+      font-size: clamp(14px, 1.6vw, 18px);
+      font-weight: 700;
+      text-transform: none;
+      letter-spacing: -0.02em;
+      opacity: 0.72;
+    }
+
+    .posters {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+    }
+    @media (max-width: 860px) { .posters { grid-template-columns: 1fr; } }
+    .poster {
+      display: grid; grid-template-rows: 1.4fr 0.6fr;
+      aspect-ratio: 3/4; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
+    }
+    .poster .art { overflow: hidden; min-height: 0; }
+    .poster .art img {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
+    }
+    .poster .typeband {
+      padding: 20px 20px 22px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      background: var(--disc); color: var(--ink);
+    }
+    .poster.on-dark .typeband { background: var(--void); color: var(--paper); }
+    .poster .nameplate {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 10px;
+    }
+    .poster .nameplate img {
+      width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+    }
+    .poster .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(28px, 3.6vw, 40px);
+      letter-spacing: -0.045em; line-height: 1;
+    }
+    .poster .line {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(26px, 3.4vw, 40px);
+      letter-spacing: -0.05em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
+    }
+    .poster .whisper { font-size: 14px; opacity: 0.62; max-width: 32ch; }
+    .poster.name-hero .nameplate .word {
+      font-size: clamp(56px, 8vw, 96px);
+      letter-spacing: -0.06em;
+    }
+    .poster.name-hero .line {
+      font-size: clamp(18px, 2.2vw, 24px);
+      text-transform: none;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      opacity: 0.72;
+    }
+
+    .lockups {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    }
+    @media (max-width: 800px) { .lockups { grid-template-columns: 1fr; } }
+    .lockup {
+      background: var(--disc); color: var(--ink);
+      padding: 36px 28px; min-height: 200px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 14px;
+      border: 1px solid rgba(244,241,234,0.08);
+    }
+    .lockup.on-void { background: var(--void); color: var(--paper); }
+    .lockup .row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .lockup .row img { width: 56px; height: 56px; border-radius: 50%; }
+    .lockup .row span {
+      font-family: var(--display); font-weight: 700;
+      font-size: 28px; letter-spacing: -0.03em;
+    }
+    .lockup p { margin: 0; font-size: 14px; opacity: 0.62; max-width: 28ch; }
+
+    .feed {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+    @media (max-width: 900px) { .feed { grid-template-columns: 1fr 1fr; } }
+    .tile {
+      display: grid; grid-template-rows: 1.35fr 0.65fr;
+      aspect-ratio: 1; overflow: hidden;
+      border: 1px solid rgba(244,241,234,0.1); background: #111;
+    }
+    .tile .art { overflow: hidden; min-height: 0; }
+    .tile .art img {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: top center;
+      background: var(--disc);
+    }
+    .tile .typeband {
+      padding: 10px 12px 12px;
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
+      background: var(--disc); color: var(--ink);
+    }
+    .tile.on-dark .typeband { background: var(--void); color: var(--paper); }
+    .tile .nameplate {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 4px;
+    }
+    .tile .nameplate img {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    }
+    .tile .nameplate .word {
+      font-family: var(--display); font-weight: 800;
+      font-size: 15px; letter-spacing: -0.03em; line-height: 1;
+    }
+    .tile .line {
+      font-family: var(--display); font-weight: 800;
+      font-size: clamp(16px, 1.8vw, 22px);
+      letter-spacing: -0.04em; line-height: 0.92;
+      text-transform: uppercase; margin: 0;
+    }
+
+    .swatches {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .swatch {
+      aspect-ratio: 1/1.05; border: 1px solid rgba(244,241,234,0.12);
+      padding: 12px; display: flex; flex-direction: column; justify-content: flex-end;
+      font-size: 12px; font-weight: 600;
+    }
+    .swatch span { opacity: 0.65; font-weight: 500; margin-top: 2px; }
+    .rules {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    @media (max-width: 700px) { .rules { grid-template-columns: 1fr; } }
+    .rule {
+      padding: 20px; border: 1px solid rgba(244,241,234,0.1); background: #111;
+    }
+    .rule h3 {
+      margin: 0 0 10px; font-size: 13px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .rule.do h3 { color: var(--disc); }
+    .rule.dont h3 { color: rgba(244,241,234,0.4); }
+    .rule ul {
+      margin: 0; padding-left: 1.1rem; font-size: 14px;
+      color: rgba(244,241,234,0.78);
+    }
+    .rule li + li { margin-top: 6px; }
+
+    footer {
+      padding: 36px 24px 64px; text-align: center;
+      color: rgba(244,241,234,0.4); font-size: 13px;
+      border-top: 1px solid rgba(244,241,234,0.08);
+    }
+    footer a { color: rgba(244,241,234,0.7); text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="proof">
+    <span class="dot" aria-hidden="true"></span>
+    <span><b>Kip</b> · same hand as the mark · disc <b>#f4f1ea</b> · charcoal <b>#202020</b></span>
+  </div>
+
+  <header class="top">
+    <a class="top-brand" href="#top">
+      <img src="kip-logo.png" alt="" />
+      Kip
+    </a>
+    <nav>
+      <a href="#kin">Kinship</a>
+      <a href="#outcome">Outcome</a>
+      <a href="#plates">Plates</a>
+      <a href="#lockups">Lockups</a>
+      <a href="#wall">Wall</a>
+      <a href="#posters">Posters</a>
+      <a href="#feed">Feed</a>
+      <a href="#rules">Rules</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" style="padding:0;border:0;">
+      <div class="hero-copy">
+        <img class="mark" src="kip-logo.png" alt="Kip" />
+        <p class="brand">Kip</p>
+        <h1>Social’s handled.</h1>
+        <p>
+          Marketing that still looks like the cat: charcoal on the disc colour, dry-brush marks from the same hand — not a second brand costume.
+        </p>
+        <a class="cta" href="#kin">See mark kinship</a>
+      </div>
+      <div class="hero-art">
+        <img src="plates/plate-kin-wide.png" alt="Kin banner plate from logo strokes" />
+      </div>
+    </section>
+
+    <section id="kin">
+      <div class="wrap">
+        <p class="kicker">Mark → system</p>
+        <h2 class="section-title">Same hand as the logo.</h2>
+        <p class="lede">
+          Abstract plates were drifting into generic gallery charcoal. Series 05 <em>Kin</em> rebuilds the art from the logo’s actual stroke vocabulary — whiskers, closed-eye arcs, forehead ticks, ear arches — on exact disc paper <code>#f4f1ea</code>. Never a second cat face. Always recognisably Kip.
+        </p>
+
+        <div class="kin-grid">
+          <div class="kin-mark">
+            <img src="kip-logo.png" alt="Kip logo" />
+            <h3>The source</h3>
+            <p>Charcoal cat on circular disc. Sacred. Unaltered. Everything else is kinship, not a redraw.</p>
+          </div>
+          <div class="kin-dna">
+            <article class="dna-card">
+              <img src="plates/plate-kin-hand.png" alt="" />
+              <div class="meta">
+                <h4>Hand</h4>
+                <p>Ticks + arcs + whiskers — logo DNA</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-whisk.png" alt="" />
+              <div class="meta">
+                <h4>Whisk</h4>
+                <p>Whisker horizontals + three ticks</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-smile.png" alt="" />
+              <div class="meta">
+                <h4>Smile</h4>
+                <p>Closed-eye arcs from the content face</p>
+              </div>
+            </article>
+            <article class="dna-card">
+              <img src="plates/plate-kin-wide.png" alt="" />
+              <div class="meta">
+                <h4>Wide</h4>
+                <p>Ear arches left · empty right for type</p>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="vocab">
+          <div class="vocab-item">
+            <strong>Forehead ticks</strong>
+            <span>Three short verticals — tabby mark, reused as rhythm</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Closed-eye arcs</strong>
+            <span>The content smile — calm, not cute stickers</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Whiskers</strong>
+            <span>Long horizontal dry-brush pairs</span>
+          </div>
+          <div class="vocab-item">
+            <strong>Ear arches</strong>
+            <span>Open U strokes — structure without a face</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="outcome">
+      <div class="wrap">
+        <p class="kicker">Still sell the feeling</p>
+        <h2 class="section-title">On-brand look. Outcome copy.</h2>
+        <p class="lede">
+          Polsia/Lindy taught stop-scroll physics and clear promises. The costume stays Kip: disc, charcoal hand, mate voice.
+        </p>
+        <div class="compare">
+          <div class="panel">
+            <h3>Don’t</h3>
+            <ul>
+              <li>Generic gallery ink that could be any AI brand</li>
+              <li>Tiny disc lost in the corner while art steals identity</li>
+              <li>Lead with SMS / AI / approve-flow mechanics</li>
+              <li>Wear Polsia orange or Lindy blue chrome</li>
+            </ul>
+          </div>
+          <div class="panel kip">
+            <h3>Do</h3>
+            <ul>
+              <li>Lead with the disc — hero-scale when it’s the brand signal</li>
+              <li>Build plates from logo stroke DNA on <code>#f4f1ea</code></li>
+              <li>Sell “social’s handled / off your mind”</li>
+              <li>Keep the cat unaltered — kinship marks, not redraws</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="plates">
+      <div class="wrap">
+        <p class="kicker">Series 05 · Kin · primary</p>
+        <h2 class="section-title">Plates from the mark.</h2>
+        <p class="lede">
+          Default for new posters and posts. Relief plates (Series 04) stay in the kit for heavier night moods — Kin is the everyday brand voice.
+        </p>
+        <p class="series-label">Series 05 · Kin</p>
+        <div class="plates">
+          <article class="plate-card">
+            <img src="plates/plate-kin-hand.png" alt="" />
+            <div class="meta">
+              <h3>Hand</h3>
+              <p>Full stroke vocabulary, upper field</p>
+              <span class="tag">3:4 · primary</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-kin-whisk.png" alt="" />
+            <div class="meta">
+              <h3>Whisk</h3>
+              <p>Whiskers + forehead ticks</p>
+              <span class="tag">3:4</span>
+            </div>
+          </article>
+          <article class="plate-card square">
+            <img src="plates/plate-kin-smile.png" alt="" />
+            <div class="meta">
+              <h3>Smile</h3>
+              <p>Closed-eye arcs</p>
+              <span class="tag">1:1 feed</span>
+            </div>
+          </article>
+          <article class="plate-card wide">
+            <img src="plates/plate-kin-wide.png" alt="" />
+            <div class="meta">
+              <h3>Wide</h3>
+              <p>Ears left · room for claim</p>
+              <span class="tag">16:9 banner</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-kin-night.png" alt="" />
+            <div class="meta">
+              <h3>Night</h3>
+              <p>Ghost strokes over void + cream band</p>
+              <span class="tag">3:4 night</span>
+            </div>
+          </article>
+          <article class="plate-card">
+            <img src="plates/plate-kin-seal-field.png" alt="" />
+            <div class="meta">
+              <h3>Seal field</h3>
+              <p>Quiet paper for lockup-first posters</p>
+              <span class="tag">3:4 quiet</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="lockups">
+      <div class="wrap">
+        <p class="kicker">Brand presence</p>
+        <h2 class="section-title">The disc is the brand.</h2>
+        <p class="lede">
+          On marketing surfaces the mark should read as Kip immediately — not a 24px afterthought. Use the real disc. Never invert it.
+        </p>
+        <div class="lockups">
+          <div class="lockup">
+            <div class="row">
+              <img src="kip-logo.png" alt="" />
+              <span>Kip</span>
+            </div>
+            <p>Standard lockup on disc paper — product + marketing shared DNA.</p>
+          </div>
+          <div class="lockup on-void">
+            <div class="row">
+              <img src="kip-logo.png" alt="" />
+              <span>Kip</span>
+            </div>
+            <p>On void: disc stays cream. Cat never goes white.</p>
+          </div>
+          <div class="lockup">
+            <img src="kip-logo.png" alt="" style="width:88px;height:88px;border-radius:50%;" />
+            <p>Seal-only when the claim is huge — still unmistakably Kip.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="wall">
+      <div class="wrap">
+        <p class="kicker">Poster wall</p>
+        <h2 class="section-title">Billboard Kip. Then the relief.</h2>
+        <p class="lede">
+          Same template every tile. Disc + <strong>Kip</strong> nameplate on every piece — Polsia-scale brand presence, Kip casing and hand.
+        </p>
+        <div class="wall">
+          <article class="billboard name-hero">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Social’s handled.</p>
+              <span class="whisper">Cheap. Completely done.</span>
+            </div>
+          </article>
+          <article class="billboard name-hero on-dark">
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Off your mind.</p>
+              <span class="whisper">The old cost was thinking about it.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Posted. You’re free.</p>
+              <span class="whisper">One small act. Then silence.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">You don’t think about it.</p>
+              <span class="whisper">That’s the product.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-seal-field.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Sorted.</p>
+              <span class="whisper">Without the agency bill.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-wide.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">It goes out. You don’t.</p>
+              <span class="whisper">While you’re on the tools.</span>
+            </div>
+          </article>
+          <article class="billboard on-dark">
+            <div class="art"><img src="plates/plate-relief-nightband.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Done.</p>
+              <span class="whisper">Social, off the list.</span>
+            </div>
+          </article>
+          <article class="billboard">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Quiet calendar.</p>
+              <span class="whisper">Feeds stay alive anyway.</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="posters">
+      <div class="wrap">
+        <p class="kicker">Large posters</p>
+        <h2 class="section-title">Kip on the wall. Claim under it.</h2>
+        <p class="lede">
+          Polsia puts the name on the wall. We do too: disc + <strong>Kip</strong>, then the claim. Name can also be the monument — still title-case <em>Kip</em>, never all-caps KIP.
+        </p>
+        <div class="posters">
+          <article class="poster name-hero">
+            <div class="art"><img src="plates/plate-kin-seal-field.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">Social’s handled — cheap, completely done.</h3>
+            </div>
+          </article>
+          <article class="poster name-hero on-dark">
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">Off your mind. That’s the product.</h3>
+            </div>
+          </article>
+          <article class="poster">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">Social’s handled.</h3>
+              <p class="whisper">Cheap social media management — completely done.</p>
+            </div>
+          </article>
+          <article class="poster on-dark">
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <h3 class="line">You don’t think about it.</h3>
+              <p class="whisper">The old cost was the mental load.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="feed">
+      <div class="wrap">
+        <p class="kicker">Social</p>
+        <h2 class="section-title">Short shouts. Same hand.</h2>
+        <div class="feed">
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-smile.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Handled.</p>
+            </div>
+          </article>
+          <article class="tile on-dark">
+            <div class="art"><img src="plates/plate-kin-night.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Off you.</p>
+            </div>
+          </article>
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-whisk.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Sorted.</p>
+            </div>
+          </article>
+          <article class="tile">
+            <div class="art"><img src="plates/plate-kin-hand.png" alt="" /></div>
+            <div class="typeband">
+              <div class="nameplate">
+                <img src="kip-logo.png" alt="" />
+                <span class="word">Kip</span>
+              </div>
+              <p class="line">Free.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="colour">
+      <div class="wrap">
+        <p class="kicker">Colour</p>
+        <h2 class="section-title">Disc paper is sacred.</h2>
+        <p class="lede">
+          Marketing paper matches the logo disc exactly. Charcoal matches the cat strokes. No guest accents from other brands.
+        </p>
+        <div class="swatches">
+          <div class="swatch" style="background:#f4f1ea;color:#1d1d1f;">disc / paper<span>#F4F1EA</span></div>
+          <div class="swatch" style="background:#202020;color:#f4f1ea;">cat<span>#202020</span></div>
+          <div class="swatch" style="background:#0a0a0a;color:#f4f1ea;">void<span>#0A0A0A</span></div>
+          <div class="swatch" style="background:#1d1d1f;color:#f4f1ea;">ink<span>#1D1D1F</span></div>
+          <div class="swatch" style="background:#6e6e73;color:#f4f1ea;">mute<span>#6E6E73</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rules">
+      <div class="wrap">
+        <p class="kicker">Guardrails</p>
+        <h2 class="section-title">Do / don’t</h2>
+        <div class="rules">
+          <div class="rule do">
+            <h3>Do</h3>
+            <ul>
+              <li>Put disc + <strong>Kip</strong> on every poster — name is brand architecture</li>
+              <li>Derive marks from whiskers, arcs, ticks, ears</li>
+              <li>Keep the disc cream and the cat charcoal — always</li>
+              <li>Put type on a solid band (≥40% on Kin posters)</li>
+              <li>Sell life after social is handled</li>
+            </ul>
+          </div>
+          <div class="rule dont">
+            <h3>Don’t</h3>
+            <ul>
+              <li>Draw a second cat into the plate</li>
+              <li>Drop the wordmark and rely on the disc alone on posters</li>
+              <li>Invert, recolour, or bubble the logo</li>
+              <li>Let abstract art become a different brand</li>
+              <li>Use Polsia orange / Lindy blue as chrome</li>
+              <li>Lead with product mechanics over relief</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Charcoal Field · mark kinship ·
+    <a href="../../docs/DESIGN_LANGUAGE.md">docs/DESIGN_LANGUAGE.md</a>
+    · logo rules in
+    <a href="../../docs/DESIGN.md">docs/DESIGN.md</a>
+  </footer>
+</body>
+</html>
