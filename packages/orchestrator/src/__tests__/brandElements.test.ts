@@ -45,7 +45,21 @@ describe("resolveFeedElementsIntent", () => {
         name: "NORTHSIDE TOAST",
       }),
     ).toBe("none");
+    expect(
+      resolveFeedElementsIntent({
+        brief: "Weekend tarts, quiet type on the photo",
+        elements: "mark",
+        name: "NORTHSIDE TOAST",
+      }),
+    ).toBe("none");
     expect(resolveFeedElementsIntent({ brief: "We're hiring a senior operator" })).toBe("none");
+    expect(
+      resolveFeedElementsIntent({
+        brief: "Weekend tarts. Quiet type on the photo. Do not put our name, logo, or a badge on this still.",
+        elements: "mark",
+        name: "NORTHSIDE TOAST",
+      }),
+    ).toBe("none");
   });
 
   it("stamps kit when they asked for the name or logo on this still", () => {
@@ -57,7 +71,9 @@ describe("resolveFeedElementsIntent", () => {
     ).toBe("mark");
     expect(resolveFeedElementsIntent({ brief: "put our name on this still" })).toBe("mark");
     expect(resolveFeedElementsIntent({ brief: "add the logo on this photo" })).toBe("mark");
-    expect(resolveFeedElementsIntent({ elements: "mark", brief: "Weekend tarts" })).toBe("mark");
+    expect(resolveFeedElementsIntent({ elements: "mark", brief: "Weekend tarts — put our name on this still" })).toBe(
+      "mark",
+    );
   });
 });
 
@@ -110,6 +126,12 @@ describe("briefAsksForIdentityKit", () => {
   it("is true only for a name/logo ask, not a tart or hiring brief", () => {
     expect(briefAsksForIdentityKit("Weekend tarts")).toBe(false);
     expect(briefAsksForIdentityKit("Weekend tarts", "NORTHSIDE TOAST")).toBe(false);
+    expect(
+      briefAsksForIdentityKit(
+        "Weekend tarts. Quiet type on the photo. Do not put our name, logo, or a badge on this still.",
+        "NORTHSIDE TOAST",
+      ),
+    ).toBe(false);
     expect(briefAsksForIdentityKit("put our name on this still")).toBe(true);
     expect(briefAsksForIdentityKit("put Northside Toast on this still", "NORTHSIDE TOAST")).toBe(true);
   });
@@ -174,6 +196,12 @@ describe("resolveFeedDecoIntent", () => {
         brief: "Weekend tarts. Add a big colour bar and a big sticker — not corners, not a tiny pill.",
       }),
     ).toEqual(["bar", "sticker"]);
+    expect(
+      resolveFeedDecoIntent({
+        brief: "Weekend tarts. Quiet type on the photo. Do not put our name, logo, or a badge on this still.",
+        deco: ["badge", "sticker"],
+      }),
+    ).toEqual([]);
     expect(resolveFeedDecoIntent({ brief: "keep photos clean", deco: ["sticker"] })).toEqual(["sticker"]);
   });
 
