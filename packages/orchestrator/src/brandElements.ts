@@ -37,7 +37,7 @@ export type BrandDecoKit = {
 };
 
 export const FEED_ELEMENTS_INSTRUCTION =
-  "Brand kit: honour elements:none (photo-led), elements:mark (stamp logo/wordmark on THIS still), or elements:constructed (build from palette and type on a generated photo unless the brief is graphics-only / quote cards). Decorative ornaments are OPTIONAL and PER POST — default the photo clean. Only add ornaments when this still needs them or the owner asked. Set deco to pieces from the vocabulary (frame, corners, bar, rule, underline, shape, circle, sticker, ribbon, dots, badge) that fit visual tokens — not only L-corners, not a café=template table, not the same kit on every photo, not a random mix to vary the grid. Type language can still repeat. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
+  "Brand kit is IDENTITY, not nameless chrome: honour elements:none (photo-led), elements:mark (stamp logo or trading-name wordmark on THIS still), or elements:constructed (build from THIS brand's palette and type on a generated photo unless the brief is graphics-only / quote cards). Decorative ornaments are OPTIONAL and PER POST — default the photo clean. When this still needs kit, the kit must point at the brand (logo, wordmark, palette) — never a nameless sticker, empty pill, or orphan colour bar. deco is only a vehicle for that mark (badge/sticker meaning a labeled mark; frame/bar may support it). Omit deco unless this still needs identity or the owner asked. Do not pick shapes from a catalog to add variety. Type language can still repeat. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
 
 const DECO_SET = new Set<string>(DECO_PIECES);
 
@@ -137,16 +137,28 @@ export function brandVisualLane(
 
 /**
  * When the owner/agent asked to decorate this still without naming pieces,
- * pick a short lane-true set. Not corners-only. Not a café table.
+ * pick an identity vehicle (labeled mark), not empty chrome. Not a café table.
  */
 export function suggestDecoPieces(
   visual?: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null,
 ): DecoPiece[] {
   const lane = brandVisualLane(visual);
-  if (lane === "editorial") return ["frame", "underline", "rule"];
-  if (lane === "graphic") return ["bar", "sticker", "badge"];
-  if (lane === "industrial") return ["bar", "ribbon", "frame"];
-  return ["underline", "rule", "dots"];
+  if (lane === "editorial") return ["badge"];
+  if (lane === "graphic") return ["badge"];
+  if (lane === "industrial") return ["badge"];
+  return ["sticker"];
+}
+
+/** Sticker/badge are vehicles for the trading name — never painted empty. */
+export const IDENTITY_DECO_PIECES: DecoPiece[] = ["sticker", "badge"];
+
+export function isIdentityDecoPiece(piece: DecoPiece): boolean {
+  return piece === "sticker" || piece === "badge";
+}
+
+/** Any chosen kit must carry identity (logo/wordmark), not nameless SVG. */
+export function decoNeedsIdentity(pieces: DecoPiece[]): boolean {
+  return pieces.length > 0;
 }
 
 function negatedBefore(brief: string, index: number): boolean {
@@ -249,7 +261,7 @@ export function resolveBrandDecoKit(
   return {
     lane,
     pieces: list,
-    mark: list.includes("badge") ? "badge" : "wordmark",
+    mark: list.includes("badge") || list.includes("sticker") ? "badge" : "wordmark",
   };
 }
 

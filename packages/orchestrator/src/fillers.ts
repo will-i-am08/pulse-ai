@@ -41,6 +41,7 @@ import {
   resolveBrandDecoKit,
   resolveFeedDecoIntent,
   resolveFeedElementsIntent,
+  decoNeedsIdentity,
 } from "./brandElements.js";
 
 /**
@@ -48,9 +49,9 @@ import {
  * client asks the agent to draft one). Always lands as pending_approval —
  * agent-generated content never auto-posts. Photo mode may burn a headline
  * onto the still when the agent asked for overlay (models stay text-free).
- * Construction (mark / constructed) is agent-chosen. Decorative ornaments are
- * optional per still (deco pieces or an owner ask) — default photos stay clean.
- * Constructed generates a photo for type unless the brief is graphics-only.
+ * Construction (mark / constructed) is agent-chosen. Kit is identity (logo /
+ * wordmark) optional per still — default photos stay clean. Constructed
+ * generates a photo for type unless the brief is graphics-only.
  */
 export async function generateFillerPost(
   brand: Brand,
@@ -80,7 +81,7 @@ export async function generateFillerPost(
     visual: brand.visual,
   });
   if (
-    (elementsIntent === "mark" || elementsIntent === "constructed" || decoPieces.includes("badge")) &&
+    (elementsIntent === "mark" || elementsIntent === "constructed" || decoNeedsIdentity(decoPieces)) &&
     !overlayMasthead(brand)
   ) {
     brand = (await captureInterviewVisualTokens(brand)).brand;
@@ -266,7 +267,8 @@ export async function generateFillerPost(
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
 
-    const wantMark = elementsIntent === "mark" || elementsIntent === "constructed";
+    const wantMark =
+      elementsIntent === "mark" || elementsIntent === "constructed" || decoNeedsIdentity(decoPieces);
     // Burn headline only when the agent asked for overlay (models stay text-free).
     // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto && wantOverlay) {

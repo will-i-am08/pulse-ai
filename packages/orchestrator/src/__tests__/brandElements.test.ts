@@ -9,6 +9,7 @@ import {
   resolveBrandDecoKit,
   resolveFeedDecoIntent,
   resolveFeedElementsIntent,
+  decoNeedsIdentity,
   suggestDecoPieces,
 } from "../brandElements.js";
 
@@ -75,6 +76,8 @@ describe("FEED_ELEMENTS_INSTRUCTION", () => {
   it("does not encode a café template table", () => {
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/Do not map a niche to a template/i);
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/OPTIONAL and PER POST/i);
+    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/IDENTITY/i);
+    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/nameless sticker/i);
     expect(FEED_ELEMENTS_INSTRUCTION).not.toMatch(/if niche is caf[eé]/i);
   });
 });
@@ -100,7 +103,7 @@ describe("resolveBrandDecoKit", () => {
   it("paints the requested pieces and repeats the same list", () => {
     const framed = resolveBrandDecoKit({ fonts: ["Inter"] }, ["frame", "sticker"]);
     expect(framed?.pieces).toEqual(["frame", "sticker"]);
-    expect(framed?.mark).toBe("wordmark");
+    expect(framed?.mark).toBe("badge");
     expect(resolveBrandDecoKit({ fonts: ["Inter"] }, ["frame", "sticker"])).toEqual(framed);
     expect(resolveBrandDecoKit({ fonts: ["Anton"] }, ["bar", "badge"])?.mark).toBe("badge");
   });
@@ -141,15 +144,25 @@ describe("resolveFeedDecoIntent", () => {
     expect(resolveFeedDecoIntent({ brief: "keep photos clean", deco: ["sticker"] })).toEqual(["sticker"]);
   });
 
-  it("suggests a wider-than-corners set only when asked to decorate without naming pieces", () => {
+  it("suggests an identity vehicle, not empty chrome, when asked to decorate without naming pieces", () => {
     const suggested = resolveFeedDecoIntent({
       brief: "Decorate this still",
       visual: { fonts: ["Inter"], aesthetic: "warm minimal" },
     });
     expect(suggested.length).toBeGreaterThan(0);
+    expect(suggested.some((p) => p === "sticker" || p === "badge")).toBe(true);
     expect(suggested).not.toEqual(["corners"]);
-    expect(suggestDecoPieces({ fonts: ["Anton"] })).toContain("sticker");
+    expect(suggestDecoPieces({ fonts: ["Anton"] })).toContain("badge");
+    expect(suggestDecoPieces({ fonts: ["Anton"] })).not.toContain("sticker");
     expect(suggestDecoPieces({ fonts: ["Anton"] })).not.toEqual(["corners"]);
+  });
+});
+
+describe("decoNeedsIdentity", () => {
+  it("treats any chosen kit as needing the mark, so empty pills cannot ship", () => {
+    expect(decoNeedsIdentity([])).toBe(false);
+    expect(decoNeedsIdentity(["sticker"])).toBe(true);
+    expect(decoNeedsIdentity(["bar"])).toBe(true);
   });
 });
 
