@@ -31,7 +31,7 @@ import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 import { safePublicUrl } from "./research.js";
-import { resolveBrandDecoKit, type DecoPiece, type FeedElementsMode } from "./brandElements.js";
+import { resolveBrandDecoKit, isIdentityDecoPiece, type DecoPiece, type FeedElementsMode } from "./brandElements.js";
 import { compositeBrandDecoration, pickDecoPaint, samplePhotoLuminance } from "./brandDecoration.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
@@ -2117,9 +2117,9 @@ async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
 }
 
 /**
- * Stamp this still: optional decorative pieces (only when `deco` is set) plus
- * logo/wordmark when elements is mark/constructed or deco includes a badge.
- * Default is a clean photo — ornaments are per-post, not a house kit.
+ * Stamp this still: optional decorative chrome plus logo/wordmark.
+ * Sticker/badge are identity vehicles (labeled mark), never empty pills.
+ * Default is a clean photo — kit is per-post, not a house stamp.
  */
 export async function stampBrandLogo(
   brand: Brand,
@@ -2136,7 +2136,7 @@ export async function stampBrandLogo(
       opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "none";
     const deco = Array.isArray(opts?.deco) ? opts.deco : [];
     const kit = resolveBrandDecoKit(brand.visual, deco);
-    const paintPieces = kit?.pieces ?? [];
+    const paintPieces = (kit?.pieces ?? []).filter((p) => !isIdentityDecoPiece(p));
     if (kit && paintPieces.length) {
       const palette = resolveBrandPalette(brand.visual);
       stamped = Buffer.from(
@@ -2148,7 +2148,7 @@ export async function stampBrandLogo(
       );
       changed = true;
     }
-    const wantMark = mode !== "none";
+    const wantMark = mode !== "none" || deco.length > 0;
     let marked = false;
     const logoUrl = brand.visual?.logo_url;
     if (wantMark && logoUrl) {
@@ -2164,7 +2164,10 @@ export async function stampBrandLogo(
       if (mark) {
         stamped = Buffer.from(
           await compositeBrandWordmark(stamped, mark, brand.visual, {
-            placement: deco.includes("badge") ? "wordmark" : (kit?.mark ?? "wordmark"),
+            placement:
+              deco.includes("sticker") || deco.includes("badge") || kit?.mark === "badge"
+                ? "badge"
+                : "wordmark",
           }),
         );
         changed = true;
