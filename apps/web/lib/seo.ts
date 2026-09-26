@@ -91,6 +91,7 @@ export function softwareApplicationSchema() {
       'Posts organic to Instagram, Facebook, X and Threads',
       'Weekly check-ins, Friday recaps and quiet reminders',
       'Optional autopilot',
+      'Optional paid ads and boosts on the Max plan, on your own ad account',
       'Encrypted by default; never used to train models',
     ],
     offers: [
