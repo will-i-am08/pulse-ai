@@ -83,8 +83,9 @@ export async function compositeBrandDecoration(
     `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${parts.join("")}</svg>`,
   );
   const overlay = await sharp(svg).png().toBuffer();
-  return sharp(base)
+  const out = await sharp(base)
     .composite([{ input: overlay, left: 0, top: 0 }])
     .jpeg({ quality: 88 })
     .toBuffer();
+  return Buffer.from(out);
 }
