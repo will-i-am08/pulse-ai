@@ -32,7 +32,7 @@ import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBol
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 import { safePublicUrl } from "./research.js";
 import { resolveBrandDecoKit, type DecoPiece, type FeedElementsMode } from "./brandElements.js";
-import { compositeBrandDecoration } from "./brandDecoration.js";
+import { compositeBrandDecoration, pickDecoPaint, samplePhotoLuminance } from "./brandDecoration.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
 
@@ -2040,15 +2040,20 @@ export async function compositeBrandWordmark(
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1080;
   const palette = resolveBrandPalette(visual);
+  const photoLum = await samplePhotoLuminance(base);
+  const paint = pickDecoPaint(
+    { stroke: palette.text, fill: palette.muted, accent: palette.bgFrom },
+    photoLum,
+  );
   const label = mark.replace(/\s+/g, " ").trim().slice(0, 32);
   const badge = opts?.placement === "badge";
-  const fontSize = Math.max(18, Math.round(width * (badge ? 0.024 : 0.028)));
-  const padX = badge ? Math.round(fontSize * 0.9) : 0;
+  const fontSize = Math.max(28, Math.round(width * (badge ? 0.042 : 0.032)));
+  const padX = badge ? Math.round(fontSize * 1.1) : 0;
   const markW = Math.min(
-    Math.round(width * (badge ? 0.52 : 0.62)),
-    Math.max(160, Math.round(label.length * fontSize * 0.62) + padX * 2),
+    Math.round(width * (badge ? 0.58 : 0.62)),
+    Math.max(220, Math.round(label.length * fontSize * 0.62) + padX * 2),
   );
-  const markH = Math.round(fontSize * (badge ? 2.8 : 2.4));
+  const markH = Math.round(fontSize * (badge ? 3.2 : 2.4));
   const svg = await satori(
     {
       type: "div",
@@ -2059,8 +2064,8 @@ export async function compositeBrandWordmark(
           justifyContent: badge ? "center" : "flex-start",
           width: `${markW}px`,
           height: `${markH}px`,
-          ...(badge ? { padding: `0 ${padX}px`, background: palette.bgFrom } : {}),
-          color: palette.text,
+          ...(badge ? { padding: `0 ${padX}px`, background: paint.fill } : {}),
+          color: badge ? paint.ink : palette.text,
           fontFamily: palette.displayFont,
           fontSize: `${fontSize}px`,
           letterSpacing: badge ? "0.18em" : "0.14em",
@@ -2131,7 +2136,7 @@ export async function stampBrandLogo(
       opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "none";
     const deco = Array.isArray(opts?.deco) ? opts.deco : [];
     const kit = resolveBrandDecoKit(brand.visual, deco);
-    const paintPieces = (kit?.pieces ?? []).filter((p) => p !== "badge");
+    const paintPieces = kit?.pieces ?? [];
     if (kit && paintPieces.length) {
       const palette = resolveBrandPalette(brand.visual);
       stamped = Buffer.from(
@@ -2143,7 +2148,7 @@ export async function stampBrandLogo(
       );
       changed = true;
     }
-    const wantMark = mode !== "none" || deco.includes("badge");
+    const wantMark = mode !== "none";
     let marked = false;
     const logoUrl = brand.visual?.logo_url;
     if (wantMark && logoUrl) {
@@ -2159,7 +2164,7 @@ export async function stampBrandLogo(
       if (mark) {
         stamped = Buffer.from(
           await compositeBrandWordmark(stamped, mark, brand.visual, {
-            placement: kit?.mark ?? "wordmark",
+            placement: deco.includes("badge") ? "wordmark" : (kit?.mark ?? "wordmark"),
           }),
         );
         changed = true;
