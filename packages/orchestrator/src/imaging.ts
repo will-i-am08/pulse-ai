@@ -2126,18 +2126,20 @@ export async function stampBrandLogo(
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    let stamped = Buffer.from(blob.bytes);
+    let stamped: Buffer = Buffer.from(blob.bytes);
     let changed = false;
     const mode: FeedElementsMode =
       opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "mark";
     const kit = resolveBrandDecoKit(brand.visual, mode);
     if (kit && kit.pieces.length) {
       const palette = resolveBrandPalette(brand.visual);
-      stamped = await compositeBrandDecoration(stamped, kit, {
-        stroke: palette.text,
-        fill: palette.muted,
-        accent: palette.bgFrom,
-      });
+      stamped = Buffer.from(
+        await compositeBrandDecoration(stamped, kit, {
+          stroke: palette.text,
+          fill: palette.muted,
+          accent: palette.bgFrom,
+        }),
+      );
       changed = true;
     }
     let marked = false;
@@ -2145,7 +2147,7 @@ export async function stampBrandLogo(
     if (logoUrl) {
       const logo = await fetchBrandLogoBytes(logoUrl);
       if (logo) {
-        stamped = await compositeBrandLogo(stamped, logo);
+        stamped = Buffer.from(await compositeBrandLogo(stamped, logo));
         marked = true;
         changed = true;
       }
@@ -2153,9 +2155,11 @@ export async function stampBrandLogo(
     if (!marked) {
       const mark = overlayMasthead(brand);
       if (mark) {
-        stamped = await compositeBrandWordmark(stamped, mark, brand.visual, {
-          placement: kit?.mark ?? "wordmark",
-        });
+        stamped = Buffer.from(
+          await compositeBrandWordmark(stamped, mark, brand.visual, {
+            placement: kit?.mark ?? "wordmark",
+          }),
+        );
         changed = true;
       }
     }
