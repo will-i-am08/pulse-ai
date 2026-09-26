@@ -193,4 +193,110 @@ describe("compositeBrandDecoration", () => {
     expect(meta.width).toBe(240);
     expect(meta.height).toBe(240);
   });
+
+  it("sizes ornaments so they occupy the photo, not an 8px crop edge", async () => {
+    const { decoLayout, pickDecoPaint } = await import("../brandDecoration.js");
+    const L = decoLayout(1024, 1024, "minimal");
+    expect(L.barW).toBeGreaterThanOrEqual(56);
+    expect(L.barX).toBeGreaterThanOrEqual(40);
+    expect(L.stickerW / 1024).toBeGreaterThanOrEqual(0.22);
+    expect(L.stickerH / 1024).toBeGreaterThanOrEqual(0.09);
+    expect(L.frameStroke).toBeGreaterThanOrEqual(10);
+    expect(L.ribbonH / 1024).toBeGreaterThanOrEqual(0.08);
+    expect(L.badgeW / 1024).toBeGreaterThanOrEqual(0.2);
+    const darkPaint = pickDecoPaint(
+      { stroke: "#ffffff", fill: "#2a2a2a", accent: "#111111" },
+      0.12,
+    );
+    expect(darkPaint.fill.toLowerCase()).not.toBe("#111111");
+    expect(darkPaint.fill.toLowerCase()).not.toBe("#141414");
+    const fill = darkPaint.fill.replace("#", "");
+    const r = parseInt(fill.slice(0, 2), 16);
+    const g = parseInt(fill.slice(2, 4), 16);
+    const b = parseInt(fill.slice(4, 6), 16);
+    expect((r + g + b) / 3).toBeGreaterThan(180);
+  });
+
+  it("paints a visible cream bar and sticker on a dark still even when accent is near-black", async () => {
+    const sharp = (await import("sharp")).default;
+    const { compositeBrandDecoration, decoLayout } = await import("../brandDecoration.js");
+    const width = 1024;
+    const height = 1024;
+    const base = await sharp({
+      create: { width, height, channels: 3, background: "#1c1c1c" },
+    })
+      .jpeg()
+      .toBuffer();
+    const out = await compositeBrandDecoration(
+      base,
+      { lane: "graphic", pieces: ["bar", "sticker"], mark: "wordmark" },
+      { stroke: "#ffffff", fill: "#2a2a2a", accent: "#111111" },
+    );
+    const raw = await sharp(out).removeAlpha().raw().toBuffer();
+    const L = decoLayout(width, height, "graphic");
+    const isLight = (i: number) => {
+      const r = raw[i]!;
+      const g = raw[i + 1]!;
+      const b = raw[i + 2]!;
+      return (r + g + b) / 3 > 180;
+    };
+    let barLight = 0;
+    let barTotal = 0;
+    for (let y = 80; y < height - 80; y += 4) {
+      for (let x = L.barX; x < L.barX + L.barW; x += 2) {
+        barTotal++;
+        if (isLight((y * width + x) * 3)) barLight++;
+      }
+    }
+    expect(barLight / barTotal).toBeGreaterThan(0.55);
+
+    let stickerLight = 0;
+    const sx0 = Math.max(0, L.stickerX - 20);
+    const sy0 = Math.max(0, L.stickerY - 20);
+    const sx1 = Math.min(width, L.stickerX + L.stickerW + 40);
+    const sy1 = Math.min(height, L.stickerY + L.stickerH + 40);
+    for (let y = sy0; y < sy1; y += 2) {
+      for (let x = sx0; x < sx1; x += 2) {
+        if (isLight((y * width + x) * 3)) stickerLight++;
+      }
+    }
+    expect(stickerLight).toBeGreaterThan(2000);
+
+    let edgeLight = 0;
+    for (let y = 0; y < height; y += 8) {
+      for (let x = 0; x < 8; x++) {
+        if (isLight((y * width + x) * 3)) edgeLight++;
+      }
+    }
+    expect(edgeLight).toBeLessThan(barLight);
+  });
+
+  it("paints a badge block that occupies the photo, not a hairline", async () => {
+    const sharp = (await import("sharp")).default;
+    const { compositeBrandDecoration, decoLayout } = await import("../brandDecoration.js");
+    const width = 1024;
+    const height = 1024;
+    const base = await sharp({
+      create: { width, height, channels: 3, background: "#202020" },
+    })
+      .jpeg()
+      .toBuffer();
+    const out = await compositeBrandDecoration(
+      base,
+      { lane: "graphic", pieces: ["badge"], mark: "badge" },
+      { stroke: "#ffffff", fill: "#111111", accent: "#141414" },
+    );
+    const raw = await sharp(out).removeAlpha().raw().toBuffer();
+    const L = decoLayout(width, height, "graphic");
+    let light = 0;
+    const x0 = width - L.gutter - L.badgeW;
+    const y0 = L.gutter;
+    for (let y = y0; y < y0 + L.badgeH; y += 2) {
+      for (let x = x0; x < x0 + L.badgeW; x += 2) {
+        const i = (y * width + x) * 3;
+        if ((raw[i]! + raw[i + 1]! + raw[i + 2]!) / 3 > 180) light++;
+      }
+    }
+    expect(light).toBeGreaterThan(800);
+  });
 });

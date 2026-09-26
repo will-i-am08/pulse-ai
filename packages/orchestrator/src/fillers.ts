@@ -266,7 +266,7 @@ export async function generateFillerPost(
     );
     await putMedia(mediaId, new Uint8Array(img), "image/jpeg");
 
-    const wantMark = elementsIntent === "mark" || elementsIntent === "constructed" || decoPieces.includes("badge");
+    const wantMark = elementsIntent === "mark" || elementsIntent === "constructed";
     // Burn headline only when the agent asked for overlay (models stay text-free).
     // Keep the clean source id so set_image_text(false) can restore it.
     if (wantPhoto && wantOverlay) {
