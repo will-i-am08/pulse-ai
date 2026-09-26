@@ -31,6 +31,8 @@ import { PHOTO_EDIT_FAITHFUL_PROHIBITION } from "./lookPacks/index.js";
 import { anton as ANTON, serif as SERIF, interRegular as INTER_REGULAR, interBold as INTER_BOLD } from "./assets/fonts.generated.js";
 import { looksLikePhotoBackgroundAsk } from "./visualMode.js";
 import { safePublicUrl } from "./research.js";
+import { resolveBrandDecoKit, type FeedElementsMode } from "./brandElements.js";
+import { compositeBrandDecoration } from "./brandDecoration.js";
 
 // ─── Brand visual tokens → render palette ────────────────────────────────────
 
@@ -1026,17 +1028,53 @@ export function formatOverlayHeadline(text: string): string {
   return repairOverlayContractions(out);
 }
 
+const OVERLAY_TITLE_SMALL = new Set(["A", "AN", "THE", "AND", "OR", "OF", "TO", "IN", "ON", "FOR", "VS", "AT"]);
+
+function titleCaseOverlayWord(word: string, index: number, last: boolean): string {
+  const core = word.replace(/'/g, "");
+  if (index > 0 && !last && OVERLAY_TITLE_SMALL.has(core)) return word.toLowerCase();
+  const parts = word.split("'");
+  return parts
+    .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p))
+    .join("'");
+}
+
+/** Recase an already-cleaned (uppercase) overlay line. Does not smash length. */
+export function applyOverlayCase(text: string, mode: OverlayCase = "upper"): string {
+  if (mode === "upper") return text;
+  return text
+    .split("\n")
+    .map((line) => {
+      const words = line.split(" ").filter(Boolean);
+      if (!words.length) return "";
+      if (mode === "sentence") {
+        return words
+          .map((w, i) => (i === 0 ? titleCaseOverlayWord(w, 0, true) : w.toLowerCase()))
+          .join(" ");
+      }
+      return words.map((w, i) => titleCaseOverlayWord(w, i, i === words.length - 1)).join(" ");
+    })
+    .join("\n");
+}
+
 export type OverlayPlacement = "bottom" | "top" | "center" | "low_left" | "chip";
 export type OverlayStack = "single" | "stack";
 export type OverlayFace = "inter" | "anton" | "playfair";
 /** How words break across lines. Poster is the pilates one-word stack; pair/banner keep phrases together. */
 export type OverlayWrap = "banner" | "pair" | "poster";
+export type OverlayCase = "upper" | "title" | "sentence";
 
 export type OverlayTreatment = {
   placement: OverlayPlacement;
   stack: OverlayStack;
   face: OverlayFace;
   wrap?: OverlayWrap;
+  /** Default upper (legacy shouty). Quiet sans is title; editorial is sentence. */
+  textCase?: OverlayCase;
+  /** CSS em tracking, e.g. "0.08em". */
+  letterSpacing?: string;
+  /** Hairline under the headline — editorial / graphic quiet. */
+  rule?: boolean;
 };
 
 /** Default photo overlay: stacked Anton, smack in the middle, two-line phrases. */
@@ -1556,7 +1594,7 @@ async function renderTile(
       },
     });
   }
-  const wordGap = Math.max(10, Math.round(fontSize * 0.36));
+  const wordGap = Math.max(10, Math.round(fontSize * (treatment.letterSpacing === "0em" ? 0.22 : 0.36)));
   const titleLineNodes = (stacked ? titleLines : [headline.replace(/\n/g, " ").trim()]).map(
     (line, i) => ({
       type: "div",
@@ -1574,6 +1612,9 @@ async function renderTile(
       },
     }),
   );
+  const titleCase = treatment.textCase ?? "upper";
+  const tracking =
+    treatment.letterSpacing ?? (treatment.face === "playfair" ? "0.01em" : "0.03em");
   textStack.push({
     type: "div",
     props: {
@@ -1586,17 +1627,33 @@ async function renderTile(
         color: palette.text,
         fontFamily: titleFont,
         fontSize: `${fontSize}px`,
-        letterSpacing: treatment.face === "playfair" ? "0.01em" : "0.03em",
+        letterSpacing: tracking,
         lineHeight: 1.05,
         textShadow: "0 4px 28px rgba(0,0,0,0.55)",
         textAlign: titleAlign,
         justifyContent: titleJustify,
         alignItems: leftAlign ? "flex-start" : "center",
-        textTransform: hasBody ? "none" : "uppercase",
+        textTransform: titleCase === "upper" ? "uppercase" : "none",
       },
       children: titleLineNodes,
     },
   });
+  if (treatment.rule) {
+    textStack.push({
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          width: `${Math.round(width * 0.18)}px`,
+          height: `${Math.max(2, Math.round(height * 0.004))}px`,
+          marginTop: `${Math.round(height * 0.014)}px`,
+          background: palette.text,
+          opacity: 0.92,
+        },
+        children: "",
+      },
+    });
+  }
   if (hasBody) {
     textStack.push({
       type: "div",
@@ -1778,13 +1835,14 @@ export async function applyTextTile(
       Boolean(opts?.exact) ||
       (exactFromAsk != null &&
         formatExactOverlayHeadline(rawHeadline) === exactFromAsk);
-    const safeHeadline = exact
+    const safeHeadlineRaw = exact
       ? treatment.stack === "stack"
         ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair", { exact: true }).join("\n")
         : formatExactOverlayHeadline(rawHeadline)
       : treatment.stack === "stack"
         ? splitOverlayStack(rawHeadline, treatment.wrap ?? "pair").join("\n")
         : formatOverlayHeadline(rawHeadline);
+    const safeHeadline = applyOverlayCase(safeHeadlineRaw, treatment.textCase ?? "upper");
     const safeBody = opts?.body ? stripPersonalNames(opts.body, brand) : undefined;
     const safeEyebrow = opts?.eyebrow ? stripPersonalNames(opts.eyebrow, brand) : undefined;
     const masthead = opts?.omitMasthead ? "" : overlayMasthead(brand);
@@ -1971,20 +2029,26 @@ export async function compositeBrandLogo(base: Buffer, logo: Buffer): Promise<Bu
     .toBuffer();
 }
 
-/** Typographic wordmark when there is no logo_url — same corner as the logo stamp. */
+/** Typographic wordmark when there is no logo_url — corner or Canva-style badge. */
 export async function compositeBrandWordmark(
   base: Buffer,
   mark: string,
   visual?: VisualProfile | null,
+  opts?: { placement?: "wordmark" | "badge" },
 ): Promise<Buffer> {
   const meta = await sharp(base).metadata();
   const width = meta.width ?? 1080;
   const height = meta.height ?? 1080;
   const palette = resolveBrandPalette(visual);
   const label = mark.replace(/\s+/g, " ").trim().slice(0, 32);
-  const fontSize = Math.max(18, Math.round(width * 0.028));
-  const markW = Math.min(Math.round(width * 0.62), Math.max(160, Math.round(label.length * fontSize * 0.62)));
-  const markH = Math.round(fontSize * 2.4);
+  const badge = opts?.placement === "badge";
+  const fontSize = Math.max(18, Math.round(width * (badge ? 0.024 : 0.028)));
+  const padX = badge ? Math.round(fontSize * 0.9) : 0;
+  const markW = Math.min(
+    Math.round(width * (badge ? 0.52 : 0.62)),
+    Math.max(160, Math.round(label.length * fontSize * 0.62) + padX * 2),
+  );
+  const markH = Math.round(fontSize * (badge ? 2.8 : 2.4));
   const svg = await satori(
     {
       type: "div",
@@ -1992,12 +2056,14 @@ export async function compositeBrandWordmark(
         style: {
           display: "flex",
           alignItems: "center",
+          justifyContent: badge ? "center" : "flex-start",
           width: `${markW}px`,
           height: `${markH}px`,
+          ...(badge ? { padding: `0 ${padX}px`, background: palette.bgFrom } : {}),
           color: palette.text,
           fontFamily: palette.displayFont,
           fontSize: `${fontSize}px`,
-          letterSpacing: "0.14em",
+          letterSpacing: badge ? "0.18em" : "0.14em",
           textTransform: "uppercase",
           fontWeight: 700,
         },
@@ -2017,9 +2083,10 @@ export async function compositeBrandWordmark(
   );
   const png = new Resvg(svg, { fitTo: { mode: "width", value: markW } }).render().asPng();
   const pad = Math.round(width * 0.045);
-  const top = Math.max(0, height - markH - pad);
+  const left = badge ? Math.max(0, width - markW - pad) : pad;
+  const top = badge ? pad : Math.max(0, height - markH - pad);
   return sharp(base)
-    .composite([{ input: png, left: pad, top }])
+    .composite([{ input: png, left, top }])
     .jpeg({ quality: 88 })
     .toBuffer();
 }
@@ -2045,26 +2112,54 @@ async function fetchBrandLogoBytes(logoUrl: string): Promise<Buffer | null> {
 }
 
 /**
- * Stamp the brand mark onto a stored still: `logo_url` when fetchable,
- * otherwise a typographic wordmark from overlayMasthead. No-op when nameless
- * or there is nothing to stamp.
+ * Stamp this brand's kit onto a stored still: decorative pieces (frame, corners,
+ * colour bar, shape) plus `logo_url` when fetchable, otherwise a typographic
+ * wordmark or badge from overlayMasthead. No-op when nameless and there is
+ * nothing to paint.
  */
-export async function stampBrandLogo(brand: Brand, mediaId: string): Promise<string | null> {
+export async function stampBrandLogo(
+  brand: Brand,
+  mediaId: string,
+  opts?: { elements?: FeedElementsMode },
+): Promise<string | null> {
   if (isNamelessCreative(brand)) return mediaId;
   const blob = await getMedia(mediaId);
   if (!blob) return null;
   try {
-    let stamped: Buffer | null = null;
+    let stamped = Buffer.from(blob.bytes);
+    let changed = false;
+    const mode: FeedElementsMode =
+      opts?.elements === "constructed" || opts?.elements === "mark" ? opts.elements : "mark";
+    const kit = resolveBrandDecoKit(brand.visual, mode);
+    if (kit && kit.pieces.length) {
+      const palette = resolveBrandPalette(brand.visual);
+      stamped = await compositeBrandDecoration(stamped, kit, {
+        stroke: palette.text,
+        fill: palette.muted,
+        accent: palette.bgFrom,
+      });
+      changed = true;
+    }
+    let marked = false;
     const logoUrl = brand.visual?.logo_url;
     if (logoUrl) {
       const logo = await fetchBrandLogoBytes(logoUrl);
-      if (logo) stamped = await compositeBrandLogo(Buffer.from(blob.bytes), logo);
+      if (logo) {
+        stamped = await compositeBrandLogo(stamped, logo);
+        marked = true;
+        changed = true;
+      }
     }
-    if (!stamped) {
+    if (!marked) {
       const mark = overlayMasthead(brand);
-      if (!mark) return mediaId;
-      stamped = await compositeBrandWordmark(Buffer.from(blob.bytes), mark, brand.visual);
+      if (mark) {
+        stamped = await compositeBrandWordmark(stamped, mark, brand.visual, {
+          placement: kit?.mark ?? "wordmark",
+        });
+        changed = true;
+      }
     }
+    if (!changed) return mediaId;
     const newId = randomUUID();
     await query(
       `insert into media_assets (id, brand_id, storage_path, kind, source, content_type)

@@ -143,6 +143,7 @@ describe("KIP_AGENT_TOOLS", () => {
       ["none", "headline"],
     );
     expect(draft?.description).toMatch(/elements none or mark or constructed/i);
+    expect(draft?.description).toMatch(/decorative kit/i);
     expect(draft?.description).toMatch(/THIS brand's construction language/i);
     expect((draft?.input_schema as { properties?: Record<string, { enum?: string[] }> }).properties?.elements?.enum).toEqual(
       ["none", "mark", "constructed"],

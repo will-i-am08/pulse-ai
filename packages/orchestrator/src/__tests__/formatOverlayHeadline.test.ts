@@ -6,6 +6,7 @@ import {
   formatOverlayHeadline,
   extractExactOverlayHeadline,
   formatExactOverlayHeadline,
+  applyOverlayCase,
   splitOverlayStack,
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
@@ -270,6 +271,7 @@ describe("overlay headline wiring", () => {
       imaging.indexOf("export async function applyStoryCreative"),
     );
     expect(applyTextTile).toMatch(/formatOverlayHeadline\(/);
+    expect(applyTextTile).toMatch(/applyOverlayCase\(/);
 
     const applyStoryCreative = imaging.slice(imaging.indexOf("export async function applyStoryCreative"));
     expect(applyStoryCreative).toMatch(/formatOverlayHeadline\(/);
@@ -309,5 +311,14 @@ describe("overlay headline wiring", () => {
     expect(formats).not.toMatch(/formatOverlayHeadline\([^)]*ideaBlurb/);
     expect(formats).not.toMatch(/formatOverlayHeadline\([^)]*idea_blurb/);
     expect(formats).toMatch(/idea_blurb":"<2 sentences burned on the slide/);
+  });
+});
+
+describe("applyOverlayCase", () => {
+  it("keeps shouty lines uppercase and recases quiet lines", () => {
+    expect(applyOverlayCase("SATURDAY SPECIAL", "upper")).toBe("SATURDAY SPECIAL");
+    expect(applyOverlayCase("SATURDAY SPECIAL", "title")).toBe("Saturday Special");
+    expect(applyOverlayCase("PRECISION EVERY TOAST", "sentence")).toBe("Precision every toast");
+    expect(applyOverlayCase("WHAT FOUNDER OPS ACTUALLY DOES", "title")).toMatch(/Founder/);
   });
 });

@@ -39,15 +39,24 @@ describe("resolveFeedOverlayIntent", () => {
       placement: "bottom",
       stack: "single",
       face: "inter",
+      textCase: "title",
     });
   });
 
-  it("uses brand visual tokens for face so two brands do not share Inter", () => {
+  it("uses brand visual tokens for face, case, and tracking so two brands do not share Inter", () => {
     expect(brandOverlayTreatment({ fonts: ["Playfair Display"] }, "shouty").face).toBe("playfair");
+    expect(brandOverlayTreatment({ fonts: ["Playfair Display"] }, "quiet").textCase).toBe("sentence");
     expect(brandOverlayTreatment({ fonts: ["Anton"] }, "shouty").face).toBe("anton");
+    expect(brandOverlayTreatment({ fonts: ["Anton"] }, "shouty").textCase).toBe("upper");
     expect(brandOverlayTreatment({ fonts: ["Inter"] }, "quiet").face).toBe("inter");
+    expect(brandOverlayTreatment({ fonts: ["Inter"] }, "quiet").textCase).toBe("title");
     expect(brandOverlayTreatment({}, "quiet").face).toBe("inter");
     expect(brandOverlayTreatment({}, "shouty").face).toBe("anton");
+    expect(brandOverlayTreatment({ fonts: ["Inter"] }, "quiet").letterSpacing).not.toBe(
+      brandOverlayTreatment({ fonts: ["Anton"] }, "shouty").letterSpacing,
+    );
+    expect(brandOverlayTreatment({ fonts: ["Playfair Display"] }, "quiet").rule).toBe(true);
+    expect(brandOverlayTreatment({ fonts: ["Inter"] }, "quiet").rule).toBe(false);
   });
 
   it("does not encode café=skip or tech=shout", () => {
