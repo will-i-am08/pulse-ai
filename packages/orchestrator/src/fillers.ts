@@ -38,6 +38,7 @@ import {
 import {
   FEED_ELEMENTS_INSTRUCTION,
   constructedWantsPhoto,
+  resolveBrandDecoKit,
   resolveFeedElementsIntent,
 } from "./brandElements.js";
 
@@ -277,7 +278,7 @@ export async function generateFillerPost(
     if (elementsIntent === "mark" || elementsIntent === "constructed") {
       // Quote cards already paint the wordmark via overlayMasthead; still stamp a logo file.
       if (wantPhoto || brand.visual?.logo_url) {
-        const stampedId = await stampBrandLogo(brand, mediaId);
+        const stampedId = await stampBrandLogo(brand, mediaId, { elements: elementsIntent });
         if (stampedId) mediaId = stampedId;
       }
     }
@@ -306,7 +307,15 @@ export async function generateFillerPost(
       : wantPhoto
         ? { wants_text: false }
         : {}),
-    ...(elementsIntent !== "none" ? { brand_elements: elementsIntent } : {}),
+    ...(elementsIntent !== "none"
+      ? {
+          brand_elements: elementsIntent,
+          brand_kit: resolveBrandDecoKit(brand.visual, elementsIntent),
+          overlay_type: wantPhoto && wantOverlay ? brandOverlayTreatment(brand.visual, overlayIntent.tone) : undefined,
+        }
+      : wantPhoto && wantOverlay
+        ? { overlay_type: brandOverlayTreatment(brand.visual, overlayIntent.tone) }
+        : {}),
   };
   const sourceMediaIds = wantPhoto ? [sourceMediaId] : [];
   const post = await queryOne<Post>(

@@ -11,6 +11,7 @@ import {
   overlayFaceFromVisual,
   type OverlayTreatment,
 } from "./imaging.js";
+import { brandVisualLane } from "./brandElements.js";
 
 export type FeedOverlayMode = "none" | "headline";
 export type FeedOverlayTone = "quiet" | "shouty";
@@ -21,38 +22,130 @@ export type FeedOverlayIntent = {
   exactHeadline: string | null;
 };
 
-/** Bottom band, one line — Inter unless the brand’s tokens are serif. */
+/** Bottom band, one line — Inter title case unless the brand’s tokens say otherwise. */
 export const QUIET_OVERLAY_TREATMENT: OverlayTreatment = {
   placement: "bottom",
   stack: "single",
   face: "inter",
   wrap: "banner",
+  textCase: "title",
+  letterSpacing: "0.08em",
+  rule: false,
 };
 
-/** House type recipe from this brand’s visual.fonts, not one Kip Inter poster. */
+/** House type recipe from this brand’s visual tokens, not one Kip Inter poster. */
 export function brandOverlayTreatment(
-  visual: { fonts?: string[] } | null | undefined,
+  visual: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null | undefined,
   tone: FeedOverlayTone,
 ): OverlayTreatment {
+  const lane = brandVisualLane(visual);
   const face = overlayFaceFromVisual(visual);
+  const hasFonts = Boolean(visual?.fonts?.length);
+
   if (tone === "quiet") {
+    if (lane === "editorial") {
+      return {
+        placement: "low_left",
+        stack: "single",
+        face: "playfair",
+        wrap: "banner",
+        textCase: "sentence",
+        letterSpacing: "0.01em",
+        rule: true,
+      };
+    }
+    if (lane === "graphic") {
+      return {
+        placement: "bottom",
+        stack: "single",
+        face: face === "anton" ? "inter" : face,
+        wrap: "banner",
+        textCase: "upper",
+        letterSpacing: "0.18em",
+        rule: true,
+      };
+    }
+    if (lane === "industrial") {
+      return {
+        placement: "bottom",
+        stack: "single",
+        face: "inter",
+        wrap: "banner",
+        textCase: "upper",
+        letterSpacing: "0.22em",
+        rule: false,
+      };
+    }
     return {
       placement: "bottom",
       stack: "single",
-      face: face === "anton" ? "inter" : face,
+      face: "inter",
       wrap: "banner",
+      textCase: "title",
+      letterSpacing: "0.08em",
+      rule: false,
+    };
+  }
+
+  // Shouty with empty tokens stays Anton so a graphic-led brand does not look like an Inter café.
+  if (!hasFonts && lane === "minimal") {
+    return {
+      placement: "center",
+      stack: "stack",
+      face: "anton",
+      wrap: "pair",
+      textCase: "upper",
+      letterSpacing: "0.03em",
+      rule: false,
+    };
+  }
+
+  if (lane === "editorial") {
+    return {
+      placement: "center",
+      stack: "stack",
+      face: "playfair",
+      wrap: "pair",
+      textCase: "title",
+      letterSpacing: "0em",
+      rule: true,
+    };
+  }
+  if (lane === "minimal") {
+    return {
+      placement: "center",
+      stack: "stack",
+      face: "inter",
+      wrap: "banner",
+      textCase: "upper",
+      letterSpacing: "0.16em",
+      rule: false,
+    };
+  }
+  if (lane === "industrial") {
+    return {
+      placement: "center",
+      stack: "stack",
+      face: face === "playfair" ? "playfair" : "anton",
+      wrap: "pair",
+      textCase: "upper",
+      letterSpacing: "0.04em",
+      rule: false,
     };
   }
   return {
     placement: "center",
     stack: "stack",
-    face,
+    face: face === "playfair" ? "playfair" : "anton",
     wrap: "pair",
+    textCase: "upper",
+    letterSpacing: "0.06em",
+    rule: false,
   };
 }
 
 export const FEED_OVERLAY_INSTRUCTION =
-  "On-image type: honour overlay:none (clean photo, card may be empty) or overlay:headline (card is the on-image line). Quiet = one short line, not a stacked shout. Shouty = punchy 2–5 words. This is the brand's house style — do not mix clean and poster on the next slide. Do not map a niche to overlay vs clean — the agent already chose from brand facts, voice, and design rules.";
+  "On-image type: honour overlay:none (clean photo, card may be empty) or overlay:headline (card is the on-image line). Quiet = one short line, not a stacked shout. Shouty = punchy 2–5 words. Typeface, case, tracking, and hierarchy come from this brand's visual tokens and stay the same on every post — two brands must not share one Kip Inter poster. This is the brand's house style — do not mix clean and poster on the next slide. Do not map a niche to overlay vs clean — the agent already chose from brand facts, voice, and design rules.";
 
 function modeOf(v: unknown): FeedOverlayMode | null {
   if (v === "none" || v === "headline") return v;

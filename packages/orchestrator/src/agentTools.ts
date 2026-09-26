@@ -152,7 +152,7 @@ const draftCopyInputSchema = z
       .string()
       .optional()
       .describe(
-        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim. Brand elements: set elements none or mark or constructed to this brand's language (repeat it; do not randomize). Ground the pick in pack research, remembered likes, and visual tokens — not a café=template table.",
+        "Optional brief or instructions. Keep platform names (LinkedIn, Instagram, TikTok, …) when the owner named them. Generated photos default to shot-on-iPhone; if this piece should look more professional or studio, say so here from brand facts, voice, or the ask — do not map a niche to a look. On-image type: set overlay none or headline to this brand's language (repeat it; do not randomize). If they named an exact overlay headline, put it in overlay_headline or write it here verbatim. Brand elements: set elements none or mark or constructed to this brand's language (repeat it; do not randomize). mark/constructed also burn this brand's decorative kit (frames, corners, bars, badges) from visual tokens. Ground the pick in pack research, remembered likes, and visual tokens — not a café=template table.",
       ),
     count: z
       .number()
@@ -175,7 +175,7 @@ const draftCopyInputSchema = z
       .enum(["quiet", "shouty"])
       .optional()
       .describe(
-        "House loudness for this brand when overlay is headline: quiet = one short bottom-band line; shouty = punchy stacked poster. Pick once from facts/voice/design rules (skip shouty-centre if this brand is mostly action/motion). Repeat it. Default shouty if omitted.",
+        "House loudness for this brand when overlay is headline: quiet = one short line (case/tracking from tokens); shouty = punchy stacked poster. Typeface, case, tracking, and hierarchy come from visual tokens and stay put. Pick once from facts/voice/design rules (skip shouty-centre if this brand is mostly action/motion). Repeat it. Default shouty if omitted.",
       ),
     overlay_headline: z
       .string()
@@ -185,7 +185,7 @@ const draftCopyInputSchema = z
       .enum(["none", "mark", "constructed"])
       .optional()
       .describe(
-        "Brand-kit language for THIS brand, repeated on every draft. none = photo-led, no extra stamp; mark = add logo (or wordmark if no logo_url); constructed = palette/type/mark on a generated photo unless they asked for graphics-only cards. Pick from competitor/market research in the pack, remembered likes, and visual tokens — not a café/tech table, not a new roll each post.",
+        "Brand-kit language for THIS brand, repeated on every draft. none = photo-led, no extra stamp; mark = add logo (or wordmark if no logo_url) plus this brand's decorative kit (frames, corner marks, colour bars, badges, shapes from tokens); constructed = palette/type/mark and the same kit on a generated photo unless they asked for graphics-only cards. Pick from competitor/market research in the pack, remembered likes, and visual tokens — not a café/tech table, not a new roll each post.",
       ),
     media_ids: z.array(z.string()).optional().describe("Media asset ids to use."),
     topic_hint: z
@@ -392,7 +392,7 @@ export const KIP_AGENT_TOOLS: Anthropic.Tool[] = [
   ),
   toolDef(
     "draft_copy",
-    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, visual.fonts, and on-image design rules — then repeat it. Set elements none or mark or constructed to THIS brand's construction language from research, remembered likes, and visual tokens — then repeat it; constructed puts type and the mark on a generated photo unless they asked for graphics-only cards; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
+    "Call this whenever the owner asked to draft, make, create, or write content (a post, carousel, first batch, trend reply, competitor reply, library pull, UGC, reel). Attached photo ids are a brief — draft immediately (carousel if several photos feel like one story). When the retrieved pack shows library photos, prefer job from_library or pass media_ids instead of generating, unless they asked for generated/stock or the brief needs a scene they did not shoot. Generated stills default to shot-on-iPhone; if this piece should look more professional, say so in brief. Set overlay none or headline (and overlay_tone quiet or shouty) to THIS brand's overlay language from facts, voice, visual.fonts, and on-image design rules — then repeat it. Typeface, case, tracking, and hierarchy come from tokens, not one Inter/Anton pair. Set elements none or mark or constructed to THIS brand's construction language from research, remembered likes, and visual tokens — then repeat it; constructed puts type, the mark, and this brand's decorative kit on a generated photo unless they asked for graphics-only cards; never a niche table, never a new roll each post. Never scout_ideas for a draft ask. Never publishes — owner still approves.",
     draftCopyInputSchema,
   ),
   toolDef(

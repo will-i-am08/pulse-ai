@@ -160,9 +160,11 @@ export {
   formatBrandKitLine,
   formatMarketVisualsLine,
   constructedWantsPhoto,
+  brandVisualLane,
+  resolveBrandDecoKit,
   FEED_ELEMENTS_INSTRUCTION,
 } from "./brandElements.js";
-export type { FeedElementsMode } from "./brandElements.js";
+export type { FeedElementsMode, BrandDecoKit, BrandVisualLane, DecoPiece } from "./brandElements.js";
 
 export { ensurePillars, listPillars, classifyPhotoPillar, configurePillarsFromMessage, DEFAULT_PILLARS } from "./pillars.js";
 export { scheduleSlot } from "./scheduler.js";
@@ -244,6 +246,7 @@ export {
   formatOverlayHeadline,
   extractExactOverlayHeadline,
   formatExactOverlayHeadline,
+  applyOverlayCase,
   overlaySafeInset,
   OVERLAY_HEADLINE_MAX_WORDS,
   OVERLAY_HEADLINE_MAX_CHARS,

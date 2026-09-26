@@ -115,6 +115,7 @@ describe("generateFillerPost photo mode", () => {
     const { generateFillerPost } = await import("../fillers.js");
     const { generatePhotoImage, applyTextTile, generateHeadline } = await import("../imaging.js");
     const { queryOne } = await import("@pulse/shared");
+    const { brandOverlayTreatment } = await import("../overlayIntent.js");
 
     vi.mocked(generatePhotoImage).mockResolvedValueOnce(Buffer.from("fake-photo"));
     vi.mocked(queryOne).mockResolvedValueOnce({
@@ -130,7 +131,7 @@ describe("generateFillerPost photo mode", () => {
       expect.any(String),
       "HIRE FOR SKILL NOT VIBES",
       expect.objectContaining({
-        treatment: { placement: "center", stack: "stack", face: "anton", wrap: "pair" },
+        treatment: brandOverlayTreatment({}, "shouty"),
       }),
     );
     expect(generateHeadline).not.toHaveBeenCalled();
@@ -290,6 +291,8 @@ describe("generateFillerPost photo mode", () => {
     const meta = JSON.parse(String(insertArgs?.[1]?.[6] ?? ""));
     expect(meta.brand_elements).toBe("constructed");
     expect(meta.wants_text).toBe(true);
+    expect(meta.brand_kit).toMatchObject({ lane: "minimal" });
+    expect(stampBrandLogo).toHaveBeenCalledWith(brand, expect.any(String), { elements: "constructed" });
   });
 
   it("falls back to a palette quote card when constructed is graphics-only", async () => {

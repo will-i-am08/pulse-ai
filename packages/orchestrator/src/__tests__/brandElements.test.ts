@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   FEED_ELEMENTS_INSTRUCTION,
+  brandVisualLane,
   constructedWantsPhoto,
   formatBrandKitLine,
   formatMarketVisualsLine,
+  resolveBrandDecoKit,
   resolveFeedElementsIntent,
 } from "../brandElements.js";
 
@@ -36,7 +38,7 @@ describe("constructedWantsPhoto", () => {
 
 describe("formatBrandKitLine", () => {
   it("surfaces logo presence without inventing a niche template", () => {
-    expect(formatBrandKitLine({})).toBe("Brand kit: logo no");
+    expect(formatBrandKitLine({})).toBe("Brand kit: logo no; lane minimal");
     expect(
       formatBrandKitLine({
         colors: ["#111"],
@@ -44,7 +46,7 @@ describe("formatBrandKitLine", () => {
         logo_url: "https://example.com/logo.png",
         aesthetic: "warm minimal",
       }),
-    ).toBe("Brand kit: colours #111; fonts Inter; logo yes; look warm minimal");
+    ).toBe("Brand kit: colours #111; fonts Inter; logo yes; look warm minimal; lane minimal");
   });
 });
 
@@ -63,7 +65,42 @@ describe("formatMarketVisualsLine", () => {
 describe("FEED_ELEMENTS_INSTRUCTION", () => {
   it("does not encode a café template table", () => {
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/Do not map a niche to a template/i);
+    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/decorative kit/i);
     expect(FEED_ELEMENTS_INSTRUCTION).not.toMatch(/if niche is caf[eé]/i);
+  });
+});
+
+describe("brandVisualLane", () => {
+  it("maps tokens, not a café vs tech table", () => {
+    expect(brandVisualLane({ fonts: ["Playfair Display"] })).toBe("editorial");
+    expect(brandVisualLane({ fonts: ["Anton"] })).toBe("graphic");
+    expect(brandVisualLane({ fonts: ["Inter"] })).toBe("minimal");
+    expect(brandVisualLane({ aesthetic: "utilitarian technical" })).toBe("industrial");
+    expect(brandVisualLane({})).toBe("minimal");
+    expect(brandVisualLane({ colors: ["#141414", "#f5f0e8"] })).toBe("industrial");
+  });
+});
+
+describe("resolveBrandDecoKit", () => {
+  it("skips decoration when elements is none", () => {
+    expect(resolveBrandDecoKit({ fonts: ["Anton"] }, "none")).toBeNull();
+  });
+
+  it("gives two token lanes different pieces and repeats within a brand", () => {
+    const cafe = resolveBrandDecoKit({ fonts: ["Inter"], aesthetic: "warm minimal" }, "mark");
+    const ops = resolveBrandDecoKit({ fonts: ["Anton"], colors: ["#111111", "#f5f0e8"] }, "constructed");
+    expect(cafe?.lane).toBe("minimal");
+    expect(ops?.lane).toBe("graphic");
+    expect(cafe?.pieces).toContain("corners");
+    expect(ops?.pieces).toContain("bar");
+    expect(cafe?.pieces).not.toEqual(ops?.pieces);
+    expect(resolveBrandDecoKit({ fonts: ["Inter"], aesthetic: "warm minimal" }, "mark")).toEqual(cafe);
+    expect(resolveBrandDecoKit({ fonts: ["Anton"], colors: ["#111111", "#f5f0e8"] }, "constructed")).toEqual(ops);
+  });
+
+  it("does not encode café=frame or tech=badge", () => {
+    const src = `${FEED_ELEMENTS_INSTRUCTION} café bun`;
+    expect(src).not.toMatch(/if niche is caf[eé].*frame/i);
   });
 });
 
@@ -101,5 +138,25 @@ describe("compositeBrandWordmark", () => {
     const meta = await sharp(out).metadata();
     expect(meta.width).toBe(200);
     expect(meta.height).toBe(200);
+  });
+});
+
+describe("compositeBrandDecoration", () => {
+  it("paints kit pieces without changing canvas size", async () => {
+    const sharp = (await import("sharp")).default;
+    const { compositeBrandDecoration } = await import("../brandDecoration.js");
+    const base = await sharp({
+      create: { width: 240, height: 240, channels: 3, background: "#445566" },
+    })
+      .jpeg()
+      .toBuffer();
+    const out = await compositeBrandDecoration(
+      base,
+      { lane: "graphic", pieces: ["bar", "corners", "shape"], mark: "badge" },
+      { stroke: "#f5f0e8", fill: "#c8c0b4", accent: "#111111" },
+    );
+    const meta = await sharp(out).metadata();
+    expect(meta.width).toBe(240);
+    expect(meta.height).toBe(240);
   });
 });
