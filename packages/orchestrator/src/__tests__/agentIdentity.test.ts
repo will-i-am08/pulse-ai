@@ -161,14 +161,15 @@ describe("agentIdentity", () => {
     expect(prompt).not.toMatch(/Vary across this brand's week/i);
   });
 
-  it("tells the agent kit is optional identity, not nameless chrome", () => {
+  it("tells the agent kit is request-only identity, not nameless chrome", () => {
     const prompt = agentIdentity(stubBrand());
     expect(prompt).toMatch(/Brand elements:/);
     expect(prompt).toMatch(/elements none or mark or constructed/i);
-    expect(prompt).toMatch(/PER POST/i);
+    expect(prompt).toMatch(/REQUEST-ONLY/i);
     expect(prompt).toMatch(/wordmark|logo/i);
     expect(prompt).toMatch(/nameless sticker/i);
     expect(prompt).toMatch(/caf[eé]=corners/i);
+    expect(prompt).not.toMatch(/offer, announcement, graphic moment/i);
     expect(prompt).not.toMatch(/if niche is caf[eé].*quote.?card/i);
     expect(prompt).not.toMatch(/Vary across this brand's week/i);
   });

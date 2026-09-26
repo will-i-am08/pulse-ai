@@ -245,6 +245,9 @@ describe("overlay treatment wiring", () => {
     expect(applyTextTile).toMatch(/treatment\.wrap/);
     expect(applyTextTile).toMatch(/formatOverlayHeadline\(/);
     expect(applyTextTile).toMatch(/applyOverlayCase\(/);
+    expect(applyTextTile).toMatch(/includeMasthead/);
+    expect(applyTextTile).toMatch(/opts\?\.includeMasthead \? overlayMasthead/);
+    expect(applyTextTile).not.toMatch(/omitMasthead/);
   });
 
   it("renderTile branches on placement and keeps the default 0.06em track", () => {

@@ -134,6 +134,11 @@ describe("generateFillerPost photo mode", () => {
         treatment: brandOverlayTreatment({}, "shouty"),
       }),
     );
+    expect(vi.mocked(applyTextTile).mock.calls[0]?.[3]).not.toEqual(
+      expect.objectContaining({ includeMasthead: true }),
+    );
+    const { stampBrandLogo } = await import("../imaging.js");
+    expect(stampBrandLogo).not.toHaveBeenCalled();
     expect(generateHeadline).not.toHaveBeenCalled();
 
     const insertArgs = vi.mocked(queryOne).mock.calls[0];
@@ -392,6 +397,7 @@ describe("generateFillerPost photo mode", () => {
     const inbound = readFileSync(join(here, "../processInbound.ts"), "utf8");
     expect(fillers).toMatch(/captureInterviewVisualTokens/);
     expect(fillers).toMatch(/overlayMasthead\(brand\)/);
+    expect(fillers).not.toMatch(/omitMasthead/);
     expect(inbound).toMatch(/shouldCaptureInterviewTokens/);
     expect(inbound).toMatch(/captureInterviewVisualTokens/);
     const leftover = inbound.slice(inbound.indexOf("async function leftoverTurn"));

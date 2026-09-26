@@ -11,6 +11,7 @@ import {
   resolveFeedElementsIntent,
   decoNeedsIdentity,
   suggestDecoPieces,
+  briefAsksForIdentityKit,
 } from "../brandElements.js";
 
 describe("resolveFeedElementsIntent", () => {
@@ -35,6 +36,28 @@ describe("resolveFeedElementsIntent", () => {
         elements: "mark",
       }),
     ).toBe("none");
+  });
+
+  it("does not stamp kit on an unasked still, even with a trading name on file", () => {
+    expect(
+      resolveFeedElementsIntent({
+        brief: "Weekend tarts, quiet type on the photo",
+        name: "NORTHSIDE TOAST",
+      }),
+    ).toBe("none");
+    expect(resolveFeedElementsIntent({ brief: "We're hiring a senior operator" })).toBe("none");
+  });
+
+  it("stamps kit when they asked for the name or logo on this still", () => {
+    expect(
+      resolveFeedElementsIntent({
+        brief: "Weekend tarts — put Northside Toast on this still",
+        name: "NORTHSIDE TOAST",
+      }),
+    ).toBe("mark");
+    expect(resolveFeedElementsIntent({ brief: "put our name on this still" })).toBe("mark");
+    expect(resolveFeedElementsIntent({ brief: "add the logo on this photo" })).toBe("mark");
+    expect(resolveFeedElementsIntent({ elements: "mark", brief: "Weekend tarts" })).toBe("mark");
   });
 });
 
@@ -77,8 +100,18 @@ describe("FEED_ELEMENTS_INSTRUCTION", () => {
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/Do not map a niche to a template/i);
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/OPTIONAL and PER POST/i);
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/IDENTITY/i);
+    expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/REQUEST-ONLY/i);
     expect(FEED_ELEMENTS_INSTRUCTION).toMatch(/nameless sticker/i);
     expect(FEED_ELEMENTS_INSTRUCTION).not.toMatch(/if niche is caf[eé]/i);
+  });
+});
+
+describe("briefAsksForIdentityKit", () => {
+  it("is true only for a name/logo ask, not a tart or hiring brief", () => {
+    expect(briefAsksForIdentityKit("Weekend tarts")).toBe(false);
+    expect(briefAsksForIdentityKit("Weekend tarts", "NORTHSIDE TOAST")).toBe(false);
+    expect(briefAsksForIdentityKit("put our name on this still")).toBe(true);
+    expect(briefAsksForIdentityKit("put Northside Toast on this still", "NORTHSIDE TOAST")).toBe(true);
   });
 });
 

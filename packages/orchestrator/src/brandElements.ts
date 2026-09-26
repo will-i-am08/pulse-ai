@@ -37,7 +37,7 @@ export type BrandDecoKit = {
 };
 
 export const FEED_ELEMENTS_INSTRUCTION =
-  "Brand kit is IDENTITY, not nameless chrome: honour elements:none (photo-led), elements:mark (stamp logo or trading-name wordmark on THIS still), or elements:constructed (build from THIS brand's palette and type on a generated photo unless the brief is graphics-only / quote cards). Decorative ornaments are OPTIONAL and PER POST — default the photo clean. When this still needs kit, the kit must point at the brand (logo, wordmark, palette) — never a nameless sticker, empty pill, or orphan colour bar. deco is only a vehicle for that mark (badge/sticker meaning a labeled mark; frame/bar may support it). Omit deco unless this still needs identity or the owner asked. Do not pick shapes from a catalog to add variety. Type language can still repeat. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
+  "Brand kit is IDENTITY and REQUEST-ONLY: honour elements:none (default — photo + overlay type, no logo/wordmark/badge), elements:mark (stamp logo or trading-name wordmark because the owner asked on THIS still, or you set this field), or elements:constructed (palette/type on a generated photo unless the brief is graphics-only / quote cards). Do not set mark or deco because this is an offer, announcement, or graphic moment. Do not auto-stamp from a lasting always-logo like. Kit fires only when the owner asked for the name/logo/mark on THIS still, or elements/deco is set. Decorative ornaments stay OPTIONAL and PER POST — default omit deco. When kit is on, it must point at the brand (logo, wordmark, palette) — never a nameless sticker, empty pill, or orphan colour bar. deco is only a vehicle for that mark. Type language can still repeat. Do not map a niche to a template — the agent already chose from research, remembered likes, and visual tokens.";
 
 const DECO_SET = new Set<string>(DECO_PIECES);
 
@@ -60,20 +60,41 @@ export function parseDecoPieces(raw: unknown): DecoPiece[] {
 }
 
 /**
+ * Owner asked for identity kit on THIS still (name, logo, wordmark, badge),
+ * not overlay type and not a generic tart/hiring brief.
+ */
+export function briefAsksForIdentityKit(brief?: string | null, name?: string | null): boolean {
+  const text = (brief ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  if (
+    /\b(stamp (the |our |my )?(logo|mark|wordmark|name|badge)|add (our |the |my )?(logo|wordmark|name|badge|mark)|put (our |the |my )?(name|logo|wordmark|badge|mark)|with (our |the |my )?(logo|wordmark|name)|brand mark|elements:\s*mark|our (name|logo|wordmark) on|trading[- ]name|(logo|wordmark|name|badge) (on|onto) this)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  const n = (name ?? "").replace(/\s+/g, " ").trim();
+  if (n.length < 3) return false;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const named = new RegExp(esc, "i");
+  if (!named.test(text)) return false;
+  return /\b(put|stamp|add|with)\b/i.test(text) && /\b(on|onto)\b/i.test(text);
+}
+
+/**
  * Resolve stamp vs constructed vs photo-led for a generated post.
- * Default is none (do not auto-stamp scraped logos). Explicit mark / constructed
- * still apply. Constructed also matches designed/graphics wording in the brief.
+ * Default is none (do not auto-stamp scraped logos or trading-name badges).
+ * Explicit mark / constructed still apply. Constructed also matches
+ * designed/graphics wording in the brief. Identity kit from the brief
+ * only when they asked for the name/logo on THIS still.
  */
 export function resolveFeedElementsIntent(input: {
   brief?: string | null;
   elements?: unknown;
+  name?: string | null;
 }): FeedElementsMode {
   const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
-  if (
-    brief &&
-    isThisStillCleanBrief(brief) &&
-    !/\bstamp (the )?logo\b|\badd (our |the )?logo\b|\bwith (our |the )?logo\b/i.test(brief)
-  ) {
+  if (brief && isThisStillCleanBrief(brief) && !briefAsksForIdentityKit(brief, input.name)) {
     return "none";
   }
   const field = modeOf(input.elements);
@@ -87,7 +108,7 @@ export function resolveFeedElementsIntent(input: {
   if (/\belements:\s*constructed\b|\bconstructed from elements\b|\bgraphics? only\b|\bquote cards?\b|\btext cards?\b|\bdesigned (slides?|graphics?|cards?)\b/i.test(brief)) {
     return "constructed";
   }
-  if (/\belements:\s*mark\b|\bbrand mark\b|\bstamp (the )?logo\b|\badd (our |the )?logo\b|\bwith (our |the )?logo\b/i.test(brief)) {
+  if (/\belements:\s*mark\b/.test(brief) || briefAsksForIdentityKit(brief, input.name)) {
     return "mark";
   }
   return "none";
