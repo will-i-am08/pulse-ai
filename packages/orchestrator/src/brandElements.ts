@@ -68,10 +68,17 @@ export function resolveFeedElementsIntent(input: {
   brief?: string | null;
   elements?: unknown;
 }): FeedElementsMode {
+  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
+  if (
+    brief &&
+    isThisStillCleanBrief(brief) &&
+    !/\bstamp (the )?logo\b|\badd (our |the )?logo\b|\bwith (our |the )?logo\b/i.test(brief)
+  ) {
+    return "none";
+  }
   const field = modeOf(input.elements);
   if (field) return field;
 
-  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
   if (!brief) return "none";
 
   if (/\belements:\s*none\b|\bno brand mark\b|\bno logo\b|\bnever stamp (the )?logo\b/i.test(brief)) {
@@ -142,55 +149,84 @@ export function suggestDecoPieces(
   return ["underline", "rule", "dots"];
 }
 
-function decoPiecesFromBrief(brief: string): DecoPiece[] | null {
-  if (
-    /\b(no decorations?|no ornaments?|keep (the )?(photos?|stills?) clean|deco:\s*none|undecorated|plain photo)\b/i.test(
-      brief,
-    )
-  ) {
-    return [];
-  }
+function negatedBefore(brief: string, index: number): boolean {
+  const window = brief.slice(Math.max(0, index - 28), index).toLowerCase();
+  return /\b(no|not|not a|not the|without|without a|without the|skip|skip the|never|don't|dont|do not)\b[\s,:'"—-]*$/i.test(
+    window.trimEnd(),
+  );
+}
+
+function namedDecoPiecesFromBrief(brief: string): DecoPiece[] {
   const named: DecoPiece[] = [];
-  const add = (piece: DecoPiece) => {
-    if (!named.includes(piece) && named.length < 4) named.push(piece);
+  const add = (piece: DecoPiece, re: RegExp) => {
+    const flags = re.flags.includes("g") ? re.flags : `${re.flags}g`;
+    const global = new RegExp(re.source, flags);
+    for (const m of brief.matchAll(global)) {
+      const at = m.index ?? 0;
+      if (negatedBefore(brief, at)) continue;
+      if (!named.includes(piece) && named.length < 4) named.push(piece);
+      break;
+    }
   };
-  if (/\b(frames?|inset frame|borders?)\b/i.test(brief)) add("frame");
-  if (/\b(corners?|corner marks?|l-?corners?)\b/i.test(brief)) add("corners");
-  if (/\b((colour|color|side|accent) bars?|add a bar)\b/i.test(brief)) add("bar");
-  if (/\b(hairlines?|a rule|rules under)\b/i.test(brief)) add("rule");
-  if (/\bunderlines?\b/i.test(brief)) add("underline");
-  if (/\b(diamonds?|rotated squares?)\b/i.test(brief)) add("shape");
-  if (/\b(circles?|rings?)\b/i.test(brief)) add("circle");
-  if (/\bstickers?\b/i.test(brief)) add("sticker");
-  if (/\bribbons?\b/i.test(brief)) add("ribbon");
-  if (/\bdots\b/i.test(brief)) add("dots");
-  if (/\bbadges?\b/i.test(brief)) add("badge");
+  add("frame", /\b(frames?|inset frame|borders?)\b/i);
+  add("corners", /\b(corners?|corner marks?|l-?corners?)\b/i);
+  add("bar", /\b((colour|color|side|accent) bars?|add a bar)\b/i);
+  add("rule", /\b(hairlines?|a rule|rules under)\b/i);
+  add("underline", /\bunderlines?\b/i);
+  add("shape", /\b(diamonds?|rotated squares?)\b/i);
+  add("circle", /\b(circles?|rings?)\b/i);
+  add("sticker", /\bstickers?\b/i);
+  add("ribbon", /\bribbons?\b/i);
+  add("dots", /\bdots\b/i);
+  add("badge", /\bbadges?\b/i);
+  return named;
+}
+
+function isThisStillCleanBrief(brief: string): boolean {
+  return /\b(keep this (still|photo|shot|image|post) clean|type only|deco:\s*none|no decorations? on this|undecorated|plain photo)\b/i.test(
+    brief,
+  );
+}
+
+function isGeneralCleanBrief(brief: string): boolean {
+  return /\b(no decorations?|no ornaments?|keep (the )?(photos?|stills?) clean|deco:\s*none|undecorated|plain photo)\b/i.test(
+    brief,
+  );
+}
+
+function isDecorateAskBrief(brief: string): boolean {
+  return /\b(decorate (this|it|the (still|photo|image|post))|add decorations?|ornaments?|canva[- ]style|graphic elements|decorative (kit|elements?))\b/i.test(
+    brief,
+  );
+}
+
+function decoPiecesFromBrief(brief: string): DecoPiece[] | null {
+  const named = namedDecoPiecesFromBrief(brief);
   if (named.length) return named;
-  if (
-    /\b(decorate (this|it|the (still|photo|image|post))|add decorations?|ornaments?|canva[- ]style|graphic elements|decorative (kit|elements?))\b/i.test(
-      brief,
-    )
-  ) {
-    return null;
-  }
+  if (isThisStillCleanBrief(brief) || isGeneralCleanBrief(brief)) return [];
+  if (isDecorateAskBrief(brief)) return null;
   return [];
 }
 
 /**
- * Per-still ornaments. Default empty (clean photo). Field wins, then named
- * pieces in the brief, then a lane suggestion only when they asked to decorate
- * without naming pieces. Never implied by elements mark/constructed.
+ * Per-still ornaments. Default empty (clean photo). Owner-named pieces in the
+ * brief win. "Keep THIS still clean" / type-only beats a confused deco field.
+ * Otherwise the deco field, then a lane suggestion only when they asked to
+ * decorate without naming pieces. Never implied by elements mark/constructed.
  */
 export function resolveFeedDecoIntent(input: {
   brief?: string | null;
   deco?: unknown;
   visual?: { fonts?: string[]; colors?: string[]; aesthetic?: string; aesthetic_notes?: string } | null;
 }): DecoPiece[] {
+  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
+  const named = brief ? namedDecoPiecesFromBrief(brief) : [];
+  if (named.length) return named;
+  if (brief && isThisStillCleanBrief(brief)) return [];
   if (input.deco != null) {
     if (input.deco === "none" || input.deco === false) return [];
     return parseDecoPieces(input.deco);
   }
-  const brief = (input.brief ?? "").replace(/\s+/g, " ").trim();
   if (!brief) return [];
   const fromBrief = decoPiecesFromBrief(brief);
   if (fromBrief === null) return suggestDecoPieces(input.visual);
