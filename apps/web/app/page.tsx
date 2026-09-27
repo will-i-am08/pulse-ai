@@ -134,7 +134,7 @@ export default function LandingPage() {
           </li>
           <li>
             <strong>4 channels</strong>
-            <span>Instagram, Facebook, X, Threads — organic only</span>
+            <span>Instagram, Facebook, X, Threads — organic posting</span>
           </li>
         </ul>
         <ul className={styles.proofBadges} aria-label="Trust marks">
@@ -340,7 +340,7 @@ export default function LandingPage() {
             <div className={styles.pf}>
               <h4>memory.md</h4>
               <div className={styles.file}>
-                Organic only: Instagram, Facebook, X, Threads.
+                Organic-first: Instagram, Facebook, X, Threads.
                 <br />
                 Never post without a yes, unless autopilot is on.
                 <br />
@@ -529,7 +529,7 @@ export default function LandingPage() {
             </div>
             <div className={styles.reviewBadge}>
               <p className={styles.reviewMark}>Trust</p>
-              <p>Encrypted · Cancel anytime · Organic only</p>
+              <p>Encrypted · Cancel anytime · Organic-first</p>
             </div>
           </div>
 

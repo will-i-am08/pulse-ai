@@ -28,14 +28,14 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: 'organic-only',
-    title: 'Organic only — on purpose',
+    title: 'Organic-first — on purpose',
     date: 'Sep 2026',
     isoDate: '2026-09-08',
     blurb: 'Paid ads can wait. Showing up every week in your own voice usually can’t.',
     paragraphs: [
       'Paid ads are a different sport: budgets, creative tests, attribution arguments. Useful later. Not the first problem for a bakery that hasn’t posted in three weeks.',
-      'Kip stays in organic — Instagram, Facebook, X, Threads — so the product stays sharp. Captions, calendar, nudges, recaps, autopilot when you want evenings back.',
-      'If you need media buying, hire for that. Kip’s job is showing up every week without sounding like a robot or a retainer.',
+      'So Kip leads with organic — Instagram, Facebook, X, Threads — and keeps the core sharp: captions, calendar, nudges, recaps, autopilot when you want evenings back. When you are ready for paid, Max adds an optional ads toggle on your own ad account.',
+      'What Kip won’t be is a full media-buying desk. Its job is showing up every week without sounding like a robot or a retainer — and boosting a post when it earns it, not running your whole ad budget.',
     ],
   },
   {
@@ -46,7 +46,7 @@ export const BLOG_POSTS: BlogPost[] = [
     blurb: 'Same job on captions and calendar. Different invoice — and no awkward stand-up.',
     paragraphs: [
       'A good social media manager is worth real money: voice, calendar, approvals, the weekly rhythm. They also cost $2,000–$5,000 a month, keep office hours, and often want decks.',
-      'Kip covers the organic half of that job from $79 a month — captions, channels, calendar, yes-before-post. You send the photos. No on-site shoots. No paid ads. No stand-ups.',
+      'Kip covers the organic half of that job from $79 a month — captions, channels, calendar, yes-before-post. You send the photos. No on-site shoots, no stand-ups. Paid ads stay optional, as a Max toggle on your own account.',
       'If you need custom creative production and strategy workshops, hire a human. If you need the posting job done without another salary, text Kip.',
     ],
   },
