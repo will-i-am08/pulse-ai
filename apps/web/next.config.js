@@ -30,6 +30,13 @@ const tracingIncludes = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    // Default server-action body is 1MB. A phone photo, even after client
+    // compress, plus a short caption needs headroom for a few shots.
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
+  },
   transpilePackages: ['@pulse/shared', '@pulse/gateway', '@pulse/orchestrator'],
   // Native / heavy image-processing deps reach the server bundle transitively
   // through the orchestrator barrel (imaging.ts etc.) — e.g. the inbound Twilio

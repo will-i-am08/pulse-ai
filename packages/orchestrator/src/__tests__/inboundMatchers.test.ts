@@ -13,7 +13,9 @@ import {
   SCRATCH_OR_TWEAK_ASK_RE,
   looksLikeCarouselCommand,
   captionEditMissed,
+  missingInboundPhotoSms,
 } from "../processInbound.js";
+import { resetServerEnvCache } from "@pulse/shared";
 import { looksLikeBoostRequest } from "../boost.js";
 import { looksLikeCalendarAsk } from "../agentTools.js";
 import { looksLikeGreeting } from "../classify.js";
@@ -401,5 +403,18 @@ describe("captionEditMissed", () => {
   it("passes when the caption actually got shorter and lost the CTA", () => {
     const before = "Morning brew at Lab Cafe — come say hi. Book now, link in bio.";
     expect(captionEditMissed("shorter, drop the CTA", before, "Morning brew. Come say hi.")).toBe(false);
+  });
+});
+
+describe("missingInboundPhotoSms", () => {
+  it("sends the owner to the web thread instead of asking for another MMS", () => {
+    process.env.DATABASE_URL = process.env.DATABASE_URL || "postgres://localhost/test";
+    process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "test";
+    process.env.TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || "test";
+    process.env.APP_BASE_URL = "https://kip.example";
+    resetServerEnvCache();
+    const sms = missingInboundPhotoSms();
+    expect(sms).toContain("https://kip.example/app");
+    expect(sms).not.toMatch(/send the image again/i);
   });
 });
