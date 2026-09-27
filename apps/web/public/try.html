@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kip — The Thread v3</title>
+<style>
+  :root{
+    --paper:#f4efe4; --paper2:#efe8d9; --card:#ffffff;
+    --ink:#1c1b19; --muted:#6f6a60; --line:#e6decb;
+    --acc:#f0553d; --acc-d:#d8452f; --acc-tint:#fce6e0; --mint:#3aa980;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1100px 700px at 50% -8%,#fbf7ee,var(--paper));
+    color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.45;overflow-x:hidden}
+  a{color:inherit}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  /* nav */
+  nav{position:fixed;inset:0 0 auto 0;z-index:50;display:flex;align-items:center;justify-content:space-between;
+    padding:14px 26px;background:rgba(244,239,228,.7);backdrop-filter:blur(14px);border-bottom:1px solid transparent;transition:.25s}
+  nav.solid{border-bottom-color:var(--line);background:rgba(244,239,228,.9)}
+  .brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:700;font-size:19px;letter-spacing:-.02em}
+  .brand .cat{width:34px;height:34px}
+  .nl{display:flex;gap:24px;align-items:center}
+  .nl a{text-decoration:none;color:var(--muted);font-weight:500;font-size:15px}.nl a:hover{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;text-decoration:none;cursor:pointer;border:0;
+    border-radius:980px;padding:12px 22px;font-size:16px;background:var(--acc);color:#fff;box-shadow:0 10px 24px -12px var(--acc);transition:transform .16s,background .16s}
+  .btn:hover{background:var(--acc-d);transform:translateY(-1px)}
+  .btn.sm{padding:9px 16px;font-size:14px}
+  .btn.ink{background:var(--ink)}.btn.ink:hover{background:#000}
+
+  /* ── the stage (fixed-height scene) ── */
+  .scene{display:grid;grid-template-columns:minmax(300px,1fr) auto minmax(300px,1fr);gap:24px;align-items:center;
+    min-height:100vh;padding:104px 24px 56px;max-width:1260px;margin:0 auto}
+  .col{position:relative}
+  .col.left{justify-self:end;max-width:390px;width:100%}
+  .col.right{justify-self:start;max-width:330px;width:100%}
+  /* left */
+  .kick{display:inline-flex;align-items:center;gap:8px;background:var(--acc-tint);color:var(--acc-d);font-weight:700;font-size:12.5px;
+    padding:6px 12px;border-radius:980px;margin-bottom:16px}
+  h1{font-size:clamp(38px,4.4vw,60px);line-height:1;letter-spacing:-.04em;margin:0 0 14px;font-weight:700}
+  h1 .c{color:var(--acc)}
+  .lead{font-size:18px;color:var(--muted);max-width:32ch;margin:0 0 22px}
+  .lcta{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:26px}
+  .lcta .sub{color:var(--muted);text-decoration:none;font-weight:600;font-size:15px}.lcta .sub:hover{color:var(--ink)}
+  .traylabel{display:flex;align-items:center;gap:9px;font-weight:700;font-size:13.5px;color:var(--acc-d);margin-bottom:10px}
+  .traylabel svg{width:38px;height:24px;color:var(--acc);flex-shrink:0}
+  .phototray{position:relative;height:312px;margin-bottom:16px}
+  .polaroid{position:absolute;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 7px 24px;width:124px;
+    box-shadow:0 14px 30px -16px rgba(0,0,0,.4);cursor:grab;touch-action:none;user-select:none;transition:transform .18s,box-shadow .18s;will-change:transform}
+  .polaroid:hover{transform:translateY(-4px) rotate(0deg)!important;box-shadow:0 22px 40px -18px rgba(0,0,0,.5);z-index:20}
+  .polaroid:active{cursor:grabbing}
+  .polaroid .pi{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:40px}
+  .polaroid .plab{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:10.5px;font-weight:600;color:var(--muted)}
+  .polaroid .tape{position:absolute;top:-8px;left:50%;transform:translateX(-50%) rotate(-4deg);width:40px;height:15px;background:rgba(240,85,61,.22);border:1px solid rgba(240,85,61,.3)}
+  .dragging{opacity:.28}
+  .ghost{position:fixed;z-index:2000;pointer-events:none;transform:rotate(-4deg) scale(1.05);box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
+  /* small side toy card */
+  .toy{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px 15px;box-shadow:0 10px 24px -18px rgba(0,0,0,.35)}
+  .toy .tlabel{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  /* autopilot switch */
+  .ap{display:flex;align-items:center;gap:12px}
+  .ap .txt b{font-size:14.5px;display:block}.ap .txt span{font-size:12px;color:var(--muted)}
+  .switch{margin-left:auto;flex-shrink:0;width:48px;height:27px;border-radius:980px;background:var(--line);position:relative;cursor:pointer;transition:background .2s}
+  .switch .knob{position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);transition:left .2s}
+  .switch.on{background:var(--acc)}.switch.on .knob{left:24px}
+
+  /* center: phone */
+  .phonewrap{display:flex;justify-content:center}
+  .phone{position:relative;width:322px;background:#101012;border-radius:46px;padding:12px;
+    box-shadow:0 60px 100px -34px rgba(0,0,0,.55),inset 0 0 0 2px #2b2b2f,0 0 0 8px #191919}
+  .phone .sb{position:absolute;background:#232326;border-radius:3px}
+  .phone .sb.r{right:-4px;top:150px;width:4px;height:64px}
+  .phone .sb.v1{left:-4px;top:112px;width:4px;height:38px}
+  .phone .sb.v2{left:-4px;top:158px;width:4px;height:62px}
+  .island{position:absolute;top:22px;left:50%;transform:translateX(-50%);width:98px;height:27px;background:#000;border-radius:18px;z-index:8}
+  .screen{position:relative;background:var(--paper);border-radius:36px;overflow:hidden;height:678px;display:flex;flex-direction:column;transition:box-shadow .18s}
+  .screen.drop{box-shadow:inset 0 0 0 4px var(--acc)}
+  .dropmsg{position:absolute;inset:0;z-index:12;display:none;align-items:center;justify-content:center;background:rgba(240,85,61,.08);font-weight:700;color:var(--acc-d)}
+  .screen.drop .dropmsg{display:flex}
+  .chead{display:flex;align-items:center;gap:11px;padding:36px 16px 11px;background:var(--card);border-bottom:1px solid var(--line);position:relative;z-index:6}
+  .chead .av{position:relative;width:38px;height:38px}.chead .av .cat{width:38px;height:38px}
+  .chead .av .on{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;background:var(--mint);border:2px solid #fff}
+  .chead b{font-size:15px;display:block;line-height:1.1}.chead small{font-size:11px;color:var(--mint);font-weight:600}
+  .thread{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:9px}
+  .thread::-webkit-scrollbar{width:0}
+  .daystamp{align-self:center;font-size:11px;color:var(--muted);font-weight:600;margin:2px 0 6px}
+  .row{display:flex;flex-direction:column;max-width:88%}
+  .row.k{align-self:flex-start}.row.me{align-self:flex-end;align-items:flex-end}
+  .bub{padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:1.4;animation:pop .38s cubic-bezier(.2,1.2,.4,1) both}
+  .k .bub{background:#fff;border:1px solid var(--line);border-bottom-left-radius:5px}
+  .me .bub{background:var(--acc);color:#fff;border-bottom-right-radius:5px}
+  @keyframes pop{from{opacity:0;transform:translateY(7px) scale(.96)}to{opacity:1;transform:none}}
+  .typing{display:inline-flex;gap:4px;background:#fff;border:1px solid var(--line);padding:12px 15px;border-radius:18px;border-bottom-left-radius:5px}
+  .typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  .photo{width:68%;border-radius:18px;border-bottom-right-radius:5px;overflow:hidden;border:1px solid var(--line);animation:pop .38s both}
+  .photo .img{aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:44px}
+  .photo .cap{background:var(--acc);color:#fff;font-size:11px;padding:5px 11px;font-weight:600}
+  .yeswrap{display:flex;gap:7px}
+  .tapyes{background:var(--ink);color:#fff;font-weight:700;font-size:14px;padding:10px 22px;border-radius:980px;border:0;cursor:pointer;box-shadow:0 8px 18px -8px rgba(0,0,0,.5)}
+  .tapno{background:#fff;color:var(--muted);border:1px solid var(--line);border-radius:980px;padding:10px 15px;font-weight:600;cursor:pointer;font-size:14px}
+  .posted{align-self:center;font-size:11.5px;color:var(--mint);font-weight:700;background:rgba(58,169,128,.12);padding:7px 12px;border-radius:980px;animation:pop .4s both;text-align:center}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px;width:100%;animation:pop .4s both}
+  .card .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--acc);margin:0 0 9px}
+  .steps{display:grid;gap:7px}
+  .step{display:flex;gap:10px;align-items:center;background:var(--paper);border-radius:12px;padding:9px 10px}
+  .step .n{flex:0 0 26px;height:26px;border-radius:50%;background:var(--acc);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:12px}
+  .step b{font-size:13.5px}.step span{font-size:12px;color:var(--muted);display:block}
+  .mini-chips{display:flex;flex-wrap:wrap;gap:5px}
+  .mini-chips span{background:var(--paper);border:1px solid var(--line);border-radius:980px;padding:5px 10px;font-size:11.5px;font-weight:600}
+  .prow{display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid var(--line);border-radius:12px;margin-bottom:7px}
+  .prow.feat{border-color:var(--acc);background:var(--acc-tint)}
+  .prow .nm{font-weight:700;font-size:14px}.prow .nm span{display:block;font-weight:500;font-size:11px;color:var(--muted)}
+  .prow .pr{font-weight:800;font-size:20px}.prow .pr small{font-size:11px;font-weight:500;color:var(--muted)}
+  .ptoggle{display:inline-flex;gap:3px;background:var(--paper);border:1px solid var(--line);border-radius:980px;padding:3px;margin:0 0 10px}
+  .ptoggle button{border:0;background:transparent;font:700 12px/1 inherit;color:var(--muted);padding:7px 12px;border-radius:980px;cursor:pointer}
+  .ptoggle button.on{background:var(--ink);color:#fff}
+  /* dock */
+  .dock{border-top:1px solid var(--line);background:rgba(244,239,228,.94);backdrop-filter:blur(10px);padding:9px 10px 12px}
+  .qr{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none}.qr::-webkit-scrollbar{display:none}
+  .qr button{white-space:nowrap;background:#fff;border:1px solid var(--line);border-radius:980px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;flex-shrink:0;color:var(--ink)}
+  .qr button:hover{border-color:var(--acc);color:var(--acc-d)}
+  .composer{display:flex;gap:7px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:980px;padding:4px 5px 4px 14px}
+  .composer input{flex:1;border:0;outline:0;background:transparent;font:inherit;font-size:14px;padding:7px 0}
+  .composer .send{width:36px;height:36px;border-radius:50%;background:var(--acc);border:0;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0}
+  .mtray{display:none}
+  /* right column stack */
+  .rstack{display:flex;flex-direction:column;gap:12px}
+  .catpeek{position:absolute;top:-42px;right:16px;width:64px;height:64px;transform:rotate(8deg);z-index:2;pointer-events:none}
+  /* memory card */
+  .memcard .mem{font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;color:var(--ink)}
+  .memcard .mem .k{color:var(--acc-d)}
+  .memcard .learned{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--mint);font-weight:700;min-height:16px;transition:opacity .3s}
+  /* posted board */
+  .boardhead{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+  .boardhead .cnt{margin-left:auto;color:var(--acc-d);background:var(--acc-tint);border-radius:980px;padding:3px 9px;font-size:11px;letter-spacing:0}
+  .chans{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px}
+  .chan{display:inline-flex;gap:6px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:980px;padding:5px 10px;font-size:11.5px;font-weight:600;opacity:.55;transition:.3s}
+  .chan .d{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .chan.live{opacity:1;border-color:var(--mint)}.chan.live .d{background:var(--mint);box-shadow:0 0 8px var(--mint)}
+  .board .empty{border:1.5px dashed var(--line);border-radius:14px;padding:22px 16px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.5}
+  .post{border:1px solid var(--line);border-radius:14px;overflow:hidden;animation:pop .5s both;background:#fff}
+  .post .ph{display:flex;align-items:center;gap:8px;padding:9px 11px}
+  .post .ph .pa{width:26px;height:26px;border-radius:50%;overflow:hidden;background:#fff;border:1px solid var(--line);flex-shrink:0}
+  .post .ph b{font-size:12.5px}.post .ph .t{font-size:10.5px;color:var(--muted);margin-left:auto}
+  .post .pim{height:132px;display:flex;align-items:center;justify-content:center;font-size:52px}
+  .post .pc{padding:9px 11px;font-size:12px;line-height:1.4;color:var(--ink)}
+  .post .pf{display:flex;gap:11px;padding:0 11px 10px;color:var(--muted);font-size:14px;align-items:center}
+  .post .pf .ch{margin-left:auto;font-size:10.5px}
+  /* dms card */
+  .dm{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .dm:last-child{border-bottom:0;padding-bottom:0}
+  .dm .who{font-size:12.5px;font-weight:700}.dm .who span{font-weight:500;color:var(--muted)}
+  .dm .draft{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .dm .draft em{color:var(--acc-d);font-style:normal;font-weight:600}
+  .dm .badge{flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--acc-d);background:var(--acc-tint);border-radius:980px;padding:3px 7px;margin-left:auto}
+
+  /* ── lower page (Refined + Coral) ── */
+  section{padding:80px 0}
+  .band{background:var(--paper2);border-top:1px solid var(--line)}
+  .center{text-align:center}
+  h2{font-size:clamp(32px,4.4vw,46px);letter-spacing:-.035em;line-height:1.08;margin:0 0 12px;font-weight:700}
+  .kicker{color:var(--acc);font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase;margin:0 0 10px}
+  .subh{color:var(--muted);font-size:18px;max-width:40ch;margin:0 auto 40px}
+  .cmp{max-width:820px;margin:0 auto;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;text-align:left}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line);font-size:14.5px}
+  thead th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+  tbody th{font-weight:600}.kc{background:var(--acc-tint)}thead .kc{color:var(--acc-d)}
+  tr:last-child td,tr:last-child th{border-bottom:0}.big{font-weight:700}
+  .anchornote{text-align:center;color:var(--muted);margin-top:18px;font-size:15px}
+  .plans{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;margin:0 auto}
+  .plan{background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px 26px;text-align:left;display:flex;flex-direction:column;gap:12px;position:relative}
+  .plan.feat{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .plan.feat .pn,.plan.feat .bl{color:rgba(255,255,255,.62)}
+  .flag{position:absolute;top:22px;right:24px;background:var(--acc);color:#fff;font-size:11px;font-weight:700;padding:5px 11px;border-radius:980px}
+  .pn{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+  .price{margin:0;font-size:46px;font-weight:700;letter-spacing:-.04em}.price span{font-size:16px;font-weight:500;opacity:.6}
+  .bl{margin:0;color:var(--muted);font-size:15px}
+  .pllist{list-style:none;margin:4px 0;padding:0;display:grid;gap:9px;font-size:14.5px}
+  .pllist li{padding-left:22px;position:relative}.pllist li:before{content:"✓";position:absolute;left:0;color:var(--acc);font-weight:700}
+  .plan.feat .pllist li:before{color:#f0a08f}
+  .tog2{display:inline-flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:980px;padding:4px;margin:0 auto 30px}
+  .tog2 button{border:0;background:transparent;font:600 14px/1 inherit;color:var(--muted);padding:9px 16px;border-radius:980px;cursor:pointer}
+  .tog2 button.on{background:var(--ink);color:#fff}
+  .guar{max-width:520px;margin:28px auto 0;text-align:center;background:#fff;border:1px dashed var(--acc);border-radius:18px;padding:20px}
+  .guar b{display:block;margin-bottom:5px}.guar p{margin:0;color:var(--muted);font-size:14.5px}
+  .faq{max-width:700px;margin:36px auto 0;display:grid;gap:9px;text-align:left}
+  details{background:#fff;border:1px solid var(--line);border-radius:14px;padding:2px 18px}
+  summary{cursor:pointer;list-style:none;padding:15px 0;font-weight:600;font-size:16px;display:flex;justify-content:space-between}
+  summary::-webkit-details-marker{display:none}summary:after{content:"+";color:var(--acc);font-size:20px}
+  details[open] summary:after{content:"–"}details p{margin:0 0 15px;color:var(--muted);font-size:15px}
+  .close{background:var(--ink);color:#fff;text-align:center;padding:88px 0}
+  .close .cat{width:56px;height:56px;margin:0 auto 18px}.close h2{color:#fff}
+  .close p{color:rgba(255,255,255,.6);margin:0 0 26px;font-size:18px}
+  footer{background:var(--ink);color:rgba(255,255,255,.5);padding:26px 0 42px}
+  .foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;font-size:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:24px}
+  .foot a{color:rgba(255,255,255,.5);text-decoration:none}.foot a:hover{color:#fff}.foot .fl{display:flex;gap:18px;flex-wrap:wrap}
+
+  /* ── responsive ── */
+  @media(max-width:1080px){
+    .scene{grid-template-columns:1fr;gap:22px;justify-items:center;text-align:center;padding-top:92px}
+    .col.left{order:1;justify-self:center;max-width:520px}
+    .col.center{order:2}
+    .col.right{order:3;justify-self:center;max-width:420px}
+    .lead{margin-left:auto;margin-right:auto}.lcta{justify-content:center}
+    .traylabel{justify-content:center}
+    .phototray{display:none}
+    .mtray{display:flex;gap:8px;overflow-x:auto;padding:2px;margin:0 0 4px}
+    .mtray::-webkit-scrollbar{display:none}
+    .mtray .mt{flex-shrink:0;width:72px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 6px 4px;cursor:pointer;text-align:center}
+    .mtray .mt .pi{aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px}
+    .mtray .mt .plab{font-size:10px;font-weight:600;color:var(--muted);margin-top:3px;display:block}
+    .catpeek{display:none}
+    .ap-toy{max-width:330px;margin:0 auto}
+  }
+  @media(max-width:560px){
+    .nl{display:none}.plans{grid-template-columns:1fr}
+    .phone{width:100%;max-width:338px}
+    section{padding:56px 0}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="catface">
+    <path d="M33 44 L39 31 L45 42" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M55 42 L61 31 L67 44" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="46" y1="41" x2="46" y2="49" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+    <line x1="50" y1="40" x2="50" y2="49" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+    <line x1="54" y1="41" x2="54" y2="49" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M36 60 Q41 55 46 60" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M54 60 Q59 55 64 60" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M47 64 L53 64 L50 69 Z" fill="currentColor"/>
+    <path d="M50 69 Q46 74 41 72 M50 69 Q54 74 59 72" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <line x1="20" y1="65" x2="39" y2="63" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <line x1="20" y1="72" x2="39" y2="70" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <line x1="61" y1="63" x2="80" y2="65" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <line x1="61" y1="70" x2="80" y2="72" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</defs></svg>
+
+<nav id="nav">
+  <a class="brand" href="#"><svg class="cat" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#fff"/><g color="var(--ink)"><use href="#catface"/></g></svg>Kip</a>
+  <div class="nl"><a href="#pricing">Pricing</a><a href="#faq">FAQ</a><a href="#">Login</a></div>
+  <a class="btn sm" href="#pricing">Get started</a>
+</nav>
+
+<div class="scene">
+  <!-- LEFT -->
+  <div class="col left">
+    <span class="kick">🐾 Your organic social, handled</span>
+    <h1>Text a photo.<br><span class="c">It's posted.</span></h1>
+    <p class="lead">Kip writes the caption in your voice, you say yes, and it posts to Instagram, Facebook, X &amp; Threads.</p>
+    <div class="lcta"><a class="btn" href="#pricing">Get started</a><a class="sub" href="#pricing">See pricing →</a></div>
+    <div class="traylabel">
+      <svg viewBox="0 0 60 30" fill="none"><path d="M2 8 C20 2 40 4 54 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="4 4"/><path d="M48 12 L56 21 L46 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Try it — drag a photo into Kip
+    </div>
+    <div class="phototray" id="phototray"></div>
+    <div class="mtray" id="mtray"></div>
+    <div class="toy ap-toy" style="margin-top:4px">
+      <div class="ap">
+        <div class="txt"><b>Autopilot</b><span id="apsub">Off — Kip asks first</span></div>
+        <div class="switch" id="apswitch" role="switch" aria-checked="false"><span class="knob"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="col center">
+    <div class="phonewrap">
+      <div class="phone">
+        <span class="sb r"></span><span class="sb v1"></span><span class="sb v2"></span>
+        <div class="island"></div>
+        <div class="screen" id="screen">
+          <div class="dropmsg">Drop it here ↓</div>
+          <div class="chead">
+            <div class="av"><svg class="cat" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#fff"/><g color="var(--ink)"><use href="#catface"/></g></svg><span class="on"></span></div>
+            <div><b>Kip</b><small>● online · replies instantly</small></div>
+          </div>
+          <div class="thread" id="thread"><div class="daystamp">Today</div></div>
+          <div class="dock">
+            <div class="qr" id="qr">
+              <button data-q="how">How it works</button>
+              <button data-q="does">What can you do?</button>
+              <button data-q="safe">Is it safe?</button>
+              <button data-q="price">Pricing</button>
+            </div>
+            <div class="composer"><input id="ci" placeholder="Text Kip a photo…" /><button class="send" id="send">↑</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="col right">
+    <div class="rstack">
+      <svg class="catpeek" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#fff" stroke="var(--line)"/><g color="var(--ink)"><use href="#catface"/></g></svg>
+      <div class="toy memcard">
+        <div class="tlabel">🧠 Brand memory</div>
+        <div class="mem"><span class="k">tone</span> = warm, short, no hype<br><span class="k">channels</span> = IG · FB · X · Threads<br><span class="k">rule</span> = never post without a yes</div>
+        <div class="learned" id="learned">learns your voice as you go…</div>
+      </div>
+      <div class="toy">
+        <div class="boardhead">📡 What Kip posted <span class="cnt" id="pcount">0 today</span></div>
+        <div class="chans" id="chans">
+          <span class="chan" data-c="ig"><span class="d"></span>IG</span>
+          <span class="chan" data-c="fb"><span class="d"></span>Facebook</span>
+          <span class="chan" data-c="x"><span class="d"></span>X</span>
+          <span class="chan" data-c="th"><span class="d"></span>Threads</span>
+        </div>
+        <div class="board" id="board"><div class="empty" id="boardEmpty">Say <b>yes</b> to a caption and your latest post lands here — on every channel at once.</div></div>
+      </div>
+      <div class="toy">
+        <div class="tlabel">💬 Also on Kip's plate</div>
+        <div class="dm"><div><div class="who">@localfoodie <span>· comment</span></div><div class="draft">Kip drafted: <em>"Thank you! Open till 2 today ☕"</em></div></div><span class="badge">draft</span></div>
+        <div class="dm"><div><div class="who">DM <span>· "do you cater?"</span></div><div class="draft">Kip drafted: <em>"We do! I'll send our menu 🥐"</em></div></div><span class="badge">draft</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- lower page -->
+<section class="band center" id="compare">
+  <div class="wrap">
+    <p class="kicker">Do the maths</p>
+    <h2>Same job. A fraction of the cost.</h2>
+    <p class="subh">A scheduler makes you write. An agency makes you meet. Kip just texts back.</p>
+    <div class="cmp"><table>
+      <thead><tr><th></th><th>Scheduler</th><th>Hire an SMM</th><th class="kc">Kip</th></tr></thead>
+      <tbody>
+        <tr><th>Writes in your voice</th><td>DIY / templates</td><td>Yes</td><td class="kc">Yes</td></tr>
+        <tr><th>Lives in a text thread</th><td>No</td><td>No</td><td class="kc">Yes</td></tr>
+        <tr><th>Approve before it posts</th><td>Sometimes</td><td>Yes</td><td class="kc">Yes</td></tr>
+        <tr><th>Monthly cost</th><td class="big">$15–100+</td><td class="big">$2,000–5,000</td><td class="kc big">$79–149</td></tr>
+      </tbody></table></div>
+    <p class="anchornote">Same job as the $4k hire — about the price of lunch for two.</p>
+  </div>
+</section>
+
+<section class="center" id="pricing">
+  <div class="wrap">
+    <p class="kicker">Simple plans</p><h2>Real work, off your plate.</h2>
+    <p class="subh">Organic social, sorted. No credit maths.</p>
+    <div class="tog2" id="tog2"><button class="on" data-b="mo">Monthly</button><button data-b="yr">Annual −20%</button></div>
+    <div class="plans">
+      <div class="plan"><p class="pn">Pro</p><p class="price">$<span class="amt2" data-mo="79" data-yr="63">79</span><span>/mo</span></p>
+        <p class="bl">One brand. Everyday posting. You stay in the thread.</p>
+        <ul class="pllist"><li>Instagram, Facebook, X, Threads</li><li>Drafts in your voice</li><li>Photo styling + light UGC clips</li><li>Calendar + content plan</li><li>Weekly check-in + Friday recap</li></ul>
+        <a class="btn ink" style="margin-top:auto" href="#">Start Pro</a></div>
+      <div class="plan feat"><span class="flag">Most popular</span><p class="pn">Max</p><p class="price">$<span class="amt2" data-mo="149" data-yr="119">149</span><span>/mo</span></p>
+        <p class="bl">Hand Kip the lot. Autopilot when you want evenings back.</p>
+        <ul class="pllist"><li>Everything in Pro</li><li>Autopilot with a heads-up</li><li>Full UGC budget + inbox &amp; leads</li><li>Competitor watch + editable memory</li><li>Routines + priority setup</li></ul>
+        <a class="btn" style="margin-top:auto" href="#">Start Max</a></div>
+    </div>
+    <div class="guar"><b>First week on us if it isn't useful.</b><p>Ready in about ten minutes. If the first seven days don't earn their keep, email for a refund of that week. No lock-in.</p></div>
+  </div>
+</section>
+
+<section class="band center" id="faq">
+  <div class="wrap">
+    <p class="kicker">Questions, answered</p><h2>Before your first photo.</h2>
+    <div class="faq">
+      <details open><summary>Does it really post on its own?</summary><p>Only if you switch on autopilot — and even then Kip gives you a heads-up first. Otherwise nothing goes live without your yes.</p></details>
+      <details><summary>What if the caption doesn't sound like me?</summary><p>Reply in the thread and Kip rewrites it. It learns your voice and keeps it in your brand memory.</p></details>
+      <details><summary>Which channels does it post to?</summary><p>Instagram, Facebook, X and Threads — organic posts only.</p></details>
+      <details><summary>Can I cancel?</summary><p>Anytime. No lock-in on monthly, plus a first-week refund.</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="close">
+  <svg class="cat" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="rgba(255,255,255,.08)"/><g color="#fff"><use href="#catface"/></g></svg>
+  <div class="wrap"><h2>Text a photo.<br>It's posted.</h2><p>Or don't. Kip will.</p><a class="btn" href="#pricing">Get started</a></div>
+</section>
+<footer><div class="wrap"><div class="foot">
+  <a class="brand" href="#" style="color:#fff;font-size:16px"><svg class="cat" viewBox="0 0 100 100" style="width:24px;height:24px"><circle cx="50" cy="50" r="50" fill="rgba(255,255,255,.1)"/><g color="#fff"><use href="#catface"/></g></svg>© 2026 Pulse Social Media</a>
+  <div class="fl"><a href="#">Notes</a><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Data deletion</a></div>
+</div></div></footer>
+
+<div class="confetti hidden" id="confetti" style="position:fixed;inset:0;pointer-events:none;z-index:3000;overflow:hidden"></div>
+
+<script>
+const PHOTOS=[
+  {emoji:'🥐',label:'almond croissants',bg:'linear-gradient(135deg,#ecd0a6,#d1935f)',reply:'Ooh, lovely light. Here’s one in your voice:',caption:'Saturday morning energy: first pour of the day. Come grab a cup before the almond croissants go. ☕',learn:'hero item = almond croissant'},
+  {emoji:'☕',label:'the first pour',bg:'linear-gradient(135deg,#d8b48c,#8a5a3b)',reply:'Classic. Caption coming up:',caption:'Nothing beats that first pour. We’re open till 2 — come say hi. ☕',learn:'you call it “the first pour”'},
+  {emoji:'🧁',label:"today's bake",bg:'linear-gradient(135deg,#f0d0b0,#c98a5a)',reply:'That’ll do nicely. How’s this:',caption:'Fresh out of the oven and still warm. Today’s bake won’t last past lunch. 🧁',learn:'bakes sell out by lunch'},
+  {emoji:'🌻',label:'window flowers',bg:'linear-gradient(135deg,#f1e2a0,#cdb45e)',reply:'Pretty. Here you go:',caption:'New week, new blooms in the window. Swing by for a coffee and a slower morning. 🌻',learn:'fresh flowers every Monday'},
+];
+const POS=[{l:6,t:2,r:-5},{l:152,t:14,r:5},{l:24,t:156,r:4},{l:164,t:166,r:-4}];
+
+const T=document.getElementById('thread'), screen=document.getElementById('screen');
+const catMini=`<svg class="cat" viewBox="0 0 100 100" style="width:100%;height:100%"><circle cx="50" cy="50" r="50" fill="#fff"/><g color="var(--ink)"><use href="#catface"/></g></svg>`;
+function el(h){const d=document.createElement('div');d.innerHTML=h.trim();return d.firstElementChild;}
+function scrollThread(){T.scrollTop=T.scrollHeight;}
+function kip(h){const r=el(`<div class="row k"><div class="bub">${h}</div></div>`);T.appendChild(r);scrollThread();return r;}
+function me(h){const r=el(`<div class="row me"><div class="bub">${h}</div></div>`);T.appendChild(r);scrollThread();return r;}
+function card(h){const r=el(`<div class="row k">${h}</div>`);T.appendChild(r);scrollThread();return r;}
+function typing(){const r=el(`<div class="row k"><div class="typing"><i></i><i></i><i></i></div></div>`);T.appendChild(r);scrollThread();return r;}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function kipType(h,d=650){const t=typing();await wait(d);t.remove();return kip(h);}
+
+const tray=document.getElementById('phototray'), mtray=document.getElementById('mtray');
+PHOTOS.forEach((p,i)=>{
+  const pos=POS[i]||{l:0,t:0,r:0};
+  const pol=el(`<div class="polaroid" data-idx="${i}" style="left:${pos.l}px;top:${pos.t}px;transform:rotate(${pos.r}deg)"><span class="tape"></span><div class="pi" style="background:${p.bg}">${p.emoji}</div><span class="plab">${p.label}</span></div>`);
+  tray.appendChild(pol); makeDraggable(pol,i);
+  const mt=el(`<div class="mt" data-idx="${i}"><div class="pi" style="background:${p.bg}">${p.emoji}</div><span class="plab">${p.label}</span></div>`);
+  mt.onclick=()=>sendPhoto(i); mtray.appendChild(mt);
+});
+
+function overScreen(x,y){const r=screen.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
+function makeDraggable(node,idx){
+  node.addEventListener('pointerdown',e=>{
+    if(PHOTOS[idx].sent)return; e.preventDefault();
+    const rect=node.getBoundingClientRect(); const ox=e.clientX-rect.left, oy=e.clientY-rect.top;
+    const sx=e.clientX, sy=e.clientY; let moved=false;
+    const ghost=node.cloneNode(true); ghost.classList.add('ghost');
+    ghost.style.width=rect.width+'px'; ghost.style.left=rect.left+'px'; ghost.style.top=rect.top+'px';
+    document.body.appendChild(ghost); node.classList.add('dragging');
+    function mv(ev){ghost.style.left=(ev.clientX-ox)+'px';ghost.style.top=(ev.clientY-oy)+'px';
+      if(Math.hypot(ev.clientX-sx,ev.clientY-sy)>6)moved=true; screen.classList.toggle('drop',overScreen(ev.clientX,ev.clientY));}
+    function up(ev){document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+      ghost.remove();node.classList.remove('dragging');screen.classList.remove('drop');
+      if(overScreen(ev.clientX,ev.clientY)||!moved)sendPhoto(idx);}
+    document.addEventListener('pointermove',mv);document.addEventListener('pointerup',up);
+  });
+}
+
+let autopilot=false, busy=false;
+document.getElementById('apswitch').onclick=function(){
+  autopilot=!autopilot; this.classList.toggle('on'); this.setAttribute('aria-checked',autopilot);
+  document.getElementById('apsub').textContent=autopilot?'On — posts with a heads-up':'Off — Kip asks first';
+  kip(autopilot?'Autopilot on — I’ll post with a heads-up, no yes needed. 🤖':'Autopilot off — nothing posts without your yes. 💛');
+};
+
+async function sendPhoto(idx){
+  const p=PHOTOS[idx]; if(!p||p.sent||busy)return; p.sent=true; busy=true;
+  document.querySelectorAll(`[data-idx="${idx}"]`).forEach(n=>{n.style.transition='.25s';n.style.opacity='0';n.style.transform+=' scale(.6)';setTimeout(()=>n.remove(),250);});
+  T.appendChild(el(`<div class="row me"><div class="photo"><div class="img" style="background:${p.bg}">${p.emoji}</div><div class="cap">📎 ${p.label}</div></div></div>`)); scrollThread();
+  await kipType(p.reply,800);
+  T.appendChild(el(`<div class="row k"><div class="bub">“${p.caption}”</div></div>`)); scrollThread();
+  if(autopilot){
+    await kipType('Autopilot’s on — heads-up, posting now.',700);
+    await onPost(p);
+  } else {
+    const yw=el(`<div class="row me"><div class="yeswrap"><button class="tapno">not yet</button><button class="tapyes">post it ✓</button></div></div>`);
+    T.appendChild(yw); scrollThread();
+    yw.querySelector('.tapyes').onclick=async()=>{yw.remove();me('post it ✓');await onPost(p);};
+    yw.querySelector('.tapno').onclick=async()=>{yw.remove();await kipType('No worries — your call, always. 💛');};
+  }
+  busy=false;
+  if(PHOTOS.every(x=>x.sent)) setTimeout(()=>kipType('That’s the whole job. Photos in, posts out — and you never left the thread. 🐾',700),500);
+}
+
+let postCount=0;
+async function onPost(p){
+  confetti(); lightChannels(); postToBoard(p);
+  await wait(250);
+  T.appendChild(el(`<div class="posted">✓ Posted to Instagram, Facebook, X &amp; Threads · 0.9s</div>`)); scrollThread();
+  await kipType('Live. That took about ten seconds. 🎉',700);
+}
+function lightChannels(){document.querySelectorAll('#chans .chan').forEach(c=>c.classList.add('live'));}
+function postToBoard(p){
+  postCount++; document.getElementById('pcount').textContent=postCount+' today';
+  const be=document.getElementById('boardEmpty'); if(be)be.remove();
+  const board=document.getElementById('board'); board.innerHTML='';   /* keep only the latest → page never elongates */
+  board.appendChild(el(`<div class="post"><div class="ph"><div class="pa">${catMini}</div><b>yourshop</b><span class="t">now</span></div><div class="pim" style="background:${p.bg}">${p.emoji}</div><div class="pc">${p.caption}</div><div class="pf">♡ ⬡ ↺<span class="ch">IG · FB · X · Threads</span></div></div>`));
+  const l=document.getElementById('learned'); l.style.opacity='0';
+  setTimeout(()=>{l.textContent='learned: '+p.learn; l.style.opacity='1';},200);
+}
+
+const answers={
+  how:async()=>{me('How it works');await kipType('Three moves. That’s the whole thing:',700);
+    card(`<div class="card"><p class="lbl">The loop</p><div class="steps">
+      <div class="step"><div class="n">1</div><div><b>You send a photo</b><span>From the floor, in this thread.</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>I write it</b><span>In your voice, right here.</span></div></div>
+      <div class="step"><div class="n">3</div><div><b>You say yes</b><span>4 channels, organic, done.</span></div></div></div></div>`);},
+  does:async()=>{me('What can you do?');await kipType('Basically the whole organic social job:',700);
+    card(`<div class="card"><p class="lbl">On my plate</p><div class="mini-chips">
+      <span>✍️ Captions</span><span>🗓️ Calendar</span><span>👋 Monday nudge</span><span>📊 Friday recap</span><span>💬 Reply drafts</span><span>🤖 Autopilot</span></div></div>`);},
+  safe:async()=>{me('Is it safe?');await kipType('Completely — and you stay in charge:',700);
+    card(`<div class="card"><p class="lbl">Private &amp; in your control</p><div class="steps">
+      <div class="step"><div class="n">🔒</div><div><b>Nothing posts without your yes</b><span>Unless autopilot is on.</span></div></div>
+      <div class="step"><div class="n">🛡️</div><div><b>Encrypted, never trained on</b><span>Your photos &amp; voice stay yours.</span></div></div></div></div>`);},
+  price:async()=>{me('Pricing');await kipType('Way less than the $2,000–5,000/mo a manager runs:',800);
+    const c=card(`<div class="card"><p class="lbl">Simple plans</p>
+      <div class="ptoggle" id="pt"><button class="on" data-b="mo">Monthly</button><button data-b="yr">Annual −20%</button></div>
+      <div class="prow"><div class="nm">Pro<span>Everyday posting</span></div><div class="pr">$<span class="amt" data-mo="79" data-yr="63">79</span><small>/mo</small></div></div>
+      <div class="prow feat"><div class="nm">Max<span>The lot + autopilot</span></div><div class="pr">$<span class="amt" data-mo="149" data-yr="119">149</span><small>/mo</small></div></div></div>`);
+    c.querySelectorAll('#pt button').forEach(b=>b.onclick=()=>{c.querySelectorAll('#pt button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+      c.querySelectorAll('.amt').forEach(a=>a.textContent=a.dataset[b.dataset.b]);});
+    await kipType('First week on us if it isn’t useful. 🥐',700);},
+};
+let ibusy=false;
+document.querySelectorAll('#qr button').forEach(b=>b.onclick=async()=>{if(ibusy||!answers[b.dataset.q])return;ibusy=true;await answers[b.dataset.q]();ibusy=false;});
+document.getElementById('send').onclick=doSend;
+document.getElementById('ci').addEventListener('keydown',e=>{if(e.key==='Enter')doSend();});
+async function doSend(){document.getElementById('ci').value='';await kipType('Drag a photo into me (or tap one on the left) and I’ll write the caption 👇',700);}
+addEventListener('scroll',()=>document.getElementById('nav').classList.toggle('solid',scrollY>16));
+document.querySelectorAll('#tog2 button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tog2 button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  document.querySelectorAll('.amt2').forEach(a=>a.textContent=a.dataset[b.dataset.b]);});
+
+function confetti(){const c=document.getElementById('confetti');c.classList.remove('hidden');c.innerHTML='';
+  const cols=['#f0553d','#ffc24b','#3aa980','#1c1b19','#f0a08f'];
+  for(let i=0;i<70;i++){const s=document.createElement('i');
+    s.style.cssText=`position:absolute;top:-16px;width:9px;height:14px;border-radius:2px;left:${Math.random()*100}%;background:${cols[i%cols.length]};animation:fall ${(1.5+Math.random()*1.6)}s linear ${Math.random()*.3}s forwards`;
+    c.appendChild(s);} setTimeout(()=>c.classList.add('hidden'),3300);}
+const st=document.createElement('style');st.textContent='@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.9}} .hidden{display:none}';document.head.appendChild(st);
+
+(async()=>{await wait(400);
+  await kipType('Hey — I’m <b>Kip</b> 🐾 I run your organic social from right here.',700);
+  await kipType('Go on, <b>drag one of those photos into me</b> — or tap it 👈',800);
+})();
+</script>
+</body>
+</html>

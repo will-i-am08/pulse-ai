@@ -5,11 +5,15 @@
    ───────────────────────────────────────────────────────────── */
 
 .page {
-  --ink: #1d1d1f;
-  --muted: #6e6e73;
-  --line: #e3e5ea;
-  --band: #e8ecf2;
-  background: #fff;
+  --ink: #1c1b19;
+  --muted: #6f6a60;
+  --line: #e6decb;
+  --band: #efe9dc;
+  /* coral accent (warmed to sit with the cream-and-ink logo) */
+  --acc: #f0553d;
+  --acc-d: #d8452f;
+  --acc-tint: #fce6e0;
+  background: #faf6ee;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'SF Pro', system-ui,
     sans-serif;
@@ -37,7 +41,7 @@
   transition: background 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
 }
 .navSolid {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(250, 246, 238, 0.92);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
@@ -128,8 +132,8 @@
 }
 .pill {
   display: inline-block;
-  background: #fff;
-  color: #000;
+  background: var(--acc);
+  color: #fff;
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -137,10 +141,11 @@
   border-radius: 980px;
   text-decoration: none;
   border: 0;
+  box-shadow: 0 12px 28px -12px var(--acc);
   transition: transform 0.2s ease, background 0.2s ease;
 }
 .pill:hover {
-  background: #f5f5f7;
+  background: var(--acc-d);
   transform: translateY(-1px);
 }
 .trust {
@@ -294,8 +299,8 @@
 }
 .cap {
   position: relative;
-  background: #e9e9eb;
-  color: #1d1d1f;
+  background: var(--band);
+  color: var(--ink);
   border-radius: 22px 22px 22px 8px;
   padding: 14px 16px;
   margin: 0;
@@ -310,8 +315,8 @@
 }
 .howYes {
   display: inline-block;
-  background: #fff;
-  color: #000;
+  background: var(--acc);
+  color: #fff;
   font-weight: 600;
   font-size: 28px;
   letter-spacing: -0.03em;
@@ -670,7 +675,7 @@
 
 /* ── kip column highlight (shared by tool compare) ─ */
 .compareKipCol {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--acc-tint);
 }
 
 /* ── pricing ─────────────────────────────────────── */
@@ -734,11 +739,11 @@
   color: rgba(255, 255, 255, 0.62);
 }
 .featured .pillDark {
-  background: #fff;
-  color: #000;
+  background: var(--acc);
+  color: #fff;
 }
 .featured .pillDark:hover {
-  background: #f5f5f7;
+  background: var(--acc-d);
 }
 .planName {
   margin: 0;
@@ -792,8 +797,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: currentColor;
-  opacity: 0.35;
+  background: var(--acc);
+  opacity: 1;
 }
 .priceNote {
   text-align: center;
@@ -938,8 +943,8 @@
   margin: 0 auto;
   width: min(168px, 55%);
   height: 16px;
-  color: #111;
-  opacity: 0.68;
+  color: var(--acc);
+  opacity: 0.9;
 }
 .doodleArrowYes {
   width: 92px;
@@ -1220,7 +1225,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--acc-d);
 }
 .proofStats {
   list-style: none;
@@ -1300,6 +1305,15 @@
   margin-top: 8px;
   display: flex;
   justify-content: center;
+}
+.demoCta {
+  margin-top: 30px;
+  text-align: center;
+}
+.demoCtaNote {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 /* ── testimonials ────────────────────────────────── */
@@ -1590,12 +1604,12 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--band);
+  background: var(--acc-tint);
   display: grid;
   place-items: center;
   font-size: 18px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--acc-d);
 }
 .faqA {
   padding: 0 20px 18px;
