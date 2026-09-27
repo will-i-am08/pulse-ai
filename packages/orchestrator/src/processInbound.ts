@@ -1,4 +1,4 @@
-import { query, queryOne, brandVoiceProfileSchema, sanitizeChatText, isPublishDestination } from "@pulse/shared";
+import { query, queryOne, appBaseUrl, brandVoiceProfileSchema, sanitizeChatText, isPublishDestination } from "@pulse/shared";
 import type { Brand, Message, MediaAsset, Post, PublishDestination } from "@pulse/shared";
 import { classifyInbound, type InboundClassification, looksLikeAffirmation, looksLikeApproval, looksLikeGreeting } from "./classify.js";
 import { draftCaption } from "./draftCaption.js";
@@ -231,6 +231,16 @@ const CONNECT_TIKTOK_RE =
   /\b(connect|link|reconnect)\b.{0,40}\btiktok\b|\btiktok\b.{0,30}\b(connect|link|reconnect)\b/i;
 const CONNECT_STATUS_RE =
   /\b(what(?:'?s| is)|am i|are we)\b.{0,40}\bconnected\b|\bconnection status\b|\b(is|are) (insta(?:gram)?|facebook|fb|linkedin|tiktok) connected\b|\b(?:what|which)\s+platforms?\b.{0,40}\b(?:am i|are we|are you)\b.{0,20}\b(?:posting|posted|on|connected)\b|\b(?:what|where)\s+(?:am i|are we)\s+posting\b|\bwhat platforms am i (?:on|using)\b/i;
+
+/**
+ * Text that refers to a picture, when no media arrived.
+ * Australian Twilio long codes drop inbound MMS before the webhook (no row,
+ * no 403), so "send the image again" loops. Point at the web thread, which
+ * runs the same inbound pipeline and replies by SMS.
+ */
+export function missingInboundPhotoSms(): string {
+  return `I didn't get the picture on that text. Photos texted to this number don't come through. Attach it here and I'll draft it: ${appBaseUrl()}/app`;
+}
 
 /** "what platforms am I posting to?" — answer from tokens, never the LLM. */
 export function looksLikeConnectStatus(body: string | null | undefined): boolean {
@@ -1387,10 +1397,7 @@ async function routeInbound(
       }
     }
     if (refersToAttachedMedia(message.body)) {
-      return {
-        reply:
-          "I didn't get the photo on that text — send the image again (caption in the same message is fine) and I'll draft it straight away.",
-      };
+      return { reply: missingInboundPhotoSms() };
     }
   }
 

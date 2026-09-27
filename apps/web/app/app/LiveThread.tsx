@@ -3,6 +3,7 @@
 import { type ChangeEvent, useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { sendChatMessageAction } from '@/lib/actions/chat';
 import type { ThreadMessageDto } from '@/lib/thread';
+import { compressLabFiles } from '../lab/compressLabMedia';
 
 export type LiveThreadMessage = ThreadMessageDto;
 
@@ -113,11 +114,18 @@ export function LiveThread({ firstName, initialMessages }: Props) {
   function onPhotoChange(e: ChangeEvent<HTMLInputElement>) {
     const picked = e.target.files;
     if (!picked || picked.length === 0) return;
-    const added = Array.from(picked).map((file) => ({ file, url: URL.createObjectURL(file) }));
-    setPhotos((prev) => [...prev, ...added]);
+    const input = e.target;
+    const raw = Array.from(picked);
+    // Phone photos are multi-megabyte. The server action body cap drops them
+    // before Kip sees them, same as a texted picture that never webhooks.
+    // Shrink first, the way /lab already does.
+    void compressLabFiles(raw).then((files) => {
+      const added = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+      setPhotos((prev) => [...prev, ...added]);
+    });
     // Reset the input so re-picking the same file, or adding more in a second
     // pick, both work — we keep the File objects in state, not the input.
-    e.target.value = '';
+    input.value = '';
   }
 
   function removePhoto(index: number) {
@@ -153,8 +161,9 @@ export function LiveThread({ firstName, initialMessages }: Props) {
         {messages.length === 0 ? (
           <div className="bubble kip">
             <p>
-              Hi{firstName ? ` ${firstName}` : ''} — I’m Kip. Text me a photo from the floor and I’ll
-              draft a post in your voice. Nothing goes out without your yes.
+              Hi{firstName ? ` ${firstName}` : ''} — I’m Kip. Attach a photo here and I’ll
+              draft a post in your voice. A picture texted to this number doesn’t come through.
+              Nothing goes out without your yes.
             </p>
           </div>
         ) : (
